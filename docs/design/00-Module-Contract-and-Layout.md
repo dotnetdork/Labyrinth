@@ -158,7 +158,7 @@ Rules for module authors:
 
 1. `touches_scored: true` modules run only after the scoring allowlist and the protected set are loaded.
 2. A `manual-only` module never changes anything. It prints a checklist for a human.
-3. No module downloads anything or calls outside services (NCCDC, 2025, Rule 5.6.4).
+3. No module downloads anything or calls outside services (National Collegiate Cyber Defense Competition [NCCDC], 2025, Rule 5.6.4).
 4. No module deliberately breaks expected functionality (NCCDC, 2025, Rule 5.6.5).
 
 ## 5. Execution model
