@@ -59,7 +59,7 @@ Labyrinth/
 ├── config/                      # templates only: *.example, never values
 ├── vendor/                      # pinned third-party code, each with LICENSE and NOTICE
 ├── tests/                       # lab tests and negative tests
-└── docs/                        # design specs and the hardening reference
+└── docs/                        # design specs and the implementation blueprint
 ```
 
 Notes:

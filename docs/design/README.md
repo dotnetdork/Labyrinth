@@ -2,7 +2,7 @@
 
 **Status:** Draft · reviewed 2026-09-29
 
-These are design documents, not code. They describe what each part must do, how it stays inside the competition rules, and how it is tested. The [hardening reference](../Hardening-Reference.md) is the overview of the whole system; each spec here is the detailed design for one part of it.
+These are design documents, not code. They describe what each part must do, how it stays inside the competition rules, and how it is tested. The [implementation blueprint](../Blueprint.md) is the complete overview of what the whole system needs; each spec here is the detailed design and instructions for one part of it.
 
 > [!NOTE]
 > **Rules basis.** Built on the 2026 national CCDC (Collegiate Cyber Defense Competition) rules and the 2025 Midwest qualifier packet. The 2027 rules are not published yet, so every rule citation here must be re-checked when they arrive. Rule numbers follow the web version of the rules (National Collegiate Cyber Defense Competition [NCCDC], 2025). That page numbers its sections but letters the items within them, so Rule 4.14 appears as item 4(n) and Rule 5.6.1 as 5(f)(i).
@@ -34,8 +34,8 @@ Each diagram is a Mermaid block inside the document it illustrates, with a one-s
 
 | Diagram | Where |
 |---|---|
-| Order of work: lock out, observe, deceive and sustain | [Hardening reference, §1](../Hardening-Reference.md#1-operating-doctrine--the-order-of-work) |
-| Every trap reports to one trip log | [Hardening reference, §4](../Hardening-Reference.md#trip-log-pattern) |
+| Order of work: lock out, observe, deceive and sustain | [Blueprint, §1](../Blueprint.md#1-operating-doctrine--the-order-of-work) |
+| Every trap reports to one trip log | [Blueprint, §4](../Blueprint.md#trip-log-pattern) |
 | The four phases and what each contains | [00, section 2](00-Module-Contract-and-Layout.md#2-naming-phases-not-hardening) |
 | Repository and module layout | [00, section 3](00-Module-Contract-and-Layout.md#3-repository-layout) |
 | Module lifecycle with exit codes | [00, section 4](00-Module-Contract-and-Layout.md#4-the-module-contract) |
@@ -73,6 +73,7 @@ Each diagram is a Mermaid block inside the document it illustrates, with a one-s
 | 2026-09-29 | Independent review. Fixed: VyOS commit-confirm reboot default (01); account locks moved from Tier 1 to Tier 2 and domain locks to Tier 3 (01); incident-report rule wording (02); `sfc /verifyonly` (04); materials rules 4.4 and 8.5 (07); banner decoys limited to unscored services (09). Removed event-specific topology, hostnames and timings from the public documents. |
 | 2026-09-29 | Formatting and readability pass, no change to facts: consistent status lines without draft numbers, GitHub alert blocks for existing warnings and caveats, long paragraphs split into lists and tables, sentences reworded for clarity, acronyms expanded on first use, US spelling. |
 | 2026-09-29 | Diagrams: grouped the layout, lifecycle, lockout and incident-pipeline diagrams into labeled subgraphs with no change to nodes or edges; added diagrams for the order of work and the trip log (hardening reference), credential rotation (05) and the decoy lifecycle (09). |
+| 2026-09-29 | Renamed `docs/Hardening-Reference.md` to `docs/Blueprint.md` (title: Labyrinth Implementation Blueprint), because it covers doctrine, invariants, a per-platform capability map, a trap catalog and a reference implementation. All links updated. |
 
 ## References
 
