@@ -25,7 +25,7 @@ Labyrinth is that strategy plus that tool. The **Linux profile** is modelled on 
 | **Deceive** | Tax the attacker | Traps, canaries, honey-accounts, tarpits — every non-service touch is a tripwire. |
 | **Sustain** | Stay scored-green | Keep the graded services healthy; patch and roll back cleanly; hold the line. |
 
-The whole doctrine, the transferable technicals, the trap catalog, and the Ansible architecture live in:
+The whole doctrine, the transferable technicals, the trap catalog, and the architecture live in:
 
 ### → [`docs/Hardening-Reference.md`](docs/Hardening-Reference.md)
 
@@ -37,20 +37,23 @@ A heterogeneous, contested network of the kind CCDC events use: more than one Li
 
 ```
 Labyrinth/
-├── README.md                     ← you are here (high-level summary + strategy)
+├── README.md                     ← you are here
 ├── docs/
-│   └── Hardening-Reference.md     ← the base documentation: doctrine, capability map,
-│                                    trap catalog, reference build, architecture, runbooks
-└── (future) ansible/             ← roles, inventory, phase playbooks (see reference §6)
+│   ├── Hardening-Reference.md     ← doctrine, capability map, trap catalog (rules-aware, Draft 2)
+│   └── design/                    ← design specs 00–09 (module contract, panic button,
+│                                    incident reporting, event seed, baseline, credentials,
+│                                    status feed, cleanup, reference mining, deception maze)
+└── (future) core/ phases/ profiles/ platform/ config/ vendor/ tests/   ← see design/00
 ```
+
+Strategy, rules baseline, topology notes and the vulnerability assessment live in the private CCDC-2027 repository, not here.
 
 ## Status
 
-Planning / documentation phase. The reference is the blueprint the automation is built against.
-A hardened server run by the author is the proven source for the Linux server profile.
+Planning and design phase (Draft 2). The design specs are the blueprint the code is built against. Competition rules are cited by rule number; all citations must be re-checked when the 2027 rules are published.
 
 ## Ground rule
 
 **No secrets in this repo — ever.** Labyrinth provisions *shape*, not values: placeholder templates
-(`.env.example`, cert paths, token names), Ansible Vault or a secrets manager for anything real.
+(`.env.example`, cert paths, token names), real values supplied at run time from the event packet and a paper-only event seed (see `docs/design/03`).
 The reference documents configuration structure only; no keys, env files, or credentials are reproduced.

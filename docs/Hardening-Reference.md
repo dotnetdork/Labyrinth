@@ -4,6 +4,9 @@
 **Purpose:** the base documentation — the portable doctrine and the transferable technical controls — used to design and build the automation.
 **Reference implementation:** a hardened Debian server run by the author is the worked example of the **Linux server profile**; this document generalizes it to a mixed competition network.
 **Secrets:** none reproduced. This document describes configuration *shape* only — no keys, env files, or credentials.
+**Revision:** Draft 2 · 2026-09-29 · rules-aware. Competition rules are cited by rule number in APA 7 style (author, date, rule). Detailed designs live in [`design/`](design/README.md).
+
+> **Rules basis and warning.** Rule numbers follow the web version of the national CCDC rules, updated 10 December 2025 (National Collegiate Cyber Defense Competition [NCCDC], 2025). The 2027 rules and the Midwest packet are not published yet. Every rule citation must be re-checked when they arrive. Where this document and the rules disagree, the rules win. Items marked **[RULES]** were changed from Draft 1 because of a rule.
 
 ---
 
@@ -17,6 +20,8 @@ You cannot do that by hand, per host, from memory. Labyrinth is:
 - **A capability map** — each invariant expressed as a concrete control on Linux, on Windows/AD, and on the network edge, with a priority and a CCDC note.
 - **A deception catalog** — traps, canaries, honey-accounts, tarpits, and sinkholes that make an attacker's recon expensive, noisy, and logged, because deception buys time that patching cannot.
 - **An architecture** — Ansible roles and *phase* playbooks so a team can run the lockout across every reachable box in one command, then layer observation and deception.
+
+Because Labyrinth is a team-written tool, it must be public at least three months before use, declared, frozen, shared with every team, free of outside resources, and must not deliberately break expected functionality (NCCDC, 2025, Rules 5.6.1–5.6.5). Those five rules shape every section below.
 
 The transferable technicals come from a real hardened box. What follows is that box's controls, generalized into a system you can point at an empty network.
 
@@ -37,23 +42,23 @@ The competition reality: **assume breach from the start.** Credentials are defau
 
 ### Phase 0 — Establish trust
 The attacker's power comes from credentials and existing sessions. Remove both.
-- **Rotate every credential you were handed or that ships by default** — local admins, service accounts, DB users, appliance web logins, SNMP strings. This is the single highest-impact action; do it first, everywhere.
-- **Inventory and lock accounts** — disable/expire everything that is not a known operator or a required service account. Kill unexpected sessions.
-- **Capture a baseline** — users, listening ports, running processes, scheduled tasks/cron, startup items, firewall state. You cannot spot anomalies later without it.
+- **Rotate administrator-class credentials you were handed or that ship by default** — local admins, appliance web logins, SNMP strings, and service or database accounts once the dependency map is known. Do it first, everywhere. **[RULES]** Administrator-class passwords are not used for scoring and may be changed freely; other user passwords follow the notification process (Midwest Collegiate Cyber Defense Competition [MWCCDC], 2025, Rule 13; *Provisional*, 2025 packet). User-level and scoring accounts are never rotated by automation.
+- **Inventory and lock unexpected accounts** — lock (never delete) anything that is not a known operator, a required service account or a protected account. Kill unexpected sessions. **[RULES]** Never disable accounts wholesale or change every shell; the rules give those as examples of tools that break expected functionality (NCCDC, 2025, Rule 5.6.5). Officials must be able to get in on request (NCCDC, 2025, Rule 4.1), so a verified break-glass path comes first.
+- **Verify, then baseline** — users, listening ports, processes, scheduled tasks/cron, startup items, firewall state. Check files against the package database before hashing them, so a compromised state is not recorded as normal (design 04).
 
 ### Phase 1 — Shrink the surface
 - **Default-deny ingress** on every host firewall and at the edge; allow only the scored services and your own admin path.
 - **Move or hide admin** — get SSH/RDP off the obvious port; consider port-knocking on hosts that support it (§4.6).
-- **Disable services you are not graded on.** Every listener is a vector.
+- **Disable services you are not graded on.** Every listener is a vector. **[RULES]** Only from a per-profile candidate list, and only after the scored-service list is known; anything that interferes with the scoring engine is the team's responsibility (NCCDC, 2025, Rule 4.11).
 - **Patch the obvious** — the known-exploited, internet-facing things only; do not start a 40-minute `dist-upgrade` mid-round.
 
 ### Phase 2 — See everything
-- **Ship logs to the SIEM** (Splunk in the reference topology) — auth, firewall, process creation. Centralized logs survive a wiped host.
+- **Ship logs to the SIEM** (Splunk in the reference topology) — auth, firewall, process creation. Centralized logs survive a wiped host. Where hosts sit in different segments, open only the minimum flows needed for log forwarding and the admin path.
 - **Turn on high-signal host logging** — `auditd` on Linux, **Sysmon + Windows Security auditing** on Windows.
 - **Watch authentication** in real time; a successful login to something you locked in Phase 0 is your first catch.
 
 ### Phase 3 — Deceive & sustain
-- **Deploy the trap layer** (§4): scanner tarpits, canary tokens, honey-accounts, port traps, DNS sinkholes. Now every attacker action generates a high-confidence alert.
+- **Deploy the trap layer** (§4): scanner tarpits, canary tokens, honey-accounts, port traps, DNS sinkholes. Now every attacker action generates a high-confidence alert. **[RULES]** No decoy on a scored port, and no decoy that misleads the scoring engine (NCCDC, 2025, Rule 9.3).
 - **Keep scored services green** — health-check them, and use your rollback path the instant a change hurts a service.
 - **Hold and triage** — work your alert queue by confidence: canary/honey-account hits first (near-certain), then anomalies.
 
@@ -84,45 +89,45 @@ The core of the reference. Each capability states the portable **principle**, th
 - **Linux:** `passwd` / `chpasswd` every interactive and service account; `usermod -L` / `--expiredate` to lock; audit `sudoers` and group membership; empty unexpected `~/.ssh/authorized_keys`; `pkill -u` stray sessions.
 - **Windows/AD:** reset the KRBTGT password (twice, over the round) to invalidate golden tickets; reset Domain Admins and all service accounts; disable stale accounts; check `Domain Admins`, `Enterprise Admins`, and local Administrators membership; force logoff.
 - **Edge:** change the appliance admin/web/SSH/SNMP credentials immediately (routers and firewalls often ship with well-known defaults).
-- **CCDC note:** the number-one foothold is a credential the scoring engine also gave the Red Team. Rotate first, everywhere, before anything clever.
+- **CCDC note:** the number-one foothold is a credential the Red Team already knows. Rotate administrator-class credentials first, everywhere, before anything clever. **[RULES]** Domain-wide or user-level resets are manual-only: POP3 scoring in the 2025 qualifier used Active Directory users (MWCCDC, 2025, Scored Services; *Provisional*), so a mass reset can zero a scored service. KRBTGT rotation is manual-only. Design: 01, 05.
 
 ### 3.2 Remote-admin hardening (SSH / RDP / WinRM) — **P0/P1**
 - **Principle:** shrink and strengthen the way *you* get in; deny every other way.
 - **Linux (reference §5.2):** key-only (`PasswordAuthentication no`), `PermitRootLogin no`, `AllowUsers` allowlist, `MaxAuthTries 3`, no X11/agent forwarding, weak ciphers/MACs removed, `LogLevel VERBOSE` (needed for the planted-key canary). Drop-in file, base config untouched.
 - **Windows/AD:** restrict RDP to an admin jump source; enable NLA; disable RDP where not needed; restrict WinRM; remove `Everyone`/`Authenticated Users` from remote-logon rights; LAPS for local admin.
 - **Edge:** management plane bound to an inside interface only; no WAN admin.
-- **CCDC note:** pair with §3.4 (move/hide) — hardening the login is worth more once it is not on port 22/3389.
+- **CCDC note:** pair with §3.4 (move/hide) — hardening the login is worth more once it is not on port 22/3389. **[RULES]** Officials must retain access (NCCDC, 2025, Rule 4.1); use a drop-in file, test with `sshd -t`, arm a revert timer, and keep the two-session rule (design 01, 05). Prefer per-role ed25519 keys with `from=`, `restrict` and forced commands (design 05).
 
 ### 3.3 Host firewall / default-deny — **P0**
 - **Principle:** deny inbound by default; permit only scored services + your admin path; log denials (that log feeds the honeypot in §4.1).
 - **Linux (reference §5.3):** UFW (or nftables) default-deny in, allow out; explicit allows per service; **medium logging** so every drop is `[UFW BLOCK] … DPT=…`. On container hosts, also filter `DOCKER-USER` — Docker's published ports **bypass** the host `INPUT` chain, so bans and egress rules must live there too.
 - **Windows:** Windows Defender Firewall, default-deny inbound per profile; allow only graded ports; enable connection logging.
 - **Edge:** default-deny WAN; explicit allow per service; log denies to the SIEM.
-- **CCDC note:** the "Docker bypasses the host firewall" gotcha is the classic way a "locked-down" web host is still wide open. Verify with the actual ingress path, not just `ufw status`.
+- **CCDC note:** **[RULES]** The scoring engine allowlist is applied before any deny rule (NCCDC, 2025, Rule 4.11). The "Docker bypasses the host firewall" gotcha is the classic way a "locked-down" web host is still wide open. Verify with the actual ingress path, not just `ufw status`.
 
 ### 3.4 Move / hide administration — **P1**
 - **Principle:** make the admin service invisible to a mass scan so it is not the first thing hit.
 - **Linux:** move SSH off 22 (reference runs a tarpit *on* 22 — see §4.2); optional **port-knocking** (`knockd`) so the real port is filtered until a knock sequence opens it per-source-IP.
 - **Windows:** RDP behind the firewall/jump host rather than a non-standard port (port-change is weak on Windows); prefer allowlisting the source.
-- **CCDC note:** port-knocking (playbook §5) makes SSH appear *closed* to Nmap — real time saved. Trade-off: one more moving part on a box you also need to log into fast; document the sequence for your team.
+- **CCDC note:** port-knocking (playbook §5) makes SSH appear *closed* to Nmap — real time saved. Trade-off: one more moving part on a box you also need to log into fast. **[RULES]** Officials must be able to get in on request (NCCDC, 2025, Rule 4.1), so knocking is optional and never the only path. Documented on paper only.
 
 ### 3.5 Dynamic banning / auto-response — **P2**
 - **Principle:** turn repeated hostile touches into automatic, expiring blocks — and make the block scale.
 - **Linux (reference §5.4):** `fail2ban` backed by an **ipset** (one kernel hash-set, one match rule per chain) instead of one iptables rule per IP, so thousands of bans stay flat. Jails for SSH, the trap-port honeypot, the planted-key canary, and repeat offenders; bans applied on **both** `INPUT` and `DOCKER-USER`.
 - **Windows:** there is no fail2ban; approximate with a scheduled task / WinLogbeat → SIEM alert that drives a firewall block, or an IDS at the edge. Usually better handled at the perimeter.
-- **CCDC note:** ipset matters when a tarpit is feeding you thousands of IPs; a per-IP ruleset will bloat and slow the box.
+- **CCDC note:** ipset matters when a tarpit is feeding you thousands of IPs; a per-IP ruleset will bloat and slow the box. **[RULES]** Bans act only on your own host's inbound traffic. Never scan, attack or contact the source (NCCDC, 2025, Rules 4.10, 4.11). The scoring engine, officials and operators are always on the ignore list.
 
 ### 3.6 Service minimization & patching — **P1**
 - **Principle:** fewer listeners, fewer known-exploited packages.
 - **Linux:** disable/mask unneeded units; patch internet-facing, known-exploited packages surgically (not a blind full upgrade mid-round). Track fixable CVEs (`debsecan`) narrowed to what is *actually* upgradable today.
 - **Windows:** stop unneeded services and features; apply the specific KBs for known-exploited CVEs; disable SMBv1, LLMNR, NBT-NS.
-- **CCDC note:** a scored service you break costs points immediately; an unpatched non-exploited CVE probably does not. Prioritize by exploitability + exposure, not by count.
+- **CCDC note:** **[RULES]** Do not migrate or containerize scored services (NCCDC, 2025, Rule 4.14). A scored service you break costs points immediately; an unpatched non-exploited CVE probably does not. Prioritize by exploitability + exposure, not by count.
 
 ### 3.7 Application / container least-privilege — **P2** (Linux app hosts)
 - **Principle:** if an app is popped, the blast radius is one unprivileged, capability-less process.
 - **Linux (reference §5.5):** every container drops **ALL** capabilities, runs as a non-root, non-sudo host UID, `no-new-privileges`, read-only root where possible. **Admission control** (`compose-guard`) refuses `privileged`, host namespaces, and un-allowlisted bind mounts *before* deploy.
 - **Windows:** run app pools / services as least-privileged service accounts (gMSA), not `LocalSystem`; constrain with Just-Enough-Admin where practical.
-- **CCDC note:** WordPress/Gitea/web apps are prime targets — containerized and de-privileged, a webshell lands in a box that can barely do anything.
+- **CCDC note:** WordPress/Gitea/web apps are prime targets — de-privileged, a webshell lands in a box that can barely do anything. **[RULES]** Containerizing a scored service is not allowed (NCCDC, 2025, Rule 4.14). The container material here applies only to non-scored workloads or as practice. In the competition, use service accounts, systemd sandboxing and file permissions on the existing installation.
 
 ### 3.8 Web edge — **P1** (web hosts)
 - **Principle:** terminate and filter at a reverse proxy; only real clients reach the app; scanners get punished (§4.3).
@@ -161,19 +166,19 @@ Ports you run **nothing** on, so a single inbound packet is hostile.
 - **Portability:** Windows — a firewall "block + log" rule on unused ports feeding a Sysmon/Security alert.
 
 ### 4.2 SSH tarpit (endlessh)
-A tarpit on the port every bot targets (22): dribbles an endless SSH banner so scanners hang for minutes. Real admin is elsewhere (§3.4). The reference box parses the tarpit and reports offenders to an external reputation service. **Value:** wastes attacker/bot time for free and turns the noisiest port into a sensor.
+A tarpit on the port every bot targets (22): dribbles an endless SSH banner so scanners hang for minutes. Real admin is elsewhere (§3.4). The reference box parses the tarpit for offenders. **[RULES]** Draft 1 reported them to an external reputation service. That is removed: a team tool may not use outside resources apart from DNS (NCCDC, 2025, Rule 5.6.4). Offenders go to the local trip log only. **Value:** wastes attacker/bot time for free and turns the noisiest port into a sensor.
 
 ### 4.3 Web scanner tarpit
 Two implementations of one idea — punish tools like Gobuster/Dirb/Nikto that crawl for `/wp-login`, `.env`, `/phpmyadmin`, etc.
 - **Reference (slow-drip):** an nginx regex `location` matches attack paths no real visitor requests and returns a **rate-limited** decoy (`limit_rate`), capped per real-client IP (`limit_conn`, keyed on the binary remote address so a flood cannot exhaust workers); the real IP is logged to a scanner log. Never matches real app routes/APIs/assets. No auto-ban wired host→container (fragile coupling) — the tarpit *is* the punishment; the log drives a manual block.
-- **Playbook (recursive loop):** a `trap.php` that returns `200 OK` with a link to a fresh random folder, so recursive crawlers loop forever and bloat memory until they crash, appending the scanner IP to a list.
+- **Playbook (recursive loop):** a `trap.php` that returns `200 OK` with a link to a fresh random folder, so recursive crawlers loop forever and bloat memory until they crash. **[RULES]** Not recommended: an always-`200` responder can look like a live page to the scoring engine and mislead it (NCCDC, 2025, Rule 9.3), and it risks load on a scored host. Use the slow-drip approach on paths the scoring engine never requests.
 - **CCDC note:** highest-value, lowest-risk trap on a graded web host — real users never hit these paths.
 
 ### 4.4 Canary tokens & files
 Passive bait that screams the instant it is touched — the highest-confidence signal you can plant.
 - **Reference (host-native):** decoy files (a fake cloud-credentials file, a fake database dump) watched by `auditd` (`canary_read` key) so a **read** alerts — you catch a snooper who merely *finds* the bait. Plus a **planted SSH key** authorized on no account; because sshd logs at VERBOSE, any *use* of it logs the fingerprint, which a `fail2ban` jail matches and bans for a year. Two layers: find *and* use.
-- **Playbook (cross-platform):** `Passwords_2026.docx` on Windows shares/desktops; unique tracking URLs (CanaryTokens) embedded in unreferenced Gitea markdown / config files; web bugs on internal config URLs — each records the internal IP, user-agent, and timestamp on trip.
-- **Portability:** Windows — a decoy file + a Security "object access" audit ACL (event 4663), or a Thinkst CanaryToken. Place bait wherever an attacker looks for creds: shares, home dirs, repos, backups, wikis.
+- **Playbook (cross-platform):** `Passwords_2026.docx` on Windows shares/desktops; host-native audited bait files. **[RULES]** Hosted tracking URLs and web bugs (CanaryTokens and similar) call an outside service, so they are out (NCCDC, 2025, Rules 5.1, 5.6.4). Use audited files and honey-accounts only. Names and paths derive from the event seed (design 03).
+- **Portability:** Windows — a decoy file + a Security "object access" audit ACL (event 4663), (host-native only). Place bait wherever an attacker looks for creds: shares, home dirs, repos, backups, wikis.
 
 ### 4.5 Honey-accounts
 A decoy admin (`backup_admin`, `svc-sql-backup`, …) that no real person uses, wired to alert on **successful authentication** — near-zero false positives.
@@ -184,7 +189,7 @@ A decoy admin (`backup_admin`, `svc-sql-backup`, …) that no real person uses, 
 ### 4.6 DNS sinkholing (C2 dead-ending)
 When you identify a C2 domain, **redirect** its resolution to loopback / a capture host instead of firewall-blocking it — a block *tells* the attacker they are caught; a sinkhole silently strands the implant.
 - **Per-host:** append the domain → `127.0.0.1` in `/etc/hosts`.
-- **Network-wide:** RPZ / conditional forwarding on the AD DNS server, or DNS host-overrides on the perimeter firewall, to sinkhole across all assets at once.
+- **Network-wide:** RPZ / conditional forwarding on the AD DNS server, or DNS host-overrides on the perimeter firewall, to sinkhole across all assets at once. **[RULES]** DNS is a scored service, so changes to the domain controller's DNS are manual-only and tested with a scoring-style query before and after (NCCDC, 2025, Rule 4.11).
 
 ### 4.7 Port knocking (stealth admin) — see §3.4
 Firewall drops all inbound to the admin port until a secret knock sequence opens it for the sender's IP. Under an Nmap sweep the port reads **closed/filtered**, denying the attacker an easy vector. Trade-off noted in §3.4.
@@ -204,7 +209,7 @@ The proven source for Labyrinth's Linux roles. Each control below is production-
 | 5.2 | Host firewall | UFW default-deny + medium logging; `DOCKER-USER` filtering for container ingress/egress | `firewall` |
 | 5.3 | Dynamic bans | fail2ban backed by **ipset** (flat ruleset at scale), jails on both `INPUT` and `DOCKER-USER` | `fail2ban` |
 | 5.4 | Deception | endlessh tarpit, trap-port honeypot, canary key + decoy files, central trip log | `deception` |
-| 5.5 | Containers | `compose-guard` admission control; cap-drop-ALL, non-root UIDs, `no-new-privileges` | `containers` |
+| 5.5 | Containers | `compose-guard` admission control; cap-drop-ALL, non-root UIDs, `no-new-privileges` (**[RULES]** reference only; not for scored services, Rule 4.14) | `containers` (practice only) |
 | 5.6 | Web edge | reverse proxy, real-client-IP, TLS + headers, per-site logs, scanner tarpit | `nginx_edge` |
 | 5.7 | Egress logging | systemd-managed `DOCKER-USER` LOG rules for anomalous container egress | `egress_log` |
 | 5.8 | Audit + review | auditd rule-keys incl. `canary_read`; a cached **MOTD security dashboard**; toolbox aliases | `audit_motd` |
@@ -217,9 +222,10 @@ The proven source for Labyrinth's Linux roles. Each control below is production-
 ## 6. Labyrinth architecture
 
 ### 6.1 Tooling
-**Ansible** — idempotent, agentless, check-before-change, re-runnable. Linux over SSH; Windows over WinRM (`ansible.windows` / `community.windows`); network appliances mostly via templated config + documented manual steps (vendor APIs vary — automate what is safe, document the rest).
+**Native scripts first, Ansible optional.** **[RULES]** The 2025 Midwest packet describes a web proxy limited to essential sites and the team's declared repository (MWCCDC, 2025; *Provisional*), and team tools may not use outside resources (NCCDC, 2025, Rule 5.6.4). Packages and collections cannot be assumed to download at the event. Labyrinth is therefore bash on Linux and PowerShell on Windows, self-contained in one repository with vendored third-party code. Each module maps one-to-one to an Ansible role, so Ansible can be adopted later if it proves usable. Ansible was the Draft 1 choice: idempotent, agentless, re-runnable. Network appliances use templated configuration and a manual runbook. See design 00.
 
 ### 6.2 Layout
+The Draft 1 Ansible layout is kept below as a mapping target. The current repository layout is in design 00 (`phases/`, `core/`, `profiles/`).
 ```
 ansible/
 ├── inventory/
@@ -253,16 +259,16 @@ Classify each host and apply only the roles that fit:
 | `appliance` | Router or firewall appliance | templated config + manual runbook (creds, default-deny, mgmt-plane lockdown) |
 
 ### 6.4 Phase playbooks = the doctrine, executable
-`lockout.yml` is the panic button: run it against **every reachable host** to reset creds, lock accounts, and default-deny in one pass. Then layer `observe → deceive → sustain`. This is what makes the doctrine (§1) a single command instead of a memory test.
+The lockout phase is the panic button. **[RULES]** Draft 1 ran it against every reachable host in one pass to reset credentials, lock accounts and default-deny. That version is prohibited by the rule against tools that deliberately break expected functionality (NCCDC, 2025, Rule 5.6.5). The redesigned version keeps the speed and adds guard rails: a protected set, plan-before-apply, rings with a canary host, a verified break-glass path, dead-man revert timers, and scoring-style probes after each module. Tier 3 actions are printed checklists for a human. See design 01. Then layer `observe → deceive → sustain`.
 
 ### 6.5 Secret handling
-Ship **placeholder templates** only (`.env.example`, cert paths, token *names*). Real values come from **Ansible Vault** or a secrets manager at run time, supplied out-of-band. Labyrinth provisions the *shape*; the operator supplies the values. **No real credential, key, or env file ever enters the repo.**
+Ship **placeholder templates** only (`.env.example`, cert paths, token *names*). Real values are supplied at run time from the event packet and the paper seed. **[RULES]** The code is public (NCCDC, 2025, Rule 5.6.1), so decoy values are derived from a secret event seed on paper (design 03) rather than stored in an encrypted repository file. Labyrinth provisions the *shape*; the operator supplies the values. **No real credential, key, or env file ever enters the repo.**
 
 ### 6.6 Speed & safety discipline
 - **Idempotent + check-mode first** — dry-run (`--check --diff`) before you commit, especially near scored services.
 - **Reversible** — every role backs up what it changes (timestamped) and documents its rollback.
 - **Tested on throwaway VMs** (or the CCDC practice image) before you trust it live.
-- **Fail-safe ordering** — never lock your own admin path before the new one is proven; keep the provider/console break-glass.
+- **Fail-safe ordering** — never lock your own admin path before the new one is proven; keep the break-glass path. **[RULES]** A dead-man revert timer is armed before any firewall or SSH change (design 01).
 
 ---
 
@@ -285,6 +291,8 @@ Triage under a clock. Do P0 everywhere before P1 anywhere.
 | Container least-privilege (§3.7) | ★★★ | Med | P2 |
 | Egress logging + DNS sinkhole (§3.10, §4.6) | ★★★ | Med | P2 |
 | Port knocking (§4.7) | ★★ | Med | P3 |
+
+*Rule 5.6 items (public, declared, frozen, no outside resources, no breakage) apply to every row.*
 
 *Canaries and honey-accounts are P2 by sequence (they need §3.9's logging first) but are the highest-confidence detections you will deploy — get to them.*
 
@@ -343,6 +351,8 @@ Non-secret map of where each control lives on the reference box, for porting int
 
 ## Appendix C — CCDC notes & glossary
 
+- **Rule numbers used in this document (web rules, 10 December 2025):** 4.1 official access; 4.10 offensive activity; 4.11 active response and scoring interference; 4.14 no migrating or containerizing scored services; 5.1 only officially provided resources; 5.6.1–5.6.5 team-written tools; 9.3 misleading the scoring engine. Verify against the 2027 text.
+
 - **Assume breach from the start** — footholds and known creds exist before you touch anything; §1 Phase 0 is non-negotiable.
 - **Scored services are sacred** — a change that drops a graded service costs points now; reversibility (§2.7, §3.11) is a scoring strategy, not just hygiene.
 - **Confidence-ranked alerts** — canary/honey-account hits are near-certain; work them before anomaly noise.
@@ -350,6 +360,13 @@ Non-secret map of where each control lives on the reference box, for porting int
 - **KRBTGT** — the AD account whose hash signs Kerberos tickets; rotate twice to kill golden tickets.
 - **ipset** — kernel hash-set that lets one firewall rule match thousands of IPs; keeps a tarpit-fed banlist flat.
 - **RPZ** — DNS Response Policy Zone; server-side sinkholing across every client at once.
+
+---
+## References
+
+Midwest Collegiate Cyber Defense Competition. (2025). *2025 Midwest Collegiate Cyber Defense Competition qualifier team packet* [PDF]. https://brazil.minnesota.edu/ccdc/ccdc-2025/2025MWCCDCQTeamPack.pdf (*Provisional*; re-check against the 2027 packet.)
+
+National Collegiate Cyber Defense Competition. (2025, December 10). *Rules and requirements*. Retrieved September 29, 2026, from https://www.nationalccdc.org/rules.html
 
 ---
 *Base documentation for Labyrinth. No secrets, environment values, or private keys are reproduced.*
