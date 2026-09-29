@@ -1,6 +1,6 @@
 # 00. Module Contract and Repository Layout
 
-**Status:** Draft 1 · 2026-09-29
+**Status:** Draft 2 · reviewed 2026-09-29
 
 ## 1. Goal
 
@@ -67,7 +67,7 @@ Every module is a folder containing a metadata file and up to six entry points.
 |---|---|
 | `id` | Unique name, for example `lockout.firewall` |
 | `phase` | `lockout`, `observe`, `deceive` or `sustain` |
-| `priority` | P0 to P3 (P0 is first minutes) |
+| `priority` | P0 to P3 (P0 runs first, P3 last) |
 | `platforms` | `ubuntu`, `rhel-family`, `windows`, `appliance` |
 | `risk` | `read-only`, `reversible`, `service-affecting` or `manual-only` |
 | `touches_scored` | `true` if it can affect a scored service or account |
@@ -131,9 +131,9 @@ Default root: `/opt/labyrinth` on Linux, `C:\ProgramData\Labyrinth` on Windows. 
 
 Nothing else changes.
 
-## 9. Open decisions
+## 9. Pinned decisions
 
-- **Ansible or native scripts.** Pinned until the team knows what it can run from and what is reachable during the event. Native scripts work in either case.
+- **Ansible or native scripts.** Pinned until the team knows what it can run from and what is reachable during the event. Native scripts work in either case, so the design assumes them.
 - **Windows log shipping method** (Splunk forwarder installer, a script posting to Splunk's HTTP Event Collector, or another). See design 08.
 
 ## References

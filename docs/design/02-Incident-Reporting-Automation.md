@@ -1,6 +1,6 @@
 # 02. Incident Reporting Automation
 
-**Status:** Draft 1 · 2026-09-29 · Phase: Sustain (cross-phase `report/`) · Priority: P1
+**Status:** Draft 2 · reviewed 2026-09-29 · Phase: Sustain (cross-phase `report/`) · Priority: P1
 
 ## 1. Why this matters
 
