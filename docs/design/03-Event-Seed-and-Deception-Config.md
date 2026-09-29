@@ -1,6 +1,6 @@
 # 03. Event Seed and Deception Configuration
 
-**Status:** Draft 2 · reviewed 2026-09-29 · Phase: Deceive · Priority: P1
+**Status:** Draft · reviewed 2026-09-29 · Phase: Deceive · Priority: P1
 
 ## 1. The problem
 
@@ -18,7 +18,7 @@ A rival who reads the repository learns how values are made, not which values th
 
 ## 3. Derivation
 
-`value = HMAC-SHA256(seed, "purpose:index")`, then mapped into the needed range or alphabet. HMAC-SHA256 is a keyed hash: the same seed and label always give the same output, and the output reveals nothing about the seed.
+`value = HMAC-SHA256(seed, "purpose:index")`, then mapped into the needed range or alphabet. HMAC-SHA256 (a hash-based message authentication code using SHA-256) is a keyed hash: the same seed and label always give the same output, and the output reveals nothing about the seed.
 
 | Purpose string | Produces |
 |---|---|
@@ -29,7 +29,6 @@ A rival who reads the repository learns how values are made, not which values th
 | `ssh-banner:N` | Banner text variants |
 
 Changing `purpose` or `index` gives unrelated values. Nothing derived can be reversed to the seed.
-
 
 ```mermaid
 flowchart LR
@@ -48,17 +47,23 @@ flowchart LR
 - **Never on a scored port.** Derived ports are checked against the scoring allowlist and skipped if they collide (NCCDC, 2025, Rule 9.3).
 - **Never a real account name.** Derived names are checked against the protected set and existing users.
 - **Seed strength.** At least 128 bits from a cryptographic random source, written as a short readable string with a checksum group so a typo is detected.
-- **Seed handling.** Not committed, not in shell history, not in logs. Supplied by prompt at run time, held in memory, cleared after use. The paper copy is the record.
+- **Seed handling.** The seed is never committed and never appears in shell history or logs. It is supplied by prompt at run time, held in memory and cleared after use. The paper copy is the record.
 - **Agreement.** The seed is chosen shortly before the event and recorded on paper by the team captain.
 
 ## 5. Why not encrypt the values in the repository
 
-A repository file encrypted with a shared password does not solve the problem. The password needs its own distribution, the team must have it on every host, and the file is public ciphertext that can be attacked at leisure. Deriving from a paper seed removes the stored secret entirely.
+A repository file encrypted with a shared password does not solve the problem:
+
+- the password needs its own distribution;
+- the team must have it on every host;
+- the file is public ciphertext that can be attacked at leisure.
+
+Deriving values from a paper seed removes the stored secret entirely.
 
 ## 6. What the seed does not protect
 
-- The seed protects the *choice* of values, not their behaviour. A determined attacker who lands on a decoy still sees what it is.
-- If the seed leaks, generate a new one and redeploy decoys. Design for that: redeploying decoys must be a cheap module run.
+- The seed protects the *choice* of values, not their behavior. A determined attacker who lands on a decoy still sees what it is.
+- If the seed leaks, generate a new one and redeploy the decoys. Design for that case: redeploying decoys must be a cheap module run.
 
 ## 7. Configuration files
 
