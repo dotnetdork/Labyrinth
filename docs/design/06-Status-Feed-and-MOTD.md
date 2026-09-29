@@ -17,6 +17,22 @@ The SIEM holds no keys to managed hosts. Instead:
 
 This adds no new trust path: the control node already administers the hosts.
 
+
+```mermaid
+flowchart LR
+    SPL[("Splunk (SIEM)<br/>holds no keys to hosts")]
+    CN["Control node"]
+    H1["Managed host<br/>root-owned status file"]
+    BAN["Login banner / MOTD"]
+    CN -->|"1. query saved searches"| SPL
+    CN -->|"2. render one file per host"| CN
+    CN -->|"3. push over the existing admin path<br/>(operator SSH key)"| H1
+    H1 -->|"4. printed at login"| BAN
+    SPL -.-x|"no access"| H1
+```
+
+*Figure: the control node pulls a few saved searches from Splunk and pushes a short status file to each host over the admin path it already uses, while the SIEM itself has no access to any host.*
+
 ## 3. Cross-segment flows
 
 Competition networks are often split into segments behind separate firewalls. Only the minimum flows are opened: log forwarding to Splunk and the control node's admin path. The MOTD feed adds no new flow, because it reuses the admin path. Any new flow is checked against the firewall plan and the scoring allowlist first (National Collegiate Cyber Defense Competition [NCCDC], 2025, Rule 4.11).

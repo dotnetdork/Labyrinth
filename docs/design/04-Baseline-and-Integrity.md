@@ -38,6 +38,19 @@ The baseline is stored under the state path (design 00) with a signed manifest (
 
 **Caveat.** The address is the last hop the host saw. Through NAT or a proxy it may not be the true origin. Reports say so (design 02).
 
+
+```mermaid
+flowchart TD
+    V["Verify files against the package or OS database<br/>(dpkg --verify · rpm -Va · signatures · sfc /verifyonly)"]
+    V -->|differences| F["Findings for a human<br/>(never baselined)"]
+    V -->|matches| B["Baseline: SHA-256, owners, permissions,<br/>accounts, keys, ports, services, tasks"]
+    B --> CMP["Scheduled comparison"]
+    CMP -->|change seen| J["Join audit records:<br/>who (auid / account) · when (timestamp)<br/>from where (last-hop address)"]
+    J --> R["Integrity log and<br/>incident report (design 02)"]
+```
+
+*Figure: files are first checked against the package database, only clean results become the baseline, and a later change is joined to audit records to show who changed it, when and from which address.*
+
 ## 5. Logging that makes this possible
 
 - Linux: auditd rules for the critical set, kept small to avoid log floods.

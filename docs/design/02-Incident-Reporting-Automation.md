@@ -25,6 +25,19 @@ A thorough incident report that correctly identifies and addresses a successful 
 6. **Submit.** The human pastes or uploads it in the official portal, then records the submission time.
 7. **Track.** The record stores status (draft, submitted, accepted) so nothing is filed twice or forgotten.
 
+
+```mermaid
+flowchart LR
+    DET["1. Detect<br/>decoy trip, integrity change,<br/>login, Splunk alert, human"] --> COL["2. Collect<br/>facts on the host"]
+    COL --> COR["3. Correlate<br/>group into one incident"]
+    COR --> DRA["4. Draft<br/>fill template;<br/>missing = UNKNOWN"]
+    DRA --> REV{"5. Review<br/>incident lead edits;<br/>captain approves if a<br/>scored service is involved"}
+    REV --> SUB["6. Submit<br/>a human sends it to<br/>the White Team"]
+    SUB --> TRK["7. Track<br/>draft · submitted · accepted"]
+```
+
+*Figure: steps 1 to 4 are automated and steps 5 to 7 are done by people, so no report is ever submitted by the tool itself.*
+
 ## 4. Incident record fields
 
 | Field | Source | Automated? |
