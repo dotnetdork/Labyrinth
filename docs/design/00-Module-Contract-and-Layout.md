@@ -1,14 +1,14 @@
 # 00. Module Contract and Repository Layout
 
-**Status:** Draft 2 · reviewed 2026-09-29
+**Status:** Draft · reviewed 2026-09-29
 
 ## 1. Goal
 
-One main Labyrinth program enables each phase. Each phase is an entry script that calls small, single-purpose modules. Adding a capability means adding a folder, not editing the core. This is how the design stays scalable.
+One main Labyrinth program enables each phase. Each phase is an entry script that calls small, single-purpose modules. Adding a capability means adding a folder, not editing the core, which is how the design stays scalable.
 
 ## 2. Naming: phases, not "hardening"
 
-"Hardening" is the umbrella word in the documents, but it spans more than one moment: credential reset at minute zero is different from patching at hour two. Folders are therefore named after the doctrine phases, which also match the order they run in:
+"Hardening" is the umbrella word in the documents, but it covers more than one moment: a credential reset at minute zero is a different job from patching at hour two. Folders are therefore named after the doctrine phases, which are also the order the phases run in:
 
 | Folder | Phase | Contains |
 |---|---|---|
@@ -65,9 +65,8 @@ Labyrinth/
 Notes:
 
 - **Profiles** map hosts to modules, for example `linux-web`, `linux-siem`, `windows-dc`, `windows-member`, `appliance`. A profile is a list, not code.
-- **Appliances** (VyOS, Palo Alto, Cisco FTD) are handled by templated configuration and a manual runbook, not remote-execution modules.
+- **Appliances** (VyOS, Palo Alto, Cisco FTD (Firepower Threat Defense)) are handled by templated configuration and a manual runbook, not remote-execution modules.
 - **Language:** bash on Linux, PowerShell on Windows. No interpreter or package has to be installed at run time. If Ansible later proves usable, each module maps one-to-one to an Ansible role.
-
 
 ```mermaid
 flowchart TD
@@ -120,7 +119,15 @@ Entry points:
 | `rollback` | Undo `apply` from the manifest | Safe to run repeatedly |
 | `cleanup` | Remove temporary files this module created | Safe to run repeatedly |
 
-Exit codes: `0` nothing to do or success, `10` change needed, `20` blocked by a safety gate, `30` verify failed, `40` error.
+Exit codes:
+
+| Code | Meaning |
+|---|---|
+| `0` | Nothing to do, or success |
+| `10` | Change needed |
+| `20` | Blocked by a safety gate |
+| `30` | Verify failed |
+| `40` | Error |
 
 ```mermaid
 flowchart TD
@@ -160,11 +167,11 @@ labyrinth <phase> --profile <name> --targets <group>   # plan mode by default
 
 ## 6. Code and configuration are separate
 
-The released code is frozen for each event (NCCDC, 2025, Rule 5.6.2). Everything that changes per event is configuration: the scoring engine addresses, the protected accounts, the event seed, host lists. Configuration is supplied at run time and never committed. `config/*.example` files show the shape only.
+The released code is frozen for each event (NCCDC, 2025, Rule 5.6.2). Everything that changes per event is configuration: the scoring engine addresses, the protected accounts, the event seed and the host lists. Configuration is supplied at run time and never committed; the `config/*.example` files show its shape only.
 
 ## 7. Standard paths on every host
 
-The same relative tree everywhere, with a configurable root so the location is not a fixed, publicly known path.
+Every host uses the same relative tree. The root is configurable, so the location is not a fixed, publicly known path.
 
 | Purpose | Linux | Windows |
 |---|---|---|
@@ -173,7 +180,8 @@ The same relative tree everywhere, with a configurable root so the location is n
 | Logs, one folder per category | `/var/log/labyrinth/<category>/` | `<root>\logs\<category>\` |
 | Backups, timestamped | `/var/backups/labyrinth/` | `<root>\backup\` |
 
-Default root: `/opt/labyrinth` on Linux, `C:\ProgramData\Labyrinth` on Windows. Log categories: `run`, `auth`, `integrity`, `network`, `deception`, `report`.
+- **Default root:** `/opt/labyrinth` on Linux, `C:\ProgramData\Labyrinth` on Windows.
+- **Log categories:** `run`, `auth`, `integrity`, `network`, `deception`, `report`.
 
 ## 8. Adding a capability
 
@@ -186,7 +194,7 @@ Nothing else changes.
 ## 9. Pinned decisions
 
 - **Ansible or native scripts.** Pinned until the team knows what it can run from and what is reachable during the event. Native scripts work in either case, so the design assumes them.
-- **Windows log shipping method** (Splunk forwarder installer, a script posting to Splunk's HTTP Event Collector, or another). See design 08.
+- **Windows log shipping method.** Pinned between the Splunk forwarder installer, a script posting to Splunk's HTTP Event Collector, or another method. See design 08.
 
 ## References
 

@@ -8,13 +8,13 @@
 
 ## Why this exists
 
-In a live competition (or a real incident) you do not have time to remember 200 hardening steps per host across a mix of Ubuntu, Fedora, Oracle Linux, Windows Server, AD, and network appliances. You need:
+In a live competition (or a real incident) you do not have time to remember 200 hardening steps per host across a mix of Ubuntu, Fedora, Oracle Linux, Windows Server, AD (Active Directory), and network appliances. You need:
 
 1. **A strategy that is the same everywhere** — the same handful of invariants applied to every OS, so you reason once and execute many.
 2. **A tool that applies it fast and reversibly** — idempotent (safe to run twice), re-runnable, check-before-change, timestamped backups, so you can hit *go* under pressure without breaking a scored service.
 3. **Deception baked in** — because you cannot patch fast enough to out-run a pre-seeded foothold, so you make the attacker's every move expensive, noisy, and logged.
 
-Labyrinth is that strategy plus that tool. The **Linux profile** is modelled on a hardened server the author runs; this documentation generalizes it into a portable system.
+Labyrinth is that strategy plus that tool. The **Linux profile** is modeled on a hardened server the author runs; this documentation generalizes it into a portable system.
 
 ## The core strategy — *Lock out → Observe → Deceive → Sustain*
 
@@ -29,9 +29,19 @@ The whole doctrine, the transferable technicals, the trap catalog, and the archi
 
 ### → [`docs/Hardening-Reference.md`](docs/Hardening-Reference.md)
 
+The detailed designs for each part of the tool live in [`docs/design/`](docs/design/README.md).
+
 ## The world Labyrinth is built for
 
-A heterogeneous, contested network of the kind CCDC events use: more than one Linux family (Debian and RHEL), Windows Server with Active Directory, Windows and Linux workstations, a SIEM (Security Information and Event Management system), and network edge appliances such as a router and one or more firewalls, often split into segments. Labyrinth classifies each host into a **profile** and applies the roles that fit — locking the easy 80% automatically and flagging the manual 20%.
+A heterogeneous, contested network of the kind CCDC events use:
+
+- more than one Linux family (Debian and RHEL, Red Hat Enterprise Linux);
+- Windows Server with Active Directory;
+- Windows and Linux workstations;
+- a SIEM;
+- network edge appliances such as a router and one or more firewalls, often split into segments.
+
+Labyrinth classifies each host into a **profile** and applies the roles that fit — locking the easy 80% automatically and flagging the manual 20%.
 
 ## Repository map
 
@@ -39,7 +49,7 @@ A heterogeneous, contested network of the kind CCDC events use: more than one Li
 Labyrinth/
 ├── README.md                     ← you are here
 ├── docs/
-│   ├── Hardening-Reference.md     ← doctrine, capability map, trap catalog (rules-aware, Draft 2)
+│   ├── Hardening-Reference.md     ← doctrine, capability map, trap catalog (rules-aware)
 │   └── design/                    ← design specs 00–09 (module contract, panic button,
 │                                    incident reporting, event seed, baseline, credentials,
 │                                    status feed, cleanup, reference mining, deception maze)
@@ -50,12 +60,23 @@ Strategy, rules baseline, topology notes and the vulnerability assessment live i
 
 ## Status
 
-Planning and design phase (Draft 2, reviewed 2026-09-29). No code yet. The design specs are the blueprint the code is built against. Competition rules are cited by rule number; all citations must be re-checked when the 2027 rules are published.
+Planning and design phase (reviewed 2026-09-29). No code yet. The design specs are the blueprint the code is built against.
 
-Labyrinth is a team-written tool under the national CCDC rules, so it is published at least three months before use, declared to officials and frozen for each event, shared with every competing team, uses no outside resources other than DNS, and never deliberately breaks expected functionality (National Collegiate Cyber Defense Competition, 2025, Rules 5.6.1–5.6.5). Strategy and event-specific values live in the team's private repository.
+> [!IMPORTANT]
+> Competition rules are cited by rule number; all citations must be re-checked when the 2027 rules are published.
+
+Labyrinth is a team-written tool under the national CCDC rules, so it:
+
+- is published at least three months before use;
+- is declared to officials and frozen for each event;
+- is shared with every competing team;
+- uses no outside resources other than DNS (the Domain Name System);
+- never deliberately breaks expected functionality
+
+(National Collegiate Cyber Defense Competition, 2025, Rules 5.6.1–5.6.5). Strategy and event-specific values live in the team's private repository.
 
 ## Ground rule
 
-**No secrets in this repo — ever.** Labyrinth provisions *shape*, not values: placeholder templates
-(`.env.example`, cert paths, token names), real values supplied at run time from the event packet and a paper-only event seed (see `docs/design/03`).
-The reference documents configuration structure only; no keys, env files, or credentials are reproduced.
+> [!CAUTION]
+> **No secrets in this repo — ever.** Labyrinth provisions *shape*, not values: placeholder templates (`.env.example`, cert paths, token names), real values supplied at run time from the event packet and a paper-only event seed (see [`docs/design/03`](docs/design/03-Event-Seed-and-Deception-Config.md)).
+> The reference documents configuration structure only; no keys, env files, or credentials are reproduced.

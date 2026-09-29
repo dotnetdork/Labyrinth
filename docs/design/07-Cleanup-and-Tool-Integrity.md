@@ -1,6 +1,6 @@
 # 07. Cleanup and Tool Integrity
 
-**Status:** Draft 2 · reviewed 2026-09-29 · Phase: Sustain · Priority: P1
+**Status:** Draft · reviewed 2026-09-29 · Phase: Sustain · Priority: P1
 
 ## 1. Two goals
 
@@ -10,18 +10,18 @@
 ## 2. Cleanup
 
 - Every module lists its `outputs` in `module.yml` (design 00), and every `apply` writes to the run manifest.
-- `cleanup` removes temporary files. `rollback` undoes changes. They are separate so the operator can clean without reverting.
+- `cleanup` removes temporary files; `rollback` undoes changes. They are separate so the operator can clean up without reverting.
 - End-of-event cleanup removes revert timers, scheduled tasks, temporary accounts and copied code from hosts, but keeps logs and reports until they are collected.
 - Cleanup never deletes evidence or anything the manifest does not list.
 - Cleanup only touches Labyrinth paths (design 00 standard paths).
 
 ## 3. Materials handling
 
-Competition materials, including team-generated reports and documents, must stay in the competition area, and nothing may be removed without authorisation (National Collegiate Cyber Defense Competition [NCCDC], 2025, Rules 4.4, 8.5). Collect logs for the debrief only as far as those rules and the officials allow.
+Competition materials, including team-generated reports and documents, must stay in the competition area, and nothing may be removed without authorization (National Collegiate Cyber Defense Competition [NCCDC], 2025, Rules 4.4, 8.5). Collect logs for the debrief only as far as those rules and the officials allow.
 
 ## 4. Rejected: encrypted script folder with a shared password
 
-The earlier idea was an encrypted folder decrypted with a shared team password. Rejected because:
+The earlier idea was an encrypted folder, decrypted with a shared team password. It was rejected because:
 
 - The password has to be distributed and typed on every host, which creates the leak it is meant to prevent.
 - The team's own code must be public anyway (NCCDC, 2025, Rule 5.6.1), so there is nothing to hide.
@@ -39,7 +39,6 @@ The earlier idea was an encrypted folder decrypted with a shared team password. 
 | Push, run, delete | Code is pushed to a host, run, and removed, unless the module needs a resident component. |
 
 Resident components (timers, watchers) are hashed by the integrity check (design 04) like any other critical file.
-
 
 ```mermaid
 flowchart TD

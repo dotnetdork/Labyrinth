@@ -1,10 +1,12 @@
 # 01. Lockout ("Panic Button") Design
 
-**Status:** Draft 2 · reviewed 2026-09-29 · Phase: Lock out · Priority: P0
+**Status:** Draft · reviewed 2026-09-29 · Phase: Lock out · Priority: P0
 
 ## 1. What it is
 
-One command that carries out the first-minutes lockout across the reachable hosts, fast, but only within the limits the rules allow. The original idea ran against every reachable host in one pass to reset credentials, lock accounts and default-deny in a single sweep. The rules make the "indiscriminate" version prohibited, so this design keeps the speed and adds guard rails.
+One command that carries out the first-minutes lockout across the reachable hosts: fast, but only within the limits the rules allow.
+
+The original idea ran against every reachable host in one pass, resetting credentials, locking accounts and applying default-deny in a single sweep. The rules prohibit that "indiscriminate" version, so this design keeps the speed and adds guard rails.
 
 ## 2. The rules that shape it
 
@@ -45,8 +47,8 @@ The protected set is a list the operator supplies at run time, from the event pa
 | Tier | Nature | Actions | How run |
 |---|---|---|---|
 | **0. Observe only** | Read-only | Inventory of users, listeners, processes, scheduled tasks, startup items, keys and sudoers; baseline (design 04) | Automatic |
-| **1. Safe and reversible** | Cannot stop a scored service | Rotate admin-class passwords (root, Administrator and equivalents); back up then clear authorised keys that are not in the key registry, on accounts outside the protected set | Automatic after plan review |
-| **2. Service-affecting** | Could interrupt a scored service | Default-deny inbound firewall with the scored ports, the scoring engine and the admin path allowed; disable services from a per-profile candidate list; SSH hardening drop-in; lock (never delete) unexpected *local* accounts outside the protected set; end unexpected sessions, never an official's | Applied per ring with verify and a revert timer |
+| **1. Safe and reversible** | Cannot stop a scored service | Rotate admin-class passwords (root, Administrator and equivalents); back up, then clear, authorized keys that are not in the key registry, on accounts outside the protected set | Automatic after plan review |
+| **2. Service-affecting** | Could interrupt a scored service | Default-deny inbound firewall with the scored ports, the scoring engine and the admin path allowed; disable services from a per-profile candidate list; SSH (Secure Shell) hardening drop-in; lock (never delete) unexpected *local* accounts outside the protected set; end unexpected sessions, never an official's | Applied per ring with verify and a revert timer |
 | **3. Manual only** | High consequence | User-level password changes (notification required); locking or disabling domain accounts; KRBTGT reset; domain-wide resets; appliance changes; anything touching a scored service's own configuration | Printed checklist, human executes |
 
 
@@ -105,9 +107,12 @@ flowchart TD
 - **Dead-man revert.** Before a firewall or SSH change, arm a timer that undoes it unless cancelled after verify.
   - Linux: a transient systemd timer (`systemd-run --on-active=5m --unit=lab-revert-<id> <rollback command>`), cancelled with `systemctl stop lab-revert-<id>.timer`.
   - Windows: a one-time scheduled task that removes the rule, deleted after verify.
-  - VyOS: `commit-confirm <minutes>` followed by `confirm`. **Warning:** on VyOS 1.4 the default action when a commit is not confirmed is to *reboot* to the saved configuration, which drops routing for every host behind the router (VyOS, n.d.). First set, commit and save `set system config-management commit-confirm action reload`. If the installed version does not offer that option, do not rely on the timer: make the change by hand with a second session open.
+  - VyOS: `commit-confirm <minutes>` followed by `confirm`. Read the VyOS warning below first.
 - **Passwords shown once.** New credentials are displayed once, on the operator's screen, for the paper log. They are not written to disk or logs and never echoed over an unencrypted channel. Use a cryptographic random source (`/dev/urandom` or .NET `RandomNumberGenerator`), not `Get-Random`.
 - **Acknowledge before continuing.** The operator confirms the credential is recorded before the old one is invalidated.
+
+> [!WARNING]
+> **VyOS reboots by default.** On VyOS 1.4 the default action when a commit is not confirmed is to *reboot* to the saved configuration, which drops routing for every host behind the router (VyOS, n.d.). First set, commit and save `set system config-management commit-confirm action reload`. If the installed version does not offer that option, do not rely on the timer: make the change by hand with a second session open.
 
 ## 9. Verification
 
@@ -117,15 +122,23 @@ After each module, probe as the scoring engine would:
 |---|---|---|
 | HTTP and HTTPS | Fetch the page | Expected status and expected content string |
 | DNS | Query a known record | Expected answer |
-| SMTP | Connect and read the banner; optionally send a test message | Expected response |
-| POP3 | Connect and read the banner (no scoring-account logins) | Expected response |
-| FTP | Connect and read the banner | Expected response |
+| SMTP (Simple Mail Transfer Protocol) | Connect and read the banner; optionally send a test message | Expected response |
+| POP3 (Post Office Protocol 3) | Connect and read the banner (no scoring-account logins) | Expected response |
+| FTP (File Transfer Protocol) | Connect and read the banner | Expected response |
 
 Take probes before and after. A regression triggers automatic rollback of that module and stops the run.
 
 ## 10. What the panic button will never do
 
-Disable accounts wholesale; change shells; end all connections; delete accounts or files; stop services outside the candidate list; reboot; move a service into a container; change scoring accounts; act on a host with no break-glass path.
+- Disable accounts wholesale.
+- Change shells.
+- End all connections.
+- Delete accounts or files.
+- Stop services outside the candidate list.
+- Reboot.
+- Move a service into a container.
+- Change scoring accounts.
+- Act on a host with no break-glass path.
 
 ## 11. Acceptance tests (in the lab)
 

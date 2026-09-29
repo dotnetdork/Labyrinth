@@ -1,10 +1,12 @@
 # 02. Incident Reporting Automation
 
-**Status:** Draft 2 · reviewed 2026-09-29 · Phase: Sustain (cross-phase `report/`) · Priority: P1
+**Status:** Draft · reviewed 2026-09-29 · Phase: Sustain (cross-phase `report/`) · Priority: P1
 
 ## 1. Why this matters
 
-A thorough incident report that correctly identifies and addresses a successful Red Team attack may reduce the Red Team penalty for that attack, and incomplete or vague reports earn nothing (National Collegiate Cyber Defense Competition [NCCDC], 2025, Rule 9.4). Hand-written reports are slow and tend to miss required fields. The aim is to have the tools assemble every fact they can observe, so a human only adds judgement and the final sentence.
+A thorough incident report that correctly identifies and addresses a successful Red Team attack may reduce the Red Team penalty for that attack, and incomplete or vague reports earn nothing (National Collegiate Cyber Defense Competition [NCCDC], 2025, Rule 9.4).
+
+Hand-written reports are slow and tend to miss required fields. The aim is for the tools to assemble every fact they can observe, so a human only adds judgment and the final sentence.
 
 ## 2. Rules that shape it
 
@@ -24,7 +26,6 @@ A thorough incident report that correctly identifies and addresses a successful 
 5. **Review.** The incident lead edits the draft. The tool never marks a report final.
 6. **Submit.** The human pastes or uploads it in the official portal, then records the submission time.
 7. **Track.** The record stores status (draft, submitted, accepted) so nothing is filed twice or forgotten.
-
 
 ```mermaid
 flowchart LR
@@ -64,15 +65,15 @@ All output is text so that it works from any host and needs no interpreter on th
 
 ## 6. Accuracy rules
 
-- **Last-hop caveat.** The address seen by a host may be a NAT, proxy or the router, not the true origin. The report says "last hop observed" unless the origin is confirmed.
+- **Last-hop caveat.** The address seen by a host may be a NAT (network address translation) device, a proxy or the router, not the true origin. The report says "last hop observed" unless the origin is confirmed.
 - **Time.** Store UTC and show the competition clock. Note clock skew if hosts disagree.
 - **Redaction.** Strip passwords, keys and tokens from log excerpts before they enter a report.
 - **No guessing.** No attribution, intent or tool names unless the evidence names them.
 
 ## 7. Human checkpoints
 
-- Incident lead reviews every draft before submission.
-- Captain approves any report that describes an action affecting a scored service.
+- The incident lead reviews every draft before submission.
+- The captain approves any report that describes an action affecting a scored service.
 - A submission log records who sent what and when.
 
 ## 8. Acceptance tests
