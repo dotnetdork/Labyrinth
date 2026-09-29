@@ -63,6 +63,17 @@ The competition reality: **assume breach from the start.** Credentials are defau
 
 Work the phases in order, and do the cheap, high-impact things first. The timing of each step belongs to the team's own plan, not to this public document.
 
+```mermaid
+flowchart LR
+    A["<b>Lock out, part 1</b><br/><i>Establish trust</i><br/>• rotate admin credentials<br/>• lock unexpected accounts<br/>• verify, then baseline"]
+    B["<b>Lock out, part 2</b><br/><i>Shrink the surface</i><br/>• default-deny ingress<br/>• move or hide admin<br/>• disable unscored services<br/>• patch the obvious"]
+    C["<b>Observe</b><br/><i>See everything</i><br/>• ship logs to the SIEM<br/>• high-signal host logging<br/>• watch authentication"]
+    D["<b>Deceive and sustain</b><br/>• deploy the trap layer<br/>• keep scored services green<br/>• hold and triage"]
+    A --> B --> C --> D
+```
+
+*Figure: the order of work in this section, from establishing trust through deception and sustainment, with the main steps of each stage.*
+
 ### Lock out, part 1 — Establish trust
 
 The attacker's power comes from credentials and existing sessions. Remove both.
@@ -322,6 +333,27 @@ The firewall drops all inbound traffic to the admin port until a secret knock se
 ### Trip-log pattern
 
 Every trap above writes one line to a **central trip log** (on the reference box, `/var/log/security-trip.log`, with tight permissions and rotation) or to a dedicated SIEM index. With one place to tail, one rate-limited notifier can cover every trap without spamming you.
+
+```mermaid
+flowchart LR
+    subgraph traps["Traps"]
+        TP["Trap ports (§4.1)"]
+        ST["SSH tarpit (§4.2)"]
+        WT["Web scanner tarpit (§4.3)"]
+        CF["Canary files and<br/>planted SSH key (§4.4)"]
+        HA["Honey-accounts (§4.5)"]
+    end
+    TL[("Central trip log<br/>or SIEM index")]
+    NT["One rate-limited notifier"]
+    TP --> TL
+    ST --> TL
+    WT --> TL
+    CF --> TL
+    HA --> TL
+    TL --> NT
+```
+
+*Figure: every trap writes to one central trip log, so a single rate-limited notifier can watch all of them.*
 
 ---
 

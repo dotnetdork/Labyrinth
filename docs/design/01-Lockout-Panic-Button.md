@@ -51,7 +51,6 @@ The protected set is a list the operator supplies at run time, from the event pa
 | **2. Service-affecting** | Could interrupt a scored service | Default-deny inbound firewall with the scored ports, the scoring engine and the admin path allowed; disable services from a per-profile candidate list; SSH (Secure Shell) hardening drop-in; lock (never delete) unexpected *local* accounts outside the protected set; end unexpected sessions, never an official's | Applied per ring with verify and a revert timer |
 | **3. Manual only** | High consequence | User-level password changes (notification required); locking or disabling domain accounts; KRBTGT reset; domain-wide resets; appliance changes; anything touching a scored service's own configuration | Printed checklist, human executes |
 
-
 ```mermaid
 flowchart LR
     T0["<b>Tier 0</b><br/>Observe only<br/>read-only"] --> R0["Runs automatically"]
@@ -73,18 +72,23 @@ flowchart LR
 
 **Rings.** Ring 0 is one low-impact host (a workstation). Ring 1 is the next group. Later rings follow, never more than a set share of hosts at once. A failed verify stops the run.
 
-
 ```mermaid
 flowchart TD
     PS["Load protected set<br/>and configuration"] --> GATES{"All safety gates pass?<br/>(section 7)"}
     GATES -->|no| STOP(["Stop: nothing changed"])
     GATES -->|yes| T0["Tier 0 on all targets<br/>(read-only inventory and baseline)"]
-    T0 --> T1C["Tier 1 on ring 0<br/>(canary host)"] --> V1{"Verify passes?"}
-    V1 -->|no| RB1(["Roll back module, stop run"])
-    V1 -->|yes| T1R["Tier 1 on later rings,<br/>verify after each"]
-    T1R --> ARM["Arm dead-man revert timer"] --> T2C["Tier 2 on ring 0"] --> V2{"Verify passes?"}
-    V2 -->|"no, or no one cancels"| REV(["Timer reverts the change, stop run"])
-    V2 -->|yes| CAN["Cancel timer"] --> T2R["Tier 2 on later rings:<br/>arm, apply, verify, cancel"]
+    subgraph tier1["Tier 1: safe and reversible"]
+        T1C["Tier 1 on ring 0<br/>(canary host)"] --> V1{"Verify passes?"}
+        V1 -->|no| RB1(["Roll back module, stop run"])
+        V1 -->|yes| T1R["Tier 1 on later rings,<br/>verify after each"]
+    end
+    subgraph tier2["Tier 2: service-affecting"]
+        ARM["Arm dead-man revert timer"] --> T2C["Tier 2 on ring 0"] --> V2{"Verify passes?"}
+        V2 -->|"no, or no one cancels"| REV(["Timer reverts the change, stop run"])
+        V2 -->|yes| CAN["Cancel timer"] --> T2R["Tier 2 on later rings:<br/>arm, apply, verify, cancel"]
+    end
+    T0 --> T1C
+    T1R --> ARM
     T2R --> OUT(["Print summary and<br/>Tier 3 checklist for humans"])
 ```
 

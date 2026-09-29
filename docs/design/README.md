@@ -34,6 +34,8 @@ Each diagram is a Mermaid block inside the document it illustrates, with a one-s
 
 | Diagram | Where |
 |---|---|
+| Order of work: lock out, observe, deceive and sustain | [Hardening reference, §1](../Hardening-Reference.md#1-operating-doctrine--the-order-of-work) |
+| Every trap reports to one trip log | [Hardening reference, §4](../Hardening-Reference.md#trip-log-pattern) |
 | The four phases and what each contains | [00, section 2](00-Module-Contract-and-Layout.md#2-naming-phases-not-hardening) |
 | Repository and module layout | [00, section 3](00-Module-Contract-and-Layout.md#3-repository-layout) |
 | Module lifecycle with exit codes | [00, section 4](00-Module-Contract-and-Layout.md#4-the-module-contract) |
@@ -42,8 +44,10 @@ Each diagram is a Mermaid block inside the document it illustrates, with a one-s
 | Incident reporting pipeline | [02, section 3](02-Incident-Reporting-Automation.md#3-pipeline) |
 | Event seed derivation | [03, section 3](03-Event-Seed-and-Deception-Config.md#3-derivation) |
 | Baseline and integrity | [04, section 4](04-Baseline-and-Integrity.md#4-who-when-from-where) |
+| Password and SSH key rotation order | [05, section 4](05-Credentials-and-SSH-Keys.md#4-ssh-key-design) |
 | Status feed push | [06, section 2](06-Status-Feed-and-MOTD.md#2-design-push-from-the-control-node) |
 | Cleanup and tool integrity | [07, section 5](07-Cleanup-and-Tool-Integrity.md#5-replacement-signed-manifest-and-known-commit) |
+| Decoy lifecycle: seed, safety checks, trip log, cleanup | [09, section 6](09-Deception-Maze-and-CVE-Decoys.md#6-safety-checks-before-deployment) |
 
 ## Where things live
 
@@ -68,6 +72,7 @@ Each diagram is a Mermaid block inside the document it illustrates, with a one-s
 |---|---|
 | 2026-09-29 | Independent review. Fixed: VyOS commit-confirm reboot default (01); account locks moved from Tier 1 to Tier 2 and domain locks to Tier 3 (01); incident-report rule wording (02); `sfc /verifyonly` (04); materials rules 4.4 and 8.5 (07); banner decoys limited to unscored services (09). Removed event-specific topology, hostnames and timings from the public documents. |
 | 2026-09-29 | Formatting and readability pass, no change to facts: consistent status lines without draft numbers, GitHub alert blocks for existing warnings and caveats, long paragraphs split into lists and tables, sentences reworded for clarity, acronyms expanded on first use, US spelling. |
+| 2026-09-29 | Diagrams: grouped the layout, lifecycle, lockout and incident-pipeline diagrams into labeled subgraphs with no change to nodes or edges; added diagrams for the order of work and the trip log (hardening reference), credential rotation (05) and the decoy lifecycle (09). |
 
 ## References
 

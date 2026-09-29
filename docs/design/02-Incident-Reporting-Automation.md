@@ -29,12 +29,17 @@ Hand-written reports are slow and tend to miss required fields. The aim is for t
 
 ```mermaid
 flowchart LR
-    DET["1. Detect<br/>decoy trip, integrity change,<br/>login, Splunk alert, human"] --> COL["2. Collect<br/>facts on the host"]
-    COL --> COR["3. Correlate<br/>group into one incident"]
-    COR --> DRA["4. Draft<br/>fill template;<br/>missing = UNKNOWN"]
-    DRA --> REV{"5. Review<br/>incident lead edits;<br/>captain approves if a<br/>scored service is involved"}
-    REV --> SUB["6. Submit<br/>a human sends it to<br/>the White Team"]
-    SUB --> TRK["7. Track<br/>draft · submitted · accepted"]
+    subgraph auto["Automated by Labyrinth (steps 1 to 4)"]
+        DET["1. Detect<br/>decoy trip, integrity change,<br/>login, Splunk alert, human"] --> COL["2. Collect<br/>facts on the host"]
+        COL --> COR["3. Correlate<br/>group into one incident"]
+        COR --> DRA["4. Draft<br/>fill template;<br/>missing = UNKNOWN"]
+    end
+    subgraph people["Done by people (steps 5 to 7)"]
+        REV["5. Review<br/>incident lead edits;<br/>captain approves if a<br/>scored service is involved"]
+        REV --> SUB["6. Submit<br/>a human sends it to<br/>the White Team"]
+        SUB --> TRK["7. Track<br/>draft · submitted · accepted"]
+    end
+    DRA --> REV
 ```
 
 *Figure: steps 1 to 4 are automated and steps 5 to 7 are done by people, so no report is ever submitted by the tool itself.*

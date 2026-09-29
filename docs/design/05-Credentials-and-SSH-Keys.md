@@ -53,6 +53,25 @@ Choosing our own names or random ones is a trade-off:
 - **Ubuntu 24.04:** SSH is socket activated, so changes to the listening port need the socket unit as well as the daemon configuration.
 - **Hardening:** a drop-in file in `sshd_config.d`, tested with `sshd -t` before reload, with a dead-man revert (design 01).
 
+```mermaid
+flowchart TD
+    subgraph pw["Password rotation (section 2)"]
+        direction LR
+        P1["Set the new credential"] --> P2["Test it from a fresh session"]
+        P2 --> P3["Operator acknowledges it<br/>is recorded on paper"]
+        P3 --> P4(["Close the old session"])
+    end
+    subgraph key["SSH key rotation (section 4)"]
+        direction LR
+        K1["Generate a new ed25519 key"] --> K2["Install it alongside<br/>the old key"]
+        K2 --> K3["Test a fresh login"]
+        K3 --> K4(["Remove the old key"])
+    end
+    pw ~~~ key
+```
+
+*Figure: passwords and SSH keys rotate in the same order: the new credential is created and tested before the old one is closed or removed.*
+
 ## 5. Break-glass
 
 - One sealed credential per critical host, written on paper, kept by the captain.
