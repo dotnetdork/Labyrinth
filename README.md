@@ -73,10 +73,14 @@ Labyrinth is a team-written tool under the national CCDC rules, so it:
 - uses no outside resources other than DNS (the Domain Name System);
 - never deliberately breaks expected functionality
 
-(National Collegiate Cyber Defense Competition, 2025, Rules 5.6.1–5.6.5). Strategy and event-specific values live in the team's private repository.
+(National Collegiate Cyber Defense Competition [NCCDC], 2025, Rules 5.6.1–5.6.5). Strategy and event-specific values live in the team's private repository.
 
 ## Ground rule
 
 > [!CAUTION]
 > **No secrets in this repo — ever.** Labyrinth provisions *shape*, not values: placeholder templates (`.env.example`, cert paths, token names), real values supplied at run time from the event packet and a paper-only event seed (see [`docs/design/03`](docs/design/03-Event-Seed-and-Deception-Config.md)).
 > The reference documents configuration structure only; no keys, env files, or credentials are reproduced.
+
+## References
+
+National Collegiate Cyber Defense Competition. (2025, December 10). *Rules and requirements*. Retrieved September 29, 2026, from https://www.nationalccdc.org/rules.html

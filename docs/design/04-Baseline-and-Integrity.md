@@ -54,7 +54,7 @@ flowchart TD
 ## 5. Logging that makes this possible
 
 - **Linux:** auditd rules for the critical set, kept small to avoid log floods.
-- **Windows:** object access auditing on the critical set, process creation with command line, and Sysmon if it is available inside the environment. Only tools available to all teams and within the rules may be used (NCCDC, 2025, Rule 5.1).
+- **Windows:** object access auditing on the critical set, process creation with command line, and Sysmon if it is available inside the environment. Only tools available to all teams and within the rules may be used (National Collegiate Cyber Defense Competition [NCCDC], 2025, Rule 5.1).
 - **All hosts:** every host forwards a small set of high-signal events first (design 06 and the Strategic Plan).
 
 ## 6. Continuous integrity
@@ -65,7 +65,7 @@ flowchart TD
 
 ## 7. Rules check
 
-Read-only observation does not affect scored services and needs no special permission. Auditing must not disable or slow a scored service, so watch lists stay small (National Collegiate Cyber Defense Competition [NCCDC], 2025, Rule 4.11).
+Read-only observation does not affect scored services and needs no special permission. Auditing must not disable or slow a scored service, so watch lists stay small (NCCDC, 2025, Rule 4.11).
 
 ## 8. Acceptance tests
 
