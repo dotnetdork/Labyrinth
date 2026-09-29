@@ -8,7 +8,7 @@ Some repositories are kept as **reference only**: we read them, learn from them,
 
 ## 2. Licence question
 
-Team-written tools must be public and shared with all teams (National Collegiate Cyber Defense Competition [NCCDC], 2025, Rules 5.6.1, 5.6.3). Third-party code you include remains under its own licence. Permissive licences (MIT, Apache-2.0) allow use with notice. Copyleft licences (GPL-3.0) require anything derived from them to be released under the same licence. Code with no licence file gives no permission to reuse. Ideas and techniques are not covered by copyright, which is why writing from a specification is the safe route. See the final summary for the direct answer.
+Team-written tools must be public and shared with all teams (National Collegiate Cyber Defense Competition [NCCDC], 2025, Rules 5.6.1, 5.6.3). Third-party code you include remains under its own licence. Permissive licences (MIT, Apache-2.0) allow use with notice. Copyleft licences (GPL-3.0) require anything derived from them to be released under the same licence. Code with no licence file gives no permission to reuse. Ideas and techniques are not covered by copyright, which is why writing from a specification is the safe route. The licence and activity notes in the table below were not re-checked in the 2026-09-29 review (*Provisional*); confirm each before relying on it.
 
 ## 3. Sources and what we take from each
 
