@@ -17,6 +17,17 @@ One main Labyrinth program enables each phase. Each phase is an entry script tha
 | `deceive` | Deceive | Canaries, honey-accounts, trap ports, tarpits, decoy services |
 | `sustain` | Sustain | Health checks, backups, rollback, patching, reporting |
 
+```mermaid
+flowchart LR
+    L["<b>1. Lock out</b><br/>credentials · accounts<br/>firewall · remote admin<br/>service reduction"]
+    O["<b>2. Observe</b><br/>log forwarding · auditing<br/>integrity baseline<br/>status feed"]
+    D["<b>3. Deceive</b><br/>canaries · honey-accounts<br/>trap ports · tarpits<br/>decoy services"]
+    S["<b>4. Sustain</b><br/>health checks · backups<br/>rollback · patching<br/>reporting"]
+    L --> O --> D --> S
+```
+
+*Figure: the four phases run in order, left to right, and each box lists the kinds of module its folder contains.*
+
 ## 3. Repository layout
 
 ```
@@ -57,6 +68,30 @@ Notes:
 - **Appliances** (VyOS, Palo Alto, Cisco FTD) are handled by templated configuration and a manual runbook, not remote-execution modules.
 - **Language:** bash on Linux, PowerShell on Windows. No interpreter or package has to be installed at run time. If Ansible later proves usable, each module maps one-to-one to an Ansible role.
 
+
+```mermaid
+flowchart TD
+    MAIN["labyrinth.sh / labyrinth.ps1<br/>(main program)"]
+    PROF["profiles/<br/>host profile → module list"]
+    CORE["core/<br/>log · manifest · safety · seed · probe"]
+    PH["phases/<br/>lockout · observe · deceive · sustain"]
+    MOD["phases/{phase}/modules/{name}/<br/>module.yml + entry points"]
+    PLAT["platform/<br/>per-OS adapters"]
+    REP["report/<br/>incident report builder"]
+    CFG["config/<br/>*.example templates only"]
+    VEN["vendor/<br/>pinned third-party code"]
+    MAIN -->|reads| PROF
+    MAIN -->|runs| PH
+    PH -->|calls| MOD
+    MOD -->|uses| CORE
+    MOD -->|uses| PLAT
+    MOD -.->|may use| VEN
+    MAIN -.->|run-time values shaped like| CFG
+    MAIN -->|cross-phase| REP
+```
+
+*Figure: the main program reads a profile, runs phase entry scripts, and each phase calls its modules, which share the core library and per-OS adapters; dashed lines are optional or run-time-only links.*
+
 ## 4. The module contract
 
 Every module is a folder containing a metadata file and up to six entry points.
@@ -86,6 +121,23 @@ Entry points:
 | `cleanup` | Remove temporary files this module created | Safe to run repeatedly |
 
 Exit codes: `0` nothing to do or success, `10` change needed, `20` blocked by a safety gate, `30` verify failed, `40` error.
+
+```mermaid
+flowchart TD
+    C["check<br/>(read-only)"] -->|"exit 0: nothing to do"| DONE(["done"])
+    C -->|"exit 10: change needed"| P["plan<br/>(read-only, default mode)"]
+    P --> G{"safety gates pass<br/>and human confirms?"}
+    G -->|"no: exit 20"| BLOCK(["blocked, nothing changed"])
+    G -->|yes| A["apply<br/>backup first, write run manifest"]
+    A --> V{"verify<br/>(scoring-style probes)"}
+    V -->|"pass: exit 0"| CL["cleanup<br/>temporary files"]
+    V -->|"fail: exit 30"| RB["rollback<br/>from the run manifest"]
+    RB --> CL
+    CL --> DONE
+    ERR["any step fails unexpectedly:<br/>exit 40, stop"]
+```
+
+*Figure: one module run moves from check to plan to a human-confirmed apply, then verify decides between cleanup and rollback; the exit code at each branch is shown on the arrow.*
 
 Rules for module authors:
 

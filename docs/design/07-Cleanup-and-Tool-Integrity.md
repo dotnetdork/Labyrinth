@@ -40,6 +40,23 @@ The earlier idea was an encrypted folder decrypted with a shared team password. 
 
 Resident components (timers, watchers) are hashed by the integrity check (design 04) like any other critical file.
 
+
+```mermaid
+flowchart TD
+    REL["Tagged release<br/>commit hash printed on paper"] --> MAN["Manifest: SHA-256 of every file"]
+    MAN --> SIG["Manifest signed with the team key"]
+    SIG --> CHK{"Control node checks signature<br/>and every hash before each run"}
+    CHK -->|mismatch| NO(["Refuse to run"])
+    CHK -->|match| RUN["Push code to host, run it"]
+    RUN --> RES{"Module needs a<br/>resident component?"}
+    RES -->|no| DEL["Remove pushed code"]
+    RES -->|yes| KEEP["Keep in read-only {root}/bin;<br/>hashed by the integrity check"]
+    DEL --> CLN["End of event: cleanup removes only<br/>what the run manifest lists"]
+    KEEP --> CLN
+```
+
+*Figure: code runs only after the signed manifest and every file hash match the declared release, and cleanup later removes only what the run manifest recorded.*
+
 ## 6. Acceptance tests
 
 - A tampered module file makes the pre-run check fail and the run refuse to start.

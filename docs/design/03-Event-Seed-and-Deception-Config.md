@@ -30,6 +30,19 @@ A rival who reads the repository learns how values are made, not which values th
 
 Changing `purpose` or `index` gives unrelated values. Nothing derived can be reversed to the seed.
 
+
+```mermaid
+flowchart LR
+    SEED[("Event seed<br/>secret · on paper")] --> H["HMAC-SHA256<br/>(public algorithm)"]
+    LBL["purpose:index<br/>e.g. decoy-port:3"] --> H
+    H --> MAP["Map into the needed<br/>range or alphabet"]
+    MAP --> CHK{"Collides with the scoring<br/>allowlist, the protected set<br/>or an existing name?"}
+    CHK -->|yes| SKIP["Skip and report"]
+    CHK -->|no| VAL["Decoy value:<br/>name · port · token · path · banner"]
+```
+
+*Figure: the public algorithm combines the secret paper seed with a purpose label to produce each decoy value, and any value that collides with scoring or a protected account is skipped.*
+
 ## 4. Constraints
 
 - **Never on a scored port.** Derived ports are checked against the scoring allowlist and skipped if they collide (NCCDC, 2025, Rule 9.3).

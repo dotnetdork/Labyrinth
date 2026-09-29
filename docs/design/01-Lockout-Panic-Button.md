@@ -49,6 +49,17 @@ The protected set is a list the operator supplies at run time, from the event pa
 | **2. Service-affecting** | Could interrupt a scored service | Default-deny inbound firewall with the scored ports, the scoring engine and the admin path allowed; disable services from a per-profile candidate list; SSH hardening drop-in; lock (never delete) unexpected *local* accounts outside the protected set; end unexpected sessions, never an official's | Applied per ring with verify and a revert timer |
 | **3. Manual only** | High consequence | User-level password changes (notification required); locking or disabling domain accounts; KRBTGT reset; domain-wide resets; appliance changes; anything touching a scored service's own configuration | Printed checklist, human executes |
 
+
+```mermaid
+flowchart LR
+    T0["<b>Tier 0</b><br/>Observe only<br/>read-only"] --> R0["Runs automatically"]
+    T1["<b>Tier 1</b><br/>Safe and reversible<br/>admin passwords, unregistered keys"] --> R1["Runs automatically<br/>after plan review"]
+    T2["<b>Tier 2</b><br/>Service-affecting<br/>firewall, services, SSH, local locks"] --> R2["Runs per ring with verify<br/>and a revert timer"]
+    T3["<b>Tier 3</b><br/>Manual only<br/>user passwords, domain, KRBTGT, appliances"] --> R3["Printed checklist;<br/>a human does it"]
+```
+
+*Figure: each risk tier, from read-only Tier 0 to manual-only Tier 3, and who or what carries out its actions.*
+
 ## 6. Sequence
 
 1. Load protected set and configuration.
@@ -59,6 +70,23 @@ The protected set is a list the operator supplies at run time, from the event pa
 6. Print the summary and the Tier 3 checklist.
 
 **Rings.** Ring 0 is one low-impact host (a workstation). Ring 1 is the next group. Later rings follow, never more than a set share of hosts at once. A failed verify stops the run.
+
+
+```mermaid
+flowchart TD
+    PS["Load protected set<br/>and configuration"] --> GATES{"All safety gates pass?<br/>(section 7)"}
+    GATES -->|no| STOP(["Stop: nothing changed"])
+    GATES -->|yes| T0["Tier 0 on all targets<br/>(read-only inventory and baseline)"]
+    T0 --> T1C["Tier 1 on ring 0<br/>(canary host)"] --> V1{"Verify passes?"}
+    V1 -->|no| RB1(["Roll back module, stop run"])
+    V1 -->|yes| T1R["Tier 1 on later rings,<br/>verify after each"]
+    T1R --> ARM["Arm dead-man revert timer"] --> T2C["Tier 2 on ring 0"] --> V2{"Verify passes?"}
+    V2 -->|"no, or no one cancels"| REV(["Timer reverts the change, stop run"])
+    V2 -->|yes| CAN["Cancel timer"] --> T2R["Tier 2 on later rings:<br/>arm, apply, verify, cancel"]
+    T2R --> OUT(["Print summary and<br/>Tier 3 checklist for humans"])
+```
+
+*Figure: the panic button runs only after every safety gate passes, applies each tier to the canary host first and then ring by ring with a verify after each ring, and a Tier 2 change reverts itself unless verify succeeds and the timer is cancelled.*
 
 ## 7. Safety gates (all must pass)
 

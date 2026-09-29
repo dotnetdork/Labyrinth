@@ -21,6 +21,23 @@
 | 08 | [Ideas mined from reference repos](08-Reference-Mining.md) | What did the reference-only repositories teach us, turned into specs? |
 | 09 | [Deception maze and CVE decoys](09-Deception-Maze-and-CVE-Decoys.md) | How do we build the maze, and where are the limits? |
 
+## Diagrams
+
+Each diagram is a Mermaid block inside the document it illustrates, with a one-sentence caption beneath it.
+
+| Diagram | Where |
+|---|---|
+| The four phases and what each contains | [00, section 2](00-Module-Contract-and-Layout.md#2-naming-phases-not-hardening) |
+| Repository and module layout | [00, section 3](00-Module-Contract-and-Layout.md#3-repository-layout) |
+| Module lifecycle with exit codes | [00, section 4](00-Module-Contract-and-Layout.md#4-the-module-contract) |
+| Risk tiers 0 to 3 and who runs each | [01, section 5](01-Lockout-Panic-Button.md#5-actions-by-risk-tier) |
+| Panic button: gates, rings, verify, dead-man revert | [01, section 6](01-Lockout-Panic-Button.md#6-sequence) |
+| Incident reporting pipeline | [02, section 3](02-Incident-Reporting-Automation.md#3-pipeline) |
+| Event seed derivation | [03, section 3](03-Event-Seed-and-Deception-Config.md#3-derivation) |
+| Baseline and integrity | [04, section 4](04-Baseline-and-Integrity.md#4-who-when-from-where) |
+| Status feed push | [06, section 2](06-Status-Feed-and-MOTD.md#2-design-push-from-the-control-node) |
+| Cleanup and tool integrity | [07, section 5](07-Cleanup-and-Tool-Integrity.md#5-replacement-signed-manifest-and-known-commit) |
+
 ## Where things live
 
 - **This repository (Labyrinth):** design, code, reference. It becomes public because Rule 5.6.1 requires team-written tools to be public before use (NCCDC, 2025, Rule 5.6.1). Never put strategy, per-event values, real hostnames, addresses or credentials here.
