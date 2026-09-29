@@ -25,9 +25,9 @@ Labyrinth is that strategy plus that tool. The **Linux profile** is modeled on a
 | **Deceive** | Tax the attacker | Traps, canaries, honey-accounts, tarpits — every non-service touch is a tripwire. |
 | **Sustain** | Stay scored-green | Keep the graded services healthy; patch and roll back cleanly; hold the line. |
 
-The whole doctrine, the transferable technicals, the trap catalog, and the architecture live in:
+The complete overview of the system (the whole doctrine, the transferable technicals, the trap catalog, and the architecture) is the implementation blueprint:
 
-### → [`docs/Hardening-Reference.md`](docs/Hardening-Reference.md)
+### → [`docs/Blueprint.md`](docs/Blueprint.md)
 
 The detailed designs for each part of the tool live in [`docs/design/`](docs/design/README.md).
 
@@ -49,7 +49,7 @@ Labyrinth classifies each host into a **profile** and applies the roles that fit
 Labyrinth/
 ├── README.md                     ← you are here
 ├── docs/
-│   ├── Hardening-Reference.md     ← doctrine, capability map, trap catalog (rules-aware)
+│   ├── Blueprint.md               ← doctrine, capability map, trap catalog (rules-aware)
 │   └── design/                    ← design specs 00–09 (module contract, panic button,
 │                                    incident reporting, event seed, baseline, credentials,
 │                                    status feed, cleanup, reference mining, deception maze)

@@ -1,4 +1,4 @@
-# Labyrinth — Hardening & Deception Reference
+# Labyrinth Implementation Blueprint
 
 **Status:** Draft · reviewed 2026-09-29 · rules-aware
 
