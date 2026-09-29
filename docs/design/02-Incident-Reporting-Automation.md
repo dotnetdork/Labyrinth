@@ -1,6 +1,6 @@
 # 02. Incident Reporting Automation
 
-**Status:** Draft · reviewed 2026-09-29 · Phase: Sustain (cross-phase `report/`) · Priority: P1
+**Status:** Draft · reviewed 2026-09-29 · Phase: 🟩 Sustain (cross-phase `report/`) · Priority: P1
 
 ## 1. Why this matters
 
@@ -40,9 +40,11 @@ flowchart LR
         SUB --> TRK["7. Track<br/>draft · submitted · accepted"]
     end
     DRA --> REV
+    style auto fill:#e3eefc,stroke:#2563eb,color:#0f2a5c
+    style people fill:#fff4d6,stroke:#b7791f,color:#4a3108
 ```
 
-*Figure: steps 1 to 4 are automated and steps 5 to 7 are done by people, so no report is ever submitted by the tool itself.*
+*Figure: steps 1 to 4 are automated and steps 5 to 7 are done by people, so no report is ever submitted by the tool itself. Blue is automated work and amber is work done by people.*
 
 ## 4. Incident record fields
 

@@ -8,6 +8,7 @@
 - **Secrets:** none reproduced. This document describes the *shape* of configuration only: no keys, env files, or credentials.
 - **Citations:** competition rules are cited by rule number in APA 7 style (author, date, rule).
 - **Detailed designs:** each part of the tool has its own spec in [`design/`](design/README.md).
+- **New to the project?** The [overview](Overview.md) explains every part in plain language.
 
 > [!IMPORTANT]
 > **Rules basis and warning.** Rule numbers follow the web version of the national CCDC (Collegiate Cyber Defense Competition) rules, updated 10 December 2025 (National Collegiate Cyber Defense Competition [NCCDC], 2025). That page letters the items in each section, so Rule 4.14 appears as item 4(n) and Rule 5.6.1 as 5(f)(i).
@@ -70,9 +71,16 @@ flowchart LR
     C["<b>Observe</b><br/><i>See everything</i><br/>• ship logs to the SIEM<br/>• high-signal host logging<br/>• watch authentication"]
     D["<b>Deceive and sustain</b><br/>• deploy the trap layer<br/>• keep scored services green<br/>• hold and triage"]
     A --> B --> C --> D
+    classDef lockout fill:#fde8e8,stroke:#c0392b,color:#4a1111
+    classDef observe fill:#e3eefc,stroke:#2563eb,color:#0f2a5c
+    classDef deceive fill:#efe7fb,stroke:#7c3aed,color:#351465
+    class A,B lockout
+    class C observe
+    class D deceive
+    style D stroke:#15803d,stroke-width:3px
 ```
 
-*Figure: the order of work in this section, from establishing trust through deception and sustainment, with the main steps of each stage.*
+*Figure: the order of work in this section, from establishing trust through deception and sustainment, with the main steps of each stage. Colors follow the phase key: red is lock out, blue is observe, purple is deceive and green is sustain. The last box covers both deceive and sustain, so it is purple with a green border.*
 
 ### Lock out, part 1 — Establish trust
 
@@ -351,9 +359,14 @@ flowchart LR
     CF --> TL
     HA --> TL
     TL --> NT
+    classDef store fill:#eef1f5,stroke:#475569,color:#1e293b
+    classDef observe fill:#e3eefc,stroke:#2563eb,color:#0f2a5c
+    class TL store
+    class NT observe
+    style traps fill:#efe7fb,stroke:#7c3aed,color:#351465
 ```
 
-*Figure: every trap writes to one central trip log, so a single rate-limited notifier can watch all of them.*
+*Figure: every trap writes to one central trip log, so a single rate-limited notifier can watch all of them. Purple is the deception layer, gray the trip log and blue the alerting that watches it.*
 
 ---
 
@@ -443,23 +456,23 @@ Labyrinth provisions the *shape*; the operator supplies the values. **No real cr
 
 ## 7. Priority scorecard
 
-Triage under a clock. Do P0 everywhere before P1 anywhere.
+Triage under a clock. Do P0 everywhere before P1 anywhere. The **When** column is color-coded from 🔴 P0 (first) through 🟠 P1 and 🟡 P2 to ⚪ P3 (last).
 
 | Control | Impact | Effort | When |
 |---|---|---|---|
-| Rotate admin-class creds / lock unexpected local accounts (§3.1) | ★★★★★ | Low | P0 |
-| Default-deny firewall (§3.3) | ★★★★★ | Low | P0 |
-| Remote-admin hardening (§3.2) | ★★★★ | Low | P0/P1 |
-| Move/hide admin (§3.4) | ★★★ | Med | P1 |
-| Central logging + auditd/Sysmon (§3.9) | ★★★★ | Med | P1 |
-| Service minimization + targeted patch (§3.6) | ★★★ | Med | P1 |
-| Web edge + scanner tarpit (§3.8, §4.3) | ★★★★ | Low | P1 |
-| Backups / rollback / break-glass (§3.11) | ★★★★ | Low | P1 |
-| Canary tokens & honey-accounts (§4.4–4.5) | ★★★★★ | Low | P2 |
-| Dynamic banning / ipset (§3.5) | ★★★ | Med | P2 |
-| Container least-privilege (§3.7) | ★★★ | Med | P2 |
-| Egress logging + DNS sinkhole (§3.10, §4.6) | ★★★ | Med | P2 |
-| Port knocking (§4.7) | ★★ | Med | P3 |
+| Rotate admin-class creds / lock unexpected local accounts (§3.1) | ★★★★★ | Low | 🔴 P0 |
+| Default-deny firewall (§3.3) | ★★★★★ | Low | 🔴 P0 |
+| Remote-admin hardening (§3.2) | ★★★★ | Low | 🔴 P0/P1 |
+| Move/hide admin (§3.4) | ★★★ | Med | 🟠 P1 |
+| Central logging + auditd/Sysmon (§3.9) | ★★★★ | Med | 🟠 P1 |
+| Service minimization + targeted patch (§3.6) | ★★★ | Med | 🟠 P1 |
+| Web edge + scanner tarpit (§3.8, §4.3) | ★★★★ | Low | 🟠 P1 |
+| Backups / rollback / break-glass (§3.11) | ★★★★ | Low | 🟠 P1 |
+| Canary tokens & honey-accounts (§4.4–4.5) | ★★★★★ | Low | 🟡 P2 |
+| Dynamic banning / ipset (§3.5) | ★★★ | Med | 🟡 P2 |
+| Container least-privilege (§3.7) | ★★★ | Med | 🟡 P2 |
+| Egress logging + DNS sinkhole (§3.10, §4.6) | ★★★ | Med | 🟡 P2 |
+| Port knocking (§4.7) | ★★ | Med | ⚪ P3 |
 
 *The Rule 5.6 items (public, declared, frozen, no outside resources, no breakage) apply to every row.*
 

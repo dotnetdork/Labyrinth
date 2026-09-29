@@ -12,10 +12,10 @@ One main Labyrinth program enables each phase. Each phase is an entry script tha
 
 | Folder | Phase | Contains |
 |---|---|---|
-| `lockout` | Lock out | Credentials, accounts, firewall, remote-admin hardening, service reduction |
-| `observe` | Observe | Log forwarding, auditing, integrity baseline, status feed |
-| `deceive` | Deceive | Canaries, honey-accounts, trap ports, tarpits, decoy services |
-| `sustain` | Sustain | Health checks, backups, rollback, patching, reporting |
+| `lockout` | 🟥 Lock out | Credentials, accounts, firewall, remote-admin hardening, service reduction |
+| `observe` | 🟦 Observe | Log forwarding, auditing, integrity baseline, status feed |
+| `deceive` | 🟪 Deceive | Canaries, honey-accounts, trap ports, tarpits, decoy services |
+| `sustain` | 🟩 Sustain | Health checks, backups, rollback, patching, reporting |
 
 ```mermaid
 flowchart LR
@@ -24,9 +24,17 @@ flowchart LR
     D["<b>3. Deceive</b><br/>canaries · honey-accounts<br/>trap ports · tarpits<br/>decoy services"]
     S["<b>4. Sustain</b><br/>health checks · backups<br/>rollback · patching<br/>reporting"]
     L --> O --> D --> S
+    classDef lockout fill:#fde8e8,stroke:#c0392b,color:#4a1111
+    classDef observe fill:#e3eefc,stroke:#2563eb,color:#0f2a5c
+    classDef deceive fill:#efe7fb,stroke:#7c3aed,color:#351465
+    classDef sustain fill:#e3f6e8,stroke:#15803d,color:#0f3d20
+    class L lockout
+    class O observe
+    class D deceive
+    class S sustain
 ```
 
-*Figure: the four phases run in order, left to right, and each box lists the kinds of module its folder contains.*
+*Figure: the four phases run in order, left to right, and each box lists the kinds of module its folder contains. Colors follow the phase key: red is lock out, blue is observe, purple is deceive and green is sustain.*
 
 ## 3. Repository layout
 
@@ -150,9 +158,15 @@ flowchart TD
     subgraph anystep["At any step"]
         ERR(["any step fails unexpectedly:<br/>exit 40, stop"])
     end
+    classDef ok fill:#e3f6e8,stroke:#15803d,color:#0f3d20
+    classDef human fill:#fff4d6,stroke:#b7791f,color:#4a3108
+    classDef stop fill:#f6f6f6,stroke:#b42318,color:#4a1111,stroke-dasharray:4 3
+    class DONE,CL ok
+    class G,RB human
+    class BLOCK,ERR stop
 ```
 
-*Figure: one module run moves from check to plan to a human-confirmed apply, then verify decides between cleanup and rollback; each arrow shows its exit code, and exit 40 can end the run at any step.*
+*Figure: one module run moves from check to plan to a human-confirmed apply, then verify decides between cleanup and rollback; each arrow shows its exit code, and exit 40 can end the run at any step. Green marks a clean finish, amber a human decision or an undo, and a dashed red outline a stop.*
 
 Rules for module authors:
 
