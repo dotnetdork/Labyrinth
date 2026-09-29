@@ -53,9 +53,11 @@ Labyrinth/
 ├── docs/
 │   ├── Overview.md                ← plain-language tour; start here
 │   ├── Blueprint.md               ← doctrine, capability map, trap catalog (rules-aware)
-│   └── design/                    ← design specs 00–09 (module contract, panic button,
+│   └── design/                    ← design specs 00–16 (module contract, panic button,
 │                                    incident reporting, event seed, baseline, credentials,
-│                                    status feed, cleanup, reference mining, deception maze)
+│                                    status feed, cleanup, reference mining, deception maze,
+│                                    log forwarding, Windows/AD, bans, health monitor,
+│                                    backups, patching, appliance runbooks)
 └── (future) core/ phases/ profiles/ platform/ config/ vendor/ tests/   ← see design/00
 ```
 

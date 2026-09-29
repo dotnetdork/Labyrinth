@@ -332,6 +332,73 @@ Passwords, keys and tokens are stripped from log excerpts before they go into a 
 
 Some outside repositories are kept as **reference only** ([design 08](design/08-Reference-Mining.md)). The team reads them for ideas and then writes its own original code from a specification. This avoids software-license obligations (some licenses require anything built from the code to use the same license, and code with no license grants no permission at all) and avoids running code nobody has checked. Ideas and techniques are not covered by copyright; copied code is.
 
+### 4.10 🟦 Getting the logs to the SIEM
+
+**What it does.** Sends the most useful logs from every host to the one SIEM, and runs a handful of saved searches over them ([design 10](design/10-Log-Forwarding-and-Detection.md)).
+
+**Why it exists.** A log that stays on a host disappears if an attacker wipes that host. Once a log line has reached the SIEM, deleting it locally changes nothing. The status feed, the incident reports and the traps all rely on the SIEM already holding the right events.
+
+**How it works.**
+
+- **Linux** hosts forward their login records, the audit log (who ran which privileged command, who touched which watched file) and firewall "blocked" messages, using the logging program that is already installed.
+- **Windows** hosts forward a short, fixed list of event IDs, the numbers Windows gives each kind of event: logons, failed logons, new accounts, new admin-group members, new services and scheduled tasks, and "the audit log was cleared".
+- **Appliances** send their logs by **syslog**, the standard way network devices send log lines to a collector.
+- A few **saved searches** turn those logs into alerts. The ones that almost never fire by accident come first: a trap was touched, a fake account logged in, a bait file was opened, a log was wiped.
+
+**What it will never do.** Send logs anywhere outside the competition network, or let logging fill a disk.
+
+### 4.11 🟥 Windows and the domain controller
+
+**What it does.** Hardens Windows machines and the **domain controller** with the same guard rails as the panic button ([design 11](design/11-Windows-and-AD-Hardening.md)).
+
+**Why it is careful.** The domain controller answers logons and DNS for the whole network. One mistake there breaks everything at once. So the rule is **blast radius**: a change that affects one machine can be automated; a change that affects the whole domain is a printed checklist.
+
+**How it works.** Ordinary Windows machines go first, one group at a time. Labyrinth changes their admin passwords, turns on the firewall, limits remote desktop to the team's admin machine, and turns off old or risky features that attackers use to steal passwords. The domain controller goes last. Anything domain-wide, such as **Group Policy** (settings the domain pushes to every machine at once), domain accounts, DNS or the special KRBTGT account, is done by a person following the checklist.
+
+### 4.12 🟪 Automatic bans
+
+**What it does.** When an address touches a trap, uses the planted key or keeps failing to log in, the host blocks that address for a while ([design 12](design/12-Dynamic-Bans.md)).
+
+**The big safety catch.** If the router in front of a host rewrites every outside address into one address (NAT), the host cannot tell the scoring engine and the attacker apart. Banning that one address would block scoring. So before bans are switched on, Labyrinth checks what addresses the host really sees, and it refuses to ban if they all look the same.
+
+**Other guard rails.** A **never-ban list** (the scoring engine, the officials, the team's own machines, the SIEM) is loaded first; a trigger from one of those raises an alert instead. Bans expire. Ban thresholds are settings the team can adjust during the event without changing the frozen code.
+
+**What it will never do.** Strike back at, scan or report the attacker to anyone. A ban only blocks traffic coming into the team's own host.
+
+### 4.13 🟩 Health monitor and checkpoints
+
+**What it does.** Re-tests every scored service on a schedule, and gives the team one command that summarizes the whole network ([design 13](design/13-Health-Monitor-and-Checkpoints.md)).
+
+**How it works.** The control node runs the same scoring-style tests the panic button uses. When a service goes from working to broken, it records both results, names the most recent Labyrinth change on that host as the likely cause, and raises an alert. It does **not** undo anything on its own: an hour after a change, the cause could just as easily be the attacker, so a person decides.
+
+`labyrinth checkpoint` prints, in one screen: which services are up, new integrity findings, new accounts or open ports, open incident reports, trap hits and bans, and how long since each service was last backed up. It changes nothing.
+
+**One caveat.** The control node tests from *inside* the network. The scoring engine may test from outside, through the edge firewall. A pass from inside is good evidence, not proof.
+
+### 4.14 🟩 Backups you can restore
+
+**What it does.** Takes **restore points** of each scored service: its settings, its website files, its database and, on the domain controller, the directory itself ([design 14](design/14-Backup-and-Recovery.md)).
+
+**Why it exists.** Rollback only undoes Labyrinth's own changes. If an attacker defaces a website or deletes a database table, the team needs a copy from before the damage.
+
+**How it works.** A restore point is taken before patching, before the first risky change on a host, or on request. Labyrinth first checks there is enough disk space, records a hash of each backup so tampering is caught, and stores it where only an administrator can read it. Restoring overwrites live data, so it is a printed set of steps that a person follows.
+
+### 4.15 🟥 Fewer services, targeted patches
+
+**What it does.** Turns off services the host does not need, and helps the team patch the software most likely to be attacked ([design 15](design/15-Patching-and-Service-Reduction.md)).
+
+**Services.** Each kind of host has a list of services that may be turned off, with the reason and the conditions that keep one on, such as "it is scored". Turning a service off is easy to undo, so Labyrinth does it automatically with the usual checks.
+
+**Patches.** Undoing a software update is often impossible, so patching stays in human hands. Labyrinth lists the security updates available, ranks them (software that is both reachable from the network and known to be actively exploited comes first), takes a restore point, prints the command to update that one package, and tests the service afterwards. It never runs a full system upgrade in the middle of an event.
+
+### 4.16 🟥 Routers and firewall appliances
+
+**What it does.** Provides a **runbook** for each type of router or firewall appliance: a tested, numbered procedure a person follows, filled in with the event's own values ([design 16](design/16-Network-Appliance-Runbooks.md)).
+
+**Why it is manual.** Every vendor has its own commands, and a mistake on the device in front of the network can cut off every host, including the scoring engine's path. Labyrinth prints the steps; it never sends commands to an appliance.
+
+**The steps, in order.** Prepare a way back (second session, configuration backup); change the default passwords; allow management only from inside; allow the scoring engine before blocking anything; block everything else from outside; note how the router rewrites addresses; send the logs to the SIEM; save, test and keep a second backup.
+
 ---
 
 ## 5. The competition rules that shape everything
@@ -393,24 +460,30 @@ Controls are ranked from **P0** (do first) to **P3** (do last): 🔴 P0 · 🟠 
 | Default-deny | A firewall setting that blocks every incoming connection unless a rule allows it. |
 | Event seed | The secret random value, on paper, from which all trap names and ports are derived. |
 | Firewall | Software or a device that decides which network connections are allowed. |
+| Group Policy | Settings a Windows domain pushes to every machine at once. |
 | Hash | A short fingerprint of a file that changes if the file changes. |
 | Honey-account | A fake account nobody really uses; any login to it is an alarm. |
 | Host | Any single computer or server on the network. |
 | Idempotent | Safe to run more than once: repeating it gives the same result. |
+| KRBTGT | The hidden domain account whose password signs every Windows domain login ticket; resetting it cancels forged tickets. |
 | Manifest | A list of files with their hashes (for tool integrity), or a record of changes made (the run manifest). |
 | Module | One small, single-purpose piece of Labyrinth automation. |
 | MOTD | Message of the day: the text a Linux host shows at login. |
 | NAT | Network address translation: a router rewriting addresses, which can hide where traffic really came from. |
+| Patch | An update that fixes a flaw in a piece of software. |
 | Port | A numbered "door" on a host that a network service listens on, such as 22 for SSH. |
 | Profile | A kind of host (for example, Linux web server) and the list of modules that apply to it. |
 | Protected set | Accounts Labyrinth must never touch, supplied by the operator for each event. |
 | Red Team | The attackers in the competition. |
+| Restore point | A backup of a service taken so it can be put back after damage. |
 | Ring | A group of hosts that receives a change together; the first ring is a single low-impact host. |
 | Rollback | Undoing a change using the saved record of what was changed. |
+| Runbook | A tested, numbered procedure that a person follows step by step. |
 | Scored service | A service the scoring engine checks, such as a website, email or DNS. |
 | Scoring engine | The automated checker that tests scored services and awards points. |
 | SIEM | Security Information and Event Management system: a central place that collects and searches logs from every host. |
 | SSH | Secure Shell: the standard encrypted way to log in to a Linux host remotely. |
+| Syslog | The standard way servers and network devices send log lines to a collector. |
 | Tarpit | A trap that answers so slowly that attack tools get stuck. |
 | Trip log | The single log every trap writes its alarms to. |
 | White Team | The competition officials who run the event. |
