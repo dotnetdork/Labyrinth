@@ -31,7 +31,7 @@ The whole doctrine, the transferable technicals, the trap catalog, and the archi
 
 ## The world Labyrinth is built for
 
-A heterogeneous, contested network of the kind CCDC events use: more than one Linux family, Windows Server with Active Directory, workstations, a SIEM, and network edge appliances such as a router and firewalls. Labyrinth classifies each host into a **profile** and applies the roles that fit — locking the easy 80% automatically and flagging the manual 20%.
+A heterogeneous, contested network of the kind CCDC events use: more than one Linux family (Debian and RHEL), Windows Server with Active Directory, Windows and Linux workstations, a SIEM (Security Information and Event Management system), and network edge appliances such as a router and one or more firewalls, often split into segments. Labyrinth classifies each host into a **profile** and applies the roles that fit — locking the easy 80% automatically and flagging the manual 20%.
 
 ## Repository map
 

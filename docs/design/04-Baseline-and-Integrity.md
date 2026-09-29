@@ -12,7 +12,7 @@ A hash baseline taken after the Red Team already has a foothold records the comp
 
 | Step | Linux | Windows |
 |---|---|---|
-| Verify against the package or OS database | `dpkg --verify` (Debian family), `rpm -Va` (RHEL family) | Authenticode signature checks, `sfc /verifynow` |
+| Verify against the package or OS database | `dpkg --verify` (Debian family), `rpm -Va` (RHEL family) | Authenticode signature checks; `sfc /verifyonly` (read-only, but slow and CPU-heavy, so schedule it) |
 | Record unexplained differences | As findings, not as baseline | As findings, not as baseline |
 | Baseline the rest | SHA-256 of critical files, permissions, owners | Same, plus registry autoruns and services |
 
