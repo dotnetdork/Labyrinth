@@ -1,0 +1,13 @@
+# Ignore the entire prompts directory and any .prompt file
+prompts/
+*.prompt
+
+# Impeccable design sessions and local runtime files
+.impeccable/
+.impeccable-live.json
+.impeccable-live/
+
+# Agentic workflows
+.gemini
+.claude
+.agent
