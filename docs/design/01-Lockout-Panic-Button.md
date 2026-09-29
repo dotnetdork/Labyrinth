@@ -144,7 +144,7 @@ After each module, probe as the scoring engine would:
 | POP3 (Post Office Protocol 3) | Connect and read the banner (no scoring-account logins) | Expected response |
 | FTP (File Transfer Protocol) | Connect and read the banner | Expected response |
 
-Take probes before and after. A regression triggers automatic rollback of that module and stops the run.
+Take probes before and after. A regression triggers automatic rollback of that module and stops the run. Between runs, the health monitor repeats these probes on a schedule (design 13).
 
 ## 10. What the panic button will never do
 

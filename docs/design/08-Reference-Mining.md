@@ -49,6 +49,7 @@ Ideas and techniques are not covered by copyright, which is why writing from a s
 
 - A short list of event IDs to forward: logons, failed logons, privilege use, process creation with command line, service and task creation, account changes, log clearing.
 - Chosen by ourselves from the Windows documentation and the reading list, sized for a small SIEM (Security Information and Event Management system).
+- Specified in full, with the event list, in design 10.
 
 ### 4.4 Collection module (sustain, P2)
 

@@ -203,7 +203,7 @@ Every host uses the same relative tree. The root is configurable, so the locatio
 | Backups, timestamped | `/var/backups/labyrinth/` | `<root>\backup\` |
 
 - **Default root:** `/opt/labyrinth` on Linux, `C:\ProgramData\Labyrinth` on Windows.
-- **Log categories:** `run`, `auth`, `integrity`, `network`, `deception`, `report`.
+- **Log categories:** `run`, `auth`, `integrity`, `network`, `deception`, `report`, `health` (design 13).
 
 ## 8. Adding a capability
 
@@ -216,7 +216,7 @@ Nothing else changes.
 ## 9. Pinned decisions
 
 - **Ansible or native scripts.** Pinned until the team knows what it can run from and what is reachable during the event. Native scripts work in either case, so the design assumes them.
-- **Windows log shipping method.** Pinned between the Splunk forwarder installer, a script posting to Splunk's HTTP Event Collector, or another method. See design 08.
+- **Windows log shipping method.** Pinned between the Splunk forwarder installer, a script posting to Splunk's HTTP Event Collector, or another method. See designs 08 and 10.
 
 ## References
 

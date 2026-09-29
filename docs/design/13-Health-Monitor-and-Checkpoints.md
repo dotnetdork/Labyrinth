@@ -1,0 +1,95 @@
+# 13. Health Monitor and Checkpoints
+
+**Status:** Draft · reviewed 2026-09-29 · Phase: 🟩 Sustain · Priority: P1
+
+## 1. Goal
+
+Two jobs for the long middle of an event, after the lockout:
+
+1. **Health monitor:** notice within minutes when a scored service stops answering, whoever caused it.
+2. **Checkpoint:** one read-only command that sums up the whole network's state, so a team can review it at regular intervals.
+
+Today the scoring-style probes (design 01, section 9) run only when a module finishes. Nothing re-checks a service an hour later, after the Red Team, a teammate or a slow failure has changed it.
+
+## 2. Rules that shape it
+
+| Rule | Effect |
+|---|---|
+| Anything that interferes with the scoring engine is the team's responsibility (National Collegiate Cyber Defense Competition [NCCDC], 2025, Rule 4.11). | Probes are light: one per service per interval, with short timeouts. |
+| Do not mislead the scoring engine (NCCDC, 2025, Rule 9.3). | The monitor only observes. It never fakes a response or changes what a service returns. |
+| Tools must not deliberately break expected functionality (NCCDC, 2025, Rule 5.6.5). | The monitor changes nothing. Rollback is a person's decision (section 4). |
+
+## 3. The health monitor
+
+- **Where it runs:** on the control node, as a scheduled job.
+- **What it probes:** every service in the run-time service list, using the same probes as the panic button (design 01, section 9). Scoring accounts are never used to log in (design 01, section 4).
+- **How often:** an interval set in configuration. The timing belongs to the team's own plan, not to this public document.
+- **Where results go:** the `health` log category (design 00, section 7), forwarded to the SIEM (design 10), and a one-line summary per host in the status feed (design 06).
+
+> [!IMPORTANT]
+> **Inside is not outside.** The control node probes from inside the network. The scoring engine checks from wherever it sits, often outside, through the edge firewall and NAT. A pass from inside does not prove the scoring engine sees a pass. Where possible, add one probe from the same side as the scoring engine, and trust the official scoreboard over the monitor.
+
+## 4. When a probe changes state
+
+When a service goes from pass to fail, or back, the monitor:
+
+1. writes the change, with both probe results, to the `health` log;
+2. looks up the last Labyrinth change on that host in the run manifest and names it as a **rollback candidate**;
+3. raises an alert in the status feed and the SIEM;
+4. records the outage time for the incident report's "impact on scored services" field (design 02).
+
+It does **not** roll back on its own. During a run, a failed verify triggers automatic rollback (design 00), because the cause is almost certainly the change just made. An hour later, the cause could be the Red Team, a teammate or the scoring side. Blindly reverting could undo a security fix, so a person decides.
+
+```mermaid
+flowchart TD
+    TMR["Scheduled on the control node"] --> PR["Probe every scored service<br/>(design 01 probes)"]
+    PR --> CMP{"Same result<br/>as last time?"}
+    CMP -->|yes| LOGQ[("health log")]
+    CMP -->|"no: pass ↔ fail"| ACT["Log both results · name the last<br/>Labyrinth change as rollback candidate ·<br/>alert · record impact for reports"]
+    ACT --> LOGQ
+    ACT --> HUM["A person decides:<br/>roll back, fix, or report"]
+    classDef sustain fill:#e3f6e8,stroke:#15803d,color:#0f3d20
+    classDef human fill:#fff4d6,stroke:#b7791f,color:#4a3108
+    classDef store fill:#eef1f5,stroke:#475569,color:#1e293b
+    class TMR,PR,CMP,ACT sustain
+    class HUM human
+    class LOGQ store
+```
+
+*Figure: the control node probes every scored service on a schedule, and when a result changes it logs both results, names the likely cause and alerts, but leaves the rollback decision to a person. Green is sustain work, amber the person's decision and gray the log.*
+
+## 5. The checkpoint command
+
+`labyrinth checkpoint` is read-only and prints one short summary, also saved to the `report` log category:
+
+| Section | Source |
+|---|---|
+| Scored services: current state and any outage since the last checkpoint | Health log (this spec) |
+| Integrity: new findings since the last checkpoint | Baseline comparison (design 04) |
+| Inventory drift: new accounts, listeners, services, tasks | Inventory module (design 08, section 4.1) |
+| Open incidents and reports not yet submitted | Report tracker (design 02) |
+| Trap trips and active bans | Trip log and ban set (designs 09, 12) |
+| Time since the last backup of each scored service | Backup record (design 14) |
+| Revert timers still armed | Safety core (design 01) |
+| Tool integrity: signature and hashes still match | Design 07 |
+
+The command takes no action. It exists so that a regular review is quick and every review covers the same ground.
+
+## 6. Failure behavior
+
+- If the monitor stops, the status feed marks its data stale (design 06), so silence is never mistaken for health.
+- A probe that times out counts as a fail, never as a pass.
+- The monitor never blocks a login or a Labyrinth run.
+
+## 7. Acceptance tests
+
+- Stopping a scored service in the lab raises an alert within one interval, naming the last Labyrinth change on that host.
+- Restarting it logs the recovery and the outage length.
+- The monitor never runs a rollback, a restart or any other change.
+- `labyrinth checkpoint` completes on the full lab network within the target time and changes nothing (the inventory before and after is identical).
+- Killing the monitor marks the status feed stale.
+- Probe traffic is under the target rate per service.
+
+## References
+
+National Collegiate Cyber Defense Competition. (2025, December 10). *Rules and requirements*. Retrieved September 29, 2026, from https://www.nationalccdc.org/rules.html

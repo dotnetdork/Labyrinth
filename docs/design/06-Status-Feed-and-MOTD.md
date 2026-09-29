@@ -38,7 +38,7 @@ flowchart LR
 
 ## 3. Cross-segment flows
 
-Competition networks are often split into segments behind separate firewalls. Only the minimum flows are opened: log forwarding to Splunk, and the control node's admin path. The MOTD feed adds no new flow, because it reuses the admin path. Any new flow is checked against the firewall plan and the scoring allowlist first (National Collegiate Cyber Defense Competition [NCCDC], 2025, Rule 4.11).
+Competition networks are often split into segments behind separate firewalls. Only the minimum flows are opened: log forwarding to Splunk (design 10), and the control node's admin path. The MOTD feed adds no new flow, because it reuses the admin path. Any new flow is checked against the firewall plan and the scoring allowlist first (National Collegiate Cyber Defense Competition [NCCDC], 2025, Rule 4.11).
 
 ## 4. Content rules
 

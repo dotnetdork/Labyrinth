@@ -118,7 +118,7 @@ The attacker's power comes from credentials and existing sessions. Remove both.
 
   **[RULES]** No decoy on a scored port, and no decoy that misleads the scoring engine (NCCDC, 2025, Rule 9.3).
 
-- **Keep scored services green:** health-check them, and use your rollback path the instant a change hurts a service.
+- **Keep scored services green:** health-check them (design 13), and use your rollback path the instant a change hurts a service.
 - **Hold and triage:** work your alert queue by confidence. Canary and honey-account hits come first (near-certain), then anomalies.
 
 > [!TIP]
@@ -162,7 +162,7 @@ Linux specifics link back to the §5 table and appendix A.
 - **Edge:** change the appliance admin, web, SSH and SNMP credentials immediately. Routers and firewalls often ship with well-known defaults.
 - **CCDC note:** the number-one foothold is a credential the Red Team already knows. Rotate administrator-class credentials first, everywhere, before anything clever.
 
-  **[RULES]** Domain-wide or user-level resets are manual-only: POP3 scoring in the 2025 qualifier used Active Directory users (MWCCDC, 2025, Functional Services section; *Provisional*), so a mass reset can zero a scored service. KRBTGT rotation is manual-only. Design: 01, 05.
+  **[RULES]** Domain-wide or user-level resets are manual-only: POP3 scoring in the 2025 qualifier used Active Directory users (MWCCDC, 2025, Functional Services section; *Provisional*), so a mass reset can zero a scored service. KRBTGT rotation is manual-only. Design: 01, 05, 11.
 
 ### 3.2 Remote-admin hardening (SSH / RDP / WinRM) — **P0/P1**
 
@@ -202,7 +202,7 @@ Linux specifics link back to the §5 table and appendix A.
 - **Windows:** there is no fail2ban. Approximate it with a scheduled task or a WinLogbeat → SIEM alert that drives a firewall block, or with an IDS (intrusion detection system) at the edge. This is usually better handled at the perimeter.
 - **CCDC note:** ipset matters when a tarpit is feeding you thousands of IPs; a per-IP ruleset will bloat and slow the box.
 
-  **[RULES]** Bans act only on your own host's inbound traffic. Never scan, attack or contact the source (NCCDC, 2025, Rules 4.10, 4.11). The scoring engine, officials and operators are always on the ignore list.
+  **[RULES]** Bans act only on your own host's inbound traffic. Never scan, attack or contact the source (NCCDC, 2025, Rules 4.10, 4.11). The scoring engine, officials and operators are always on the ignore list. Design: 12.
 
 > [!WARNING]
 > If traffic from outside reaches the host through NAT (network address translation) on the router, the scoring engine and the Red Team can appear to come from the same last-hop address, and banning that address would block scoring. Confirm what source addresses the host actually sees before enabling automatic bans.
@@ -219,7 +219,7 @@ Linux specifics link back to the §5 table and appendix A.
 
   **[RULES]** Do not migrate or containerize scored services (NCCDC, 2025, Rule 4.14).
 
-  A scored service you break costs points immediately; an unpatched, non-exploited CVE probably does not. Prioritize by exploitability plus exposure, not by count.
+  A scored service you break costs points immediately; an unpatched, non-exploited CVE probably does not. Prioritize by exploitability plus exposure, not by count. Design: 15.
 
 ### 3.7 Application / container least-privilege — **P2** (Linux app hosts)
 
@@ -248,7 +248,7 @@ Linux specifics link back to the §5 table and appendix A.
 - **Linux:** `auditd` with rule keys for privileged commands, identity and sudoers, SSH keys, cron, systemd units, `/usr/local`, and **canary reads**; forward to Splunk.
 - **Windows/AD:** **Sysmon** (process creation, network, image loads) plus Windows Security auditing (4624/4625/4688/4720/4728…); forward to Splunk through the universal forwarder.
 - **SIEM:** Splunk is the aggregation point. A few high-value saved searches (new local admin, canary hit, authentication to a locked account) beat a hundred noisy dashboards.
-- **CCDC note:** stand this up in the Observe phase, *before* deception, so the traps have somewhere to report.
+- **CCDC note:** stand this up in the Observe phase, *before* deception, so the traps have somewhere to report. Design: 10.
 
 ### 3.10 Egress control — **P2**
 
@@ -262,7 +262,7 @@ Linux specifics link back to the §5 table and appendix A.
 - **Principle:** every change is reversible, every service is restorable, and there is always a way back in.
 - **Linux (reference §5.9):** timestamped config backups before each change (`*.bak-<ts>`), database dumps before patching, previous container images tagged `:pre-update` for instant rollback, and the provider console as break-glass.
 - **Windows/AD:** system state and AD backups; VSS (Volume Shadow Copy Service) snapshots; a documented DC (domain controller) recovery path.
-- **CCDC note:** the team that can *revert* a bad change in seconds outscores the team that is afraid to make changes.
+- **CCDC note:** the team that can *revert* a bad change in seconds outscores the team that is afraid to make changes. Design: 14.
 
 ---
 
@@ -413,10 +413,10 @@ Classify each host and apply only the roles that fit:
 |---|---|---|
 | `linux-server` | Any Linux server without a web role | identity, ssh, firewall, fail2ban, deception, egress_log, audit_motd, patching |
 | `linux-web` | Linux web or webmail server | + nginx_edge (the scanner tarpit is P1 here). No `containers` role: scored services may not be containerized (NCCDC, 2025, Rule 4.14). |
-| `windows-member` | Windows member servers and workstations | win_base, win_firewall, win_audit, honey-account, canary |
-| `windows-dc` | Domain controller with DNS | + AD hardening checklist; KRBTGT rotation and DNS sinkhole are manual-only (§3.1, §4.6) |
+| `windows-member` | Windows member servers and workstations | win_base, win_firewall, win_audit, honey-account, canary (design 11) |
+| `windows-dc` | Domain controller with DNS | + AD hardening checklist (design 11); KRBTGT rotation and DNS sinkhole are manual-only (§3.1, §4.6) |
 | `linux-siem` | SIEM server | identity, ssh, firewall + ingest config (the destination, hardened but light) |
-| `appliance` | Router or firewall appliance | Templated config + manual runbook (credentials, default-deny, management-plane lockdown) |
+| `appliance` | Router or firewall appliance | Templated config + manual runbook (credentials, default-deny, management-plane lockdown; design 16) |
 
 ### 6.4 Phase playbooks = the doctrine, executable
 

@@ -29,6 +29,13 @@ Each spec belongs to one phase of the doctrine, and every document uses the same
 | 07 | [Cleanup and tool integrity](07-Cleanup-and-Tool-Integrity.md) | 🟩 Sustain | How do we leave nothing behind and keep our own tools tamper-evident? |
 | 08 | [Ideas mined from reference repos](08-Reference-Mining.md) | All | What did the reference-only repositories teach us, turned into specs? |
 | 09 | [Deception maze and CVE decoys](09-Deception-Maze-and-CVE-Decoys.md) | 🟪 Deceive | How do we build the maze, and where are the limits? |
+| 10 | [Log forwarding and detection](10-Log-Forwarding-and-Detection.md) | 🟦 Observe | Which logs leave each host, how they reach the SIEM, and which few searches run over them? |
+| 11 | [Windows and AD hardening](11-Windows-and-AD-Hardening.md) | 🟥 Lock out | How do we harden Windows hosts and the domain controller without a domain-wide mistake? |
+| 12 | [Dynamic bans](12-Dynamic-Bans.md) | 🟪 Deceive | How do trap hits become expiring bans that can never block the scoring engine? |
+| 13 | [Health monitor and checkpoints](13-Health-Monitor-and-Checkpoints.md) | 🟩 Sustain | How do we notice a scored service going down, and review the whole network in one command? |
+| 14 | [Backup and recovery](14-Backup-and-Recovery.md) | 🟩 Sustain | How do we restore a scored service after damage we did not cause? |
+| 15 | [Patching and service reduction](15-Patching-and-Service-Reduction.md) | 🟥 Lock out | How do we turn off unneeded services and patch the dangerous packages without breaking scoring? |
+| 16 | [Network appliance runbooks](16-Network-Appliance-Runbooks.md) | 🟥 Lock out | How does a person lock down routers and firewall appliances safely? |
 
 ## Diagrams
 
@@ -53,6 +60,13 @@ Each diagram is a Mermaid block inside the document it illustrates, with a one-s
 | Status feed push | [06, section 2](06-Status-Feed-and-MOTD.md#2-design-push-from-the-control-node) |
 | Cleanup and tool integrity | [07, section 5](07-Cleanup-and-Tool-Integrity.md#5-replacement-signed-manifest-and-known-commit) |
 | Decoy lifecycle: seed, safety checks, trip log, cleanup | [09, section 6](09-Deception-Maze-and-CVE-Decoys.md#6-safety-checks-before-deployment) |
+| Log sources, the SIEM and the saved searches | [10, section 4](10-Log-Forwarding-and-Detection.md#4-how-logs-are-shipped) |
+| Windows hardening order: members first, domain controller last | [11, section 3](11-Windows-and-AD-Hardening.md#3-blast-radius-decides-the-tier) |
+| Ban decision: source gate, never-ban list, threshold | [12, section 6](12-Dynamic-Bans.md#6-how-bans-are-enforced) |
+| Health monitor: probe, compare, alert, human decides | [13, section 4](13-Health-Monitor-and-Checkpoints.md#4-when-a-probe-changes-state) |
+| Restore point: space check, hash, store, restore | [14, section 4](14-Backup-and-Recovery.md#4-when) |
+| Patching: check, rank, restore point, verify | [15, section 4](15-Patching-and-Service-Reduction.md#4-patching) |
+| Appliance runbook: prepare, change, confirm or revert | [16, section 4](16-Network-Appliance-Runbooks.md#4-the-runbook-steps) |
 
 ## Where things live
 
@@ -82,6 +96,7 @@ Each diagram is a Mermaid block inside the document it illustrates, with a one-s
 | 2026-09-29 | References: VyOS entry moved into alphabetical order (01); the first citation in each document now gives the full author name with its abbreviation (00, 04, README); the README gained a reference list. |
 | 2026-09-29 | Color: the four phases have one color each (🟥 lock out, 🟦 observe, 🟪 deceive, 🟩 sustain) in tables, status lines and every diagram; diagrams also use amber for steps a person does and a dashed red outline for stops; the Blueprint priority scorecard is color-coded by priority. Nodes, edges and text unchanged apart from a color sentence added to each caption. |
 | 2026-09-29 | Added `docs/Overview.md`, a plain-language tour of every part of the system for non-expert readers, with three diagrams. It adds no new facts: each statement summarizes the Blueprint or a design spec. |
+| 2026-09-29 | Added designs 10 to 16 to close gaps found in a coverage review: log forwarding and detection (10), Windows and AD hardening (11), dynamic bans (12), health monitor and checkpoints (13), backup and recovery (14), patching and service reduction (15) and network appliance runbooks (16). Each turns an existing Blueprint capability into a spec; tool-specific details that were not re-checked are labeled *Background*, and open questions are pinned. Cross-links added in the Blueprint and designs 00, 01, 04, 06 and 08; `health` added to the log categories (00). |
 
 ## References
 

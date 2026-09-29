@@ -61,7 +61,7 @@ flowchart TD
 
 - **Linux:** auditd rules for the critical set, kept small to avoid log floods.
 - **Windows:** object access auditing on the critical set, process creation with command line, and Sysmon if it is available inside the environment. Only tools available to all teams and within the rules may be used (National Collegiate Cyber Defense Competition [NCCDC], 2025, Rule 5.1).
-- **All hosts:** every host forwards a small set of high-signal events first (design 06 and the Strategic Plan).
+- **All hosts:** every host forwards a small set of high-signal events first (designs 06 and 10, and the Strategic Plan).
 
 ## 6. Continuous integrity
 
