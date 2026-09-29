@@ -1,8 +1,10 @@
 # Labyrinth Design Specifications
 
-**Status:** Draft 1 · 2026-09-29 · These are design documents, not code. They describe what each part must do, how it stays inside the competition rules, and how it is tested.
+**Status:** Draft 2 · reviewed 2026-09-29 · These are design documents, not code. They describe what each part must do, how it stays inside the competition rules, and how it is tested.
 
-> **Rules basis.** Built on the 2026 national CCDC rules and the 2025 Midwest qualifier packet. The 2027 rules are not published yet, so every rule citation here must be re-checked when they arrive. Rule numbers follow the web version of the rules (National Collegiate Cyber Defense Competition [NCCDC], 2025).
+> **Rules basis.** Built on the 2026 national CCDC rules and the 2025 Midwest qualifier packet. The 2027 rules are not published yet, so every rule citation here must be re-checked when they arrive. Rule numbers follow the web version of the rules (National Collegiate Cyber Defense Competition [NCCDC], 2025). That page numbers its sections but letters the items within them, so Rule 4.14 appears as item 4(n) and Rule 5.6.1 as 5(f)(i).
+
+**Verification labels.** *Verified*: checked against the named source on the date given. *Provisional*: from a text extraction or a source that could not be re-checked. *Background*: general knowledge, not re-checked.
 
 ## Reading order
 
@@ -32,6 +34,12 @@
 4. Never impede the scoring engine or mislead it (NCCDC, 2025, Rules 4.11, 9.3).
 5. Officials must be able to get in (NCCDC, 2025, Rule 4.1).
 6. No new devices (NCCDC, 2025, Rule 4.2); no containerizing scored services (NCCDC, 2025, Rule 4.14).
+
+## Review log
+
+| Date | Change |
+|---|---|
+| 2026-09-29 | Independent review. Fixed: VyOS commit-confirm reboot default (01); account locks moved from Tier 1 to Tier 2 and domain locks to Tier 3 (01); incident-report rule wording (02); `sfc /verifyonly` (04); materials rules 4.4 and 8.5 (07); banner decoys limited to unscored services (09). Removed event-specific topology, hostnames and timings from the public documents. |
 
 ## References
 

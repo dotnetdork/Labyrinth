@@ -4,9 +4,9 @@
 **Purpose:** the base documentation — the portable doctrine and the transferable technical controls — used to design and build the automation.
 **Reference implementation:** a hardened Debian server run by the author is the worked example of the **Linux server profile**; this document generalizes it to a mixed competition network.
 **Secrets:** none reproduced. This document describes configuration *shape* only — no keys, env files, or credentials.
-**Revision:** Draft 2 · 2026-09-29 · rules-aware. Competition rules are cited by rule number in APA 7 style (author, date, rule). Detailed designs live in [`design/`](design/README.md).
+**Revision:** Draft 2 · reviewed 2026-09-29 · rules-aware. Competition rules are cited by rule number in APA 7 style (author, date, rule). Detailed designs live in [`design/`](design/README.md).
 
-> **Rules basis and warning.** Rule numbers follow the web version of the national CCDC rules, updated 10 December 2025 (National Collegiate Cyber Defense Competition [NCCDC], 2025). The 2027 rules and the Midwest packet are not published yet. Every rule citation must be re-checked when they arrive. Where this document and the rules disagree, the rules win. Items marked **[RULES]** were changed from Draft 1 because of a rule.
+> **Rules basis and warning.** Rule numbers follow the web version of the national CCDC rules, updated 10 December 2025 (National Collegiate Cyber Defense Competition [NCCDC], 2025). The page letters the items in each section, so Rule 4.14 is item 4(n) and Rule 5.6.1 is 5(f)(i). The 2027 rules and the Midwest packet are not published yet. Every rule citation must be re-checked when they arrive. Where this document and the rules disagree, the rules win. Items marked **[RULES]** are limits the competition rules place on a control.
 
 ---
 
@@ -89,7 +89,7 @@ The core of the reference. Each capability states the portable **principle**, th
 - **Linux:** `passwd` / `chpasswd` for root and administrator-class accounts only; `usermod -L` to lock unexpected local accounts outside the protected set; audit `sudoers` and group membership; back up then empty unexpected `~/.ssh/authorized_keys`; end stray sessions (`pkill -u`) that are not an official's. Ordinary user accounts (for example mailbox users) are never rotated or locked by automation.
 - **Windows/AD:** rotate the built-in Administrator and administrator-class accounts; review `Domain Admins`, `Enterprise Admins` and local Administrators membership. By hand only, after confirming with the captain: reset the KRBTGT password (twice, with a replication wait) to invalidate golden tickets; reset service accounts once their dependencies are known; disable accounts confirmed as unused.
 - **Edge:** change the appliance admin/web/SSH/SNMP credentials immediately (routers and firewalls often ship with well-known defaults).
-- **CCDC note:** the number-one foothold is a credential the Red Team already knows. Rotate administrator-class credentials first, everywhere, before anything clever. **[RULES]** Domain-wide or user-level resets are manual-only: POP3 scoring in the 2025 qualifier used Active Directory users (MWCCDC, 2025, Scored Services; *Provisional*), so a mass reset can zero a scored service. KRBTGT rotation is manual-only. Design: 01, 05.
+- **CCDC note:** the number-one foothold is a credential the Red Team already knows. Rotate administrator-class credentials first, everywhere, before anything clever. **[RULES]** Domain-wide or user-level resets are manual-only: POP3 scoring in the 2025 qualifier used Active Directory users (MWCCDC, 2025, Functional Services section; *Provisional*), so a mass reset can zero a scored service. KRBTGT rotation is manual-only. Design: 01, 05.
 
 ### 3.2 Remote-admin hardening (SSH / RDP / WinRM) — **P0/P1**
 - **Principle:** shrink and strengthen the way *you* get in; deny every other way.
@@ -119,7 +119,7 @@ The core of the reference. Each capability states the portable **principle**, th
 
 ### 3.6 Service minimization & patching — **P1**
 - **Principle:** fewer listeners, fewer known-exploited packages.
-- **Linux:** disable/mask unneeded units; patch internet-facing, known-exploited packages surgically (not a blind full upgrade mid-round). Track fixable CVEs (`debsecan`) narrowed to what is *actually* upgradable today.
+- **Linux:** disable/mask unneeded units; patch internet-facing, known-exploited packages surgically (not a blind full upgrade mid-round). Track fixable CVEs (`debsecan` on Debian; `pro fix` or the Ubuntu security notices on Ubuntu; `dnf updateinfo` on RHEL-family hosts) narrowed to what is *actually* upgradable today.
 - **Windows:** stop unneeded services and features; apply the specific KBs for known-exploited CVEs; disable SMBv1, LLMNR, NBT-NS.
 - **CCDC note:** **[RULES]** Do not migrate or containerize scored services (NCCDC, 2025, Rule 4.14). A scored service you break costs points immediately; an unpatched non-exploited CVE probably does not. Prioritize by exploitability + exposure, not by count.
 
@@ -139,7 +139,7 @@ The core of the reference. Each capability states the portable **principle**, th
 - **Linux:** `auditd` with rule keys for privileged commands, identity/sudoers, SSH keys, cron, systemd units, `/usr/local`, and **canary reads**; forward to Splunk.
 - **Windows/AD:** **Sysmon** (process creation, network, image loads) + Windows Security auditing (4624/4625/4688/4720/4728…); forward via the universal forwarder to Splunk.
 - **SIEM:** Splunk as the aggregation point; a few high-value saved searches (new local admin, canary hit, auth to a locked account) beat a hundred noisy dashboards.
-- **CCDC note:** stand this up in Phase 2 *before* deception, so the traps in Phase 3 have somewhere to scream.
+- **CCDC note:** stand this up in the Observe phase *before* deception, so the traps have somewhere to report.
 
 ### 3.10 Egress control — **P2**
 - **Principle:** unexpected *outbound* is the C2 signature; watch it even if you cannot block it.
@@ -157,7 +157,7 @@ The core of the reference. Each capability states the portable **principle**, th
 
 ## 4. Deception & trap catalog
 
-**Design principle (from the reference box and the trap playbook):** *make reconnaissance expensive and noisy for the attacker, while every trip is logged for the defender.* Route every tripwire to **one** place (a central trip log / SIEM index) so a single rate-limited notifier can watch it. Deception is Phase 3 — it multiplies the value of the observation you set up in Phase 2.
+**Design principle (from the reference box and the trap playbook):** *make reconnaissance expensive and noisy for the attacker, while every trip is logged for the defender.* Route every tripwire to **one** place (a central trip log / SIEM index) so a single rate-limited notifier can watch it. Deception comes after Observe — it multiplies the value of the logging you set up there.
 
 ### 4.1 Trap ports / port-trap honeypot
 Ports you run **nothing** on, so a single inbound packet is hostile.
@@ -166,7 +166,7 @@ Ports you run **nothing** on, so a single inbound packet is hostile.
 - **Portability:** Windows — a firewall "block + log" rule on unused ports feeding a Sysmon/Security alert.
 
 ### 4.2 SSH tarpit (endlessh)
-A tarpit on the port every bot targets (22): dribbles an endless SSH banner so scanners hang for minutes. Real admin is elsewhere (§3.4). The reference box parses the tarpit for offenders. In a competition, only put a tarpit on port 22 if SSH is not scored and the officials have been told the real admin path (NCCDC, 2025, Rule 4.1); the tarpit program must be vendored, not downloaded at the event. **[RULES]** Draft 1 reported them to an external reputation service. That is removed: a team tool may not use outside resources apart from DNS (NCCDC, 2025, Rule 5.6.4). Offenders go to the local trip log only. **Value:** wastes attacker/bot time for free and turns the noisiest port into a sensor.
+A tarpit on the port every bot targets (22): dribbles an endless SSH banner so scanners hang for minutes. Real admin is elsewhere (§3.4). The reference box parses the tarpit for offenders. In a competition, only put a tarpit on port 22 if SSH is not scored and the officials have been told the real admin path (NCCDC, 2025, Rule 4.1); the tarpit program must be vendored, not downloaded at the event. **[RULES]** Offenders are never reported to an outside reputation service: a team tool may not use outside resources apart from DNS (NCCDC, 2025, Rule 5.6.4). Offenders go to the local trip log only. **Value:** wastes attacker/bot time for free and turns the noisiest port into a sensor.
 
 ### 4.3 Web scanner tarpit
 Two implementations of one idea — punish tools like Gobuster/Dirb/Nikto that crawl for `/wp-login`, `.env`, `/phpmyadmin`, etc.
@@ -222,29 +222,10 @@ The proven source for Labyrinth's Linux roles. Each control below is production-
 ## 6. Labyrinth architecture
 
 ### 6.1 Tooling
-**Native scripts first, Ansible optional.** **[RULES]** The 2025 Midwest packet describes a web proxy limited to essential sites and the team's declared repository (MWCCDC, 2025; *Provisional*), and team tools may not use outside resources (NCCDC, 2025, Rule 5.6.4). Packages and collections cannot be assumed to download at the event. Labyrinth is therefore bash on Linux and PowerShell on Windows, self-contained in one repository with vendored third-party code. Each module maps one-to-one to an Ansible role, so Ansible can be adopted later if it proves usable. Ansible was the Draft 1 choice: idempotent, agentless, re-runnable. Network appliances use templated configuration and a manual runbook. See design 00.
+**Native scripts first, Ansible optional.** **[RULES]** The 2025 Midwest packet describes a web proxy limited to essential sites and the team's declared repository (MWCCDC, 2025; *Provisional*), and team tools may not use outside resources (NCCDC, 2025, Rule 5.6.4). Packages and collections cannot be assumed to download at the event. Labyrinth is therefore bash on Linux and PowerShell on Windows, self-contained in one repository with vendored third-party code. Each module maps one-to-one to an Ansible role, so Ansible can be adopted later if it proves usable. Network appliances use templated configuration and a manual runbook. See design 00.
 
 ### 6.2 Layout
-The Draft 1 Ansible layout is kept below as a mapping target. The current repository layout is in design 00 (`phases/`, `core/`, `profiles/`).
-```
-ansible/
-├── inventory/
-│   ├── hosts.yml              # hosts grouped by profile
-│   └── host_vars/<host>.yml   # per-host: profile, admin IPs, users, domains, trap set
-├── group_vars/
-│   ├── all.yml                # global invariants
-│   ├── linux.yml / windows.yml
-│   └── <profile>.yml          # linux_web, windows_dc, ...
-├── roles/                     # one role per capability (§3 / §5)
-│   ├── identity/ ssh/ firewall/ fail2ban/ deception/
-│   ├── containers/ nginx_edge/ egress_log/ audit_motd/ patching/
-│   └── win_base/ win_audit/ win_firewall/ ...
-└── playbooks/
-    ├── lockout.yml            # Phase 0–1: creds, accounts, default-deny, admin hardening
-    ├── observe.yml            # Phase 2: auditd/Sysmon + SIEM forwarding
-    ├── deceive.yml            # Phase 3: traps, canaries, honey-accounts, sinkholes
-    └── sustain.yml            # health checks, patching, backups
-```
+The repository layout is defined in design 00 (`core/`, `phases/<phase>/modules/`, `profiles/`, `platform/`, `config/`). If Ansible is adopted, each phase becomes a playbook, each module a role, and each profile a group of hosts; role names below (`ssh`, `firewall`, `nginx_edge` …) are the module names.
 
 ### 6.3 Profiles
 Classify each host and apply only the roles that fit:
@@ -259,13 +240,13 @@ Classify each host and apply only the roles that fit:
 | `appliance` | Router or firewall appliance | templated config + manual runbook (creds, default-deny, mgmt-plane lockdown) |
 
 ### 6.4 Phase playbooks = the doctrine, executable
-The lockout phase is the panic button. **[RULES]** Draft 1 ran it against every reachable host in one pass to reset credentials, lock accounts and default-deny. That version is prohibited by the rule against tools that deliberately break expected functionality (NCCDC, 2025, Rule 5.6.5). The redesigned version keeps the speed and adds guard rails: a protected set, plan-before-apply, rings with a canary host, a verified break-glass path, dead-man revert timers, and scoring-style probes after each module. Tier 3 actions are printed checklists for a human. See design 01. Then layer `observe → deceive → sustain`.
+The lockout phase is the panic button. **[RULES]** A single pass that resets every credential, locks every account and default-denies every host would break expected functionality, which the rules prohibit (NCCDC, 2025, Rule 5.6.5). The design keeps the speed and adds guard rails: a protected set, plan-before-apply, rings with a canary host, a verified break-glass path, dead-man revert timers, and scoring-style probes after each module. Tier 3 actions are printed checklists for a human. See design 01. Then layer `observe → deceive → sustain`.
 
 ### 6.5 Secret handling
 Ship **placeholder templates** only (`.env.example`, cert paths, token *names*). Real values are supplied at run time from the event packet and the paper seed. **[RULES]** The code is public (NCCDC, 2025, Rule 5.6.1), so decoy values are derived from a secret event seed on paper (design 03) rather than stored in an encrypted repository file. Labyrinth provisions the *shape*; the operator supplies the values. **No real credential, key, or env file ever enters the repo.**
 
 ### 6.6 Speed & safety discipline
-- **Idempotent + check-mode first** — dry-run (`--check --diff`) before you commit, especially near scored services.
+- **Idempotent + plan mode first** — every module runs in `plan` mode (a dry run) before `apply`, especially near scored services (design 00).
 - **Reversible** — every role backs up what it changes (timestamped) and documents its rollback.
 - **Tested on throwaway VMs** (or the CCDC practice image) before you trust it live.
 - **Fail-safe ordering** — never lock your own admin path before the new one is proven; keep the break-glass path. **[RULES]** A dead-man revert timer is armed before any firewall or SSH change (design 01).

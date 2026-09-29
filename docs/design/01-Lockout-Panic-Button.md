@@ -1,6 +1,6 @@
 # 01. Lockout ("Panic Button") Design
 
-**Status:** Draft 1 · 2026-09-29 · Phase: Lock out · Priority: P0
+**Status:** Draft 2 · reviewed 2026-09-29 · Phase: Lock out · Priority: P0
 
 ## 1. What it is
 

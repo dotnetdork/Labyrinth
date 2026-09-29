@@ -1,6 +1,6 @@
 # 05. Credentials and SSH Keys
 
-**Status:** Draft 1 · 2026-09-29 · Phase: Lock out · Priority: P0
+**Status:** Draft 2 · reviewed 2026-09-29 · Phase: Lock out · Priority: P0
 
 ## 1. Rules that shape it
 
@@ -8,7 +8,7 @@
 |---|---|
 | Administrator-class passwords are not used for scoring and may be changed freely; other user passwords need the notification process (Midwest Collegiate Cyber Defense Competition [MWCCDC], 2025, Rule 13) | Automation rotates admin-class credentials only. |
 | Officials must get access on request (National Collegiate Cyber Defense Competition [NCCDC], 2025, Rule 4.1) | Sealed break-glass credentials and a verified path exist per critical host. |
-| POP3 scoring uses domain users (MWCCDC, 2025, Scored Services section; *Provisional*) | Domain-wide password resets are manual-only. |
+| POP3 scoring uses domain users (MWCCDC, 2025, Functional Services section; *Provisional*) | Domain-wide password resets are manual-only. |
 | No deliberate breakage (NCCDC, 2025, Rule 5.6.5) | Never disable accounts wholesale. |
 
 ## 2. Password rotation

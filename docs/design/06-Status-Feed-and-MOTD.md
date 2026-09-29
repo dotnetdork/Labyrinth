@@ -1,6 +1,6 @@
-# 06. Status Feed and MOTD
+# 06. Status Feed and MOTD (Message of the Day)
 
-**Status:** Draft 1 · 2026-09-29 · Phase: Observe · Priority: P2
+**Status:** Draft 2 · reviewed 2026-09-29 · Phase: Observe · Priority: P2
 
 ## 1. Goal
 
@@ -13,7 +13,7 @@ The SIEM holds no keys to managed hosts. Instead:
 1. The control node queries Splunk for a small, fixed set of saved searches (per-host alert counts, last integrity findings, decoy trips).
 2. It renders one short text file per host.
 3. It pushes each file to its host using the operator SSH key (design 05) into a root-owned status path.
-4. The host's login banner or `update-motd.d` script prints that file.
+4. The host's login banner prints that file (`/etc/update-motd.d/` on Debian and Ubuntu; a `profile.d` script or `/etc/motd.d/` on RHEL-family hosts).
 
 This adds no new trust path: the control node already administers the hosts.
 

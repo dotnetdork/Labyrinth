@@ -1,6 +1,6 @@
 # 03. Event Seed and Deception Configuration
 
-**Status:** Draft 1 · 2026-09-29 · Phase: Deceive · Priority: P1
+**Status:** Draft 2 · reviewed 2026-09-29 · Phase: Deceive · Priority: P1
 
 ## 1. The problem
 
@@ -18,7 +18,7 @@ A rival who reads the repository learns how values are made, not which values th
 
 ## 3. Derivation
 
-`value = HMAC-SHA256(seed, "purpose:index")`, then mapped into the needed range or alphabet.
+`value = HMAC-SHA256(seed, "purpose:index")`, then mapped into the needed range or alphabet. HMAC-SHA256 is a keyed hash: the same seed and label always give the same output, and the output reveals nothing about the seed.
 
 | Purpose string | Produces |
 |---|---|
