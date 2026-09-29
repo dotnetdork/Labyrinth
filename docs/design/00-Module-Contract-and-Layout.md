@@ -71,14 +71,20 @@ Notes:
 ```mermaid
 flowchart TD
     MAIN["labyrinth.sh / labyrinth.ps1<br/>(main program)"]
-    PROF["profiles/<br/>host profile → module list"]
-    CORE["core/<br/>log · manifest · safety · seed · probe"]
-    PH["phases/<br/>lockout · observe · deceive · sustain"]
-    MOD["phases/{phase}/modules/{name}/<br/>module.yml + entry points"]
-    PLAT["platform/<br/>per-OS adapters"]
-    REP["report/<br/>incident report builder"]
-    CFG["config/<br/>*.example templates only"]
-    VEN["vendor/<br/>pinned third-party code"]
+    subgraph inputs["What the main program reads"]
+        PROF["profiles/<br/>host profile → module list"]
+        CFG["config/<br/>*.example templates only"]
+    end
+    subgraph work["What it runs"]
+        PH["phases/<br/>lockout · observe · deceive · sustain"]
+        MOD["phases/{phase}/modules/{name}/<br/>module.yml + entry points"]
+        REP["report/<br/>incident report builder"]
+    end
+    subgraph shared["What modules share"]
+        CORE["core/<br/>log · manifest · safety · seed · probe"]
+        PLAT["platform/<br/>per-OS adapters"]
+        VEN["vendor/<br/>pinned third-party code"]
+    end
     MAIN -->|reads| PROF
     MAIN -->|runs| PH
     PH -->|calls| MOD
@@ -89,7 +95,7 @@ flowchart TD
     MAIN -->|cross-phase| REP
 ```
 
-*Figure: the main program reads a profile, runs phase entry scripts, and each phase calls its modules, which share the core library and per-OS adapters; dashed lines are optional or run-time-only links.*
+*Figure: the main program reads a profile, runs the phase entry scripts, and each phase calls its modules, which share the core library and per-OS adapters; dashed lines are optional or run-time-only links.*
 
 ## 4. The module contract
 
@@ -141,10 +147,12 @@ flowchart TD
     V -->|"fail: exit 30"| RB["rollback<br/>from the run manifest"]
     RB --> CL
     CL --> DONE
-    ERR["any step fails unexpectedly:<br/>exit 40, stop"]
+    subgraph anystep["At any step"]
+        ERR(["any step fails unexpectedly:<br/>exit 40, stop"])
+    end
 ```
 
-*Figure: one module run moves from check to plan to a human-confirmed apply, then verify decides between cleanup and rollback; the exit code at each branch is shown on the arrow.*
+*Figure: one module run moves from check to plan to a human-confirmed apply, then verify decides between cleanup and rollback; each arrow shows its exit code, and exit 40 can end the run at any step.*
 
 Rules for module authors:
 
