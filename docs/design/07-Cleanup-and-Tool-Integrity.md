@@ -1,6 +1,6 @@
 # 07. Cleanup and Tool Integrity
 
-**Status:** Draft · reviewed 2026-09-29 · Phase: Sustain · Priority: P1
+**Status:** Draft · reviewed 2026-09-29 · Phase: 🟩 Sustain · Priority: P1
 
 ## 1. Two goals
 
@@ -52,9 +52,13 @@ flowchart TD
     RES -->|yes| KEEP["Keep in read-only {root}/bin;<br/>hashed by the integrity check"]
     DEL --> CLN["End of event: cleanup removes only<br/>what the run manifest lists"]
     KEEP --> CLN
+    classDef sustain fill:#e3f6e8,stroke:#15803d,color:#0f3d20
+    classDef stop fill:#f6f6f6,stroke:#b42318,color:#4a1111,stroke-dasharray:4 3
+    class REL,MAN,SIG,RUN,DEL,KEEP,CLN sustain
+    class NO stop
 ```
 
-*Figure: code runs only after the signed manifest and every file hash match the declared release, and cleanup later removes only what the run manifest recorded.*
+*Figure: code runs only after the signed manifest and every file hash match the declared release, and cleanup later removes only what the run manifest recorded. Green is sustain work and the dashed red outline is the refusal.*
 
 ## 6. Acceptance tests
 

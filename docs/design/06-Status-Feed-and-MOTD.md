@@ -1,6 +1,6 @@
 # 06. Status Feed and MOTD (Message of the Day)
 
-**Status:** Draft · reviewed 2026-09-29 · Phase: Observe · Priority: P2
+**Status:** Draft · reviewed 2026-09-29 · Phase: 🟦 Observe · Priority: P2
 
 ## 1. Goal
 
@@ -28,9 +28,13 @@ flowchart LR
     CN -->|"3. push over the existing admin path<br/>(operator SSH key)"| H1
     H1 -->|"4. printed at login"| BAN
     SPL -.-x|"no access"| H1
+    classDef store fill:#eef1f5,stroke:#475569,color:#1e293b
+    classDef observe fill:#e3eefc,stroke:#2563eb,color:#0f2a5c
+    class SPL store
+    class CN,H1,BAN observe
 ```
 
-*Figure: the control node pulls a few saved searches from Splunk and pushes a short status file to each host over the admin path it already uses, while the SIEM itself has no access to any host.*
+*Figure: the control node pulls a few saved searches from Splunk and pushes a short status file to each host over the admin path it already uses, while the SIEM itself has no access to any host. Blue is the status feed and gray is the SIEM.*
 
 ## 3. Cross-segment flows
 

@@ -2,7 +2,7 @@
 
 **Status:** Draft · reviewed 2026-09-29
 
-These are design documents, not code. They describe what each part must do, how it stays inside the competition rules, and how it is tested. The [implementation blueprint](../Blueprint.md) is the complete overview of what the whole system needs; each spec here is the detailed design and instructions for one part of it.
+These are design documents, not code. They describe what each part must do, how it stays inside the competition rules, and how it is tested. The [implementation blueprint](../Blueprint.md) is the complete overview of what the whole system needs; each spec here is the detailed design and instructions for one part of it. For a plain-language introduction to every part, read the [overview](../Overview.md) first.
 
 > [!NOTE]
 > **Rules basis.** Built on the 2026 national CCDC (Collegiate Cyber Defense Competition) rules and the 2025 Midwest qualifier packet. The 2027 rules are not published yet, so every rule citation here must be re-checked when they arrive. Rule numbers follow the web version of the rules (National Collegiate Cyber Defense Competition [NCCDC], 2025). That page numbers its sections but letters the items within them, so Rule 4.14 appears as item 4(n) and Rule 5.6.1 as 5(f)(i).
@@ -15,18 +15,20 @@ These are design documents, not code. They describe what each part must do, how 
 
 ## Reading order
 
-| # | Document | Question it answers |
-|---|---|---|
-| 00 | [Module contract and layout](00-Module-Contract-and-Layout.md) | How is Labyrinth organized so that new capabilities plug in without touching the core? |
-| 01 | [Lockout ("panic button")](01-Lockout-Panic-Button.md) | How do we do the first-minutes lockout safely and inside the rules? |
-| 02 | [Incident reporting automation](02-Incident-Reporting-Automation.md) | How do we produce complete Red Team incident reports quickly? |
-| 03 | [Event seed and deception config](03-Event-Seed-and-Deception-Config.md) | How can the code be public but the deception still be unpredictable? |
-| 04 | [Baseline and integrity](04-Baseline-and-Integrity.md) | How do we hash critical files and learn who changed what, when, and from where? |
-| 05 | [Credentials and SSH keys](05-Credentials-and-SSH-Keys.md) | How do we rotate credentials and deploy SSH (Secure Shell) keys without locking ourselves out? |
-| 06 | [Status feed and MOTD](06-Status-Feed-and-MOTD.md) | How does the SIEM (Security Information and Event Management system) inform every host without new trust paths? |
-| 07 | [Cleanup and tool integrity](07-Cleanup-and-Tool-Integrity.md) | How do we leave nothing behind and keep our own tools tamper-evident? |
-| 08 | [Ideas mined from reference repos](08-Reference-Mining.md) | What did the reference-only repositories teach us, turned into specs? |
-| 09 | [Deception maze and CVE decoys](09-Deception-Maze-and-CVE-Decoys.md) | How do we build the maze, and where are the limits? |
+Each spec belongs to one phase of the doctrine, and every document uses the same colors for them: 🟥 **Lock out** · 🟦 **Observe** · 🟪 **Deceive** · 🟩 **Sustain**. In diagrams, amber marks a step a person does or decides, and a dashed red outline marks a stop or refusal.
+
+| # | Document | Phase | Question it answers |
+|---|---|---|---|
+| 00 | [Module contract and layout](00-Module-Contract-and-Layout.md) | All | How is Labyrinth organized so that new capabilities plug in without touching the core? |
+| 01 | [Lockout ("panic button")](01-Lockout-Panic-Button.md) | 🟥 Lock out | How do we do the first-minutes lockout safely and inside the rules? |
+| 02 | [Incident reporting automation](02-Incident-Reporting-Automation.md) | 🟩 Sustain | How do we produce complete Red Team incident reports quickly? |
+| 03 | [Event seed and deception config](03-Event-Seed-and-Deception-Config.md) | 🟪 Deceive | How can the code be public but the deception still be unpredictable? |
+| 04 | [Baseline and integrity](04-Baseline-and-Integrity.md) | 🟦 Observe | How do we hash critical files and learn who changed what, when, and from where? |
+| 05 | [Credentials and SSH keys](05-Credentials-and-SSH-Keys.md) | 🟥 Lock out | How do we rotate credentials and deploy SSH (Secure Shell) keys without locking ourselves out? |
+| 06 | [Status feed and MOTD](06-Status-Feed-and-MOTD.md) | 🟦 Observe | How does the SIEM (Security Information and Event Management system) inform every host without new trust paths? |
+| 07 | [Cleanup and tool integrity](07-Cleanup-and-Tool-Integrity.md) | 🟩 Sustain | How do we leave nothing behind and keep our own tools tamper-evident? |
+| 08 | [Ideas mined from reference repos](08-Reference-Mining.md) | All | What did the reference-only repositories teach us, turned into specs? |
+| 09 | [Deception maze and CVE decoys](09-Deception-Maze-and-CVE-Decoys.md) | 🟪 Deceive | How do we build the maze, and where are the limits? |
 
 ## Diagrams
 
@@ -34,6 +36,9 @@ Each diagram is a Mermaid block inside the document it illustrates, with a one-s
 
 | Diagram | Where |
 |---|---|
+| The four phases in order (plain-language version) | [Overview, section 2.1](../Overview.md#21-the-strategy-four-phases-in-order) |
+| The system at a glance: control node, hosts, SIEM, trip log, reports | [Overview, section 2.3](../Overview.md#23-the-system-at-a-glance) |
+| The life of one module (simplified) | [Overview, section 3.2](../Overview.md#32-the-life-of-one-module) |
 | Order of work: lock out, observe, deceive and sustain | [Blueprint, §1](../Blueprint.md#1-operating-doctrine--the-order-of-work) |
 | Every trap reports to one trip log | [Blueprint, §4](../Blueprint.md#trip-log-pattern) |
 | The four phases and what each contains | [00, section 2](00-Module-Contract-and-Layout.md#2-naming-phases-not-hardening) |
@@ -74,6 +79,9 @@ Each diagram is a Mermaid block inside the document it illustrates, with a one-s
 | 2026-09-29 | Formatting and readability pass, no change to facts: consistent status lines without draft numbers, GitHub alert blocks for existing warnings and caveats, long paragraphs split into lists and tables, sentences reworded for clarity, acronyms expanded on first use, US spelling. |
 | 2026-09-29 | Diagrams: grouped the layout, lifecycle, lockout and incident-pipeline diagrams into labeled subgraphs with no change to nodes or edges; added diagrams for the order of work and the trip log (hardening reference), credential rotation (05) and the decoy lifecycle (09). |
 | 2026-09-29 | Renamed `docs/Hardening-Reference.md` to `docs/Blueprint.md` (title: Labyrinth Implementation Blueprint), because it covers doctrine, invariants, a per-platform capability map, a trap catalog and a reference implementation. All links updated. |
+| 2026-09-29 | References: VyOS entry moved into alphabetical order (01); the first citation in each document now gives the full author name with its abbreviation (00, 04, README); the README gained a reference list. |
+| 2026-09-29 | Color: the four phases have one color each (🟥 lock out, 🟦 observe, 🟪 deceive, 🟩 sustain) in tables, status lines and every diagram; diagrams also use amber for steps a person does and a dashed red outline for stops; the Blueprint priority scorecard is color-coded by priority. Nodes, edges and text unchanged apart from a color sentence added to each caption. |
+| 2026-09-29 | Added `docs/Overview.md`, a plain-language tour of every part of the system for non-expert readers, with three diagrams. It adds no new facts: each statement summarizes the Blueprint or a design spec. |
 
 ## References
 

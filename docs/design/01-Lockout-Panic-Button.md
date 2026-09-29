@@ -1,6 +1,6 @@
 # 01. Lockout ("Panic Button") Design
 
-**Status:** Draft · reviewed 2026-09-29 · Phase: Lock out · Priority: P0
+**Status:** Draft · reviewed 2026-09-29 · Phase: 🟥 Lock out · Priority: P0
 
 ## 1. What it is
 
@@ -57,9 +57,17 @@ flowchart LR
     T1["<b>Tier 1</b><br/>Safe and reversible<br/>admin passwords, unregistered keys"] --> R1["Runs automatically<br/>after plan review"]
     T2["<b>Tier 2</b><br/>Service-affecting<br/>firewall, services, SSH, local locks"] --> R2["Runs per ring with verify<br/>and a revert timer"]
     T3["<b>Tier 3</b><br/>Manual only<br/>user passwords, domain, KRBTGT, appliances"] --> R3["Printed checklist;<br/>a human does it"]
+    classDef observe fill:#e3eefc,stroke:#2563eb,color:#0f2a5c
+    classDef ok fill:#e3f6e8,stroke:#15803d,color:#0f3d20
+    classDef human fill:#fff4d6,stroke:#b7791f,color:#4a3108
+    classDef lockout fill:#fde8e8,stroke:#c0392b,color:#4a1111
+    class T0 observe
+    class T1 ok
+    class T2 human
+    class T3 lockout
 ```
 
-*Figure: each risk tier, from read-only Tier 0 to manual-only Tier 3, and who or what carries out its actions.*
+*Figure: each risk tier, from read-only Tier 0 to manual-only Tier 3, and who or what carries out its actions. Colors rise with risk: blue is read-only, green safe, amber service-affecting and red manual-only.*
 
 ## 6. Sequence
 
@@ -90,9 +98,15 @@ flowchart TD
     T0 --> T1C
     T1R --> ARM
     T2R --> OUT(["Print summary and<br/>Tier 3 checklist for humans"])
+    classDef human fill:#fff4d6,stroke:#b7791f,color:#4a3108
+    classDef stop fill:#f6f6f6,stroke:#b42318,color:#4a1111,stroke-dasharray:4 3
+    class GATES,OUT human
+    class STOP,RB1,REV stop
+    style tier1 fill:#e3f6e8,stroke:#15803d,color:#0f3d20
+    style tier2 fill:#fff4d6,stroke:#b7791f,color:#4a3108
 ```
 
-*Figure: the panic button runs only after every safety gate passes, applies each tier to the canary host first and then ring by ring with a verify after each ring, and a Tier 2 change reverts itself unless verify succeeds and the timer is cancelled.*
+*Figure: the panic button runs only after every safety gate passes, applies each tier to the canary host first and then ring by ring with a verify after each ring, and a Tier 2 change reverts itself unless verify succeeds and the timer is cancelled. The green box holds the safe Tier 1 steps, the amber box the service-affecting Tier 2 steps, and dashed red outlines mark where the run stops.*
 
 ## 7. Safety gates (all must pass)
 

@@ -1,6 +1,6 @@
 # 04. Baseline and Integrity
 
-**Status:** Draft · reviewed 2026-09-29 · Phase: Observe · Priority: P0 (first baseline), P1 (continuous)
+**Status:** Draft · reviewed 2026-09-29 · Phase: 🟦 Observe · Priority: P0 (first baseline), P1 (continuous)
 
 ## 1. Goal
 
@@ -47,9 +47,15 @@ flowchart TD
     B --> CMP["Scheduled comparison"]
     CMP -->|change seen| J["Join audit records:<br/>who (auid / account) · when (timestamp)<br/>from where (last-hop address)"]
     J --> R["Integrity log and<br/>incident report (design 02)"]
+    classDef observe fill:#e3eefc,stroke:#2563eb,color:#0f2a5c
+    classDef human fill:#fff4d6,stroke:#b7791f,color:#4a3108
+    classDef store fill:#eef1f5,stroke:#475569,color:#1e293b
+    class V,B,CMP,J observe
+    class F human
+    class R store
 ```
 
-*Figure: files are first checked against the package database, only clean results become the baseline, and a later change is joined to audit records to show who changed it, when and from which address.*
+*Figure: files are first checked against the package database, only clean results become the baseline, and a later change is joined to audit records to show who changed it, when and from which address. Blue steps are automated observation, amber marks work handed to a person, and gray is where the results are stored.*
 
 ## 5. Logging that makes this possible
 

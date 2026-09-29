@@ -1,6 +1,6 @@
 # 05. Credentials and SSH Keys
 
-**Status:** Draft · reviewed 2026-09-29 · Phase: Lock out · Priority: P0
+**Status:** Draft · reviewed 2026-09-29 · Phase: 🟥 Lock out · Priority: P0
 
 ## 1. Rules that shape it
 
@@ -68,9 +68,15 @@ flowchart TD
         K3 --> K4(["Remove the old key"])
     end
     pw ~~~ key
+    classDef human fill:#fff4d6,stroke:#b7791f,color:#4a3108
+    classDef ok fill:#e3f6e8,stroke:#15803d,color:#0f3d20
+    class P3 human
+    class P4,K4 ok
+    style pw fill:#fde8e8,stroke:#c0392b,color:#4a1111
+    style key fill:#fde8e8,stroke:#c0392b,color:#4a1111
 ```
 
-*Figure: passwords and SSH keys rotate in the same order: the new credential is created and tested before the old one is closed or removed.*
+*Figure: passwords and SSH keys rotate in the same order: the new credential is created and tested before the old one is closed or removed. Both lanes are lock-out work (red); amber is the operator's own step and green is the safe end point.*
 
 ## 5. Break-glass
 
