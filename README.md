@@ -56,10 +56,12 @@ Labyrinth/
 ├── config/                       ← *.example templates for run-time values; never real values
 ├── vendor/                       ← pinned third-party code, each under its own license
 ├── tests/                        ← bats and Pester tests, the guard and fixtures
+├── tools/manual/                 ← builds the Linux and Windows manuals (CI only)
 ├── docs/
 │   ├── Overview.md                ← plain-language tour; start here
 │   ├── Blueprint.md               ← doctrine, capability map, trap catalog (rules-aware)
 │   ├── Conventions.md             ← how the code is written: formats, style, logging, tests
+│   ├── manual/labyrinth.md        ← operator manual: one source, Linux and Windows editions
 │   └── design/                    ← design specs 00–18 (module contract, panic button,
 │                                    incident reporting, event seed, baseline, credentials,
 │                                    status feed, cleanup, reference mining, deception maze,
