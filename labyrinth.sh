@@ -1,13 +1,17 @@
 #!/usr/bin/env bash
 # labyrinth.sh: main program for Linux hosts (design 00, section 5;
-# docs/Conventions.md section 3.1).
+# docs/Conventions.md sections 3.1 and 3.2).
 #
-#   labyrinth.sh [options] <phase>            plan: show what would change (default)
-#   labyrinth.sh [options] --apply <phase>    apply the plan, behind the safety gates
-#   labyrinth.sh [options] probe              probe every scored service once
-#   labyrinth.sh [options] keep <run>         keep a run's changes: cancel its revert timer
-#   labyrinth.sh [options] rollback <run>     undo what a run applied, newest module first
+#   labyrinth.sh plan <phase>        show what would change; changes nothing
+#   labyrinth.sh apply <phase>       plan, confirm, then make the changes
+#   labyrinth.sh keep [<run>]        keep a run: cancel its revert timer
+#   labyrinth.sh rollback <run>      undo a run, newest change first
+#   labyrinth.sh runs                list this host's runs and their state
+#   labyrinth.sh probe               test every scored service once
+#   labyrinth.sh help [<command>]    help; also -h and --help
+#   labyrinth.sh version             the version; also -V and --version
 #
+# Options may come anywhere; 'labyrinth.sh help' lists them.
 # Exit codes (design 00, section 4); the highest code from any module wins:
 #   0 nothing to do or success, 10 change needed, 20 blocked,
 #   30 verify failed or a scored service regressed, 40 error
@@ -34,35 +38,280 @@ APPROVED=''                # items approved for the module being applied
 PHASE_COUNT=0              # modules of the phase in the profile
 DATA_ROOT=''               # the data root (--root)
 OPT_PROFILE='' OPT_BREAKGLASS='' OPT_CONFIRM=''
+SELF="${0##*/}"            # how the operator started this program, for hints
+readonly COMMANDS='plan apply keep rollback runs probe help version'
+
+# The options, one row each (docs/Conventions.md section 3.1): the canonical
+# name, the keys it is matched by (lower case, no dashes), and whether it
+# takes a value.
+readonly -a OPT_NAMES=(profile root config break-glass confirm-group apply help version)
+readonly -a OPT_KEYS=('profile profilename' root config breakglass 'confirmgroup confirm' apply help version)
+readonly -a OPT_VALUE=(1 1 1 1 1 0 0 0)
+declare -A GIVEN=()        # canonical option name -> value given
+declare -a WORDS=()        # the words that are not options, in order
 BEFORE=''                  # probe results before the first change
 HAVE_SERVICES=0            # 1 when the scored-service list loaded
 
 # The modules of this run, in run order, one array element per module.
 declare -a RUN_IDS=() RUN_DIR=() RUN_RISK=() RUN_SCORED=() RUN_REQUIRES=() RUN_RC=() RUN_STATE=()
 
-usage() {
-  cat <<'EOF'
-usage: labyrinth.sh [options] <phase>
-       labyrinth.sh [options] --apply <phase>
-       labyrinth.sh [options] probe | keep <run> | rollback <run>
+# cmd_help [COMMAND]: the help for every command, or for one, on stdout.
+# Each topic is at most 15 lines of at most 78 columns, with one Exit line
+# and one Example line (docs/Conventions.md section 3.2).
+cmd_help() {
+  local where="Where:
+  --root DIR             data root (default /opt/labyrinth)
+  --config DIR           configuration folder (default <root>/etc)"
+  case "${1:-}" in
+    '') cat <<EOF
+Usage: $SELF <command> [<phase> | <run>] [options]
 
-  <phase>            lockout | observe | deceive | sustain
-  --profile NAME     host profile (default: this host's line in the hosts file)
-  --root DIR         Labyrinth data root (default /opt/labyrinth)
-  --config DIR       run-time configuration (default <root>/etc)
-  --apply            apply the plan, behind the safety gates
-  --breakglass NAME  the break-glass account confirmed at this host's console
-  --confirm GROUP    the host's group name, typed to approve the plan
-  --version          print the version
-  -h, --help         this help
+  plan <phase>      show what would change; changes nothing
+  apply <phase>     plan, confirm, then make the changes
+  keep [<run>]      keep a run: cancel its revert timer
+  rollback <run>    undo a run, newest change first
+  runs              list this host's runs and their state
+  probe             test every scored service once
+  help [<command>]  help for one command
+  version           print the version
 
-Plan mode is the default: modules report what they would change, and
-nothing is changed. After an apply, the revert timer undoes the run unless
-it is kept: type keep when asked, or run 'labyrinth.sh keep <run>'.
+Phases: lockout, observe, deceive, sustain. <run>: an ID or its last 4.
+Options: --root DIR, --config DIR, --profile NAME, -h, -V; see each command.
+Exit: 0 ok, 10 change needed, 20 blocked, 30 check failed, 40 error.
+Example: $SELF plan lockout
 EOF
+    ;;
+    plan) cat <<EOF
+Usage: $SELF plan <phase> [options]
+
+Show what every module of the phase would change on this host.
+Nothing is changed and nothing is written. <phase> is lockout,
+observe, deceive or sustain.
+
+$where
+  --profile NAME         use this profile, not the one in the hosts file
+
+Exit: 0 nothing to do, 10 change needed, 20 blocked, 40 error.
+Example: $SELF plan lockout
+Compatibility: '$SELF <phase>' also plans.
+EOF
+    ;;
+    apply) cat <<EOF
+Usage: $SELF apply <phase> [options]
+
+Plan, confirm, then change; a revert timer undoes it unless kept.
+
+$where
+  --profile NAME         must match this host's line in the hosts file
+Apply only:
+  --break-glass NAME     answer the break-glass prompt
+  --confirm-group GROUP  answer the group-name prompt
+
+Exit: 0 done, 20 blocked, 30 check failed, 40 error.
+Example: $SELF apply lockout
+Compatibility: '$SELF --apply <phase>' also applies.
+EOF
+    ;;
+    keep) cat <<EOF
+Usage: $SELF keep [<run>] [options]
+
+Keep a run's changes: cancel its revert timer, then record the keep.
+Without <run>, keep the one run whose timer is armed. <run> is a run
+ID or its last 4 characters; '$SELF runs' lists them.
+
+$where
+
+Exit: 0 kept, 20 too late (already rolled back), 40 error.
+Example: $SELF keep 4f2a
+EOF
+    ;;
+    rollback) cat <<EOF
+Usage: $SELF rollback <run> [options]
+
+Undo everything the run changed, newest change first. This is what
+the revert timer runs. Safe to run twice. <run> is a run ID or its
+last 4 characters; '$SELF runs' lists them.
+
+$where
+
+Exit: 0 rolled back, 20 not root, 40 error.
+Example: $SELF rollback 4f2a
+EOF
+    ;;
+    runs) cat <<EOF
+Usage: $SELF runs [options]
+
+List this host's runs, oldest first: run ID, phase, start time (UTC)
+and state (armed, kept, rolled back, or not kept, no timer).
+Changes nothing; needs root.
+
+$where
+
+Exit: 0 listed, 20 not root, 40 error.
+Example: $SELF runs
+EOF
+    ;;
+    probe) cat <<EOF
+Usage: $SELF probe [options]
+
+Test every scored service once, the way the scoring engine would,
+and print one line per service. Changes nothing.
+
+$where
+
+Exit: 0 all pass, 20 no service list, 30 a service failed, 40 error.
+Example: $SELF probe
+EOF
+    ;;
+    help) cat <<EOF
+Usage: $SELF help [<command>]
+
+Print help for every command, or for one. '$SELF <command> --help'
+and '$SELF <command> -h' print the same.
+
+Exit: 0 printed, 40 unknown command.
+Example: $SELF help apply
+EOF
+    ;;
+    version) cat <<EOF
+Usage: $SELF version
+
+Print the version of Labyrinth. '-V' and '--version' do the same.
+
+Exit: 0 printed.
+Example: $SELF version
+EOF
+    ;;
+  esac
 }
 
+cmd_version() { printf 'labyrinth %s\n' "$LAB_VERSION"; }
+
 die() { printf 'labyrinth: %s\n' "$1" >&2; exit "${2:-40}"; }
+
+# usage_error MESSAGE [COMMAND]: a usage error: one line, a pointer to
+# help, exit 40 (docs/Conventions.md section 3.1).
+usage_error() {
+  printf 'labyrinth: %s\n' "$1" >&2
+  printf "Try '%s help%s' for more information.\n" "$SELF" "${2:+ $2}" >&2
+  exit 40
+}
+
+# warn MESSAGE: a warning on stderr.
+warn() { printf 'labyrinth: warning: %s\n' "$1" >&2; }
+
+# edit_distance A B: the Levenshtein distance between A and B.
+edit_distance() {
+  local a="$1" b="$2" i j cost del ins sub
+  local -a prev=() cur=()
+  for ((j = 0; j <= ${#b}; j++)); do prev[j]=$j; done
+  for ((i = 1; i <= ${#a}; i++)); do
+    cur=("$i")
+    for ((j = 1; j <= ${#b}; j++)); do
+      cost=1
+      if [[ "${a:i-1:1}" == "${b:j-1:1}" ]]; then cost=0; fi
+      del=$((prev[j] + 1)); ins=$((cur[j-1] + 1)); sub=$((prev[j-1] + cost))
+      if (( ins < del )); then del=$ins; fi
+      if (( sub < del )); then del=$sub; fi
+      cur[j]=$del
+    done
+    prev=("${cur[@]}")
+  done
+  printf '%s\n' "${prev[${#b}]}"
+}
+
+# suggest WORD CANDIDATE...: the candidate WORD most likely meant: the only
+# one it is a prefix of, else the nearest within an edit distance of 2.
+# Prints nothing when there is none.
+suggest() {
+  local word="$1" c best='' bestd=3 d
+  local -a prefix=()
+  shift
+  [[ -n "$word" ]] || return 0
+  for c in "$@"; do
+    if [[ "$c" == "$word"* ]]; then prefix+=("$c"); fi
+  done
+  if (( ${#prefix[@]} == 1 )); then printf '%s\n' "${prefix[0]}"; return 0; fi
+  for c in "$@"; do
+    d="$(edit_distance "$word" "$c")"
+    if (( d < bestd )); then bestd=$d; best="$c"; fi
+  done
+  if [[ -n "$best" ]]; then printf '%s\n' "$best"; fi
+}
+
+# opt_lookup KEY: the row of the option matched by KEY (lower case, no
+# dashes), in OPT_ROW; returns 1 if none.
+opt_lookup() {
+  local i k
+  for ((i = 0; i < ${#OPT_NAMES[@]}; i++)); do
+    for k in ${OPT_KEYS[i]}; do
+      if [[ "$k" == "$1" ]]; then OPT_ROW=$i; return 0; fi
+    done
+  done
+  return 1
+}
+
+# parse_args WORD...: sort the words into options (GIVEN) and the rest
+# (WORDS). Options may come anywhere; '--' ends them.
+parse_args() {
+  local w key val sep name hint ended=0
+  local -a keys=() parts=()
+  while (( $# > 0 )); do
+    w="$1"; shift
+    if (( ended )) || [[ "$w" != -?* ]]; then WORDS+=("$w"); continue; fi
+    case "$w" in
+      --) ended=1; continue ;;
+      -h | '-?') w='--help' ;;
+      -V) w='--version' ;;
+      -v) usage_error "unknown option '-v' (did you mean '-V', the version?)" ;;
+    esac
+    key="${w#-}"; key="${key#-}"
+    val='' sep=''
+    if [[ "$key" =~ ^([^=:]*)([=:])(.*)$ ]]; then
+      key="${BASH_REMATCH[1]}" sep="${BASH_REMATCH[2]}" val="${BASH_REMATCH[3]}"
+    fi
+    key="${key,,}"; key="${key//-/}"
+    if ! opt_lookup "$key"; then
+      keys=()
+      # One candidate per option, its first key, so a prefix of two keys
+      # of the same option still counts as one.
+      for name in "${OPT_KEYS[@]}"; do read -ra parts <<< "$name"; keys+=("${parts[0]}"); done
+      hint="$(suggest "$key" "${keys[@]}")"
+      if [[ -n "$hint" ]] && opt_lookup "$hint"; then
+        usage_error "unknown option '${w%%[=:]*}' (did you mean '--${OPT_NAMES[OPT_ROW]}'?)"
+      fi
+      usage_error "unknown option '${w%%[=:]*}'"
+    fi
+    name="${OPT_NAMES[OPT_ROW]}"
+    if (( OPT_VALUE[OPT_ROW] )); then
+      # '--name value', or PowerShell's '-Name:' with the value as the next word.
+      if [[ -z "$sep" || ( "$sep" == : && -z "$val" ) ]]; then
+        (( $# > 0 )) || usage_error "--$name needs a value"
+        [[ "$1" != -?* ]] || usage_error "--$name needs a value, but got '$1'"
+        val="$1"; shift
+      fi
+      [[ -n "$val" ]] || usage_error "--$name needs a value"
+    elif [[ -n "$sep" ]]; then
+      usage_error "--$name takes no value"
+    fi
+    [[ -z "${GIVEN[$name]+set}" ]] || usage_error "--$name is given twice"
+    GIVEN[$name]="$val"
+  done
+}
+
+# check_used COMMAND OPTION...: warn about value options given that
+# COMMAND does not use.
+check_used() {
+  local cmd="$1" name used u
+  shift
+  for name in profile break-glass confirm-group; do
+    used=0
+    for u in "$@"; do if [[ "$u" == "$name" ]]; then used=1; fi; done
+    if [[ -n "${GIVEN[$name]+set}" ]] && (( ! used )); then
+      warn "--$name is not used by $cmd"
+    fi
+  done
+}
 
 yml_error() { printf '%s: %s\n' "$1" "$2" >&2; return 1; }
 
@@ -630,30 +879,93 @@ cmd_probe() {
 }
 
 main() {
-  local apply=0 config='' cmd
-  local -a args=()
-  DATA_ROOT='/opt/labyrinth'
-  while (( $# > 0 )); do
-    case "$1" in
-      --profile)    (( $# >= 2 )) || die 'missing value for --profile'; OPT_PROFILE="$2"; shift 2 ;;
-      --root)       (( $# >= 2 )) || die 'missing value for --root'; DATA_ROOT="$2"; shift 2 ;;
-      --config)     (( $# >= 2 )) || die 'missing value for --config'; config="$2"; shift 2 ;;
-      --breakglass) (( $# >= 2 )) || die 'missing value for --breakglass'; OPT_BREAKGLASS="$2"; shift 2 ;;
-      --confirm)    (( $# >= 2 )) || die 'missing value for --confirm'; OPT_CONFIRM="$2"; shift 2 ;;
-      --apply)      apply=1; shift ;;
-      --version)    printf 'labyrinth %s\n' "$LAB_VERSION"; exit 0 ;;
-      -h | --help)  usage; exit 0 ;;
-      -*)           usage >&2; exit 40 ;;
-      *)            args+=("$1"); shift ;;
-    esac
-  done
-  (( ${#args[@]} > 0 )) || { usage >&2; exit 40; }
-  cmd="${args[0]}"
-  if [[ -n "$OPT_PROFILE" && ! "$OPT_PROFILE" =~ ^[a-z0-9-]+$ ]]; then die "invalid profile name: $OPT_PROFILE"; fi
-  [[ "$DATA_ROOT" == /* ]] || die '--root must be an absolute path'
-  [[ -z "$config" || "$config" == /* ]] || die '--config must be an absolute path'
+  local cmd='' word='' lc phase
+  parse_args "$@"
+  set -- "${WORDS[@]+"${WORDS[@]}"}"
 
-  LAB_CONFIG_DIR="${config:-$DATA_ROOT/etc}"
+  # Work out the command; the whole line must parse before help is shown.
+  if (( $# > 0 )); then
+    lc="${1,,}"
+    if lab_in_list "$lc" "$COMMANDS"; then
+      cmd="$lc"; shift
+    elif lab_in_list "$lc" "$PHASES"; then
+      cmd=plan                        # compatibility: a phase alone
+    else
+      local hint
+      hint="$(suggest "$lc" $COMMANDS $PHASES)"
+      usage_error "unknown command '$1'${hint:+ (did you mean '$hint'?)}"
+    fi
+  fi
+  if [[ -n "${GIVEN[apply]+set}" ]]; then
+    case "$cmd" in
+      plan) [[ "${lc:-}" != plan ]] || usage_error "plan and --apply conflict; use '$SELF apply <phase>'" apply
+            cmd=apply ;;
+      apply) ;;
+      '') usage_error '--apply needs a phase' apply ;;
+      *) usage_error "--apply cannot be used with $cmd" "$cmd" ;;
+    esac
+  fi
+  if [[ -n "${GIVEN[help]+set}" ]]; then
+    # 'help plan --help' is help on plan; 'help --help' is help on help.
+    if [[ "$cmd" == help && -n "${1:-}" ]]; then cmd="${1,,}"; fi
+    lab_in_list "${cmd:-help}" "$COMMANDS" || usage_error "no help for '$cmd'"
+    cmd_help "$cmd"; exit 0
+  fi
+  if [[ -n "${GIVEN[version]+set}" ]]; then cmd_version; exit 0; fi
+  case "$cmd" in
+    '')
+      printf 'Usage: %s <command> [<phase> | <run>] [options]
+' "$SELF" >&2
+      printf 'Commands: %s
+' "${COMMANDS// /, }" >&2
+      printf "Try '%s help' for more information.
+" "$SELF" >&2
+      exit 40 ;;
+    help)
+      (( $# <= 1 )) || usage_error "unexpected word '$2' after 'help $1'" help
+      word="${1:-}"; word="${word,,}"
+      if [[ -n "$word" ]] && ! lab_in_list "$word" "$COMMANDS"; then
+        local hint
+        hint="$(suggest "$word" $COMMANDS)"
+        usage_error "no help for '$1'${hint:+ (did you mean '$hint'?)}"
+      fi
+      cmd_help "$word"; exit 0 ;;
+    version)
+      (( $# == 0 )) || usage_error "unexpected word '$1' after 'version'" version
+      cmd_version; exit 0 ;;
+    plan | apply)
+      (( $# > 0 )) || usage_error "$cmd needs a phase: lockout, observe, deceive or sustain" "$cmd"
+      phase="${1,,}"
+      if [[ "$phase" == probe ]]; then usage_error "probe is a command, not a phase: run '$SELF probe'" probe; fi
+      if ! lab_in_list "$phase" "$PHASES"; then
+        local hint
+        hint="$(suggest "$phase" $PHASES)"
+        usage_error "unknown phase '$1'${hint:+ (did you mean '$hint'?)}" "$cmd"
+      fi
+      (( $# == 1 )) || usage_error "unexpected word '$2' after '$cmd $phase'" "$cmd"
+      if [[ "$cmd" == plan ]]; then check_used plan profile; else check_used apply profile break-glass confirm-group; fi ;;
+    keep | rollback)
+      (( $# > 0 )) || usage_error "$cmd needs a run ID" "$cmd"
+      (( $# == 1 )) || usage_error "unexpected word '$2' after '$cmd $1'" "$cmd"
+      [[ "$1" =~ $RE_RUN_ID ]] || usage_error "not a run ID: '$1'" "$cmd"
+      word="$1"
+      check_used "$cmd" ;;
+    runs | probe)
+      (( $# == 0 )) || usage_error "unexpected word '$1' after '$cmd'" "$cmd"
+      check_used "$cmd" ;;
+  esac
+
+  OPT_PROFILE="${GIVEN[profile]:-}"
+  OPT_BREAKGLASS="${GIVEN[break-glass]:-}"
+  OPT_CONFIRM="${GIVEN[confirm-group]:-}"
+  DATA_ROOT="${GIVEN[root]:-/opt/labyrinth}"
+  if [[ -n "$OPT_PROFILE" && ! "$OPT_PROFILE" =~ ^[a-z0-9-]+$ ]]; then
+    usage_error "invalid profile name '$OPT_PROFILE' (lower-case letters, digits and -)" "$cmd"
+  fi
+  [[ "$DATA_ROOT" == /* ]] || usage_error "--root must be a full path, not '$DATA_ROOT'" "$cmd"
+  [[ -z "${GIVEN[config]:-}" || "${GIVEN[config]}" == /* ]] || usage_error "--config must be a full path, not '${GIVEN[config]}'" "$cmd"
+
+  LAB_CONFIG_DIR="${GIVEN[config]:-$DATA_ROOT/etc}"
   LAB_STATE_DIR="$DATA_ROOT/state"
   LAB_LOG_DIR="$DATA_ROOT/logs"
   LAB_BACKUP_DIR="$DATA_ROOT/backup"
@@ -661,17 +973,11 @@ main() {
   export LAB_CONFIG_DIR LAB_STATE_DIR LAB_LOG_DIR LAB_BACKUP_DIR LAB_RUN_ID
 
   case "$cmd" in
-    probe)
-      (( ${#args[@]} == 1 && ! apply )) || die 'usage: labyrinth.sh probe'
-      cmd_probe ;;
-    keep | rollback)
-      (( ${#args[@]} == 2 && ! apply )) || die "usage: labyrinth.sh $cmd <run>"
-      [[ "${args[1]}" =~ $RE_RUN_ID ]] || die "not a run id: ${args[1]}"
-      "cmd_$cmd" "${args[1]}" ;;
-    *)
-      (( ${#args[@]} == 1 )) || die "unexpected argument: ${args[1]}"
-      lab_in_list "$cmd" "$PHASES" || die "unknown phase or command: $cmd"
-      if (( apply )); then cmd_apply "$cmd"; else cmd_plan "$cmd"; fi ;;
+    plan) cmd_plan "$phase" ;;
+    apply) cmd_apply "$phase" ;;
+    keep | rollback) "cmd_$cmd" "$word" ;;
+    probe) cmd_probe ;;
+    runs) usage_error 'runs is not built yet' runs ;;
   esac
 }
 
