@@ -69,8 +69,12 @@ Describe 'real system (Windows)' {
         ($out | ForEach-Object { "$_" }) -join "`n" | Write-Verbose
         $code | Should -Be 0
         (Get-Content -LiteralPath $toggle) | Should -Be 'setting=on'
-        Wait-TestCondition 150 { (Get-Content -LiteralPath $toggle) -eq 'setting=off' } | Should -Be $true
-        $manifest = Get-ChildItem -LiteralPath (Join-Path $root 'state\runs') -Recurse -Filter 'manifest.jsonl' | Get-Content
-        ($manifest -join "`n") | Should -Match '"action":"run_rolled_back"'
+        # The run is rolled back once its last manifest entry is written.
+        $rolledBack = {
+            $manifest = Get-ChildItem -LiteralPath (Join-Path $root 'state\runs') -Recurse -Filter 'manifest.jsonl' | Get-Content
+            ($manifest -join "`n") -match '"action":"run_rolled_back"'
+        }
+        Wait-TestCondition 150 $rolledBack | Should -Be $true
+        (Get-Content -LiteralPath $toggle) | Should -Be 'setting=off'
     }
 }
