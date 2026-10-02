@@ -183,7 +183,9 @@ Each subsection answers four questions: what the part does, why it exists, how i
 
 **What it does.** One command carries out the first-minutes lockout across the reachable hosts ([design 01](design/01-Lockout-Panic-Button.md)).
 
-**Why it exists.** The attacker's power comes from passwords they already know and sessions they already have open. Removing both, fast, removes most of their ways in.
+**Why it exists.** Assume the attacker is already inside when the event starts. Their power comes from passwords they already know, sessions they already have open, and ways back in they left behind. Removing all of these, fast, removes most of their ways in. The scored services are among the Red Team's main targets, so Labyrinth defends them carefully rather than leaving them as found.
+
+**The first minute.** Each host gets one bundle of steps, in this order: change the admin passwords; remove unapproved SSH keys and check the SSH settings for anything planted; end the intruder's open remote sessions (never the console, the operator's own, the team's admin machine or an official's); set aside the obvious attacker footholds; then turn on the default-deny firewall. One revert timer covers the whole bundle.
 
 **How it works.** The obvious version, "reset everything, lock everything, block everything, everywhere, at once", is exactly what the rules forbid, because it breaks things the scoring engine checks. So the panic button keeps the speed but adds guard rails:
 
@@ -193,16 +195,16 @@ Each subsection answers four questions: what the part does, why it exists, how i
 
 | Tier | What it covers | Who carries it out |
 |---|---|---|
-| 0. Observe only | Read-only inventory: users, open ports, running programs, scheduled tasks | Runs automatically |
-| 1. Safe and reversible | Change admin-class passwords; remove SSH keys that are not on the approved list | Runs automatically after the plan is reviewed |
-| 2. Service-affecting | Turn on the default-deny firewall; turn off unneeded services; harden SSH; lock (never delete) unexpected local accounts | Runs host group by host group, with a check and a revert timer |
-| 3. Manual only | Ordinary users' passwords; domain accounts; network appliances; anything touching a scored service's own settings | Printed as a checklist; a person does it |
+| 0. Observe only | Read-only inventory: users, groups, open ports, running programs, open sessions, scheduled tasks | Runs automatically |
+| 1. Safe and reversible | Change admin-class passwords; remove SSH keys that are not on the approved list; end intruder sessions | Runs automatically after the plan is reviewed |
+| 2. Service-affecting | Check and harden SSH; set aside obvious attacker footholds; turn on the default-deny firewall; take admin rights from unexpected local accounts and lock them; safe settings for scored apps and Windows; turn off unneeded services | Runs host group by host group, with a check and a revert timer |
+| 3. Approve, then act | Unexplained footholds; deleting locked accounts; riskier app settings. A short list stays with a person: ordinary users' passwords, domain accounts and policy, KRBTGT, DNS servers, restores, patching and network appliances | A person approves, then Labyrinth does it; the short list is a printed checklist |
 
 - **Rings.** Changes go first to one low-impact host of each kind of system (the "canaries", for example one Linux host and one Windows workstation), then to the next group, and so on. If a check fails, the run stops before the problem spreads. A host that is the only one of its kind, such as the domain controller, has no canary to go first; it comes last and relies on the revert timer and the tests.
 - **Dead-man revert timer.** Before a firewall or SSH change, Labyrinth sets a timer that will undo the change automatically unless someone cancels it after confirming everything still works. If the change locks the team out, the timer puts things back.
 - **Checking like the scoring engine.** After each module, Labyrinth tests each scored service the way the scoring engine would (for example, fetching the web page and looking for the expected text) and compares the result with a test taken before the change. If a service got worse, that module is rolled back and the run stops.
 
-**What it will never do.** Disable accounts wholesale, change login shells, cut all connections, delete accounts or files, stop services that are not on its candidate list, reboot, move a service into a container, change scoring accounts, or act on a host that has no emergency way in.
+**What it will never do.** Disable accounts wholesale, change login shells, cut all connections, end a console or official's session, delete a file (it sets files aside instead), delete an account without a person's approval, stop services that are not on its candidate list, reboot, move a service into a container, change scoring accounts, or act on a host that has no emergency way in.
 
 > [!TIP]
 > **Break-glass** means a sealed emergency login, one per critical host, kept by the team captain in the team's **offline record**: on paper or in a local file on a team member's own machine, never in the repository or on the competition hosts. It exists so that the team, and the officials, can always get back in.
@@ -220,6 +222,9 @@ Each subsection answers four questions: what the part does, why it exists, how i
 - **The safe order.** Set the new password, test it from a fresh login, confirm it is written down, and only then close the old session. SSH keys follow the same pattern: add the new key next to the old one, test it, then remove the old one.
 - **One SSH key per role** (for example, one for Linux admin work and one for monitoring), not one per person and not one shared key. Each key only works from the control node.
 - **An approved-key list** (the registry) is kept for every host. Any key found that is not on the list is backed up and then removed.
+- **Planted SSH settings.** An attacker may have added their own SSH settings file, which can quietly override the team's. Labyrinth sets aside unknown settings files and planted lines, makes sure its own settings load first, and asks SSH which settings it will actually use.
+- **Key-only, aware of scoring.** Where SSH is scored, the scoring engine's accounts keep their passwords and everyone else must use a key. Where it is not scored, everyone uses keys and only the team's admin machine can reach it.
+- **Unexpected accounts.** An account is expected if it is protected, named in the event packet or runs a scored service. Labyrinth also looks for hidden admins, such as a second root account or a user in an admin group by a side door. Unexpected local accounts with admin rights lose them and are locked at once; others are locked after a person approves. Once every scored service is confirmed working, a person can approve deleting them, so they cannot be switched back on. Their details are saved first, for the incident report.
 
 **What it will never do.** Change scoring accounts, reset domain-wide passwords automatically, or copy private keys onto managed hosts.
 
@@ -242,6 +247,8 @@ Each subsection answers four questions: what the part does, why it exists, how i
 > The address a host sees is the **last hop**: the last device the connection passed through. If traffic goes through a router that rewrites addresses (NAT, network address translation) or a proxy, that address may not be the attacker's real one. Reports say "last hop observed" for this reason.
 
 Changes made by Labyrinth itself are in the run manifest, so they do not raise false alarms.
+
+**The sealed baseline.** The first baseline shows the host as it was found, which may include the attacker's changes. So once the lockout is finished and checked, the team **seals** a new baseline of the cleaned host, and every later check compares against that. If the team changes something on purpose later, it reseals with a written reason, and every seal is logged.
 
 ### 4.4 🟦 Status feed and login banner
 
@@ -346,6 +353,10 @@ Some outside repositories are kept as **reference only** ([design 08](design/08-
 - **Appliances** send their logs by **syslog**, the standard way network devices send log lines to a collector.
 - A few **saved searches** turn those logs into alerts. The ones that almost never fire by accident come first: a trap was touched, someone tried a fake account, a bait file was opened, a log was wiped.
 
+**Protecting the SIEM itself.** An attacker who controls the SIEM can blind the team. Labyrinth changes its admin password, checks its users, lets only the team's admin machine reach its web page and only the team's hosts send it logs, and sets aside add-ons that could run commands.
+
+**Watching, not blocking, risky tools.** Some ordinary tools are favorites for attackers (for example, ones that open network connections or download files). Blocking them everywhere could break real work, so Labyrinth raises an alert when they run instead.
+
 **What it will never do.** Send logs anywhere outside the competition network, or let logging fill a disk.
 
 ### 4.11 🟥 Windows and the domain controller
@@ -354,7 +365,7 @@ Some outside repositories are kept as **reference only** ([design 08](design/08-
 
 **Why it is careful.** The domain controller answers logons and DNS for the whole network. One mistake there breaks everything at once. So the rule is **blast radius**: a change that affects one machine can be automated; a change that affects the whole domain is a printed checklist.
 
-**How it works.** Ordinary Windows machines go first, one group at a time. Labyrinth changes their admin passwords, turns on the firewall, limits remote desktop to the team's admin machine, and turns off old or risky features that attackers use to steal passwords. The domain controller goes last. Anything domain-wide, such as **Group Policy** (settings the domain pushes to every machine at once), domain accounts including the domain Administrator, DNS or the special KRBTGT account, is done by a person following the checklist.
+**How it works.** Ordinary Windows machines go first, one group at a time. Labyrinth changes their admin passwords, turns on the firewall, limits remote desktop to the team's admin machine (and the scoring engine, if remote desktop is scored), and turns off old or risky features that attackers use to steal or relay passwords, such as old password formats and a setting that keeps plain-text passwords in memory. The domain controller goes last. Anything domain-wide, such as **Group Policy** (settings the domain pushes to every machine at once), domain accounts including the domain Administrator, DNS or the special KRBTGT account, is done by a person following the checklist.
 
 ### 4.12 🟪 Automatic bans
 
@@ -399,6 +410,29 @@ Some outside repositories are kept as **reference only** ([design 08](design/08-
 **Why it is manual.** Every vendor has its own commands, and a mistake on the device in front of the network can cut off every host, including the scoring engine's path. Labyrinth prints the steps; it never sends commands to an appliance.
 
 **The steps, in order.** Prepare a way back (second session, configuration backup); change the default passwords; allow management only from inside; allow the scoring engine before blocking anything; block everything else from outside; note how the router rewrites addresses; send the logs to the SIEM; save, test and keep a second backup.
+
+### 4.17 🟥 Sweeping for attacker footholds
+
+**What it does.** Finds the ways back in that an attacker left behind, and removes them without breaking a scored service ([design 17](design/17-Persistence-Sweep.md)).
+
+**Why it exists.** Changing passwords does not remove a scheduled job that reconnects the attacker every minute, a hidden service, or a web page that gives them a command line. Those must be found and removed too.
+
+**How it works.** Labyrinth looks in the usual hiding places: scheduled jobs, services, startup items, login scripts, SSH and admin settings, and web folders. Each thing it finds is sorted:
+
+- **Known good:** belongs to installed software and is unchanged. Left alone.
+- **Clearly the attacker's:** does not belong to installed software, nothing scored relies on it, and it shows an unmistakable sign, such as running from a temporary folder or opening a command line to the network. Set aside automatically in the first minute.
+- **Unexplained:** anything else. Shown to a person with the reason; once approved, Labyrinth sets it aside.
+- **Inside a scored website:** possible attacker web pages are always shown to a person first, because removing a real page would take the site down.
+
+"Set aside" means **quarantined**: switched off and moved to a locked folder, with a record of how to put it back. Nothing is deleted, so a mistake can be undone and the item can be shown as evidence in the incident report.
+
+### 4.18 🟥 Ready-made settings for scored apps
+
+**What it does.** Ships tested settings packs for common scored programs: web servers, mail, DNS, databases and FTP ([design 18](design/18-Service-Packs-and-Config-Library.md)).
+
+**Why it exists.** The scored services are what the Red Team attacks most, so leaving them exactly as found is not safe. But changing them by hand under pressure is how teams break their own services.
+
+**How it works.** Each setting is sorted in advance. Safe ones (such as hiding the software version or turning off file listings nobody uses) are applied automatically, after the program's own syntax check, with a gentle reload, a test like the scoring engine's and a revert timer. Settings that could change what the scoring engine sees wait for a person's approval. Anything too specific to the event's own app is written up as a step-by-step runbook.
 
 ---
 
@@ -463,6 +497,9 @@ Controls are ranked from **P0** (do first) to **P3** (do last): 🔴 P0 · 🟠 
 | Firewall | Software or a device that decides which network connections are allowed. |
 | Group Policy | Settings a Windows domain pushes to every machine at once. |
 | Hash | A short fingerprint of a file that changes if the file changes. |
+| Hidden admin | An account with administrator power that does not look like one, such as a second root account or a member of an admin group by a side door. |
+| Persistence | A way back in that an attacker leaves behind, such as a scheduled job or a hidden service. |
+| Quarantine | Switching an item off and moving it to a locked folder, with a record of how to put it back, instead of deleting it. |
 | Offline record | Where the team keeps passwords, the seed and the release fingerprint: on paper or in a local file on a team member's own machine, never in the repository, a cloud drive or the competition hosts. |
 | Honey-account | A fake account that cannot log in; any attempt to use it is an alarm. |
 | Host | Any single computer or server on the network. |
@@ -483,6 +520,8 @@ Controls are ranked from **P0** (do first) to **P3** (do last): 🔴 P0 · 🟠 
 | Runbook | A tested, numbered procedure that a person follows step by step. |
 | Scored service | A service the scoring engine checks, such as a website, email or DNS. |
 | Scoring engine | The automated checker that tests scored services and awards points. |
+| Seal | Taking a new baseline of a host once it is cleaned, and using it as the reference for every later check. |
+
 | SIEM | Security Information and Event Management system: a central place that collects and searches logs from every host. |
 | SSH | Secure Shell: the standard encrypted way to log in to a Linux host remotely. |
 | Syslog | The standard way servers and network devices send log lines to a collector. |

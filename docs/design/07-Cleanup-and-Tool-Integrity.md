@@ -12,8 +12,9 @@
 - Every module lists its `outputs` in `module.yml` (design 00), and every `apply` writes to the run manifest.
 - `cleanup` removes temporary files; `rollback` undoes changes. They are separate so the operator can clean up without reverting.
 - End-of-event cleanup removes revert timers, scheduled tasks, temporary accounts and copied code from hosts, but keeps logs and reports until they are collected.
-- **Accounts.** The only accounts cleanup ever deletes are ones Labyrinth itself created, such as honey-accounts (design 09), and recorded in the run manifest when it created them. An account that existed before Labyrinth ran is never deleted, even if a module locked it. Domain honey-accounts, created by hand (design 11, section 5), are removed by hand too.
-- Cleanup never deletes evidence or anything the manifest does not list.
+- **Accounts.** The only accounts cleanup ever deletes are ones Labyrinth itself created, such as honey-accounts (design 09), and recorded in the run manifest when it created them. Cleanup never deletes an account that existed before Labyrinth ran; deleting an unexpected account is a separate, approved step during the event (design 05, section 6.4). Domain honey-accounts, created by hand (design 11, section 5), are removed by hand too.
+- Cleanup never deletes evidence or anything the manifest does not list. The quarantine area (design 17, section 5) and saved account evidence are evidence: they are kept, like logs and reports, until they are collected.
+
 - Cleanup only touches Labyrinth paths (design 00 standard paths).
 
 ## 3. Materials handling
@@ -75,4 +76,4 @@ flowchart TD
 
 ## References
 
-National Collegiate Cyber Defense Competition. (2025, December 10). *Rules and requirements*. Retrieved September 29, 2026, from https://www.nationalccdc.org/rules.html
+National Collegiate Cyber Defense Competition. (2025, December 10). *Rules and requirements*. Retrieved October 2, 2026, from https://www.nationalccdc.org/rules.html

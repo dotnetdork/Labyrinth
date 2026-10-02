@@ -20,7 +20,7 @@ This spec turns the Blueprint's logging capability (Blueprint §3.9) and the Win
 | Team tools may not use outside resources apart from DNS (Domain Name System) (National Collegiate Cyber Defense Competition [NCCDC], 2025, Rule 5.6.4). | Logs go only to the team's own SIEM inside the competition network. No cloud log service, no outside enrichment. |
 | Only tools freely available to every team may be used (NCCDC, 2025, Rule 5.1). | A forwarder or monitoring tool is used only if it is free and reachable in the environment. |
 | Anything that interferes with the scoring engine is the team's responsibility (NCCDC, 2025, Rule 4.11). | Audit rules stay small so they cannot slow a scored service; the forwarding flow is checked against the firewall plan and the scoring allowlist. |
-| Tools must not deliberately break expected functionality (NCCDC, 2025, Rule 5.6.5). | Nothing here stops or restarts a scored service. Logging changes never fill a disk (section 7). |
+| Tools must not deliberately break expected functionality (NCCDC, 2025, Rule 5.6.5). | Nothing here stops or restarts a scored service. Logging changes never fill a disk (section 8). |
 
 ## 3. What is collected
 
@@ -118,6 +118,12 @@ A few high-value searches beat a hundred noisy dashboards (Blueprint §3.9). The
 | New service or scheduled task (4697, 7045, 4698; new systemd unit or cron entry) | Medium |
 | Many failed logons from one source | Medium |
 | Integrity finding from design 04 | Medium to high, by file rank |
+| A locked account re-enabled (4722; auditd rule on `usermod` and `/etc/shadow`) | High |
+| WDigest turned back on, or a protocol setting from design 11 reverted | High |
+| A tool often abused for persistence or download is started: `nc`, `ncat`, `socat`, a compiler (`gcc`, `cc`), `certutil -urlcache`, `bitsadmin /transfer`, `mshta`, `regsvr32` with a URL | Medium; high when run by a web server or database account |
+| A change on the SIEM itself: a new user or role, a new app, a scripted input or alert action, or a search deleted (Splunk `_audit` index) | High |
+
+**Watch, don't block.** The tools in the "abused tool" row have legitimate uses, and blocking them across hosts would be the kind of blanket action Rule 5.6.5 warns about. So they are watched through process-creation logging, not removed or blocked. The one exception is scheduling: `cron.allow` and `at.allow` are limited after the persistence sweep (design 17, section 6).
 
 **Sigma rules.** More searches can be converted from Sigma, the vendor-neutral rule format, *before* the release, never at the event. Each converted rule keeps its original author, license and rule ID in `vendor/` with a NOTICE file, and is tested against sample logs in the lab (design 08).
 
@@ -134,7 +140,22 @@ A few high-value searches beat a hundred noisy dashboards (Blueprint §3.9). The
 
 Opening the forwarding port in a host firewall follows design 01 (Tier 2, with a revert timer).
 
-## 7. Safety
+## 7. Hardening the SIEM host
+
+The SIEM is usually already installed on its own host, so Labyrinth does not install it; it hardens it. An attacker who controls the SIEM can blind the team or use it to run code: Splunk often runs as root or SYSTEM, and its scripted inputs and alert actions run commands (*Background*). The free edition of Splunk has no login at all (*Background*), so its web and management ports must be closed to everyone but the team.
+
+| Step | Tier |
+|---|---|
+| Rotate the SIEM's own admin password, shown once like any other (design 05, section 2) | 1 |
+| List SIEM users and roles; lock unexpected ones, as for host accounts (design 05, section 6) | 0, then 2 |
+| Firewall: the web interface (8000) and management port (8089) only from the admin source, plus the scoring engine if the SIEM is scored; the log inputs (9997 and syslog 514) only from the managed hosts | 2 |
+| Quarantine unknown apps, scripted inputs and alert actions that are not in the profile's known-good list; unexplained ones go to approval (design 17) | 2 or 3 |
+| Back up the SIEM's configuration folder (Splunk `etc`) before any change (design 14) | 1 |
+| Load the SIEM-change search on its `_audit` index (section 5) | 1 |
+
+The SIEM host also gets its platform's normal lockout (design 01). Ports, paths and role names come from the profile, so another SIEM product can be supported by a new profile.
+
+## 8. Safety
 
 - **Disk.** Before enabling a noisy source, check free space. Local logs rotate with a size cap, so logging can never fill a disk and stop a service.
 - **Volume.** Audit rules stay small (design 04, section 7). A rule that floods the log is removed, not tuned during the event.
@@ -142,12 +163,12 @@ Opening the forwarding port in a host firewall follows design 01 (Tier 2, with a
 - **Tampering.** Forwarding is the defense against a wiped host: once an event is in the SIEM, clearing the local log does not remove it. Clearing is itself alerted on (section 5).
 - **Trust path.** The SIEM receives logs only. It holds no keys to any host (design 06).
 
-## 8. Verify and roll back
+## 9. Verify and roll back
 
 - **Verify:** each module writes a unique marker event on each host (for example, a `logger` line or a custom Windows event carrying the run ID) and confirms that the SIEM returns it within the target time. This is the "confirm events are arriving" check (Blueprint §8).
 - **Roll back:** remove the drop-in files and restore the previous audit policy from the run manifest.
 
-## 9. Acceptance tests
+## 10. Acceptance tests
 
 - A marker event from every lab host arrives in the SIEM.
 - A failed SSH login, a new local admin and a canary read each raise the matching saved search.
@@ -158,7 +179,10 @@ Opening the forwarding port in a host firewall follows design 01 (Tier 2, with a
 - On a host already set to `-e 2`, `observe.auditd` exits 20 and changes nothing.
 - A planted honey-account logon attempt and an RC4 service ticket request each raise their saved search.
 - The repository contains no SIEM address or event value, only templates.
+- After hardening, the SIEM's web and management ports refuse a connection from a non-admin address, and a planted scripted input is quarantined.
+- Starting `socat` as the web server's account raises the abused-tool search at high confidence.
+
 
 ## References
 
-National Collegiate Cyber Defense Competition. (2025, December 10). *Rules and requirements*. Retrieved September 29, 2026, from https://www.nationalccdc.org/rules.html
+National Collegiate Cyber Defense Competition. (2025, December 10). *Rules and requirements*. Retrieved October 2, 2026, from https://www.nationalccdc.org/rules.html

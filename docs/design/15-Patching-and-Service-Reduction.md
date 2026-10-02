@@ -38,6 +38,9 @@ Fewer listeners and fewer known-exploited packages (Blueprint §3.6), without br
 
 Services are disabled, never removed. Rollback starts them again with their previous start type.
 
+**Old plain-text services.** Every Linux profile's candidate list includes telnet, rsh, rlogin, rexec and plain FTP servers, because they send passwords in the clear and are common Red Team entry points (*Background*). Their `unless` condition is "scored on this host". A scored FTP server is not disabled; it is hardened by its service pack instead (design 18).
+
+
 ## 4. Patching
 
 **Check (read-only).** List updates that fix security issues and are available now (Blueprint §3.6; *Background*):
