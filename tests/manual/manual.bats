@@ -91,3 +91,14 @@ setup() {
   run bash "$SPLIT" macos
   [ "$status" -eq 2 ]
 }
+
+@test "paths and commands in running text are in code spans" {
+  # A Windows path outside code loses its backslashes when pandoc reads it.
+  run awk '
+    /^<!--$/ { skip = 1; next }  skip && /^-->$/ { skip = 0; next }  skip { next }
+    /^ *```/ { code = !code; next }  code { next }
+    { line = $0; gsub(/`[^`]*`/, "", line) }
+    line ~ /@(CMD|ROOT)@/ { print FILENAME ":" FNR ": " $0; bad = 1 }
+    END { exit bad }' "$REPO/docs/manual/labyrinth.md"
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+}
