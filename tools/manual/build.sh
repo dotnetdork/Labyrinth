@@ -38,9 +38,9 @@ pandoc "$work/linux.md" --from markdown --to man --standalone \
   --metadata title=LABYRINTH --metadata section=1 \
   --metadata header='Labyrinth Operator Manual' --metadata footer=Labyrinth \
   --output "$out/labyrinth.1"
-# Older pandoc writes code in font V, which groff does not have; use the
-# standard constant-width fonts instead.
-sed -i 's/\\f\[V\]/\\f[CR]/g; s/\\f\[VB\]/\\f[CB]/g; s/\\f\[VI\]/\\f[CI]/g; s/\\f\[VBI\]/\\f[CBI]/g' "$out/labyrinth.1"
+# Older pandoc writes code in fonts C and V, which groff's terminal devices
+# do not have; use the standard constant-width fonts instead.
+sed -i 's/\\f\[C\]/\\f[CR]/g; s/\\f\[V\]/\\f[CR]/g; s/\\f\[VB\]/\\f[CB]/g; s/\\f\[VI\]/\\f[CI]/g; s/\\f\[VBI\]/\\f[CBI]/g' "$out/labyrinth.1"
 
 {
   printf 'TOPIC\n    about_Labyrinth\n\nSHORT DESCRIPTION\n'
