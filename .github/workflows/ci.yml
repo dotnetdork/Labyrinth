@@ -1,0 +1,77 @@
+# Lint, guard and test Labyrinth on Linux and Windows.
+# Test tools are installed on the disposable CI runners only; Labyrinth
+# itself never installs anything (docs/Conventions.md section 1).
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    name: Linux (bash, ShellCheck, guard, bats)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install bats
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bats
+          bats --version
+          shellcheck --version
+
+      - name: ShellCheck
+        # The guard fixtures are deliberately bad code, so they are skipped.
+        run: |
+          find . -name '*.sh' -not -path './tests/fixtures/guard/*' -not -path './vendor/*' -not -path './.git/*' -print0 \
+            | xargs -0 shellcheck --severity=warning
+
+      - name: Guard (no outside calls, no blanket actions)
+        run: bash tests/lint/guard.sh
+
+      - name: bats
+        run: bats --recursive --print-output-on-failure tests
+
+  windows:
+    name: Windows (PowerShell 5.1, PSScriptAnalyzer, Pester)
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: powershell
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Pester 5 and PSScriptAnalyzer
+        run: |
+          $PSVersionTable.PSVersion
+          if (-not (Get-Module -ListAvailable Pester | Where-Object { $_.Version -ge [version]'5.5.0' })) {
+            Install-Module Pester -MinimumVersion 5.5.0 -Force -Scope CurrentUser -SkipPublisherCheck
+          }
+          if (-not (Get-Module -ListAvailable PSScriptAnalyzer)) {
+            Install-Module PSScriptAnalyzer -Force -Scope CurrentUser
+          }
+
+      - name: PSScriptAnalyzer
+        # The guard fixtures are deliberately bad code, so they are skipped.
+        run: |
+          $files = Get-ChildItem -Recurse -File -Include *.ps1, *.psm1 |
+            Where-Object { $_.FullName -notmatch '\\tests\\fixtures\\guard\\' -and $_.FullName -notmatch '\\vendor\\' }
+          $issues = @($files | ForEach-Object { Invoke-ScriptAnalyzer -Path $_.FullName -Severity Warning, Error })
+          if ($issues.Count -gt 0) {
+            $issues | Format-Table ScriptName, Line, RuleName, Message -AutoSize -Wrap | Out-String -Width 220
+            exit 1
+          }
+          "PSScriptAnalyzer: $($files.Count) file(s) clean"
+
+      - name: Pester (Windows PowerShell 5.1)
+        run: |
+          Import-Module Pester -MinimumVersion 5.5.0
+          $config = New-PesterConfiguration
+          $config.Run.Path = 'tests'
+          $config.Run.Exit = $true
+          $config.Output.Verbosity = 'Detailed'
+          Invoke-Pester -Configuration $config

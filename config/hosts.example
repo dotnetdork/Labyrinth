@@ -1,0 +1,13 @@
+# Hosts Labyrinth may act on, with their ring group, profile and platform.
+# Format: host group profile platform
+#   group    : ring0 holds one low-impact canary host per platform; ring1, ring2 ... follow.
+#              A host that is the only one of its kind goes in the last ring (design 01, section 6).
+#   platform : ubuntu | rhel-family | windows | appliance
+# Placeholder names only.
+
+ws01     ring0   windows-member   windows
+util01   ring0   linux-server     ubuntu
+web01    ring1   linux-web        ubuntu
+siem01   ring1   linux-siem       rhel-family
+dc01     ring2   windows-dc       windows
+edge01   manual  appliance        appliance

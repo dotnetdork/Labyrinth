@@ -1,0 +1,10 @@
+# Test fixture: the no-op sample module: check says a change is needed, plan describes it, nothing is ever changed
+id: observe.sample
+phase: observe
+priority: P2
+platforms: [ubuntu, rhel-family, windows]
+risk: read-only
+touches_scored: false
+requires: []
+outputs: []
+spec: 00

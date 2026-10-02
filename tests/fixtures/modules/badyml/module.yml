@@ -1,0 +1,11 @@
+# Test fixture: module.yml with a key outside the contract
+id: observe.badyml
+phase: observe
+priority: P2
+platforms: [ubuntu, rhel-family, windows]
+risk: read-only
+touches_scored: false
+requires: []
+outputs: []
+spec: 00
+color: red

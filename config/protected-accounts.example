@@ -1,0 +1,19 @@
+# The protected set (design 01, section 4).
+# One "account class" pair per line; an optional "# reason" after it.
+# Classes and what Labyrinth may do to each:
+#   official    never changed without the White Team's permission; logons alerted on
+#   scoring     never touched by automation
+#   employee    used by simulated employees; never touched by automation, keeps password login
+#   operator    never locked or removed
+#   breakglass  never locked or removed; password rotated only in design 05's order;
+#               unregistered SSH keys are still removed
+#   service     never touched until the dependency map is known
+#   builtin     never touched
+# An empty file stops every run. Placeholder names only.
+
+whiteteam        official    # official account named in the event packet
+scoring_user1    scoring     # account the scoring engine logs in with
+employee1        employee    # account a simulated employee logs in with
+operator1        operator    # named team operator
+root             breakglass  # existing admin account; rotated password kept in the offline record
+svc_webapp       service     # service account a scored service depends on

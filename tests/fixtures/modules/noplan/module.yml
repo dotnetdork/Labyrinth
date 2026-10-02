@@ -1,0 +1,10 @@
+# Test fixture: check says a change is needed but there is no plan entry point
+id: observe.noplan
+phase: observe
+priority: P2
+platforms: [ubuntu, rhel-family, windows]
+risk: read-only
+touches_scored: false
+requires: []
+outputs: []
+spec: 00

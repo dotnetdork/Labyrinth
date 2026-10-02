@@ -1,0 +1,16 @@
+# Labyrinth run-time settings. Copy to <root>/etc/event.conf at the event.
+# Format: KEY=value, one per line. This file is read as data, never executed.
+# Placeholder values only; never commit a real value.
+
+# Address of the SIEM that receives forwarded logs (design 10).
+SIEM_ADDRESS=192.0.2.10
+SIEM_SYSLOG_PORT=514
+
+# Minutes before a dead-man revert timer undoes an unconfirmed change (design 01).
+REVERT_MINUTES=5
+
+# Largest number of hosts changed at once after the canary ring (design 01).
+RING_MAX_HOSTS=3
+
+# Seconds before a probe gives up and counts as a failure (designs 01, 13).
+PROBE_TIMEOUT=5

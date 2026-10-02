@@ -126,8 +126,8 @@ Entry points:
 
 | Entry point | Purpose | Must be |
 |---|---|---|
-| `check` | Is a change needed? | Read-only |
-| `plan` | Show exactly what `apply` would do | Read-only. This is the default mode |
+| `check` | Is a change needed? | Read-only. Exits `10` if a change is needed and `0` if not |
+| `plan` | Show exactly what `apply` would do | Read-only. This is the default mode. Exits like `check`: `10` when it lists changes, `0` when it lists none |
 | `apply` | Make the change | Idempotent; backs up first; writes to the run manifest |
 | `verify` | Confirm the change worked and nothing scored broke | Read-only |
 | `rollback` | Undo `apply` from the manifest | Safe to run repeatedly |
@@ -173,11 +173,9 @@ Rules for module authors:
 1. `touches_scored: true` modules run only after the scoring allowlist and the protected set are loaded.
 2. An `approval` module lists each item it would change, with the reason, and changes only the items a person approves, per item or per category on one host. Approved items go through the same backup, manifest, verify and rollback as any other change.
 3. A `manual-only` module never changes anything. It prints a checklist for a human. This is kept for actions too broad or too hard to undo for Labyrinth to carry out even with approval: KRBTGT resets, Group Policy and DNS server changes, domain controller restores, rescuing an unbootable host, patching and appliance changes.
-
 4. No module downloads anything or calls outside services (National Collegiate Cyber Defense Competition [NCCDC], 2025, Rule 5.6.4).
 5. No module deliberately breaks expected functionality (NCCDC, 2025, Rule 5.6.5).
 6. No module deletes a file. Anything removed is quarantined (design 17, section 5). An account is deleted only by the account module, after approval (design 05, section 6).
-
 
 ## 5. Execution model
 

@@ -1,0 +1,10 @@
+# Test fixture: check finds nothing to do
+id: observe.clean
+phase: observe
+priority: P2
+platforms: [ubuntu, rhel-family, windows]
+risk: read-only
+touches_scored: false
+requires: []
+outputs: []
+spec: 00

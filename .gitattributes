@@ -1,0 +1,5 @@
+# Bash scripts and bats tests must keep LF line endings, even in a Windows
+# checkout, or bash on a Linux host fails on the carriage returns.
+*.sh    text eol=lf
+*.bats  text eol=lf
+*.pdf   binary
