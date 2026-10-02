@@ -84,29 +84,61 @@ function Register-LabRevertTimer {
     $old = ''
     if (Test-Path -LiteralPath $timerFile) { $old = [IO.File]::ReadAllText($timerFile).Trim() }
     $name = "lab-revert-$RunId-$n"
+    $at = (Get-Date).AddSeconds($Seconds)
     $action = New-ScheduledTaskAction -Execute $Execute -Argument $Argument
-    $trigger = New-ScheduledTaskTrigger -Once -At ((Get-Date).AddSeconds($Seconds))
+    $trigger = New-ScheduledTaskTrigger -Once -At $at
     $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
     $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
     Register-ScheduledTask -TaskName $name -TaskPath '\Labyrinth\' -Action $action -Trigger $trigger `
         -Principal $principal -Settings $settings -Force | Out-Null
     [IO.File]::WriteAllText($countFile, "$n`n")
     [IO.File]::WriteAllText($timerFile, "$name`n")
+    Save-LabRevertTimerDue -RunId $RunId -At $at
     # Only now is the earlier timer removed; it may already have run.
     if ($old -ne '') {
         Unregister-ScheduledTask -TaskName $old -TaskPath '\Labyrinth\' -Confirm:$false -ErrorAction SilentlyContinue
     }
 }
 
-# Unregister-LabRevertTimer -RunId RUN: remove the run's revert timer, if one is armed.
+# Unregister-LabRevertTimer -RunId RUN: remove the run's revert timer, if one
+# is armed. Throws, keeping the state files, if the task is still there
+# afterwards, because the run would still be rolled back.
 function Unregister-LabRevertTimer {
     param([Parameter(Mandatory)] [string] $RunId)
-    $f = Join-Path (Get-LabRunDir $RunId) 'timer'
+    $dir = Get-LabRunDir $RunId
+    $f = Join-Path $dir 'timer'
     if (-not (Test-Path -LiteralPath $f)) { return }
     $name = [IO.File]::ReadAllText($f).Trim()
     # The task may already have run or been removed by hand.
     Unregister-ScheduledTask -TaskName $name -TaskPath '\Labyrinth\' -Confirm:$false -ErrorAction SilentlyContinue
+    if (Get-ScheduledTask -TaskName $name -TaskPath '\Labyrinth\' -ErrorAction SilentlyContinue) {
+        throw "the revert timer $name could not be removed"
+    }
     Remove-Item -LiteralPath $f -Force
+    Remove-Item -LiteralPath (Join-Path $dir 'timer-due') -Force -ErrorAction SilentlyContinue
+}
+
+# Save-LabRevertTimerDue -RunId RUN -At TIME: record when the run's revert
+# timer fires, in UTC (YYYY-MM-DDTHH:MM:SSZ). Advisory: a failure is ignored.
+function Save-LabRevertTimerDue {
+    param([Parameter(Mandatory)] [string] $RunId, [Parameter(Mandatory)] [datetime] $At)
+    try {
+        $due = $At.ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", [Globalization.CultureInfo]::InvariantCulture)
+        [IO.File]::WriteAllText((Join-Path (Get-LabRunDir $RunId) 'timer-due'), "$due`n")
+    } catch {
+        Write-Verbose "timer-due not written: $($_.Exception.Message)"
+    }
+}
+
+# Get-LabRevertTimerDue -RunId RUN: when the run's revert timer fires, as
+# written by Save-LabRevertTimerDue, or '' if unknown.
+function Get-LabRevertTimerDue {
+    param([Parameter(Mandatory)] [string] $RunId)
+    $f = Join-Path (Get-LabRunDir $RunId) 'timer-due'
+    if (-not (Test-Path -LiteralPath $f -PathType Leaf)) { return '' }
+    $due = ([IO.File]::ReadAllText($f)).Trim()
+    if ($due -cnotmatch '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$') { return '' }
+    return $due
 }
 
 # Test-LabRevertTimer -RunId RUN: is a revert timer armed for the run?

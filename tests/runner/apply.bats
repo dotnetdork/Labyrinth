@@ -284,3 +284,36 @@ setup() {
   [[ "$output" == *"mail fail"* ]]
   [ ! -e "$ROOT" ]
 }
+
+@test "an armed revert timer records when it fires" {
+  answers root ring1 no
+  apply
+  [ "$status" -eq 0 ]
+  grep -Eqx '[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z' "$ROOT/state/runs/$(run_id)/timer-due"
+}
+
+@test "keep that cannot cancel the revert timer keeps nothing and exits 40" {
+  answers root ring1 no
+  apply
+  id="$(run_id)"
+  printf '%s\n' 'lab_timer_cancel() { return 1; }' >> "$LAB/core/lib.sh"
+  run bash "$LAB/labyrinth.sh" --root "$ROOT" --config "$ETC" keep "$id"
+  [ "$status" -eq 40 ]
+  [[ "$output" == *"could not be cancelled"* ]]
+  [[ "$output" != *"kept: the revert timer"* ]]
+  [ -f "$ROOT/state/runs/$id/timer" ]
+  run grep -q '"action":"run_kept"' "$ROOT/state/runs/$id/manifest.jsonl"
+  [ "$status" -ne 0 ]
+}
+
+@test "rollback still finishes when the revert timer cannot be removed" {
+  answers root ring1 no
+  apply
+  id="$(run_id)"
+  printf '%s\n' 'lab_timer_cancel() { return 1; }' >> "$LAB/core/lib.sh"
+  run bash "$LAB/labyrinth.sh" --root "$ROOT" --config "$ETC" rollback "$id"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"could not be removed"* ]]
+  [ ! -e "$LAB/toggle.conf" ]
+  grep -q '"action":"run_rolled_back"' "$ROOT/state/runs/$id/manifest.jsonl"
+}

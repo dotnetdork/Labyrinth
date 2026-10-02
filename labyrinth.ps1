@@ -594,7 +594,7 @@ function Test-LabRunRolledBack {
     return (@(Get-LabManifestEntry | Where-Object { $_.action -ceq 'run_rolled_back' }).Count -gt 0)
 }
 
-# Cancel the current run's revert timer and record it; returns 0 or 20.
+# Cancel the current run's revert timer and record it; returns 0, 20 or 40.
 function Invoke-LabKeep {
     if (-not (Enter-LabLock -WaitSeconds 10)) { return 20 }
     try {
@@ -602,7 +602,13 @@ function Invoke-LabKeep {
             Write-LabLine "too late: run $env:LAB_RUN_ID was already rolled back"
             return 20
         }
-        Unregister-LabRevertTimer -RunId $env:LAB_RUN_ID
+        try {
+            Unregister-LabRevertTimer -RunId $env:LAB_RUN_ID
+        } catch {
+            [Console]::Error.WriteLine($_.Exception.Message)
+            [Console]::Error.WriteLine("labyrinth: the revert timer for run $env:LAB_RUN_ID could not be cancelled, so the run is not kept and the timer will still roll it back; run keep again")
+            return 40
+        }
         Add-LabEntryFor '' 'run_kept'
         Write-LabLog -Level info -EventName run_kept -Message 'changes kept; revert timer cancelled'
         Write-LabLine "kept: the revert timer for run $env:LAB_RUN_ID is cancelled"
@@ -635,7 +641,13 @@ function Invoke-LabRollbackCommand {
             if ($id -cnotmatch $ReModuleId) { Write-LabLine "skipping a bad module id in the manifest: $id"; $rc = 40; continue }
             if ((Undo-LabModule $id) -ne 0) { $rc = 40 }
         }
-        Unregister-LabRevertTimer -RunId $env:LAB_RUN_ID
+        # A timer left armed runs this rollback again, which is safe.
+        try {
+            Unregister-LabRevertTimer -RunId $env:LAB_RUN_ID
+        } catch {
+            [Console]::Error.WriteLine($_.Exception.Message)
+            [Console]::Error.WriteLine("warning: the revert timer for run $env:LAB_RUN_ID could not be removed; when it fires it repeats this rollback, which is safe")
+        }
         Add-LabEntryFor '' 'run_rolled_back' '' "exit $rc"
         Write-LabLog -Level warn -EventName run_rolled_back -Message "run rolled back, exit $rc"
         Write-LabLine "rollback finished: exit $rc"

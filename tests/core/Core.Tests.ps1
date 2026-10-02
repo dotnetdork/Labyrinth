@@ -286,6 +286,47 @@ Describe 'core library' {
         }
     }
 
+    It 'timer: the due time is kept in UTC and a malformed one is unknown' {
+        $dir = Get-LabRunDir $env:LAB_RUN_ID
+        New-Item -ItemType Directory -Path $dir -Force | Out-Null
+        $at = [datetime]::new(2030, 1, 2, 3, 4, 5, [DateTimeKind]::Utc)
+        Save-LabRevertTimerDue -RunId $env:LAB_RUN_ID -At $at
+        Get-LabRevertTimerDue -RunId $env:LAB_RUN_ID | Should -Be '2030-01-02T03:04:05Z'
+        [IO.File]::WriteAllText((Join-Path $dir 'timer-due'), "soon`n")
+        Get-LabRevertTimerDue -RunId $env:LAB_RUN_ID | Should -Be ''
+        Remove-Item -LiteralPath (Join-Path $dir 'timer-due')
+        Get-LabRevertTimerDue -RunId $env:LAB_RUN_ID | Should -Be ''
+    }
+
+    It 'timer: a timer still there after removal is not cancelled' {
+        # Stand-ins, as in the re-arm test above.
+        Import-Module ScheduledTasks
+        $dir = Get-LabRunDir $env:LAB_RUN_ID
+        New-Item -ItemType Directory -Path $dir -Force | Out-Null
+        [IO.File]::WriteAllText((Join-Path $dir 'timer'), "lab-revert-$($env:LAB_RUN_ID)-1`n")
+        [IO.File]::WriteAllText((Join-Path $dir 'timer-due'), "2030-01-02T03:04:05Z`n")
+        Set-Item -Path function:Unregister-ScheduledTask -Value { }
+        Set-Item -Path function:Get-ScheduledTask -Value { 'still here' }
+        foreach ($c in 'Unregister-ScheduledTask', 'Get-ScheduledTask') {
+            [string](Get-Command $c).Module | Should -Be ''
+        }
+        try {
+            $msg = ''
+            try { Unregister-LabRevertTimer -RunId $env:LAB_RUN_ID } catch { $msg = $_.Exception.Message }
+            $msg | Should -Match 'could not be removed'
+            Join-Path $dir 'timer' | Should -Exist
+            Join-Path $dir 'timer-due' | Should -Exist
+            # Once the task is gone, both files go.
+            Set-Item -Path function:Get-ScheduledTask -Value { }
+            Unregister-LabRevertTimer -RunId $env:LAB_RUN_ID
+            Join-Path $dir 'timer' | Should -Not -Exist
+            Join-Path $dir 'timer-due' | Should -Not -Exist
+        } finally {
+            Remove-Item -Path function:Unregister-ScheduledTask, function:Get-ScheduledTask -ErrorAction SilentlyContinue
+            Import-Module ScheduledTasks -Force
+        }
+    }
+
     It 'probe: a closed port fails' {
         Invoke-LabProbe -Proto tcp -Target 127.0.0.1 -Port 1 -Expect '-' -Timeout 2 | Should -Be 'fail no connection'
         Invoke-LabProbe -Proto smtp -Target 127.0.0.1 -Port 1 -Expect '-' -Timeout 2 | Should -Be 'fail no banner'
