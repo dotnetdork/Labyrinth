@@ -55,6 +55,8 @@ $script:Settings = @{}
 $script:Before = @()
 $script:HaveServices = $false
 $script:BreakGlassAccount = ''
+$script:GivenBreakGlass = $BreakGlass   # -BreakGlass, read inside functions
+$script:GivenGroup = $ConfirmGroup      # -ConfirmGroup, read inside functions
 $script:Answer = ''
 
 $Usage = @'
@@ -303,8 +305,8 @@ function Assert-LabBreakGlass {
     if ($account) {
         Write-LabLine "break-glass: confirmed earlier for $account"
     } else {
-        if ($BreakGlass -ne '') {
-            $account = $BreakGlass
+        if ($script:GivenBreakGlass -ne '') {
+            $account = $script:GivenBreakGlass
         } else {
             if (-not (Read-LabAnswer "Break-glass check: log in at this host's console with the break-glass account, then type its name: ")) {
                 Exit-Lab 'no answer: break-glass not confirmed; nothing was changed' 20
@@ -320,7 +322,7 @@ function Assert-LabBreakGlass {
 
 function Assert-LabPlanConfirmed {
     param([string] $Group)
-    $typed = $ConfirmGroup
+    $typed = $script:GivenGroup
     if ($typed -eq '') {
         [void](Read-LabAnswer "Type the group name ($Group) to apply this plan: ")
         $typed = $script:Answer

@@ -194,6 +194,7 @@ lab_services_load() {
 # lab_host_lookup HOST: find HOST (case-insensitive) in the hosts file and
 # set LAB_HOST_GROUP, LAB_HOST_PROFILE and LAB_HOST_PLATFORM. Returns 2 if
 # the file is missing or the host is not listed.
+# shellcheck disable=SC2034 # the variables it sets are read by the runner and modules
 lab_host_lookup() {
   local file="$LAB_CONFIG_DIR/hosts" want="${1,,}" i line
   local re='^([A-Za-z0-9_.-]+)[[:space:]]+(ring[0-9]+|manual)[[:space:]]+([a-z0-9-]+)[[:space:]]+([a-z-]+)$'
