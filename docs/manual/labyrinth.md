@@ -238,7 +238,7 @@ Every command ends with one of these numbers. Scripts can test it; people can re
 
 # 10. Files
 
-Everything Labyrinth keeps is under one folder, the **data root**: @ROOT@ unless you choose another with the root option.
+Everything Labyrinth keeps is under one folder, the **data root**: `@ROOT@` unless you choose another with the root option.
 
 <!-- linux -->
 | Folder | Holds |
