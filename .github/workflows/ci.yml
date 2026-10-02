@@ -34,6 +34,10 @@ jobs:
         run: bash tests/lint/guard.sh
 
       - name: bats
+        # LAB_REALSYSTEM=1 turns on the real-system tests (real systemd
+        # timers, as root): only on these disposable runners.
+        env:
+          LAB_REALSYSTEM: 1
         run: bats --recursive --print-output-on-failure tests
 
   windows:
@@ -68,6 +72,10 @@ jobs:
           "PSScriptAnalyzer: $($files.Count) file(s) clean"
 
       - name: Pester (Windows PowerShell 5.1)
+        # LAB_REALSYSTEM=1 turns on the real-system tests (real scheduled
+        # tasks, elevated): only on these disposable runners.
+        env:
+          LAB_REALSYSTEM: 1
         run: |
           Import-Module Pester -MinimumVersion 5.5.0
           $config = New-PesterConfiguration

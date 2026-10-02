@@ -1,21 +1,10 @@
 #!/usr/bin/env bats
 # Tests for labyrinth.sh in plan mode (design 00, sections 4 and 5).
-# Each test builds a throwaway Labyrinth tree holding the fixture modules
-# from tests/fixtures/modules, so nothing outside the test directory is used.
+# Each test builds a throwaway Labyrinth tree (see lab_helper.bash).
 
-setup() {
-  REPO="$BATS_TEST_DIRNAME/../.."
-  LAB="$BATS_TEST_TMPDIR/lab"
-  mkdir -p "$LAB/phases/observe/modules" "$LAB/profiles"
-  cp "$REPO/labyrinth.sh" "$LAB/"
-  cp -R "$REPO/tests/fixtures/modules/." "$LAB/phases/observe/modules/"
-  ROOT="$BATS_TEST_TMPDIR/root"
-}
+load lab_helper
 
-# profile ID...: write the test profile
-profile() { printf '%s\n' "$@" > "$LAB/profiles/test.profile"; }
-
-plan() { run bash "$LAB/labyrinth.sh" --profile test --root "$ROOT" "$@" observe; }
+setup() { lab_setup; }
 
 @test "the no-op sample module: check says a change is needed, plan runs, exit 10" {
   profile observe.sample
@@ -71,7 +60,9 @@ plan() { run bash "$LAB/labyrinth.sh" --profile test --root "$ROOT" "$@" observe
 
 @test "entry points get the contract environment, in plan mode" {
   profile observe.envdump
-  plan
+  mkdir -p "$ROOT/etc"
+  cp "$ETC/protected-accounts" "$ROOT/etc/"
+  run bash "$LAB/labyrinth.sh" --profile test --root "$ROOT" observe
   [ "$status" -eq 0 ]
   [[ "$output" == *"LAB_ROOT=$LAB"* ]]
   [[ "$output" == *"LAB_CONFIG_DIR=$ROOT/etc"* ]]
@@ -154,11 +145,47 @@ yml() {
   [ "$status" -eq 40 ]
 }
 
-@test "--apply is refused in this build" {
-  profile observe.sample
-  plan --apply
+@test "plan mode refuses to run without the protected set" {
+  profile observe.clean
+  rm "$ETC/protected-accounts"
+  plan
+  [ "$status" -eq 20 ]
+  [[ "$output" == *"protected set is not loaded"* ]]
+  : > "$ETC/protected-accounts"
+  plan
+  [ "$status" -eq 20 ]
+}
+
+@test "a malformed protected set is an error" {
+  profile observe.clean
+  printf 'root superuser
+' > "$ETC/protected-accounts"
+  plan
   [ "$status" -eq 40 ]
-  [ ! -e "$LAB/APPLIED" ]
+}
+
+@test "modules run by priority, then in profile order" {
+  profile observe.sample observe.clean
+  sed -i 's/^priority: P2/priority: P0/' "$LAB/phases/observe/modules/clean/module.yml"
+  plan
+  clean_line="$(grep -n 'observe.clean' <<< "$output" | head -n1 | cut -d: -f1)"
+  sample_line="$(grep -n 'observe.sample' <<< "$output" | head -n1 | cut -d: -f1)"
+  [ "$clean_line" -lt "$sample_line" ]
+}
+
+@test "the profile comes from the hosts file when --profile is not given" {
+  profile observe.clean
+  hosts ring1
+  run bash "$LAB/labyrinth.sh" --root "$ROOT" --config "$ETC" observe
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"profile test"* ]]
+}
+
+@test "a reversible module without rollback.sh is invalid" {
+  profile observe.norollback
+  plan
+  [ "$status" -eq 40 ]
+  [[ "$output" == *"missing rollback.sh"* ]]
 }
 
 @test "argument errors exit 40" {

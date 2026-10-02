@@ -43,6 +43,9 @@ Labyrinth/
 ├── labyrinth.sh                 # main program for Linux hosts and control nodes (bash)
 ├── labyrinth.ps1                # main program for Windows hosts and control nodes (PowerShell)
 ├── core/                        # shared library used by every module
+│   ├── lib.sh                   # loads the bash core (entry points source it)
+│   ├── Lab.ps1                  # loads the PowerShell core (entry points dot-source it)
+│   ├── config/                  # run-time configuration readers (data only, never sourced)
 │   ├── log/                     # structured logging (JSON lines)
 │   ├── manifest/                # run manifest: what was changed, for rollback and cleanup
 │   ├── safety/                  # protected set, gates, dead-man revert timers
@@ -189,12 +192,15 @@ Either way, one run does this:
 ```
 labyrinth <phase> --profile <name> --targets <group>   # plan mode by default
    1. load profile → ordered module list
-   2. safety gates (protected set loaded, scoring allowlist present, break-glass verified)
+   2. safety gates (protected set loaded, break-glass verified; the scoring allowlist
+      for modules that touch scored services)
    3. plan all modules and print the combined plan
    4. human confirms (typed confirmation) → apply in rings (design 01)
    5. verify each module with scoring-style probes; auto-rollback a module on regression
    6. write run manifest; run cleanup
 ```
+
+The local commands are `labyrinth.sh <phase>` (plan), `--apply <phase>`, `probe`, `keep <run>` and `rollback <run>`, with the same commands in `labyrinth.ps1`. `docs/Conventions.md` section 3.1 gives their options and the exact order of the gates and steps in an apply.
 
 ## 6. Code and configuration are separate
 

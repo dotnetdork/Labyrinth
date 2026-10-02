@@ -1,0 +1,10 @@
+# Test fixture: a manual-only module: prints a checklist, never applies
+id: observe.manual
+phase: observe
+priority: P2
+platforms: [ubuntu, rhel-family, windows]
+risk: manual-only
+touches_scored: false
+requires: []
+outputs: []
+spec: 00
