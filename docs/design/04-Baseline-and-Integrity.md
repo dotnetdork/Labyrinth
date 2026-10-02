@@ -21,6 +21,7 @@ Configuration files legitimately differ from their packages, so differences in `
 ## 3. What is baselined
 
 - Critical files: authentication configuration, SSH (Secure Shell) configuration, sudoers, cron and timer definitions, service unit files, web server configuration, startup items.
+- **Boot-critical files**, watched more closely because deleting one and rebooting can leave a host unbootable: `/etc/fstab`, the bootloader configuration (`/boot/grub*`, `/etc/default/grub`), `/etc/passwd`, `/etc/shadow`, `/etc/group`, the systemd default target, and on Windows the boot configuration and the start type of core services. Each has an auditd watch or object-access audit, and a copy is kept off the host with the restore points (design 14, section 5) for the rescue runbook (design 14, section 6).
 - Accounts, groups, authorized keys, listening ports, running services, scheduled tasks.
 - Firewall state.
 - Windows: local administrators, autoruns, services, WMI (Windows Management Instrumentation) subscriptions, scheduled tasks.
@@ -63,7 +64,7 @@ flowchart TD
 
 - **Linux:** auditd rules for the critical set, kept small to avoid log floods.
 - **Windows:** object access auditing on the critical set, process creation with command line, and Sysmon if it is available inside the environment. Only tools available to all teams and within the rules may be used (National Collegiate Cyber Defense Competition [NCCDC], 2025, Rule 5.1).
-- **All hosts:** every host forwards a small set of high-signal events first (designs 06 and 10, and the Strategic Plan).
+- **All hosts:** every host forwards a small set of high-signal events first (designs 06 and 10).
 
 ## 6. Sealed baseline and continuous integrity
 
@@ -76,7 +77,7 @@ The first baseline is taken before the lockout, so it records the host as it was
 Then:
 
 - Scheduled comparison, and every checkpoint (design 13), compares against the **latest seal**; results go to the `integrity` log category.
-- Findings are ranked: changes to authentication, SSH, sudoers, accounts and scheduled execution rank highest, and any new persistence item after the seal is high-ranked (design 17, section 7).
+- Findings are ranked: changes to boot-critical files, authentication, SSH, sudoers, accounts and scheduled execution rank highest, and any new persistence item after the seal is high-ranked (design 17, section 7).
 - A change made by Labyrinth itself is recorded in the run manifest and excluded from alerts.
 
 ## 7. Rules check
@@ -91,6 +92,8 @@ Read-only observation does not affect scored services and needs no special permi
 - Editing the baseline file on the host is detected by the check against the control node's copy.
 - After `--seal`, a cron job planted in the lab is reported at the next checkpoint, while the changes the lockout made are not.
 - `--reseal` without a reason is refused, and each seal is logged.
+- Deleting `/etc/fstab` on a lab host raises a high-ranked alert before any reboot.
+
 
 - Baseline comparison completes within the target time on the lab host.
 - Auditing on the critical set does not measurably slow a scored service probe.

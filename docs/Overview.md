@@ -1,6 +1,6 @@
 # How Labyrinth Works
 
-**Status:** Draft · reviewed 2026-09-29
+**Status:** Draft · reviewed 2026-10-02
 
 This is the plain-language tour of Labyrinth. It explains what each part of the system is for and how the parts fit together, without assuming you already know networking or security tooling. The [implementation blueprint](Blueprint.md) and the [design specs](design/README.md) hold the precise details. Each section below links to the one that goes deeper.
 
@@ -95,6 +95,7 @@ flowchart TD
     TL --> REP
     CN -->|"reads saved searches"| SIEM
     CN -->|"pushes a short status file"| H
+    H -->|"copies of restore points"| CN
     REP -->|"a person edits,<br/>approves and submits"| WT
     classDef human fill:#fff4d6,stroke:#b7791f,color:#4a3108
     classDef store fill:#eef1f5,stroke:#475569,color:#1e293b
@@ -198,7 +199,7 @@ Each subsection answers four questions: what the part does, why it exists, how i
 | 0. Observe only | Read-only inventory: users, groups, open ports, running programs, open sessions, scheduled tasks | Runs automatically |
 | 1. Safe and reversible | Change admin-class passwords; remove SSH keys that are not on the approved list; end intruder sessions | Runs automatically after the plan is reviewed |
 | 2. Service-affecting | Check and harden SSH; set aside obvious attacker footholds; turn on the default-deny firewall; take admin rights from unexpected local accounts and lock them; safe settings for scored apps and Windows; turn off unneeded services | Runs host group by host group, with a check and a revert timer |
-| 3. Approve, then act | Unexplained footholds; deleting locked accounts; riskier app settings. A short list stays with a person: ordinary users' passwords, domain accounts and policy, KRBTGT, DNS servers, restores, patching and network appliances | A person approves, then Labyrinth does it; the short list is a printed checklist |
+| 3. Approve, then act | Unexplained footholds; deleting locked accounts; riskier app settings; app admin passwords; restoring a service from a backup; filtering outgoing traffic; ending a stubborn process that runs as SYSTEM on Windows. A short list stays with a person: ordinary users' passwords, domain accounts and policy, KRBTGT, DNS servers, restoring the domain controller, rescuing a host that will not boot, patching and network appliances | A person approves, then Labyrinth does it; the short list is a printed checklist |
 
 - **Rings.** Changes go first to one low-impact host of each kind of system (the "canaries", for example one Linux host and one Windows workstation), then to the next group, and so on. If a check fails, the run stops before the problem spreads. A host that is the only one of its kind, such as the domain controller, has no canary to go first; it comes last and relies on the revert timer and the tests.
 - **Dead-man revert timer.** Before a firewall or SSH change, Labyrinth sets a timer that will undo the change automatically unless someone cancels it after confirming everything still works. If the change locks the team out, the timer puts things back.
@@ -226,6 +227,8 @@ Each subsection answers four questions: what the part does, why it exists, how i
 - **Key-only, aware of scoring.** Where SSH is scored, the scoring engine's accounts keep their passwords and everyone else must use a key. Where it is not scored, everyone uses keys and only the team's admin machine can reach it.
 - **Unexpected accounts.** An account is expected if it is protected, named in the event packet or runs a scored service. Labyrinth also looks for hidden admins, such as a second root account or a user in an admin group by a side door. Unexpected local accounts with admin rights lose them and are locked at once; others are locked after a person approves. Once every scored service is confirmed working, a person can approve deleting them, so they cannot be switched back on. Their details are saved first, for the incident report.
 
+- **App admin passwords.** Apps have their own admin logins too (a website's admin page, the database's root account), and default ones are a favorite way in. Labyrinth lists them. After a person approves, it changes one, updates every settings file that stores it, and tests the app. It never does this on its own, because the scoring engine may log in to the app.
+
 **What it will never do.** Change scoring accounts, reset domain-wide passwords automatically, or copy private keys onto managed hosts.
 
 ### 4.3 🟦 Baseline and integrity: "what changed, who, when, from where?"
@@ -239,7 +242,7 @@ Each subsection answers four questions: what the part does, why it exists, how i
 **How it works.**
 
 1. Check files against the operating system's records.
-2. Baseline the rest: hashes of critical files, plus accounts, keys, open ports, services and scheduled tasks. A copy, or at least its hash, is kept off the host, because an attacker with full control of a host could edit a baseline stored there.
+2. Baseline the rest: hashes of critical files, plus accounts, keys, open ports, services and scheduled tasks. **Boot-critical files** (such as `/etc/fstab`, which tells Linux which disks to mount) are watched most closely, because deleting one and rebooting can leave a host unable to start. A copy, or at least its hash, is kept off the host, because an attacker with full control of a host could edit a baseline stored there.
 3. Compare against the baseline on a schedule, after first checking the host's baseline against that copy.
 4. When something changes, look up the audit logs to see which account made the change, when, and from which network address.
 
@@ -355,6 +358,10 @@ Some outside repositories are kept as **reference only** ([design 08](design/08-
 
 **Protecting the SIEM itself.** An attacker who controls the SIEM can blind the team. Labyrinth changes its admin password, checks its users, lets only the team's admin machine reach its web page and only the team's hosts send it logs, and sets aside add-ons that could run commands.
 
+**Watching outgoing traffic.** Blocking incoming traffic does not stop a program already inside from calling out. So each host logs new outgoing connections, without blocking any, and a search flags unusual ones, such as time or name lookups sent to an unknown server. Filtering a host's outgoing traffic is offered only after a person approves, because scored services need different outgoing connections.
+
+**Domain takeover signs.** Searches also look for the signs of two well-known attacks that hand over every domain password: ZeroLogon and DCSync. Either one puts the KRBTGT reset at the top of the domain checklist.
+
 **Watching, not blocking, risky tools.** Some ordinary tools are favorites for attackers (for example, ones that open network connections or download files). Blocking them everywhere could break real work, so Labyrinth raises an alert when they run instead.
 
 **What it will never do.** Send logs anywhere outside the competition network, or let logging fill a disk.
@@ -366,6 +373,8 @@ Some outside repositories are kept as **reference only** ([design 08](design/08-
 **Why it is careful.** The domain controller answers logons and DNS for the whole network. One mistake there breaks everything at once. So the rule is **blast radius**: a change that affects one machine can be automated; a change that affects the whole domain is a printed checklist.
 
 **How it works.** Ordinary Windows machines go first, one group at a time. Labyrinth changes their admin passwords, turns on the firewall, limits remote desktop to the team's admin machine (and the scoring engine, if remote desktop is scored), and turns off old or risky features that attackers use to steal or relay passwords, such as old password formats and a setting that keeps plain-text passwords in memory. The domain controller goes last. Anything domain-wide, such as **Group Policy** (settings the domain pushes to every machine at once), domain accounts including the domain Administrator, DNS or the special KRBTGT account, is done by a person following the checklist.
+
+**Stubborn processes.** An administrator cannot always end a process that runs as SYSTEM, the most powerful Windows account, and attackers use this to keep their tools running. After a person approves, Labyrinth ends that one process through a one-time scheduled task that runs as SYSTEM, and deletes the task afterwards. Its way of restarting is set aside first, so it does not come straight back.
 
 ### 4.12 🟪 Automatic bans
 
@@ -381,7 +390,9 @@ Some outside repositories are kept as **reference only** ([design 08](design/08-
 
 **What it does.** Re-tests every scored service on a schedule, and gives the team one command that summarizes the whole network ([design 13](design/13-Health-Monitor-and-Checkpoints.md)).
 
-**How it works.** The control node runs the same scoring-style tests the panic button uses. When a service goes from working to broken, it records both results, names the most recent Labyrinth change on that host as the likely cause, and raises an alert. It does **not** undo anything on its own: an hour after a change, the cause could just as easily be the attacker, so a person decides.
+**How it works.** The control node runs the same scoring-style tests the panic button uses. When a service goes from working to broken, it records both results, names the most recent Labyrinth change on that host as the likely cause, and raises an alert. It does **not** undo a service change on its own: an hour after a change, the cause could just as easily be the attacker, so a person decides.
+
+**Firewall drift.** The one exception is the firewall. If its rules no longer match the sealed set (for example, because an attacker flushed them), Labyrinth puts the sealed rules back at once, with the usual tests and revert timer, and raises an alert. Rules that keep changing are flagged for a person to investigate.
 
 `labyrinth checkpoint` prints, in one screen: which services are up, new integrity findings, new accounts or open ports, open incident reports, trap hits and bans, and how long since each service was last backed up. It changes nothing.
 
@@ -393,7 +404,9 @@ Some outside repositories are kept as **reference only** ([design 08](design/08-
 
 **Why it exists.** Rollback only undoes Labyrinth's own changes. If an attacker defaces a website or deletes a database table, the team needs a copy from before the damage.
 
-**How it works.** A restore point is taken before patching, before the first risky change on a host, or on request. Labyrinth first checks there is enough disk space, records a hash of each backup so tampering is caught, and stores it where only an administrator can read it. Restoring overwrites live data, so it is a printed set of steps that a person follows.
+**How it works.** A restore point is taken before patching, before the first risky change on a host, or on request. Labyrinth first checks there is enough disk space, records a hash of each backup so tampering is caught, and stores it where only an administrator can read it. Every restore point is also copied off the host to the control node, because an attacker with full control of a host can delete backups stored there, and Red Teams are expected to destroy things later in an event.
+
+**Restoring.** `labyrinth restore` puts back a service's settings and files, its database, or a service that was stopped. Restoring overwrites live data, so a person first confirms the restore point is from before the damage; Labyrinth then does the restore, saves the damaged copy as evidence and tests the service. Restoring the domain controller and rescuing a host that will not boot (for example, after an attacker deleted a file it needs to start) stay with a person, following a printed procedure.
 
 ### 4.15 🟥 Fewer services, targeted patches
 
@@ -401,7 +414,10 @@ Some outside repositories are kept as **reference only** ([design 08](design/08-
 
 **Services.** Each kind of host has a list of services that may be turned off, with the reason and the conditions that keep one on, such as "it is scored". Turning a service off is easy to undo, so Labyrinth does it automatically with the usual checks.
 
-**Patches.** Undoing a software update is often impossible, so patching stays in human hands. Labyrinth lists the security updates available, ranks them (software that is both reachable from the network and known to be actively exploited comes first; on Windows, where updates cannot be matched to that list offline, by how exposed the machine is), takes a restore point, prints the command to update that one package, and tests the service afterwards. It never runs a full system upgrade in the middle of an event.
+**Patches.** Undoing a software update is often impossible, so patching stays in human hands. Labyrinth lists the security updates available, ranks them (software that is both reachable from the network and known to be actively exploited comes first; on Windows, where updates cannot be matched to that list offline, by how exposed the machine is), takes a restore point, prints the command to update that one package, and tests the service afterwards. It never runs a full system upgrade in the middle of an event. Known-exploited flaws on the domain controller, such as ZeroLogon, always come first.
+
+**Web apps and plugins.** The system's update tools do not track most web apps, so Labyrinth also lists each scored web app's version and its plugins, read from the files on disk, and ranks them the same way. An unused plugin with a known flaw can be switched off after a person approves.
+
 
 ### 4.16 🟥 Routers and firewall appliances
 
@@ -474,7 +490,7 @@ Other rules also shape the design:
 
 ## 7. What to do first: priorities
 
-Controls are ranked from **P0** (do first) to **P3** (do last): 🔴 P0 · 🟠 P1 · 🟡 P2 · ⚪ P3. The rule is to do every P0 task on every host before starting any P1 task anywhere. Changing admin passwords and turning on the default-deny firewall are P0. Traps (canaries and honey-accounts) are P2, not because they matter less, but because they need the logging from the Observe phase to be in place first. The full table is the [priority scorecard](Blueprint.md#7-priority-scorecard).
+Controls are ranked from **P0** (do first) to **P3** (do last): 🔴 P0 · 🟠 P1 · 🟡 P2 · ⚪ P3. The rule is to do every P0 task on every host before starting any P1 task anywhere. Changing admin passwords, ending intruder sessions, sweeping for footholds and turning on the default-deny firewall are P0. Traps (canaries and honey-accounts) are P2, not because they matter less, but because they need the logging from the Observe phase to be in place first. The full table is the [priority scorecard](Blueprint.md#7-priority-scorecard).
 
 ---
 
@@ -539,4 +555,4 @@ Controls are ranked from **P0** (do first) to **P3** (do last): 🔴 P0 · 🟠 
 
 ## References
 
-National Collegiate Cyber Defense Competition. (2025, December 10). *Rules and requirements*. Retrieved September 29, 2026, from https://www.nationalccdc.org/rules.html
+National Collegiate Cyber Defense Competition. (2025, December 10). *Rules and requirements*. Retrieved October 2, 2026, from https://www.nationalccdc.org/rules.html

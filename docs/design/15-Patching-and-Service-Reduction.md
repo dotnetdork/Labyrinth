@@ -59,6 +59,10 @@ Services are disabled, never removed. Rollback starts them again with their prev
 
 An unpatched, unexploited package on a closed port ranks last (Blueprint §3.6).
 
+**Domain controller flaws rank first.** A known-exploited flaw on a domain controller, such as ZeroLogon (CVE-2020-1472), hands over every domain password at once; Red Teams report it as the source of most of their admin shells at recent state qualifiers (*Background*). So any domain controller flaw in the known-exploited snapshot is placed at the top of the list, above every other host, with the domain checklist's follow-up steps (design 11, section 5).
+
+**Web apps and plugins.** Package managers do not track most web apps. So the check also lists each scored web app's version and its plugins, modules and themes with their versions, read from the files on disk (for example WordPress `readme.txt` and plugin headers, `composer.lock`, Drupal and Joomla manifests). Red Teams read the same files to choose their exploits (*Background*). Each version is matched against the known-exploited snapshot and ranked with the packages. Updating a web app or plugin is patching, so a person does it. An **unused** plugin with a known-exploited flaw can instead be deactivated and quarantined after approval (design 17, scored-app content).
+
 **Windows ranks by exposure only.** The known-exploited catalog names vulnerabilities, not Windows updates. Matching one to the other needs Microsoft's update data, which is not in the release and cannot be fetched at the event. So on Windows the check lists the installed updates and ranks hosts and roles by exposure, and a person judges which known-exploited issues apply.
 
 **Plan and apply.** The operator picks from the ranked list. For each pick, Labyrinth:
@@ -68,7 +72,7 @@ An unpatched, unexploited package on a closed port ranks last (Blueprint §3.6).
 3. waits while a person runs it and restarts the service if needed;
 4. runs the probes and records the result in the run manifest.
 
-If a probe fails, the printed restore steps from design 14 are the way back.
+If a probe fails, `labyrinth restore` puts the service back from that restore point once a person approves (design 14, section 6).
 
 ```mermaid
 flowchart LR
@@ -108,9 +112,12 @@ flowchart LR
 - On a lab host, only the candidate services not marked scored are stopped, and every probe still passes.
 - Rollback restores each stopped service to its previous start type.
 - The patch check lists the known-vulnerable package planted in the lab, ranked above an unexposed one.
+- A known-exploited domain controller flaw in the snapshot ranks above every other finding.
+- A known-exploited WordPress plugin version planted in the lab web app is listed and ranked.
+
 - No Labyrinth command installs or downloads a package.
 - A patch whose probe fails is restored from its restore point.
 
 ## References
 
-National Collegiate Cyber Defense Competition. (2025, December 10). *Rules and requirements*. Retrieved September 29, 2026, from https://www.nationalccdc.org/rules.html
+National Collegiate Cyber Defense Competition. (2025, December 10). *Rules and requirements*. Retrieved October 2, 2026, from https://www.nationalccdc.org/rules.html

@@ -26,7 +26,7 @@ Ideas and techniques are not covered by copyright, which is why writing from a s
 | Source (reference only) | Idea | Labyrinth spec it feeds |
 |---|---|---|
 | CCDCScripts25 (UMass Cybersecurity) | Per-OS script layout; quick inventory of users, ports, services; baseline before hardening | Profiles and the observe inventory module (designs 00, 04) |
-| BYU CCDC scripts (GPL-3.0) | Ordering of a first-hour checklist; separate Linux and Windows tracks | Stage plan and phase order (Strategic Plan) |
+| BYU CCDC scripts (GPL-3.0) | Ordering of a first-hour checklist; separate Linux and Windows tracks | Phase order (Blueprint §1) |
 | SwiftOnSecurity sysmon-config (stale since 2021; no license file) | Which Windows events carry high signal | Logging baseline for design 04 (event list only, written by us) |
 | ansible-lockdown (MIT, active) | Benchmark-style control lists with IDs and a check/apply split | The module contract, one control per module or per module section (design 00) |
 | UAC, Fenrir (from the reading list) | Dependency-free live collection with native tools | Collection step in the incident report pipeline (design 02) |
