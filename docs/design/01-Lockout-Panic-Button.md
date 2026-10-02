@@ -35,10 +35,10 @@ The protected set is a list the operator supplies at run time, from the event pa
 
 | Class | Examples | Treatment |
 |---|---|---|
-| Official accounts | Accounts the White or Operations Team use | Never touched |
+| Official accounts | Accounts the White or Operations Team use | Never changed without the White Team's permission; logons alerted on (design 05, section 5) |
 | Scoring accounts | Mailbox users and other accounts the scoring engine logs in with | Never touched by automation |
 | Operator accounts | Named team accounts | Never locked or removed |
-| Break-glass accounts | Sealed per-host emergency credentials | Never touched; verified working |
+| Break-glass account | An existing admin-class account whose rotated password is sealed on paper; no new account or key (design 05, section 5) | Never locked or removed; password rotated only in design 05's order; verified working at the console |
 | Service accounts for scored services | Database and application accounts a scored service depends on | Never touched until the dependency map is known |
 | Built-in and machine accounts | System, machine and domain-trust accounts | Never touched |
 
@@ -114,7 +114,7 @@ flowchart TD
 |---|---|
 | Protected set loaded | Non-empty and parsed |
 | Scoring allowlist present | In the firewall plan for every host that filters traffic |
-| Break-glass verified | A second, independent login works before any change |
+| Break-glass verified | The break-glass credential works at the console before any change |
 | Backup taken | Config backups exist for every file that will change |
 | Plan reviewed | Operator confirmed the plan by typing the group name |
 | Revert timer armed | For every Tier 2 change (section 8) |

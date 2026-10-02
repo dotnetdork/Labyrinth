@@ -7,7 +7,7 @@
 | Rule | Effect |
 |---|---|
 | Administrator-class passwords are not used for scoring and may be changed freely; other user passwords need the notification process (Midwest Collegiate Cyber Defense Competition [MWCCDC], 2025, Rule 13) | Automation rotates admin-class credentials only. |
-| Officials must get access on request (National Collegiate Cyber Defense Competition [NCCDC], 2025, Rule 4.1) | Sealed break-glass credentials and a verified path exist per critical host. |
+| Officials must get access on request (National Collegiate Cyber Defense Competition [NCCDC], 2025, Rule 4.1) | When an official asks, the captain gives them a working credential from the paper log or logs in for them. No standing account or key is created for this (section 5). |
 | POP3 (Post Office Protocol 3) scoring uses domain users (MWCCDC, 2025, Functional Services section; *Provisional*) | Domain-wide password resets are manual-only. |
 | No deliberate breakage (NCCDC, 2025, Rule 5.6.5) | Never disable accounts wholesale. |
 
@@ -44,7 +44,7 @@ Choosing our own names or random ones is a trade-off:
 ## 4. SSH key design
 
 - **Algorithm:** ed25519.
-- **One key per role**, not per person and not one for all: `ops-linux`, `ops-monitor`, `breakglass`. Losing one key limits the blast radius.
+- **One key per role**, not per person and not one for all: `ops-linux`, `ops-monitor`. Losing one key limits the blast radius. There is no break-glass key (section 5).
 - **Restrictions in `authorized_keys`:** `from="<control node>"`, `restrict`, and `command="<forced command>"` for automation keys.
 - **Registry:** a signed list of approved public keys per host (state path). Anything else found in an authorized keys file is backed up, then removed, by the lockout module.
 - **Rotation:** generate a new key, install it alongside the old one, test a fresh login, then remove the old key. Rotation is a module run, not a manual edit.
@@ -78,11 +78,19 @@ flowchart TD
 
 *Figure: passwords and SSH keys rotate in the same order: the new credential is created and tested before the old one is closed or removed. Both lanes are lock-out work (red); amber is the operator's own step and green is the safe end point.*
 
-## 5. Break-glass
+## 5. Break-glass and official access
 
-- One sealed credential per critical host, written on paper, kept by the captain.
-- Verified working before any change (design 01 gate).
-- Rotated after use and after the event.
+Break-glass is how the team gets back into a host it has locked itself out of. It is also what the captain hands over when an official asks for access. Officials run the virtualization platform, so they already have each host's console; what they may need from the team is a working login.
+
+A break-glass path must not become a backdoor, so:
+
+- **No new account and no key.** The break-glass credential is the rotated password of an existing admin-class account (root or the local Administrator), written on paper and kept by the captain. Labyrinth never creates an account or an SSH key for it.
+- **Console first.** It is verified at the host's console before any change (design 01 gate). Where the platform allows it without blocking the team's own admin path, it works only at the console; on Linux, `PermitRootLogin no` in the SSH drop-in (section 4) already does this.
+- **Rotated like any admin password.** Its rotation follows section 2, and the new password is verified at the console before the next change. It is never locked or removed. Unregistered SSH keys on the account are still removed.
+- **Watched.** A successful logon with it raises an alert (design 10, section 5).
+- **Rotated after use** and after the event.
+
+**Official accounts** named in the event packet are never changed without the White Team's permission. They are still watched: their logons raise an alert, and the team confirms unexpected ones with the White Team. If the White Team agrees, the captain rotates the password and hands them the new one.
 
 ## 6. Acceptance tests
 
@@ -92,6 +100,9 @@ flowchart TD
 - A key with a wrong source address cannot log in.
 - A bad `sshd` configuration is rejected by the syntax test and does not reload.
 - A dead-man revert restores SSH access when verify is failed on purpose.
+- No account or SSH key is created for break-glass.
+- The break-glass password works at the console after rotation, and root cannot log in over SSH.
+- A logon with the break-glass credential or an official account raises an alert.
 
 ## References
 
