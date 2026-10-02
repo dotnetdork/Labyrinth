@@ -79,17 +79,65 @@ Entry points load the core library from `LAB_ROOT/core/` and never from a relati
 
 **Exit codes in plan mode.** `check` and `plan` both exit `10` when a change is needed and `0` when none is, or `20` when a safety gate blocks them (design 00, section 4). The runner treats any other code as `40`. It runs `plan` only after `check` exits `10`, and for a whole run it reports the highest code any module returned, so one blocked module makes the run exit `20` and one error makes it exit `40`.
 
-### 3.1 Commands, gates and the order of an apply
+### 3.1 Commands, options, gates and the order of an apply
 
-| Command (bash; PowerShell in brackets) | Does |
+Both runners share one vocabulary. In this section `labyrinth` stands for the installed command, or for `labyrinth.sh` / `labyrinth.ps1` run directly (design 00, section 5).
+
+```
+labyrinth <command> [<phase> | <run>] [options]
+```
+
+| Command | Does |
 |---|---|
-| `labyrinth.sh <phase>` | Plan: every module of the phase reports what it would change. Nothing is written, not even logs |
-| `labyrinth.sh --apply <phase>` (`-Apply`) | Apply the plan, behind the gates below |
-| `labyrinth.sh probe` | Probe every scored service once; exit `30` if one fails |
-| `labyrinth.sh keep <run>` | Keep a run's changes: cancel its revert timer |
-| `labyrinth.sh rollback <run>` | Undo what a run applied, newest module first. The revert timer runs exactly this |
+| `plan <phase>` | Every module of the phase reports what it would change. Nothing is written, not even logs |
+| `apply <phase>` | Plan, then apply behind the gates below |
+| `keep [<run>]` | Keep a run's changes: cancel its revert timer, then record the keep. Without `<run>`, it takes the one run whose timer is armed; if several are armed, it lists them and keeps nothing (`40`) |
+| `rollback <run>` | Undo what a run applied, newest module first. The revert timer runs exactly this. `<run>` is always needed: without it, the runs are listed (`40`) |
+| `runs` | List this host's runs, oldest first: ID, phase, start time (UTC) and state, which is `armed` (with the time it rolls back), `kept`, `rolled back`, or `not kept, no timer`. Changes nothing; needs root or Administrator (`20`) |
+| `probe` | Probe every scored service once; exit `30` if one fails. Changes nothing |
+| `help [<command>]` | Help for every command, or for one; also `-h` and `--help` (`-Help`) |
+| `version` | Print the version; also `-V` and `--version` (`-Version`) |
 
-Options: `--profile` (`-Profile`), `--root` (`-Root`), `--config` (`-Config`), `--breakglass NAME` (`-BreakGlass`) and `--confirm GROUP` (`-ConfirmGroup`). The last two answer the break-glass and confirmation prompts without typing. PowerShell avoids the name `-Confirm`, which it reserves.
+`<phase>` is `lockout`, `observe`, `deceive` or `sustain`. `<run>` is a run ID (`20261002T140301Z-4f2a`) or its last four characters (`4f2a`). Four characters that match no run, or more than one, are an error (`40`) that points to `runs`. Commands, phases and option names ignore case; values do not.
+
+**Options** may come before or after the command and its word. A value is given as `--name value`, `--name=value`, `-Name value` or `-Name:value`, and `--` ends the options. Each option has one name in both runners: bash help writes it `--break-glass`, PowerShell help writes it `-BreakGlass`, and both runners accept both spellings, because long names ignore case and dashes. The short flags `-h`, `-?` and `-V` are matched exactly, so `-v` is an error.
+
+| Option | PowerShell | Value | Used by |
+|---|---|---|---|
+| `--profile` | `-Profile` | NAME, `[a-z0-9-]+` | `plan`, `apply` |
+| `--root` | `-Root` | absolute folder: the data root (default `/opt/labyrinth`; `C:\ProgramData\Labyrinth`) | all |
+| `--config` | `-Config` | absolute folder: run-time configuration (default `<root>/etc`) | all |
+| `--break-glass` | `-BreakGlass` | NAME: answers the break-glass prompt without typing | `apply` |
+| `--confirm-group` | `-ConfirmGroup` | GROUP: answers the confirmation prompt without typing | `apply` |
+| `-h`, `--help` | `-Help`, `-?` | none | all |
+| `-V`, `--version` | `-Version` | none | all |
+
+PowerShell avoids the name `-Confirm`, which it reserves.
+
+**Usage errors** exit `40`. They print one line, `labyrinth: <what is wrong>`, then `Try 'labyrinth help[ <command>]' for more information.`, both to standard error. The line names the word at fault and, for a near miss, suggests the right one (`did you mean 'observe'?`). These are errors too:
+
+- an option given twice;
+- an option whose value is missing, or looks like another option (`--profile needs a value, but got '--root'`);
+- a command that conflicts with its options, such as `apply probe` or `--apply` with `keep`.
+
+The whole line must parse before help or the version is shown. A value option that the command does not use, such as `--profile` with `probe`, gives a warning, not an error.
+
+**Compatibility forms** stay accepted for good. Operators have learned them, and an armed revert timer runs its stored command line even after the runner that armed it has been replaced. They are:
+
+- a phase alone means `plan <phase>`;
+- `--apply` / `-Apply` with a phase means `apply <phase>`;
+- `--breakglass`, `--confirm` and `-ProfileName`;
+- the run before or after the options.
+
+`tests/runner/compat.bats` and `tests/runner/Compat.Tests.ps1` hold every such form (section 9).
+
+**Host checks** run for `plan`, `apply` and `probe` only:
+
+- A `--config` folder that does not exist is an error (`40`).
+- This host's line in `hosts` must name a platform the runner serves: `ubuntu` or `rhel-family` for `labyrinth.sh`, `windows` for `labyrinth.ps1`. Otherwise the run is blocked (`20`).
+- An `appliance` is never changed (design 16).
+
+`keep`, `rollback` and `runs` skip these checks, so a stored revert-timer command still works after the configuration changes.
 
 **Profile.** `--profile` names it; otherwise it is this host's line in the `hosts` file. On apply the host must be listed (else `20`), a given `--profile` must match its line (else `40`), and a host in the `manual` group is refused (`20`).
 
@@ -114,13 +162,51 @@ Options: `--profile` (`-Profile`), `--root` (`-Root`), `--config` (`-Config`), `
    - `verify`: a failure rolls the module back and stops the run (`30`, or `40` for an exit code other than `30`).
    - Probes again: a scored service that passed before and fails now rolls the module back and stops the run (`30`). An `unknown` result is never a regression.
    - `cleanup`, if present.
-8. The lock is released. The operator checks that a new login still works, then types `keep`. Anything else leaves the timer armed, and when it fires it runs `rollback <run>`. Keeping after a rollback is refused as too late (`20`).
+8. The lock is released. The operator checks that a new login still works, then types `keep`. Anything else leaves the timer armed, and when it fires it runs `rollback <run>`. Until then, `keep <run>` keeps the run, or `keep` alone when only one timer is armed. Keeping after a rollback is refused as too late (`20`).
 
 **The revert timer** is a transient systemd timer `lab-revert-<run>-<n>` on Linux and a one-time scheduled task `\Labyrinth\lab-revert-<run>-<n>` running as SYSTEM on Windows. Re-arming creates the new timer first and only then removes the earlier one, so a failed re-arm leaves the run covered. `rollback` waits up to two minutes for the run lock and then proceeds without it, so a hung run cannot stop the timer.
+
+The time a timer will fire is kept in `<state>/runs/<run>/timer-due` (UTC, `YYYY-MM-DDTHH:MM:SSZ`), for `runs` and the keep prompt. The file is advisory: if it is missing, the time is shown as unknown.
+
+Cancelling a timer checks that it is really gone. If it is still armed, `keep` records nothing, says so, and exits `40`.
+
+### 3.2 Console output
+
+What the runners print is part of the contract: operators read it under time pressure, and the tests pin it.
+
+- **Status words.** Every module result starts with one of `OK`, `CHANGE`, `WARN`, `BLOCKED`, `FAIL` or `ERROR`, padded to 9 characters, followed by the module ID and what happened. For example: `CHANGE   observe.sample: a change is needed`.
+  - **In plan mode:**
+    - `OK`: nothing to do (`0`);
+    - `CHANGE`: a change is needed (`10`);
+    - `BLOCKED`: `20`;
+    - `ERROR`: `40`, or a module that cannot be loaded;
+    - `WARN`: a module skipped on this platform.
+  - **In apply:**
+    - `OK`: applied and verified, nothing approved, or rolled back;
+    - `CHANGE`: a module about to apply;
+    - `WARN`: manual only, or a failed cleanup;
+    - `BLOCKED`: a gate blocked the module;
+    - `FAIL`: verify failed or a scored service regressed;
+    - `ERROR`: apply failed, or a rollback failed.
+- **Module output.** A module's own output is indented 11 spaces under its result line, in run order. `check` output is printed after its result line, because the result is known only when `check` ends; the output of later entry points is printed as it comes.
+- **Header.** Two lines, at most 78 columns:
+  - the version, the mode (`plan` or `APPLY`), the phase and the profile;
+  - `run <id>`, followed in plan mode by `(plan mode: nothing is recorded)` and in apply by the host and group.
+- **End of a run.** Three lines:
+  - `Summary:`, the counts of each status word;
+  - `Next:`, the one command to run next, when there is one;
+  - `<mode> finished: exit N (<meaning>)`.
+- **Recaps.** Before the group-name prompt: the host, the group, what each module will do, and that a revert timer will be armed. Before the keep prompt: the time the revert timer rolls the run back, in UTC.
+- **Messages** say what failed, why, and how to recover, in one sentence each. A failure that leaves changes in place always says how to keep them and how to undo them.
+- **Text.** Fixed text is at most 78 columns, plain ASCII, with no colour.
+
+For module authors: when an entry point exits `20`, `30` or `40`, its last line of output gives the reason. An entry point never leaves a background process holding standard output, because the runner waits for it to close.
 
 ## 4. Bash style
 
 - Start every script with `#!/usr/bin/env bash` and `set -Eeuo pipefail`. Handle expected non-zero results explicitly (`if cmd; then`), never by turning `-e` off for a whole script.
+- The runner installs an `ERR` trap that reports an unexpected failure as an internal error (`40`), with what is known about the run: whether anything changed, and how to keep or undo it. The trap does not fire inside a function called from `if` or `||`, so failures there are checked by hand.
+- Never write a bare `(( expr ))` statement that can evaluate to 0: under `set -e` it ends the script. Use `x=$(( expr ))`, or `(( expr ))` inside an `if`.
 - Quote every expansion. Use `local` in functions. Use `[[ ]]` for tests and `$(...)` for substitution.
 - Core functions are prefixed `lab_` (for example `lab_log_info`, `lab_manifest_record`). Module-internal functions use a short module prefix.
 - Never use `eval`, never `source` configuration, never build commands from unvalidated strings.
@@ -129,7 +215,8 @@ Options: `--profile` (`-Profile`), `--root` (`-Root`), `--config` (`-Config`), `
 
 ## 5. PowerShell style
 
-- Start every script with `#Requires -Version 5.1`, `Set-StrictMode -Version Latest` and `$ErrorActionPreference = 'Stop'`.
+- Start every script with `#Requires -Version 5.1`, `Set-StrictMode -Version Latest` and `$ErrorActionPreference = 'Stop'`. The one exception is `labyrinth.ps1`: its comment-based help block comes first, then a blank line, then `#Requires`, because `Get-Help` reads the help only when it is the first thing in the file.
+- `labyrinth.ps1` has no `param` block. It reads `$args` with the same option table and rules as `labyrinth.sh` (section 3.1), so both runners accept the same command lines and answer every usage error with `40`.
 - Use approved verbs. Core functions use the `Lab` noun prefix (for example `Write-LabLog`, `Add-LabManifestEntry`).
 - Never use `Invoke-Expression`, never dot-source configuration.
 - Exit with the contract codes using `exit <code>`; do not let an exception escape an entry point without being mapped to `40`.
@@ -187,6 +274,7 @@ The `delete` rule has exactly one legitimate use: the account module deleting an
 - **bats** for bash and **Pester 5** for PowerShell. Unit tests mock system commands. Real-system tests (`tests/core/realsystem.bats`, `tests/core/RealSystem.Tests.ps1`) run only where `LAB_REALSYSTEM=1`, which CI sets on its disposable runners, and on lab VMs; never on a developer's own machine.
 - Runner tests build a throwaway Labyrinth tree from the fixture modules in `tests/fixtures/modules/`, so they never touch the repository's own `phases/` or `profiles/`. The tree's core gets test doubles appended (`tests/fixtures/doubles.sh`, `tests/fixtures/Doubles.ps1`) that replace the administrator check, the revert timer and the probes.
 - **CI** (`.github/workflows/ci.yml`) runs on every push and pull request: ShellCheck, the guard and bats on Ubuntu; PSScriptAnalyzer and Pester under Windows PowerShell 5.1 on Windows. The test tools are installed on the CI runners only. A contributor may install them locally to run the same commands, but nothing in Labyrinth requires it.
+- **The compatibility suite** (`tests/runner/compat.bats`, `tests/runner/Compat.Tests.ps1`) holds every command form operators and stored revert timers rely on (section 3.1). It is never edited to make a change pass: change the runner instead. A form leaves it only by a design decision recorded in the design review log.
 - Each module's tests start from its spec's acceptance-test list and include the negative test from design 00, section 8: protected accounts and scored services are untouched.
 
 ## 10. Commits

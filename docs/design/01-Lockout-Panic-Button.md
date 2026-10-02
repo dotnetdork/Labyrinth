@@ -145,16 +145,17 @@ flowchart TD
 | Protected set loaded | Non-empty and parsed |
 | Scoring allowlist present | In the firewall plan for every host that filters traffic. The runner blocks any module with `touches_scored: true` while the run-time `scoring-allowlist` is missing or empty |
 | Break-glass verified | The operator has confirmed, by typing, that the break-glass credential worked at this host's console. A script cannot reach the console, so this is asked once per host: the account must be in the protected set with class `breakglass`, the answer is kept in Labyrinth's state for later runs on that host, and every run records it in its manifest. |
-| Backup taken | Config backups exist for every file that will change |
+| Backup taken | Every file is copied before it changes, and the copy is recorded in the run manifest (`docs/Conventions.md`, section 7) |
 | Plan reviewed | Operator confirmed the plan by typing the group name |
-| Revert timer armed | For every Tier 2 change (section 8) |
+| Revert timer armed | Before every change that is not `read-only`, re-armed before each module (section 8) |
 
 ## 8. Preventing self-lockout
 
 - **Two-session rule.** Keep one session open while testing from a fresh one.
-- **Dead-man revert.** Before a firewall or SSH change, arm a timer that undoes it unless cancelled after verify.
-  - Linux: a transient systemd timer (`systemd-run --on-active=5m --unit=lab-revert-<id> <rollback command>`), cancelled with `systemctl stop lab-revert-<id>.timer`.
-  - Windows: a one-time scheduled task that removes the rule, deleted after verify.
+- **Dead-man revert.** Before any change that is not `read-only`, such as a firewall or SSH change, arm a timer that rolls the whole run back unless the operator keeps it after verify. It runs `labyrinth rollback <run>` (`docs/Conventions.md`, section 3.1).
+  - Linux: a transient systemd timer, `lab-revert-<run>-<n>` (`systemd-run --on-active=<minutes>m --unit=lab-revert-<run>-<n> ...`), cancelled with `systemctl stop lab-revert-<run>-<n>.timer`.
+  - Windows: a one-time scheduled task, `\Labyrinth\lab-revert-<run>-<n>`, running as SYSTEM, unregistered when the run is kept.
+  - `labyrinth runs` shows which runs still have a timer armed, and when each one fires.
   - VyOS: `commit-confirm <minutes>` followed by `confirm`. Read the VyOS warning below first.
 - **Passwords shown once.** New credentials are displayed once, on the operator's screen, for the team's offline record (design 05, section 2). Labyrinth never writes them to disk or logs and never echoes them over an unencrypted channel. Use a cryptographic random source (`/dev/urandom` or .NET `RandomNumberGenerator`), not `Get-Random`.
 - **Acknowledge before continuing.** The operator confirms the credential is recorded before the old one is invalidated.

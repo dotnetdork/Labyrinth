@@ -7,7 +7,7 @@ This is the plain-language tour of Labyrinth. It explains what each part of the 
 **Who this is for:** someone who knows what a server, an operating system and a network are, and can read a script, but who has not memorized commands or security terms. Every term is explained the first time it appears, and the [glossary](#glossary) at the end collects them.
 
 > [!NOTE]
-> Labyrinth is still being designed. No code exists yet. This page describes how the system is *intended* to work.
+> Labyrinth is being built: the core and the main program exist, and the modules do not yet. This page describes how the system is *intended* to work.
 
 **Color key.** The same four colors mark the four phases everywhere in the Labyrinth docs:
 
@@ -202,7 +202,7 @@ Each subsection answers four questions: what the part does, why it exists, how i
 | 3. Approve, then act | Unexplained footholds; deleting locked accounts; riskier app settings; app admin passwords; restoring a service from a backup; filtering outgoing traffic; ending a stubborn process that runs as SYSTEM on Windows. A short list stays with a person: ordinary users' passwords, domain accounts and policy, KRBTGT, DNS servers, restoring the domain controller, rescuing a host that will not boot, patching and network appliances | A person approves, then Labyrinth does it; the short list is a printed checklist |
 
 - **Rings.** Changes go first to one low-impact host of each kind of system (the "canaries", for example one Linux host and one Windows workstation), then to the next group, and so on. If a check fails, the run stops before the problem spreads. A host that is the only one of its kind, such as the domain controller, has no canary to go first; it comes last and relies on the revert timer and the tests.
-- **Dead-man revert timer.** Before a firewall or SSH change, Labyrinth sets a timer that will undo the change automatically unless someone cancels it after confirming everything still works. If the change locks the team out, the timer puts things back.
+- **Revert timer (dead-man).** Before a change that could lock the team out, such as a firewall or SSH change, Labyrinth sets a timer that will undo the run automatically unless someone keeps it after confirming everything still works. If the change locks the team out, the timer puts things back.
 - **Checking like the scoring engine.** After each module, Labyrinth tests each scored service the way the scoring engine would (for example, fetching the web page and looking for the expected text) and compares the result with a test taken before the change. If a service got worse, that module is rolled back and the run stops.
 
 **What it will never do.** Disable accounts wholesale, change login shells, cut all connections, end a console or official's session, delete a file (it sets files aside instead), delete an account without a person's approval, stop services that are not on its candidate list, reboot, move a service into a container, change scoring accounts, or act on a host that has no emergency way in.
@@ -507,9 +507,9 @@ Controls are ranked from **P0** (do first) to **P3** (do last): 🔴 P0 · 🟠 
 | Canary | A bait file whose only purpose is to raise an alarm when someone opens it. |
 | Control node | The one machine the team runs Labyrinth from. |
 | CVE | Common Vulnerabilities and Exposures: a public ID for a known security flaw. |
-| Dead-man revert timer | A timer that automatically undoes a change unless someone cancels it after confirming things still work. |
 | Default-deny | A firewall setting that blocks every incoming connection unless a rule allows it. |
 | Event seed | The secret random value, kept offline, from which all trap names and ports are derived. |
+| Exit code | The number a command ends with, which says how it went: 0 done or nothing to do, 10 a change is needed, 20 blocked by a safety check, 30 a check after a change failed, 40 an error. |
 | Firewall | Software or a device that decides which network connections are allowed. |
 | Group Policy | Settings a Windows domain pushes to every machine at once. |
 | Hash | A short fingerprint of a file that changes if the file changes. |
@@ -527,21 +527,25 @@ Controls are ranked from **P0** (do first) to **P3** (do last): 🔴 P0 · 🟠 
 | NAT | Network address translation: a router rewriting addresses, which can hide where traffic really came from. |
 | Patch | An update that fixes a flaw in a piece of software. |
 | Port | A numbered "door" on a host that a network service listens on, such as 22 for SSH. |
+| Priority | How early a task runs, from P0 (first, on every host) to P3 (last). |
 | Profile | A kind of host (for example, Linux web server) and the list of modules that apply to it. |
 | Protected set | Accounts Labyrinth must never touch, supplied by the operator for each event. |
 | Red Team | The attackers in the competition. |
+| Restore | Putting a service back from a backup (a restore point) after damage. Not the same as a rollback. |
 | Restore point | A backup of a service taken so it can be put back after damage. |
+| Revert timer (dead-man) | A timer started before a risky change that rolls the whole run back automatically, unless someone keeps the run after confirming things still work. If a change locks the team out, the timer puts things back. |
 | Ring | A group of hosts that receives a change together; the first ring is one low-impact host of each kind of system. |
-| Rollback | Undoing a change using the saved record of what was changed. |
+| Rollback | Undoing what a run changed, newest first, using the run manifest. The revert timer starts one automatically; a person can start one too. |
 | Runbook | A tested, numbered procedure that a person follows step by step. |
+| Run ID | The name of one Labyrinth run, such as `20261002T140301Z-4f2a`: the start time in UTC and four random characters. Commands also accept just the last four characters (`4f2a`). |
 | Scored service | A service the scoring engine checks, such as a website, email or DNS. |
 | Scoring engine | The automated checker that tests scored services and awards points. |
 | Seal | Taking a new baseline of a host once it is cleaned, and using it as the reference for every later check. |
-
 | SIEM | Security Information and Event Management system: a central place that collects and searches logs from every host. |
 | SSH | Secure Shell: the standard encrypted way to log in to a Linux host remotely. |
 | Syslog | The standard way servers and network devices send log lines to a collector. |
 | Tarpit | A trap that answers so slowly that attack tools get stuck. |
+| Tier | How risky a change is, from Tier 0 (read-only) to Tier 3 (a person approves first); it decides how carefully the change is made. |
 | Trip log | The single log every trap writes its alarms to. |
 | White Team | The competition officials who run the event. |
 
