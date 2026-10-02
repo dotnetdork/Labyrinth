@@ -77,6 +77,10 @@ function Exit-LabLock {
 function Get-LabRandomPassword {
     param([ValidateRange(12, 128)] [int] $Length = 20)
     $alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789'
+    $n = $alphabet.Length
+    # The largest multiple of the alphabet size up to 256: bytes from it up
+    # are rejected, so every character is equally likely.
+    $limit = 256 - (256 % $n)
     $buf = New-Object byte[] 64
     $rng = [Security.Cryptography.RandomNumberGenerator]::Create()
     try {
@@ -85,10 +89,8 @@ function Get-LabRandomPassword {
             while ($sb.Length -lt $Length) {
                 $rng.GetBytes($buf)
                 foreach ($b in $buf) {
-                    # 224 is the largest multiple of 56 below 256: rejecting the
-                    # rest keeps every character equally likely.
-                    if ($b -ge 224) { continue }
-                    [void]$sb.Append($alphabet[$b % 56])
+                    if ($b -ge $limit) { continue }
+                    [void]$sb.Append($alphabet[$b % $n])
                     if ($sb.Length -ge $Length) { break }
                 }
             }

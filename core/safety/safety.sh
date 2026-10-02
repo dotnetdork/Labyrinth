@@ -71,18 +71,19 @@ lab_lock_release() {
 # with at least one upper-case letter, lower-case letter and digit. Show it
 # once to the operator; never write it to a file or a log (design 01, section 8).
 lab_random_password() {
-  local len="${1:-20}" pw b
+  local len="${1:-20}" n="${#LAB_PW_ALPHABET}" limit pw b
   local -a bytes
+  # The largest multiple of the alphabet size up to 256: bytes from it up
+  # are rejected, so every character is equally likely.
+  limit=$((256 - 256 % n))
   (( len >= 12 && len <= 128 )) || { printf 'password length must be 12 to 128\n' >&2; return 1; }
   while :; do
     pw=''
     while (( ${#pw} < len )); do
       IFS=' ' read -r -a bytes <<< "$(od -An -v -w64 -N64 -tu1 /dev/urandom)"
       for b in "${bytes[@]}"; do
-        # 224 is the largest multiple of 56 below 256: rejecting the rest
-        # keeps every character equally likely.
-        (( b < 224 )) || continue
-        pw+="${LAB_PW_ALPHABET:b % 56:1}"
+        (( b < limit )) || continue
+        pw+="${LAB_PW_ALPHABET:b % n:1}"
         (( ${#pw} < len )) || break
       done
     done

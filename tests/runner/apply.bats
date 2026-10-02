@@ -36,6 +36,17 @@ setup() {
   [[ "$log" == *"\"host\":\"$HOST\""* ]]
 }
 
+@test "a module is not applied when the run manifest cannot be written" {
+  [ "$(id -u)" -ne 0 ] || skip 'root can write a read-only file'
+  # Arming the timer comes just before apply_start is recorded: make the
+  # manifest read-only there.
+  printf '%s\n' 'lab_timer_arm() { chmod a-w "$LAB_STATE_DIR/runs/$2/manifest.jsonl"; }' >> "$LAB/core/lib.sh"
+  apply
+  [ "$status" -eq 40 ]
+  [[ "$output" == *"the run manifest cannot be written, so it is not applied"* ]]
+  [ ! -e "$LAB/toggle.conf" ]
+}
+
 @test "apply needs root" {
   touch "$LAB/NOT_ADMIN"
   apply
