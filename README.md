@@ -50,23 +50,31 @@ Labyrinth classifies each host into a **profile** and applies the roles that fit
 ```
 Labyrinth/
 ├── README.md                     ← you are here
+├── CLAUDE.md                     ← working rules for contributors and AI assistants
+├── labyrinth.sh / labyrinth.ps1  ← main program (plan mode only in this build)
+├── core/ phases/ profiles/ platform/ report/   ← code layout from design 00 (empty so far)
+├── config/                       ← *.example templates for run-time values; never real values
+├── vendor/                       ← pinned third-party code, each under its own license
+├── tests/                        ← bats and Pester tests, the guard and fixtures
 ├── docs/
 │   ├── Overview.md                ← plain-language tour; start here
 │   ├── Blueprint.md               ← doctrine, capability map, trap catalog (rules-aware)
+│   ├── Conventions.md             ← how the code is written: formats, style, logging, tests
 │   └── design/                    ← design specs 00–18 (module contract, panic button,
 │                                    incident reporting, event seed, baseline, credentials,
 │                                    status feed, cleanup, reference mining, deception maze,
 │                                    log forwarding, Windows/AD, bans, health monitor,
 │                                    backups, patching, appliance runbooks, persistence
 │                                    sweep, service packs)
-└── (future) core/ phases/ profiles/ platform/ config/ vendor/ tests/   ← see design/00
+└── .github/workflows/ci.yml       ← lint, guard and tests on Linux and Windows
 ```
 
 Strategy, rules baseline, topology notes and the vulnerability assessment live in the private CCDC-2027 repository, not here.
 
 ## Status
 
-Planning and design phase (reviewed 2026-10-02). No code yet. The design specs are the blueprint the code is built against.
+Foundations phase (reviewed 2026-10-02). The design specs are the blueprint the code is built against. So far the code is the foundation only: the main program runs a profile's modules in plan mode and changes nothing, the guard checks every script for outside calls and blanket actions, and CI tests both on Linux and Windows. No hardening module exists yet.
+
 
 > [!IMPORTANT]
 > Competition rules are cited by rule number; all citations must be re-checked when the 2027 rules are published.

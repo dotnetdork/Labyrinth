@@ -15,4 +15,7 @@ WHAT YOU CANNOT DO:
 * Steal, copy, or plagiarize the architecture or defense logic to build a competing commercial tool.
 * Re-publish or distribute modified versions of this code publicly as your own project without written permission.
 
+THIRD-PARTY COMPONENTS:
+Files under vendor/, and any other file that carries its own license notice, are not covered by this license. Each is distributed under its own license, included alongside it, and nothing here restricts the rights those licenses grant. This license covers only the original Labyrinth code, documentation and design.
+
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND.

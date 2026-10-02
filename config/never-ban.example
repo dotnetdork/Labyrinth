@@ -1,0 +1,8 @@
+# Addresses dynamic bans must never touch (design 12, section 4).
+# One address or CIDR per line. Include the scoring engine, officials,
+# the control node, operators' admin sources, the SIEM and the host's gateway.
+# Placeholder (documentation) ranges only.
+
+198.51.100.0/28
+192.0.2.10
+192.0.2.1
