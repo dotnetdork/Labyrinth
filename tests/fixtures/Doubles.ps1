@@ -14,6 +14,7 @@ function Register-LabRevertTimer {
     $dir = Get-LabRunDir $RunId
     New-Item -ItemType Directory -Path $dir -Force | Out-Null
     [IO.File]::WriteAllText((Join-Path $dir 'timer'), "$Execute $Argument`n")
+    Save-LabRevertTimerDue -RunId $RunId -At ((Get-Date).AddSeconds($Seconds))
     Add-Content -LiteralPath (Join-Path $env:LAB_ROOT 'timer.log') -Value "arm $RunId $Seconds" -Encoding Ascii
 }
 
@@ -22,6 +23,7 @@ function Unregister-LabRevertTimer {
     $f = Join-Path (Get-LabRunDir $RunId) 'timer'
     if (-not (Test-Path -LiteralPath $f)) { return }
     Remove-Item -LiteralPath $f -Force
+    Remove-Item -LiteralPath (Join-Path (Get-LabRunDir $RunId) 'timer-due') -Force -ErrorAction SilentlyContinue
     Add-Content -LiteralPath (Join-Path $env:LAB_ROOT 'timer.log') -Value "cancel $RunId" -Encoding Ascii
 }
 
