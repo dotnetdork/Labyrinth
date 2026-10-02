@@ -1,0 +1,10 @@
+# Test fixture: an approval module that records the items a person approved
+id: observe.ask
+phase: observe
+priority: P2
+platforms: [ubuntu, rhel-family, windows]
+risk: approval
+touches_scored: false
+requires: []
+outputs: []
+spec: 00

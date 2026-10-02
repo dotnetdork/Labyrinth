@@ -73,7 +73,7 @@ Strategy, rules baseline, topology notes and the vulnerability assessment live i
 
 ## Status
 
-Foundations phase (reviewed 2026-10-02). The design specs are the blueprint the code is built against. So far the code is the foundation only: the main program runs a profile's modules in plan mode and changes nothing, the guard checks every script for outside calls and blanket actions, and CI tests both on Linux and Windows. No hardening module exists yet.
+Core phase (reviewed 2026-10-02). The design specs are the blueprint the code is built against. The core is built for Linux and Windows: logging, the run manifest, the safety gates, the dead-man revert timer, scoring-style probes, and the main program's plan, apply, keep, rollback and probe commands (docs/Conventions.md, section 3.1). It is tested on CI, but not yet in a lab. The guard checks every script for outside calls and blanket actions. No hardening module exists yet.
 
 
 > [!IMPORTANT]

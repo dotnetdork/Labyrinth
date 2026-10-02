@@ -1,0 +1,10 @@
+# Test fixture: changes and reverts a harmless setting in toggle.conf (the Phase 1 gate module)
+id: observe.toggle
+phase: observe
+priority: P2
+platforms: [ubuntu, rhel-family, windows]
+risk: reversible
+touches_scored: false
+requires: []
+outputs: []
+spec: 00

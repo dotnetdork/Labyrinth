@@ -1,0 +1,10 @@
+# Test fixture: touches a scored service and breaks its (fake) probe
+id: observe.breaker
+phase: observe
+priority: P2
+platforms: [ubuntu, rhel-family, windows]
+risk: reversible
+touches_scored: true
+requires: []
+outputs: []
+spec: 00

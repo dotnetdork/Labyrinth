@@ -143,8 +143,8 @@ flowchart TD
 | Gate | Check |
 |---|---|
 | Protected set loaded | Non-empty and parsed |
-| Scoring allowlist present | In the firewall plan for every host that filters traffic |
-| Break-glass verified | The operator has confirmed, by typing, that the break-glass credential worked at this host's console. A script cannot reach the console, so this is asked once per host and recorded in the run manifest. |
+| Scoring allowlist present | In the firewall plan for every host that filters traffic. The runner blocks any module with `touches_scored: true` while the run-time `scoring-allowlist` is missing or empty |
+| Break-glass verified | The operator has confirmed, by typing, that the break-glass credential worked at this host's console. A script cannot reach the console, so this is asked once per host: the account must be in the protected set with class `breakglass`, the answer is kept in Labyrinth's state for later runs on that host, and every run records it in its manifest. |
 | Backup taken | Config backups exist for every file that will change |
 | Plan reviewed | Operator confirmed the plan by typing the group name |
 | Revert timer armed | For every Tier 2 change (section 8) |
@@ -194,7 +194,6 @@ Take probes before and after. A regression triggers automatic rollback of that m
 - Protected accounts are unchanged before and after.
 - A mailbox user can still authenticate after the run.
 - An admin-class account that a service or scheduled task logs on with is not rotated automatically and is listed for approval in Tier 3.
-
 - A run on a host with no break-glass confirmation refuses to change it.
 - An official source named in the event packet can still connect after default-deny.
 - Every scored-service probe passes after the run, on every ring.
@@ -211,7 +210,6 @@ Take probes before and after. A regression triggers automatic rollback of that m
 Midwest Collegiate Cyber Defense Competition. (2025). *2025 Midwest Collegiate Cyber Defense Competition qualifier team packet* [PDF]. https://brazil.minnesota.edu/ccdc/ccdc-2025/2025MWCCDCQTeamPack.pdf
 
 Northeast Collegiate Cyber Defense Competition. (2026). *NECCDC 2026 season regional blue team packet* [PDF]. Retrieved October 2, 2026, from https://neccdl.org/history/2026/resources/Regional-Packet-NECCDC-2026.pdf
-
 
 National Collegiate Cyber Defense Competition. (2025, December 10). *Rules and requirements*. Retrieved October 2, 2026, from https://www.nationalccdc.org/rules.html
 

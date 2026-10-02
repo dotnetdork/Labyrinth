@@ -72,10 +72,50 @@ The runner (`labyrinth.sh` / `labyrinth.ps1`) calls each entry point as a separa
 | `LAB_RUN_ID` | Unique ID of this run, used in logs and the manifest |
 | `LAB_MODULE_ID` | The module's `id` |
 | `LAB_DRY_RUN` | `1` when the run is in plan mode |
+| `LAB_ENTRY` | The entry point being run (`check`, `plan`, `apply`, ...); the logger records it |
+| `LAB_APPROVED` | For `approval` modules only: the item ids a person approved, separated by spaces. Empty otherwise |
 
-Entry points load the core library from `LAB_ROOT/core/` and never from a relative path.
+Entry points load the core library from `LAB_ROOT/core/` and never from a relative path: `source "$LAB_ROOT/core/lib.sh"` in bash, `. (Join-Path $env:LAB_ROOT 'core\Lab.ps1')` in PowerShell. Loading it only defines functions. Entry points never read standard input: the runner owns the operator's prompts, so in bash an entry point's input is `/dev/null`.
 
 **Exit codes in plan mode.** `check` and `plan` both exit `10` when a change is needed and `0` when none is, or `20` when a safety gate blocks them (design 00, section 4). The runner treats any other code as `40`. It runs `plan` only after `check` exits `10`, and for a whole run it reports the highest code any module returned, so one blocked module makes the run exit `20` and one error makes it exit `40`.
+
+### 3.1 Commands, gates and the order of an apply
+
+| Command (bash; PowerShell in brackets) | Does |
+|---|---|
+| `labyrinth.sh <phase>` | Plan: every module of the phase reports what it would change. Nothing is written, not even logs |
+| `labyrinth.sh --apply <phase>` (`-Apply`) | Apply the plan, behind the gates below |
+| `labyrinth.sh probe` | Probe every scored service once; exit `30` if one fails |
+| `labyrinth.sh keep <run>` | Keep a run's changes: cancel its revert timer |
+| `labyrinth.sh rollback <run>` | Undo what a run applied, newest module first. The revert timer runs exactly this |
+
+Options: `--profile` (`-Profile`), `--root` (`-Root`), `--config` (`-Config`), `--breakglass NAME` (`-BreakGlass`) and `--confirm GROUP` (`-ConfirmGroup`). The last two answer the break-glass and confirmation prompts without typing. PowerShell avoids the name `-Confirm`, which it reserves.
+
+**Profile.** `--profile` names it; otherwise it is this host's line in the `hosts` file. On apply the host must be listed (else `20`), a given `--profile` must match its line (else `40`), and a host in the `manual` group is refused (`20`).
+
+**Modules run by priority** (`P0` first), and in profile order within a priority. A `reversible`, `service-affecting` or `approval` module must have `check`, `apply`, `verify` and `rollback`, or it is invalid (`40`).
+
+**Apply order.** A failed step stops the run before anything changes, unless the step says otherwise:
+
+1. Administrator or root (`20`), the host's line and profile, `event.conf`, and the protected set: missing or empty is `20`, malformed is `40`. Plan mode needs the protected set too.
+2. The run lock, `<state>/lock`, holding the process id. A live holder blocks the run (`20`); a lock whose process is gone is taken over.
+3. Every module is planned. Any `40` means nothing is applied. If nothing needs applying, the run ends with no prompts.
+4. **Break-glass** (design 01, section 7): the operator logs in at the console with a `breakglass`-class account and types its name. It is asked once per host and kept in `<state>/breakglass` as `<timestamp><TAB><account>`.
+5. **Confirmation:** the operator types the host's group name.
+6. From here, changes are made and recorded: the run's manifest starts (`run_start`, `breakglass_verified`), and the scored services are probed if a `services` file exists (otherwise a warning).
+7. Each module that needs a change, in order:
+   - `manual-only`: never applied; its plan is the checklist.
+   - `touches_scored: true`: blocked (`20`) without a non-empty `scoring-allowlist` and a `services` file; the run continues.
+   - `requires`: blocked if a required module in this run did not complete.
+   - `approval`: the operator types the ids of the items to approve; none means nothing changes.
+   - The revert timer is (re)armed for `REVERT_MINUTES`, unless the module is `read-only`.
+   - `apply`: `20` is recorded and the run continues; any other failure rolls the module back and stops the run (`40`).
+   - `verify`: a failure rolls the module back and stops the run (`30`, or `40` for an exit code other than `30`).
+   - Probes again: a scored service that passed before and fails now rolls the module back and stops the run (`30`). An `unknown` result is never a regression.
+   - `cleanup`, if present.
+8. The lock is released. The operator checks that a new login still works, then types `keep`. Anything else leaves the timer armed, and when it fires it runs `rollback <run>`. Keeping after a rollback is refused as too late (`20`).
+
+**The revert timer** is a transient systemd timer `lab-revert-<run>-<n>` on Linux and a one-time scheduled task `\Labyrinth\lab-revert-<run>-<n>` running as SYSTEM on Windows. `rollback` waits up to two minutes for the run lock and then proceeds without it, so a hung run cannot stop the timer.
 
 ## 4. Bash style
 
@@ -110,11 +150,23 @@ Every log line is one JSON object on one line (JSON lines), written through the 
 | `event` | `rule_added` | Short machine-readable name |
 | `msg` | `allowed tcp/443 from scoring allowlist` | Human-readable |
 
-Extra fields may follow. **Never log a secret:** passwords, keys, the event seed and tokens are never passed to the logger, not even masked. Log categories are those in design 00, section 7.
+Logs are written to `<logs>/<category>/<YYYYMMDD>.jsonl` (UTC date); warnings and errors are also printed to standard error. Plan mode writes no log files. Extra fields may follow. **Never log a secret:** passwords, keys, the event seed and tokens are never passed to the logger, not even masked. Log categories are those in design 00, section 7.
 
 ## 7. The run manifest
 
 Every change `apply` makes is recorded through `lab_manifest_record` / `Add-LabManifestEntry` **before** the change is made, with what is needed to undo it: the action, the target, the backup path or the previous value. `rollback` replays the manifest in reverse. `cleanup` reads the module's `outputs` and its manifest entries; it never deletes anything the manifest does not list.
+
+The manifest is `<state>/runs/<run>/manifest.jsonl`, one JSON object per line, every value a string: `ts`, `run`, `host`, `module`, `seq`, `action`, `target`, `backup`, `prev`, `note`. Writing to it is refused in plan mode. Actions the core writes:
+
+| Action | Meaning |
+|---|---|
+| `run_start`, `breakglass_verified`, `run_kept`, `run_rolled_back` | The run itself (empty `module`) |
+| `apply_start` | A module's `apply` is about to run; `rollback <run>` undoes every module with one |
+| `file` | A file is about to change; `backup` holds its copy, `<backup>/<run>/<module>/<seq>-<name>` |
+| `file_created` | A file that did not exist is about to be created |
+| `rolled_back` | The module was rolled back |
+
+Restoring a `file` entry writes the backup over the file in place, then restores its owner and permissions (and, on Linux, its SELinux label where `restorecon` exists). A created file is never deleted: rollback moves it into the backup folder as `rolled-back-<seq>-<name>`. Restoring is safe to repeat.
 
 ## 8. Guard comments
 
@@ -131,10 +183,9 @@ The `delete` rule has exactly one legitimate use: the account module deleting an
 ## 9. Tests
 
 - Tests live in `tests/`, mirroring the code layout: `tests/core/`, `tests/phases/<phase>/<module>/`, `tests/lint/`.
-- **bats** for bash and **Pester 5** for PowerShell. Unit tests mock system commands; real-system tests (marked with a `realsystem` tag) run only on disposable CI runners or lab VMs, never on a developer's own machine.
-- Runner tests build a throwaway Labyrinth tree from the fixture modules in `tests/fixtures/modules/`, so they never touch the repository's own `phases/` or `profiles/`.
+- **bats** for bash and **Pester 5** for PowerShell. Unit tests mock system commands. Real-system tests (`tests/core/realsystem.bats`, `tests/core/RealSystem.Tests.ps1`) run only where `LAB_REALSYSTEM=1`, which CI sets on its disposable runners, and on lab VMs; never on a developer's own machine.
+- Runner tests build a throwaway Labyrinth tree from the fixture modules in `tests/fixtures/modules/`, so they never touch the repository's own `phases/` or `profiles/`. The tree's core gets test doubles appended (`tests/fixtures/doubles.sh`, `tests/fixtures/Doubles.ps1`) that replace the administrator check, the revert timer and the probes.
 - **CI** (`.github/workflows/ci.yml`) runs on every push and pull request: ShellCheck, the guard and bats on Ubuntu; PSScriptAnalyzer and Pester under Windows PowerShell 5.1 on Windows. The test tools are installed on the CI runners only. A contributor may install them locally to run the same commands, but nothing in Labyrinth requires it.
-
 - Each module's tests start from its spec's acceptance-test list and include the negative test from design 00, section 8: protected accounts and scored services are untouched.
 
 ## 10. Commits
