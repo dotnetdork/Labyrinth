@@ -20,7 +20,7 @@ Labyrinth is that strategy plus that tool. The **Linux profile** is modeled on a
 
 | Phase | Goal | In one line |
 |---|---|---|
-| 🟥 **Lock out** | Take back trust | Reset every default/known credential, allowlist admins, default-deny the firewall. |
+| 🟥 **Lock out** | Take back trust | Assume the attacker is already in: reset default and known admin credentials, end intruder sessions, sweep for footholds, default-deny the firewall. |
 | 🟦 **Observe** | See everything | High-signal logging to a central SIEM (Security Information and Event Management system); watch logins, files, and process starts. |
 | 🟪 **Deceive** | Tax the attacker | Traps, canaries, honey-accounts, tarpits — every non-service touch is a tripwire. |
 | 🟩 **Sustain** | Stay scored-green | Keep the graded services healthy; patch and roll back cleanly; hold the line. |
@@ -43,7 +43,7 @@ A heterogeneous, contested network of the kind CCDC events use:
 - a SIEM;
 - network edge appliances such as a router and one or more firewalls, often split into segments.
 
-Labyrinth classifies each host into a **profile** and applies the roles that fit — locking the easy 80% automatically and flagging the manual 20%.
+Labyrinth classifies each host into a **profile** and applies the roles that fit — doing the safe work automatically, the riskier work once a person approves it, and printing a checklist for the few actions a person must carry out.
 
 ## Repository map
 
@@ -53,11 +53,12 @@ Labyrinth/
 ├── docs/
 │   ├── Overview.md                ← plain-language tour; start here
 │   ├── Blueprint.md               ← doctrine, capability map, trap catalog (rules-aware)
-│   └── design/                    ← design specs 00–16 (module contract, panic button,
+│   └── design/                    ← design specs 00–18 (module contract, panic button,
 │                                    incident reporting, event seed, baseline, credentials,
 │                                    status feed, cleanup, reference mining, deception maze,
 │                                    log forwarding, Windows/AD, bans, health monitor,
-│                                    backups, patching, appliance runbooks)
+│                                    backups, patching, appliance runbooks, persistence
+│                                    sweep, service packs)
 └── (future) core/ phases/ profiles/ platform/ config/ vendor/ tests/   ← see design/00
 ```
 
@@ -65,7 +66,7 @@ Strategy, rules baseline, topology notes and the vulnerability assessment live i
 
 ## Status
 
-Planning and design phase (reviewed 2026-09-29). No code yet. The design specs are the blueprint the code is built against.
+Planning and design phase (reviewed 2026-10-02). No code yet. The design specs are the blueprint the code is built against.
 
 > [!IMPORTANT]
 > Competition rules are cited by rule number; all citations must be re-checked when the 2027 rules are published.
@@ -88,4 +89,5 @@ Labyrinth is a team-written tool under the national CCDC rules, so it:
 
 ## References
 
-National Collegiate Cyber Defense Competition. (2025, December 10). *Rules and requirements*. Retrieved September 29, 2026, from https://www.nationalccdc.org/rules.html
+National Collegiate Cyber Defense Competition. (2025, December 10). *Rules and requirements*. Retrieved October 2, 2026, from
+ https://www.nationalccdc.org/rules.html

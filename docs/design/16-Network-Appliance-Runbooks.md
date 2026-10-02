@@ -4,7 +4,7 @@
 
 ## 1. Goal
 
-Routers and firewall appliances (for example VyOS, Palo Alto Networks PAN-OS and Cisco FTD (Firepower Threat Defense)) sit in front of every other host. A mistake on one can cut routing or scoring for the whole network at once. Labyrinth therefore does not change appliances itself: they are Tier 3, manual only (design 01). What it does provide is a **runbook** for each appliance type, a tested, step-by-step procedure that a person follows, filled in with the run's own values (Blueprint §6.3).
+Routers and firewall appliances (for example VyOS, Palo Alto Networks PAN-OS and Cisco FTD (Firepower Threat Defense)) sit in front of every other host. A mistake on one can cut routing or scoring for the whole network at once. Labyrinth therefore does not change appliances itself: they are on the Tier 3 person-run list (design 01). What it does provide is a **runbook** for each appliance type, a tested, step-by-step procedure that a person follows, filled in with the run's own values (Blueprint §6.3).
 
 ## 2. Why manual
 
@@ -70,4 +70,4 @@ A later module may read an appliance's running configuration over SSH and compar
 
 ## References
 
-National Collegiate Cyber Defense Competition. (2025, December 10). *Rules and requirements*. Retrieved September 29, 2026, from https://www.nationalccdc.org/rules.html
+National Collegiate Cyber Defense Competition. (2025, December 10). *Rules and requirements*. Retrieved October 2, 2026, from https://www.nationalccdc.org/rules.html

@@ -16,8 +16,9 @@ Today the scoring-style probes (design 01, section 9) run only when a module fin
 | Rule | Effect |
 |---|---|
 | Anything that interferes with the scoring engine is the team's responsibility (National Collegiate Cyber Defense Competition [NCCDC], 2025, Rule 4.11). | Probes are light: one per service per interval, with short timeouts. |
-| Do not mislead the scoring engine (NCCDC, 2025, Rule 9.3). | The monitor only observes. It never fakes a response or changes what a service returns. |
-| Tools must not deliberately break expected functionality (NCCDC, 2025, Rule 5.6.5). | The monitor changes nothing. Rollback is a person's decision (section 4). |
+| Do not mislead the scoring engine (NCCDC, 2025, Rule 9.3). | The monitor never fakes a response or changes what a service returns. |
+| Tools must not deliberately break expected functionality (NCCDC, 2025, Rule 5.6.5). | The monitor changes nothing except re-applying sealed firewall rules, a verified state, under a revert timer (section 4.1). Rollback is a person's decision (section 4). |
+
 
 ## 3. The health monitor
 
@@ -41,7 +42,16 @@ When a service goes from pass to fail, or back, the monitor:
 3. raises an alert in the status feed and the SIEM;
 4. records the outage time for the incident report's "impact on scored services" field (design 02).
 
-It does **not** roll back on its own. During a run, a failed verify triggers automatic rollback (design 00), because the cause is almost certainly the change just made. An hour later, the cause could be the Red Team, a teammate or the scoring side. Blindly reverting could undo a security fix, so a person decides.
+It does **not** roll back on its own. During a run, a failed verify triggers automatic rollback (design 00), because the cause is almost certainly the change just made. An hour later, the cause could be the Red Team, a teammate or the scoring side. Blindly reverting could undo a security fix, so a person decides. To restore a damaged service, the person runs `labyrinth restore` (design 14, section 6).
+
+### 4.1 Firewall drift
+
+Red Teams have been seen dropping a team's firewall rules. So each interval, the monitor also compares every host's firewall rules with the set recorded in the sealed baseline (design 04, section 6). When they differ, it:
+
+1. logs and alerts on the difference, as a high-ranked integrity finding for the incident record (design 02);
+2. **re-applies the sealed rule set automatically**, with the same before-and-after probes and revert timer as the original change (design 01, section 8).
+
+This is the one change the monitor makes on its own, because it puts back a state that was already verified and sealed, rather than guessing at a cause. If the team changed the firewall on purpose, it reseals first (design 04, section 6). If re-applying fails its probes, the timer reverts it and a person decides. Repeated drift on one host is flagged as a sign that the attacker still has admin rights there.
 
 ```mermaid
 flowchart TD
@@ -77,6 +87,8 @@ flowchart TD
 | Trap trips and active bans | Trip log and ban set (designs 09, 12) |
 | Time since the last backup of each scored service | Backup record (design 14) |
 | Revert timers still armed | Safety core (design 01) |
+| Firewall drift found and re-applied since the last checkpoint | Section 4.1 |
+| Services with no restore point copied off the host | Backup record (design 14, section 5) |
 | Tool integrity: signature and hashes still match | Design 07 |
 
 The command takes no action. It exists so that a regular review is quick and every review covers the same ground.
@@ -91,7 +103,8 @@ The command takes no action. It exists so that a regular review is quick and eve
 
 - Stopping a scored service in the lab raises an alert within one interval, naming the last Labyrinth change on that host.
 - Restarting it logs the recovery and the outage length.
-- The monitor never runs a rollback, a restart or any other change.
+- The monitor never runs a rollback, a restart or any other change, except re-applying the sealed firewall rules (section 4.1).
+- Flushing a lab host's firewall is detected within one interval, the sealed rules are re-applied, and every probe still passes.
 - `labyrinth checkpoint` completes on the full lab network within the target time and changes nothing (the inventory before and after is identical).
 - Killing the monitor marks the status feed stale.
 - Probe traffic is under the target rate per service.

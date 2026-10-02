@@ -27,6 +27,15 @@
 - **User-level accounts:** manual checklist only, following the notification process.
 - **Crown jewels** (domain admin, KRBTGT) rotate at set checkpoints, not continuously. KRBTGT needs two resets with a replication wait and is manual-only.
 
+### 2.1 Application admin credentials
+
+Operating system passwords are not the only default credentials. Red Teams report default credentials as their most common way in, including on mail servers late in an event (*Background*), and an application's own admin login (a CMS administrator, the database root account, phpMyAdmin, a web app's admin page) is just as useful to them.
+
+- **Inventory (Tier 0).** For each scored app in the profile, list its admin accounts, using the app's own tools where present (for example `wp user list --role=administrator`, or a read-only query of the database's user table), and the configuration files that store a password the app uses to reach its database.
+- **Rotate (Tier 3, approve then act).** Each account is shown with what depends on it. Once a person approves, Labyrinth sets a new password, updates every listed configuration file that stores it (backed up first), runs the app's syntax check and probes under a revert timer, and shows the new password once for the offline record.
+- **Never automatic**, because an app password can be stored in places the inventory misses, and the scoring engine may log in to the app. An account the packet names as used by scoring or employees is in the protected set and never offered.
+- **Appliances** (firewall and router admin logins) stay in their runbooks (design 16).
+
 ## 3. Username policy
 
 Choosing our own names or random ones is a trade-off:
@@ -166,6 +175,8 @@ A locked account can be unlocked again by an attacker with admin rights, so a lo
 - Where SSH is scored, a scoring account still logs in with its password, and an unexpected account cannot use a password.
 - A second UID 0 account and an unexpected local Administrators member are found; the account loses its admin rights and is locked.
 - Re-enabling a locked account raises an alert.
+- A lab web app's default admin password is listed in Tier 0; after approval it is rotated, the app's database configuration file is updated, and the probe still passes.
+
 - An account is deleted only after a person approves and a checkpoint shows every scored service passing, and its evidence is saved first.
 
 ## References

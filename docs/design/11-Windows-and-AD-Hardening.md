@@ -26,7 +26,7 @@ So this spec splits the work by blast radius. A change that affects one host is 
 | **0. Observe** | Local admins, services, scheduled tasks, autoruns, listeners (design 04); SMBv1, LLMNR, NBT-NS, RDP and WinRM state | All of the left, plus: privileged group membership (Domain Admins, Enterprise Admins, Schema Admins, Administrators), accounts with a service principal name, linked Group Policy objects, Print Spooler state |
 | **1. Safe and reversible** | Rotate the built-in Administrator and other local admin-class passwords that nothing logs on with (design 05, section 2); turn on the audit policy (design 10) | Audit policy (design 10). No password is rotated automatically: every account on a domain controller is a domain account (section 7) |
 | **2. Service-affecting, per host with a revert timer** | Default-deny inbound firewall (design 01); require NLA (Network Level Authentication) for RDP; allow RDP and WinRM only from the admin source, plus the scoring engine where either is scored; turn off SMBv1 server; turn off LLMNR and NBT-NS in local policy; the protocol settings below; stop and disable Print Spooler where nothing prints; remove unexpected local Administrators members that nothing depends on (design 05, section 6) | Firewall as on the left, applied last, after the member servers pass, and always allowing domain traffic from member hosts (below); RDP, WinRM and the protocol settings as on the left; stop and disable Print Spooler if printing is not scored |
-| **3. Approve, then act** | Labyrinth acts after approval: removing a local Administrators member that might be a service dependency; protocol settings in the approval class (below) | A person acts, from the checklist in section 5: rotating the domain Administrator password; KRBTGT reset (twice, with a replication wait); creating domain honey-accounts (design 09); removing members from domain admin groups; domain password resets; disabling and deleting domain accounts; any Group Policy change; service account resets; LAPS (Local Administrator Password Solution) roll-out; any DNS server change |
+| **3. Approve, then act** | Labyrinth acts after approval: removing a local Administrators member that might be a service dependency; protocol settings in the approval class (below); ending a process that runs as SYSTEM (below) | Labyrinth acts after approval: ending a process that runs as SYSTEM (below). A person acts, from the checklist in section 5: rotating the domain Administrator password; KRBTGT reset (twice, with a replication wait); creating domain honey-accounts (design 09); removing members from domain admin groups; domain password resets; disabling and deleting domain accounts; any Group Policy change; service account resets; LAPS (Local Administrator Password Solution) roll-out; any DNS server change |
 
 **Protocol settings** (*Background*; each per host, in the registry, under the revert timer):
 
@@ -39,6 +39,8 @@ So this spec splits the work by blast radius. A change that affects one host is 
 | Require SMB signing on the server side | Stops relayed logons to file shares | Automatic where SMB is not scored; approval where it is, because an old scoring client may not sign |
 
 **Domain traffic to the domain controller.** Its default-deny firewall always allows, from the member hosts' addresses: DNS (53), Kerberos (88, 464), time (123/UDP), RPC (135 and the dynamic range), LDAP (389, 636, 3268 and 3269) and SMB (445). Without these, every logon in the domain fails.
+
+**Ending a process that runs as SYSTEM.** An administrator cannot always end a process running as SYSTEM, and Red Teams use this to keep implants alive (*Background*). When a person approves it, Labyrinth ends the process through a one-time scheduled task that runs as SYSTEM, then deletes the task. The approval names the process ID and the hash of its executable; if either no longer matches when the task runs, nothing is ended. The process's persistence (its service, scheduled task or autorun) is quarantined first (design 17), so it does not come straight back, and the executable is kept as evidence (design 02). It is never offered for a process the dependency map ties to a scored service.
 
 
 - **Why Group Policy is manual.** One Group Policy change reaches every machine in the domain at once. That is the "indiscriminate" pattern the rules warn about (NCCDC, 2025, Rule 5.6.5), so it stays with a person who can watch the effect.
@@ -85,7 +87,7 @@ Domain-wide changes reach every machine at once, so they stay with a person even
 
 1. **Domain Administrator.** Check the Tier 0 report for services and scheduled tasks that log on with it (design 05, section 2). Rotate it, update each of those, then re-run the logon probes. The new password goes in the team's offline record.
 2. **Privileged groups.** Compare the Tier 0 report with the expected members. Remove unknown members by hand, one at a time, and re-run the logon probes after each.
-3. **KRBTGT.** Reset the KRBTGT password, wait for replication, then reset it again (Blueprint §3.1). This invalidates forged Kerberos tickets.
+3. **KRBTGT.** Reset the KRBTGT password, wait for replication, then reset it again (Blueprint §3.1). This invalidates forged Kerberos tickets. After any DCSync or ZeroLogon sign (design 10), do this at once and rotate every domain admin account too, because the attacker may hold every domain password hash.
 4. **Service accounts.** Reset only after their dependencies are known.
 5. **Unexpected domain accounts.** Disable them only after confirming they are not scoring or official accounts; re-enabling raises an alert (event 4722; design 10). Once a checkpoint shows every scored service passing (design 13), delete them, after saving their group membership and creation details for the incident record (design 02).
 6. **Group Policy.** Apply domain-wide settings (for example, turning off LLMNR everywhere) one at a time, with a scoring-style probe after each.
@@ -102,6 +104,7 @@ Every Tier 1 and Tier 2 change is recorded in the run manifest with its previous
 - Touch an account in the protected set.
 - Remove the break-glass path or the officials' access.
 - Install software from outside the environment.
+- End a process as SYSTEM without approval, or one whose process ID or executable hash has changed since approval.
 
 ## 8. Acceptance tests
 
@@ -113,6 +116,9 @@ Every Tier 1 and Tier 2 change is recorded in the run manifest with its previous
 - Where RDP is scored, the scoring engine's address can still connect after the firewall and RDP changes.
 - After default-deny on the domain controller, a member server still logs on to the domain and resolves names.
 - After the protocol settings, an NTLMv1 logon is refused, WDigest is off, and anonymous user listing fails; turning WDigest back on raises an alert.
+- An approved SYSTEM process in the lab is ended by the one-time task, the task is deleted afterwards, and a process whose executable hash changed is left running.
+- A simulated DCSync marks the KRBTGT step as urgent on the printed checklist.
+
 
 
 ## References

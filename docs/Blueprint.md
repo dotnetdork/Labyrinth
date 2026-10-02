@@ -1,6 +1,6 @@
 # Labyrinth Implementation Blueprint
 
-**Status:** Draft · reviewed 2026-09-29 · rules-aware
+**Status:** Draft · reviewed 2026-10-02 · rules-aware
 
 - **Project:** Labyrinth, a rapid, idempotent, multi-OS hardening and deception deployment system.
 - **Purpose:** the base documentation for designing and building the automation: the portable doctrine and the transferable technical controls.
@@ -162,6 +162,7 @@ Linux specifics link back to the §5 table and appendix A.
   - reset the KRBTGT password (twice, with a replication wait) to invalidate golden tickets;
   - reset service accounts once their dependencies are known;
   - disable accounts confirmed as unused.
+- **Applications:** inventory each scored app's own admin accounts (CMS administrator, database root, phpMyAdmin) and the configuration files that store an app password. Rotating one is Tier 3: after approval, Labyrinth sets the new password, updates every listed file and runs the probes; never automatically, because scoring may log in to the app (design 05, section 2.1).
 - **Edge:** change the appliance admin, web, SSH and SNMP credentials immediately. Routers and firewalls often ship with well-known defaults.
 - **CCDC note:** the number-one foothold is a credential the Red Team already knows. Rotate administrator-class credentials first, everywhere, before anything clever.
 
@@ -188,6 +189,8 @@ Linux specifics link back to the §5 table and appendix A.
   **[RULES]** The scoring engine allowlist is applied before any deny rule (NCCDC, 2025, Rule 4.11).
 
   "Docker bypasses the host firewall" is the classic way a "locked-down" web host is still wide open. Verify with the actual ingress path, not just `ufw status`.
+
+  **Drift.** Once sealed, the rule set is compared on a schedule. If it has drifted (for example, flushed by an attacker), the sealed rules are re-applied automatically with probes and a revert timer, and an alert is raised; repeated drift is flagged for a person (design 13, section 4.1).
 
 ### 3.4 Move / hide administration — **P1**
 
@@ -223,7 +226,7 @@ Linux specifics link back to the §5 table and appendix A.
 
   **[RULES]** Do not migrate or containerize scored services (NCCDC, 2025, Rule 4.14).
 
-  A scored service you break costs points immediately; an unpatched, non-exploited CVE probably does not. Prioritize by exploitability plus exposure, not by count. Design: 15.
+  A scored service you break costs points immediately; an unpatched, non-exploited CVE probably does not. Prioritize by exploitability plus exposure, not by count. Known-exploited domain controller flaws (for example ZeroLogon, CVE-2020-1472) rank above everything else. Web apps and their plugins are inventoried from the files on disk and ranked the same way; an unused vulnerable plugin can be deactivated after approval. Design: 15.
 
 ### 3.7 Application / container least-privilege — **P2** (Linux app hosts)
 
@@ -251,7 +254,7 @@ Linux specifics link back to the §5 table and appendix A.
 - **Principle:** logs on the box die with the box. Get them off-host and make them high-signal.
 - **Linux:** `auditd` with rule keys for privileged commands, identity and sudoers, SSH keys, cron, systemd units, `/usr/local`, and **canary reads**; forward to Splunk.
 - **Windows/AD:** **Sysmon** (process creation, network, image loads) plus Windows Security auditing (4624/4625/4688/4720/4728…); forward to Splunk through the universal forwarder.
-- **SIEM:** Splunk is the aggregation point. A few high-value saved searches (new local admin, canary hit, authentication to a locked account) beat a hundred noisy dashboards. The SIEM host is itself hardened: its admin password rotated, users and roles audited, its web and management ports open only to the admin source, its inputs only to managed hosts, and unknown apps and scripted inputs quarantined (design 10, section 7).
+- **SIEM:** Splunk is the aggregation point. A few high-value saved searches (new local admin, canary hit, authentication to a locked account, boot-critical file changes, ZeroLogon and DCSync signs, unusual outbound traffic) beat a hundred noisy dashboards. The SIEM host is itself hardened: its admin password rotated, users and roles audited, its web and management ports open only to the admin source, its inputs only to managed hosts, and unknown apps and scripted inputs quarantined (design 10, section 7).
 - **CCDC note:** stand this up in the Observe phase, *before* deception, so the traps have somewhere to report. Design: 10.
 
 ### 3.10 Egress control — **P2**
@@ -259,6 +262,7 @@ Linux specifics link back to the §5 table and appendix A.
 - **Principle:** unexpected *outbound* traffic is the C2 signature. Watch it even if you cannot block it.
 - **Linux (reference §5.7):** containers normally reach out only to DNS, HTTP, HTTPS and NTP (Network Time Protocol). A new outbound SYN to any other external port is logged as `[CONTAINER OUT] …`. The rule is rate-limited, scoped to the external interface, placed above Docker's `RETURN`, and re-installed after Docker restarts.
 - **Windows:** Windows Firewall outbound logging; alert on beaconing patterns through Sysmon network events.
+- **Every host:** a rate-limited, log-only rule for new outbound connections (Tier 2; blocks nothing) feeds an unusual-outbound search, such as NTP or DNS to a server not in the run-time configuration. Outbound default-deny is offered per host only after approval (Tier 3), because scored services' outbound needs differ (design 10).
 - **CCDC note:** combine with DNS sinkholing (§4.5): see the beacon, then dead-end it without tipping off the attacker.
 
 ### 3.11 Backups, rollback & break-glass — **P1**
@@ -266,6 +270,8 @@ Linux specifics link back to the §5 table and appendix A.
 - **Principle:** every change is reversible, every service is restorable, and there is always a way back in.
 - **Linux (reference §5.9):** timestamped config backups before each change (`*.bak-<ts>`), database dumps before patching, previous container images tagged `:pre-update` for instant rollback, and the provider console as break-glass.
 - **Windows/AD:** system state and AD backups; VSS (Volume Shadow Copy Service) snapshots; a documented DC (domain controller) recovery path.
+- **Off-host copies are required:** an attacker with root or SYSTEM can delete on-host backups, so each restore point is copied to the control node and hash-checked before it counts as complete.
+- **Restore:** `labyrinth restore <service>` (with `--database` or `--start`) runs after a person confirms the restore point predates the damage (Tier 3); the damaged state is kept as evidence. Domain controller restores and rescuing an unbootable host (for example, a deleted `/etc/fstab`) are person-run, from printed runbooks (design 14, section 6).
 - **CCDC note:** the team that can *revert* a bad change in seconds outscores the team that is afraid to make changes. Design: 14.
 
 ---
@@ -422,6 +428,9 @@ Classify each host and apply only the roles that fit:
 | `linux-siem` | SIEM server | identity, ssh, firewall + ingest config (the destination, hardened but light) |
 | `appliance` | Router or firewall appliance | Templated config + manual runbook (credentials, default-deny, management-plane lockdown; design 16) |
 
+Every host profile also runs the persistence sweep (design 17) and the service packs that match its scored services (design 18).
+
+
 ### 6.4 Phase playbooks = the doctrine, executable
 
 The lockout phase is the panic button.
@@ -437,7 +446,7 @@ The design keeps the speed and adds guard rails:
 - dead-man revert timers;
 - scoring-style probes after each module.
 
-Tier 3 actions wait for a person's approval; Labyrinth then carries them out, except a short person-run list (KRBTGT, Group Policy, DNS server changes, restores, patching and appliances). Nothing is deleted without approval: files are quarantined, and accounts are deleted only after approval once services pass. See designs 01 and 17. After the lockout, seal the baseline and layer `observe → deceive → sustain`.
+Tier 3 actions wait for a person's approval; Labyrinth then carries them out, except a short person-run list (KRBTGT, Group Policy, DNS server changes, domain controller restores, rescuing an unbootable host, patching and appliances). Nothing is deleted without approval: files are quarantined, and accounts are deleted only after approval once services pass. See designs 01 and 17. After the lockout, seal the baseline and layer `observe → deceive → sustain`.
 
 
 ### 6.5 Secret handling
@@ -466,11 +475,14 @@ Triage under a clock. Do P0 everywhere before P1 anywhere. The **When** column i
 | Control | Impact | Effort | When |
 |---|---|---|---|
 | Rotate admin-class creds / lock unexpected local accounts (§3.1) | ★★★★★ | Low | 🔴 P0 |
+| End intruder sessions + persistence sweep (§1, design 17) | ★★★★★ | Med | 🔴 P0 |
 | Default-deny firewall (§3.3) | ★★★★★ | Low | 🔴 P0 |
 | Remote-admin hardening (§3.2) | ★★★★ | Low | 🔴 P0/P1 |
 | Move/hide admin (§3.4) | ★★★ | Med | 🟠 P1 |
 | Central logging + auditd/Sysmon (§3.9) | ★★★★ | Med | 🟠 P1 |
 | Service minimization + targeted patch (§3.6) | ★★★ | Med | 🟠 P1 |
+| Service packs for scored apps (design 18) | ★★★★ | Med | 🟠 P1 |
+
 | Web edge + scanner tarpit (§3.8, §4.3) | ★★★★ | Low | 🟠 P1 |
 | Backups / rollback / break-glass (§3.11) | ★★★★ | Low | 🟠 P1 |
 | Canary tokens & honey-accounts (§4.4–4.5) | ★★★★★ | Low | 🟡 P2 |
@@ -567,7 +579,7 @@ The "trap playbook" is an earlier brainstorming list of deception techniques. It
 
 Midwest Collegiate Cyber Defense Competition. (2025). *2025 Midwest Collegiate Cyber Defense Competition qualifier team packet* [PDF]. https://brazil.minnesota.edu/ccdc/ccdc-2025/2025MWCCDCQTeamPack.pdf (*Provisional*; re-check against the 2027 packet.)
 
-National Collegiate Cyber Defense Competition. (2025, December 10). *Rules and requirements*. Retrieved September 29, 2026, from https://www.nationalccdc.org/rules.html
+National Collegiate Cyber Defense Competition. (2025, December 10). *Rules and requirements*. Retrieved October 2, 2026, from https://www.nationalccdc.org/rules.html
 
 ---
 *Base documentation for Labyrinth. No secrets, environment values, or private keys are reproduced.*

@@ -122,6 +122,12 @@ A few high-value searches beat a hundred noisy dashboards (Blueprint §3.9). The
 | WDigest turned back on, or a protocol setting from design 11 reverted | High |
 | A tool often abused for persistence or download is started: `nc`, `ncat`, `socat`, a compiler (`gcc`, `cc`), `certutil -urlcache`, `bitsadmin /transfer`, `mshta`, `regsvr32` with a URL | Medium; high when run by a web server or database account |
 | A change on the SIEM itself: a new user or role, a new app, a scripted input or alert action, or a search deleted (Splunk `_audit` index) | High |
+| A change to a boot-critical file (design 04, section 3) | Near-certain |
+| ZeroLogon signs: repeated Netlogon authentication with the domain controller's own machine account against itself, or the domain controller's machine account password changed by an anonymous logon (event 4742) (*Background*) | High |
+| DCSync signs: directory replication rights used (event 4662 with the replication GUIDs) by an account that is not a domain controller (*Background*). Any hit puts the KRBTGT reset and admin rotation on the domain checklist (design 11, section 5) | Near-certain |
+| Unusual outbound traffic: NTP to a server not in the run-time configuration, DNS to a resolver not in it, or a host's outbound volume far above its own normal, from the outbound log rule below | Medium; high from a scored service's account |
+
+**Outbound logging.** To feed the outbound search, each host gets a log-only firewall rule for new outbound connections, rate-limited so it cannot flood the log (Tier 2). It blocks nothing. Red Teams have hidden command-and-control traffic in NTP and rotated their callback addresses (*Background*), which inbound default-deny does not stop. **Filtering** a host's outbound traffic (default-deny outbound, allowing what the dependency map and run-time configuration list) is offered per host after approval (Tier 3, design 01), because scored services' outbound needs differ and a wrong rule breaks them.
 
 **Watch, don't block.** The tools in the "abused tool" row have legitimate uses, and blocking them across hosts would be the kind of blanket action Rule 5.6.5 warns about. So they are watched through process-creation logging, not removed or blocked. The one exception is scheduling: `cron.allow` and `at.allow` are limited after the persistence sweep (design 17, section 6).
 
@@ -181,6 +187,9 @@ The SIEM host also gets its platform's normal lockout (design 01). Ports, paths 
 - The repository contains no SIEM address or event value, only templates.
 - After hardening, the SIEM's web and management ports refuse a connection from a non-admin address, and a planted scripted input is quarantined.
 - Starting `socat` as the web server's account raises the abused-tool search at high confidence.
+- In the lab, NTP queries to an unlisted server raise the outbound search; the outbound log rule blocks nothing.
+- A simulated DCSync from a non-domain-controller account raises its search.
+
 
 
 ## References
