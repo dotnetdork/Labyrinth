@@ -1,0 +1,13 @@
+/* manual.css: print styles for the Labyrinth manual PDFs (US Letter). */
+@page { size: Letter; margin: 0.8in 0.85in; }
+body { font-family: "Segoe UI", "DejaVu Sans", Arial, sans-serif; font-size: 10.5pt; line-height: 1.45; color: #1a1a1a; max-width: none; margin: 0; }
+header#title-block-header { border-bottom: 2px solid #1a1a1a; margin-bottom: 1.2em; }
+h1.title { font-size: 22pt; margin: 0 0 0.4em; }
+h1 { font-size: 15pt; margin: 1.6em 0 0.5em; break-after: avoid; }
+h2 { font-size: 12pt; margin: 1.2em 0 0.4em; break-after: avoid; }
+code, pre { font-family: "Cascadia Mono", "DejaVu Sans Mono", Consolas, monospace; font-size: 9.5pt; }
+pre { background: #f3f4f6; border-left: 3px solid #6b7280; padding: 0.5em 0.8em; white-space: pre-wrap; break-inside: avoid; }
+table { border-collapse: collapse; width: 100%; margin: 0.6em 0 1em; break-inside: avoid; }
+th, td { border: 1px solid #9ca3af; padding: 0.3em 0.5em; text-align: left; vertical-align: top; }
+th { background: #e5e7eb; }
+a { color: #1d4ed8; text-decoration: none; }

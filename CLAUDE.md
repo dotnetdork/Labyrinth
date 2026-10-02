@@ -45,6 +45,33 @@ Each module is a folder `phases/<phase>/modules/<name>/` with `module.yml` and u
 2. Write tests first, from the spec's acceptance-test list: bats for bash, Pester 5 for PowerShell. Every module needs a negative test showing protected accounts and scored services are untouched.
 3. Implement against `core/`, following `docs/Conventions.md`.
 4. Run `tests/lint/guard.sh`. CI (`.github/workflows/ci.yml`) also runs ShellCheck, PSScriptAnalyzer, bats and Pester under Windows PowerShell 5.1; all must be clean. Never install test tools on a contributor's machine without asking; CI installs them on its own runners.
-5. One module per branch. Commit; the maintainer pushes and reviews.
+5. One component per branch, named `phase-<n>/<name>` (for example `phase-2/cli-runner`). Commit; the maintainer pushes, reviews and merges once CI is green.
+
+## Changing the command line
+
+`labyrinth.sh` and `labyrinth.ps1` share one vocabulary. Before changing a command, option, prompt, exit code or console message:
+
+- Follow `docs/Conventions.md` section 3.1 (commands, options, the order of an apply) and section 3.2 (console output). If the change departs from them, update the spec first.
+- **Never edit the compatibility suite to make a change pass** (`tests/runner/compat.bats`, `tests/runner/Compat.Tests.ps1`). Armed revert timers run stored command lines, so every form it holds must keep working. Change the runner instead.
+- **Update the operator manual in the same commit** (`docs/manual/labyrinth.md`). Put platform-only text between `<!-- linux -->` or `<!-- windows -->` and `<!-- end -->`, and write in the plain style of `docs/Overview.md`. `tests/manual/manual.bats` must pass.
+- Make the same change in both runners, with tests in both suites.
+
+## Where the tests are
+
+| Path | Covers |
+|---|---|
+| `tests/core/` | The core library (`core.bats`, `Core.Tests.ps1`); real-system timer tests (`realsystem.bats`, `RealSystem.Tests.ps1`, CI only) |
+| `tests/runner/` | The runners: `apply`, `labyrinth`, and `compat` (the compatibility suite); helpers `lab_helper.bash` and `LabTestHelper.ps1` |
+| `tests/manual/` | The manual and its splitter |
+| `tests/lint/` | The guard and its fixtures |
+| `tests/fixtures/` | Fixture modules and the test doubles appended to a throwaway core |
+
+## Lint pitfalls already met
+
+- **PowerShell:** new functions use approved verbs and the `Lab` noun prefix. Avoid `Set-`, `New-`, `Remove-` and similar verbs, which make PSScriptAnalyzer demand `ShouldProcess`.
+- **Stand-in cmdlets in Pester:** import the real module first, define the stand-in, assert its `.Module` is empty, and in `finally` remove it and run `Import-Module <module> -Force`. Otherwise later test files reach the stand-in.
+- **bash 4.2:** no namerefs, and no bare `(( ))` statement that can evaluate to 0 under `set -e`.
+- **The `ERR` trap does not fire under `||`, `&&`, `if` or `!`.** Check a call that must not fail silently explicitly.
+- **Guard words:** strings must not contain the words the guard looks for (`tests/lint/guard.sh`), even in messages.
 
 Docs use US spelling, no draft version numbers, and APA 7 citations for rules.
