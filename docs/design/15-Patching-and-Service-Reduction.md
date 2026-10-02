@@ -1,6 +1,6 @@
 # 15. Patching and Service Reduction
 
-**Status:** Draft · reviewed 2026-09-29 · Phase: 🟥 Lock out · Priority: P1
+**Status:** Draft · reviewed 2026-10-02 · Phase: 🟥 Lock out · Priority: P1
 
 ## 1. Goal
 
@@ -47,7 +47,7 @@ Services are disabled, never removed. Rollback starts them again with their prev
 | Debian | `debsecan`, if installed |
 | Ubuntu | `pro fix` or the security pocket in `apt list --upgradable` |
 | RHEL family (Red Hat Enterprise Linux) | `dnf updateinfo list --security` |
-| Windows | Installed updates, compared with the known-exploited list below |
+| Windows | Installed updates and the OS build, listed for a person; ranked by exposure only (below) |
 
 **Rank.** A patch matters most when the package is both exposed and known to be exploited:
 
@@ -55,6 +55,8 @@ Services are disabled, never removed. Rollback starts them again with their prev
 - **Known exploited:** it appears in a vendored snapshot of a public known-exploited-vulnerabilities catalog, taken at release time and dated. The snapshot is never refreshed at the event.
 
 An unpatched, unexploited package on a closed port ranks last (Blueprint §3.6).
+
+**Windows ranks by exposure only.** The known-exploited catalog names vulnerabilities, not Windows updates. Matching one to the other needs Microsoft's update data, which is not in the release and cannot be fetched at the event. So on Windows the check lists the installed updates and ranks hosts and roles by exposure, and a person judges which known-exploited issues apply.
 
 **Plan and apply.** The operator picks from the ranked list. For each pick, Labyrinth:
 

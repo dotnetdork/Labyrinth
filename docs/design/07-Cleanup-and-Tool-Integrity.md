@@ -1,6 +1,6 @@
 # 07. Cleanup and Tool Integrity
 
-**Status:** Draft · reviewed 2026-09-29 · Phase: 🟩 Sustain · Priority: P1
+**Status:** Draft · reviewed 2026-10-02 · Phase: 🟩 Sustain · Priority: P1
 
 ## 1. Two goals
 
@@ -12,6 +12,7 @@
 - Every module lists its `outputs` in `module.yml` (design 00), and every `apply` writes to the run manifest.
 - `cleanup` removes temporary files; `rollback` undoes changes. They are separate so the operator can clean up without reverting.
 - End-of-event cleanup removes revert timers, scheduled tasks, temporary accounts and copied code from hosts, but keeps logs and reports until they are collected.
+- **Accounts.** The only accounts cleanup ever deletes are ones Labyrinth itself created, such as honey-accounts (design 09), and recorded in the run manifest when it created them. An account that existed before Labyrinth ran is never deleted, even if a module locked it. Domain honey-accounts, created by hand (design 11, section 5), are removed by hand too.
 - Cleanup never deletes evidence or anything the manifest does not list.
 - Cleanup only touches Labyrinth paths (design 00 standard paths).
 
@@ -32,10 +33,12 @@ The earlier idea was an encrypted folder, decrypted with a shared team password.
 | Control | How |
 |---|---|
 | Release identity | A tagged release with a commit hash. The hash is kept in the team's offline record (design 05, section 2) and matches the declared release (NCCDC, 2025, Rule 5.6.2). |
-| Manifest | A list of every file with its SHA-256, generated at release time. |
-| Signature | The manifest is signed with a team key. The public key is kept in the offline record and stored on the control node. |
+| Manifest | A list of every file with its SHA-256, generated at release time. The manifest's own SHA-256 is kept in the offline record. |
+| Signature | The manifest is signed with a team key, using `ssh-keygen -Y sign`. The public key is kept in the offline record and stored on the control node. |
 | Immutable location | Code sits in a root-owned, read-only directory on each host (`<root>/bin`). |
-| Verify before run | The control node checks the manifest signature and file hashes before every run, and refuses to run on a mismatch. |
+| Verify before run | The control node checks the manifest signature before every run. Each host then checks the manifest's SHA-256 against the value from the offline record, and every file against the manifest, using tools every host already has (`sha256sum` on Linux, `Get-FileHash` on Windows). A mismatch at either step refuses the run. |
+
+**Why the signature is checked only on the control node.** `ssh-keygen -Y verify` needs OpenSSH 8.1 or later. RHEL 8 ships 8.0, and the OpenSSH bundled with Windows Server 2019 is older still (*Background*), so a host may not be able to check a signature at all. The control node can be chosen to have a recent OpenSSH; hosts only need SHA-256, which they all have. In local mode with no control node, the operator checks the manifest hash by eye against the offline record.
 | Push, run, delete | Code is pushed to a host, run, and removed, unless the module needs a resident component. |
 
 Resident components (timers, watchers) are hashed by the integrity check (design 04) like any other critical file.
@@ -44,7 +47,7 @@ Resident components (timers, watchers) are hashed by the integrity check (design
 flowchart TD
     REL["Tagged release<br/>commit hash in the offline record"] --> MAN["Manifest: SHA-256 of every file"]
     MAN --> SIG["Manifest signed with the team key"]
-    SIG --> CHK{"Control node checks signature<br/>and every hash before each run"}
+    SIG --> CHK{"Control node checks the signature;<br/>host checks the manifest hash<br/>and every file hash"}
     CHK -->|mismatch| NO(["Refuse to run"])
     CHK -->|match| RUN["Push code to host, run it"]
     RUN --> RES{"Module needs a<br/>resident component?"}
@@ -64,6 +67,8 @@ flowchart TD
 
 - A tampered module file makes the pre-run check fail and the run refuse to start.
 - A wrong signature is rejected.
+- A manifest whose SHA-256 differs from the offline record's value is rejected on a host with no `ssh-keygen -Y`.
+- Cleanup deletes a honey-account the manifest lists and leaves every account that existed before the run.
 - After cleanup, a listing of Labyrinth paths, timers, tasks and rules matches the pre-run inventory except for kept logs.
 - Cleanup run twice gives the same result.
 - Rollback restores the changed files byte for byte.

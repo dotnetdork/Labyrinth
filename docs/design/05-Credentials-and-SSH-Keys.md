@@ -1,6 +1,6 @@
 # 05. Credentials and SSH Keys
 
-**Status:** Draft · reviewed 2026-09-29 · Phase: 🟥 Lock out · Priority: P0
+**Status:** Draft · reviewed 2026-10-02 · Phase: 🟥 Lock out · Priority: P0
 
 ## 1. Rules that shape it
 
@@ -14,6 +14,7 @@
 ## 2. Password rotation
 
 - **Who is rotated:** root, Administrator and equivalents, and team operator accounts. Never scoring accounts.
+- **Accounts something logs on with.** On Windows, a service, scheduled task or web application pool set to log on as an account stores that account's password. Changing the password breaks it at its next start, often hours later. The Tier 0 inventory lists every such logon. An admin-class account with any is not rotated automatically: its rotation goes on the Tier 3 checklist (design 01, section 5) together with the list of what must be updated. Linux services do not store their account's login password, so this mainly concerns Windows; a password written into an application's configuration file is not always found and is a reason to check the dependency map first.
 - **Generation:** a cryptographic random source, a length chosen by the profile, and a character set that survives the target's shell and login prompt.
 - **Record:** shown once on the operator's screen, to be copied into the team's offline record. Labyrinth never writes it to disk, logs or shell history.
 - **The offline record** is where the team keeps the secrets Labyrinth must not store: new passwords, the break-glass credential, the event seed (design 03) and the release fingerprint (design 07). It stays out of the repository and off every competition host: on paper, or in a local file on an operator's own machine that is not synced to any cloud service, because outside storage and collaboration services are prohibited during the event (National Collegiate Cyber Defense Competition [NCCDC], 2025, Rule 5.2). Teammates share these secrets only through the official team chat or in person. Activity on that chat may be logged and released (NCCDC, 2025, Rule 5.5), so every credential shared there is rotated after the event (section 5).
@@ -86,8 +87,8 @@ Break-glass is how the team gets back into a host it has locked itself out of. I
 A break-glass path must not become a backdoor, so:
 
 - **No new account and no key.** The break-glass credential is the rotated password of an existing admin-class account (root or the local Administrator), kept by the captain in the team's offline record (section 2). Labyrinth never creates an account or an SSH key for it.
-- **Console first.** It is verified at the host's console before any change (design 01 gate). Where the platform allows it without blocking the team's own admin path, it works only at the console; on Linux, `PermitRootLogin no` in the SSH drop-in (section 4) already does this.
-- **Rotated like any admin password.** Its rotation follows section 2, and the new password is verified at the console before the next change. It is never locked or removed. Unregistered SSH keys on the account are still removed.
+- **Console first.** Before Labyrinth changes a host, the operator confirms by typing that the break-glass credential worked at that host's console (design 01, section 7). A script cannot reach the console, so this is asked once per host, not before every change. Where the platform allows it without blocking the team's own admin path, the credential works only at the console; on Linux, `PermitRootLogin no` in the SSH drop-in (section 4) already does this.
+- **Rotated like any admin password.** Its rotation follows section 2. The new password is tested in a fresh session on the host, `su -` on Linux or `runas` on Windows, which checks the password itself without needing SSH. It is never locked or removed. Unregistered SSH keys on the account are still removed.
 - **Watched.** A successful logon with it raises an alert (design 10, section 5).
 - **Rotated after use** and after the event.
 
@@ -102,7 +103,8 @@ A break-glass path must not become a backdoor, so:
 - A bad `sshd` configuration is rejected by the syntax test and does not reload.
 - A dead-man revert restores SSH access when verify is failed on purpose.
 - No account or SSH key is created for break-glass.
-- The break-glass password works at the console after rotation, and root cannot log in over SSH.
+- The break-glass password works in a fresh `su -` or `runas` session after rotation, and root cannot log in over SSH.
+- An admin-class account that a Windows service or scheduled task logs on with is not rotated automatically and is listed on the Tier 3 checklist.
 - A logon with the break-glass credential or an official account raises an alert.
 
 ## References

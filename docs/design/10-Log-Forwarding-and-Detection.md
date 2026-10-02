@@ -1,6 +1,6 @@
 # 10. Log Forwarding and Detection
 
-**Status:** Draft · reviewed 2026-09-29 · Phase: 🟦 Observe · Priority: P1
+**Status:** Draft · reviewed 2026-10-02 · Phase: 🟦 Observe · Priority: P1
 
 ## 1. Goal
 
@@ -51,6 +51,10 @@ A short list, sized for a small SIEM. Each ID must be re-checked against Microso
 | 4740 | Security | An account was locked out |
 | 4663 | Security | Object access on an audited file (canaries and critical files, designs 04 and 09) |
 | 1102 | Security | The audit log was cleared: treat as a confirmed intrusion unless the team did it |
+| 4768, 4769, 4771 | Security, domain controller only | Kerberos ticket requests and failed pre-authentication. Service ticket requests using the older RC4 encryption are a common sign of Kerberoasting; many 4771 events from one source suggest password spraying. |
+| 4776 | Security, domain controller only | NTLM credential validation, including failures; shows password guessing against domain accounts |
+
+The domain controller events are the noisiest on this list. They are forwarded only from the domain controller, and the saved searches look for patterns (many failures, unusual encryption) rather than every event.
 
 If Sysmon is available in the environment, also forward process creation (Sysmon event 1), network connections (3), file creation (11) and registry value changes (13), using a small configuration written by the team (design 08).
 
@@ -68,6 +72,7 @@ Routers and firewalls send their logs to the SIEM by syslog. The appliance runbo
 - **Vendoring.** A third-party forwarder or Sysmon may be placed in `vendor/` only after its license is confirmed to allow redistribution in a public repository. Until then, the module uses a copy that is already in the environment or is skipped.
 - **Order.** Forwarding starts before deception is deployed (Blueprint §1), so traps have somewhere to report.
 - **Cross-segment flows.** Only the one forwarding flow to the SIEM is opened, and only after it is checked against the scoring allowlist and the firewall plan (design 06, section 3).
+- **The SIEM input.** Logs are sent over TCP, so a dropped connection is noticed and lines are not silently lost. The SIEM accepts its input only from the managed hosts in the `hosts` file, so an attacker cannot flood it or plant false events from elsewhere.
 
 ```mermaid
 flowchart LR
@@ -103,7 +108,8 @@ A few high-value searches beat a hundred noisy dashboards (Blueprint §3.9). The
 | Search | Confidence |
 |---|---|
 | Any trip-log entry | Near-certain |
-| Successful logon to a honey-account | Near-certain |
+| Any logon attempt, failed or successful, on a honey-account (design 09) | Near-certain |
+| Kerberos service tickets requested with RC4, or many 4771 or 4776 failures from one source | High |
 | Canary file read (auditd `canary_read` key or event 4663 on a canary) | Near-certain |
 | Audit log cleared (1102) or auditd rules changed | Near-certain |
 | Successful logon to an account Labyrinth locked | High |
@@ -132,6 +138,7 @@ Opening the forwarding port in a host firewall follows design 01 (Tier 2, with a
 
 - **Disk.** Before enabling a noisy source, check free space. Local logs rotate with a size cap, so logging can never fill a disk and stop a service.
 - **Volume.** Audit rules stay small (design 04, section 7). A rule that floods the log is removed, not tuned during the event.
+- **auditd settings that cannot be undone.** Labyrinth never sets `-e 2`, which locks the audit rules until the next reboot, so they could not be rolled back. It never sets `-f 2` either, which makes the kernel panic, stopping the whole host, when auditing fails. If a host already has `-e 2`, the rules cannot be loaded; `observe.auditd` reports exit code 20 (blocked) rather than reboot.
 - **Tampering.** Forwarding is the defense against a wiped host: once an event is in the SIEM, clearing the local log does not remove it. Clearing is itself alerted on (section 5).
 - **Trust path.** The SIEM receives logs only. It holds no keys to any host (design 06).
 
@@ -147,6 +154,9 @@ Opening the forwarding port in a host firewall follows design 01 (Tier 2, with a
 - Clearing the Windows Security log raises the 1102 search, and the earlier events are still in the SIEM.
 - With the SIEM stopped, hosts keep running, local logs stay under their size cap, and nothing scored is affected.
 - No module opens any network flow other than the one to the SIEM.
+- The SIEM refuses log input from an address that is not a managed host.
+- On a host already set to `-e 2`, `observe.auditd` exits 20 and changes nothing.
+- A planted honey-account logon attempt and an RC4 service ticket request each raise their saved search.
 - The repository contains no SIEM address or event value, only templates.
 
 ## References
