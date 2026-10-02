@@ -267,16 +267,23 @@ Describe 'core library' {
         foreach ($c in 'Register-ScheduledTask', 'Unregister-ScheduledTask') {
             [string](Get-Command $c).Module | Should -Be ''
         }
-        $threw = $false
-        try { Register-LabRevertTimer -Seconds 60 -RunId $env:LAB_RUN_ID -Execute 'cmd.exe' -Argument '/c rem' } catch { $threw = $true }
-        $threw | Should -Be $true
-        ([IO.File]::ReadAllText((Join-Path $dir 'timer'))).Trim() | Should -Be "lab-revert-$($env:LAB_RUN_ID)-1"
-        $removed | Should -Not -Exist
-        # A re-arm that works removes the earlier timer only afterwards.
-        Set-Item -Path function:Register-ScheduledTask -Value { }
-        Register-LabRevertTimer -Seconds 60 -RunId $env:LAB_RUN_ID -Execute 'cmd.exe' -Argument '/c rem'
-        ([IO.File]::ReadAllText((Join-Path $dir 'timer'))).Trim() | Should -Be "lab-revert-$($env:LAB_RUN_ID)-2"
-        (Get-Content -LiteralPath $removed) | Should -Be "lab-revert-$($env:LAB_RUN_ID)-1"
+        try {
+            $threw = $false
+            try { Register-LabRevertTimer -Seconds 60 -RunId $env:LAB_RUN_ID -Execute 'cmd.exe' -Argument '/c rem' } catch { $threw = $true }
+            $threw | Should -Be $true
+            ([IO.File]::ReadAllText((Join-Path $dir 'timer'))).Trim() | Should -Be "lab-revert-$($env:LAB_RUN_ID)-1"
+            $removed | Should -Not -Exist
+            # A re-arm that works removes the earlier timer only afterwards.
+            Set-Item -Path function:Register-ScheduledTask -Value { }
+            Register-LabRevertTimer -Seconds 60 -RunId $env:LAB_RUN_ID -Execute 'cmd.exe' -Argument '/c rem'
+            ([IO.File]::ReadAllText((Join-Path $dir 'timer'))).Trim() | Should -Be "lab-revert-$($env:LAB_RUN_ID)-2"
+            (Get-Content -LiteralPath $removed) | Should -Be "lab-revert-$($env:LAB_RUN_ID)-1"
+        } finally {
+            # The stand-ins outlive this test otherwise, and later test files
+            # would reach them instead of the real cmdlets.
+            Remove-Item -Path function:Register-ScheduledTask, function:Unregister-ScheduledTask -ErrorAction SilentlyContinue
+            Import-Module ScheduledTasks -Force
+        }
     }
 
     It 'probe: a closed port fails' {
