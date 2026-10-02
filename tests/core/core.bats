@@ -199,6 +199,16 @@ stub() {
   [ "$status" -eq 1 ]
 }
 
+@test "safety: every character of the alphabet can appear in a password" {
+  local all='' c i
+  # 5120 characters: the chance that one of 57 never appears is about 1e-37.
+  for i in $(seq 1 40); do all+="$(lab_random_password 128)"; done
+  for ((i = 0; i < ${#LAB_PW_ALPHABET}; i++)); do
+    c="${LAB_PW_ALPHABET:i:1}"
+    [[ "$all" == *"$c"* ]] || { printf 'never generated: %s\n' "$c"; return 1; }
+  done
+}
+
 @test "safety: the run lock" {
   lab_lock_acquire
   [ "$(cat "$LAB_STATE_DIR/lock/pid")" = "$$" ]
@@ -224,6 +234,20 @@ stub() {
   [[ "$calls" == *"systemctl stop lab-revert-$LAB_RUN_ID-1.timer"* ]]
   [[ "$calls" == *"--unit=lab-revert-$LAB_RUN_ID-2"* ]]
   [[ "$calls" == *"systemctl stop lab-revert-$LAB_RUN_ID-2.timer"* ]]
+}
+
+@test "timer: a failed re-arm leaves the earlier timer armed" {
+  [ -d /run/systemd/system ] || skip 'no systemd on this machine'
+  # The second unit, lab-revert-<run>-2, cannot be started.
+  stub systemd-run 'printf "%s\n" "$*" >> "$LAB_STATE_DIR/calls"; [[ "$*" != *"$LAB_RUN_ID-2 "* ]]'
+  stub systemctl 'printf "systemctl %s\n" "$*" >> "$LAB_STATE_DIR/calls"'
+  mkdir -p "$LAB_STATE_DIR"
+  lab_timer_arm 300 "$LAB_RUN_ID" /bin/bash /x/labyrinth.sh rollback "$LAB_RUN_ID"
+  run lab_timer_arm 300 "$LAB_RUN_ID" /bin/bash /x/labyrinth.sh rollback "$LAB_RUN_ID"
+  [ "$status" -eq 1 ]
+  [ "$(cat "$LAB_STATE_DIR/runs/$LAB_RUN_ID/timer")" = "lab-revert-$LAB_RUN_ID-1" ]
+  run grep -q '^systemctl stop' "$LAB_STATE_DIR/calls"
+  [ "$status" -ne 0 ]
 }
 
 @test "probe: http through curl checks status and content" {

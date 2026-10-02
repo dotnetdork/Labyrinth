@@ -421,8 +421,9 @@ function Invoke-LabApplyOne {
     if (-not (Test-Path -LiteralPath (Join-Path $M.Dir 'apply.ps1') -PathType Leaf)) { $M.State = 'done'; return 0 }
     if ($M.Risk -ne 'read-only') {
         $exe = (Get-Process -Id $PID).Path
-        $arg = '-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}" rollback {1} -Root "{2}" -Config "{3}"' -f `
-            (Join-Path $env:LAB_ROOT 'labyrinth.ps1'), $env:LAB_RUN_ID, $Root, $env:LAB_CONFIG_DIR
+        $arg = '-NoProfile -NonInteractive -ExecutionPolicy Bypass -File {0} rollback {1} -Root {2} -Config {3}' -f `
+            (ConvertTo-LabCommandLineArgument (Join-Path $env:LAB_ROOT 'labyrinth.ps1')), $env:LAB_RUN_ID,
+            (ConvertTo-LabCommandLineArgument $Root), (ConvertTo-LabCommandLineArgument $env:LAB_CONFIG_DIR)
         try {
             Register-LabRevertTimer -Seconds ($script:Settings['REVERT_MINUTES'] * 60) -RunId $env:LAB_RUN_ID -Execute $exe -Argument $arg
         } catch {
@@ -509,6 +510,8 @@ function Invoke-LabApplyCommand {
     $script:DryRun = '1'; $env:LAB_DRY_RUN = '1'
     $hostName = Get-LabHostName
     if (-not (Test-LabAdmin)) { Exit-Lab 'apply needs an elevated Administrator session' 20 }
+    # Before any configuration under the root is trusted.
+    try { Protect-LabDataRoot -Path $Root } catch { Exit-Lab "$($_.Exception.Message); nothing was changed" 20 }
     $entry = Find-LabThisHost
     if ($null -eq $entry) { Exit-Lab "this host ($hostName) is not in $(Join-Path $env:LAB_CONFIG_DIR 'hosts'), so its ring group is unknown" 20 }
     $group = $entry.Group

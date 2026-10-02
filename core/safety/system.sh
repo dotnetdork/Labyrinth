@@ -4,30 +4,35 @@
 # section 8). Sourced through core/lib.sh.
 #
 # The timer of a run is a transient systemd timer named
-# lab-revert-<run>-<n>. Each re-arm starts a new one, with a new <n>, after
-# stopping the last, and its name is kept in $LAB_STATE_DIR/runs/<run>/timer.
+# lab-revert-<run>-<n>. Each re-arm starts a new one, with a new <n>, and
+# only then stops the last, so a failed re-arm leaves the earlier timer
+# armed. The armed timer's name is kept in $LAB_STATE_DIR/runs/<run>/timer.
 
 lab_is_admin() { [[ "$(id -u)" == 0 ]]; }
 
 # lab_timer_arm SECONDS RUN COMMAND [ARG...]: (re)arm the run's revert timer
 # to run COMMAND (an absolute path) after SECONDS, unless cancelled.
 lab_timer_arm() {
-  local secs="$1" run="$2" dir n=1 unit
+  local secs="$1" run="$2" dir n=1 unit old=''
   shift 2
   if ! command -v systemd-run > /dev/null 2>&1 || [[ ! -d /run/systemd/system ]]; then
     printf 'revert timer: systemd is not available on this host, so no timer can be armed\n' >&2
     return 1
   fi
   dir="$LAB_STATE_DIR/runs/$run"
-  mkdir -p "$dir"
-  lab_timer_cancel "$run"
+  mkdir -p "$dir" || return 1
   if [[ -f "$dir/timer-count" ]]; then
     n=$(( $(cat "$dir/timer-count") + 1 ))
   fi
+  if [[ -f "$dir/timer" ]]; then old="$(cat "$dir/timer")"; fi
   unit="lab-revert-$run-$n"
   systemd-run --quiet --unit="$unit" --on-active="${secs}s" --timer-property=AccuracySec=1s "$@" || return 1
   printf '%s\n' "$n" > "$dir/timer-count"
   printf '%s\n' "$unit" > "$dir/timer"
+  # Only now is the earlier timer stopped; it may already have fired.
+  if [[ -n "$old" ]]; then
+    systemctl stop "$old.timer" 2> /dev/null || true
+  fi
 }
 
 # lab_timer_cancel RUN: stop the run's revert timer, if one is armed.

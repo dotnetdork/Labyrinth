@@ -97,7 +97,7 @@ Options: `--profile` (`-Profile`), `--root` (`-Root`), `--config` (`-Config`), `
 
 **Apply order.** A failed step stops the run before anything changes, unless the step says otherwise:
 
-1. Administrator or root (`20`), the host's line and profile, `event.conf`, and the protected set: missing or empty is `20`, malformed is `40`. Plan mode needs the protected set too.
+1. Administrator or root (`20`). On Windows the data root is then made private: only Administrators, SYSTEM and the operator's account can use it, and it does not inherit rights from its parent. A file or folder under it that another account owns is refused (`20`) and must be checked and removed by hand. Then the host's line and profile, `event.conf`, and the protected set: missing or empty is `20`, malformed is `40`. Plan mode needs the protected set too.
 2. The run lock, `<state>/lock`, holding the process id. A live holder blocks the run (`20`); a lock whose process is gone is taken over.
 3. Every module is planned. Any `40` means nothing is applied. If nothing needs applying, the run ends with no prompts.
 4. **Break-glass** (design 01, section 7): the operator logs in at the console with a `breakglass`-class account and types its name. It is asked once per host and kept in `<state>/breakglass` as `<timestamp><TAB><account>`.
@@ -109,13 +109,14 @@ Options: `--profile` (`-Profile`), `--root` (`-Root`), `--config` (`-Config`), `
    - `requires`: blocked if a required module in this run did not complete.
    - `approval`: the operator types the ids of the items to approve; none means nothing changes.
    - The revert timer is (re)armed for `REVERT_MINUTES`, unless the module is `read-only`.
+   - `apply_start` is recorded. If the manifest cannot be written, the module is not applied and the run stops (`40`).
    - `apply`: `20` is recorded and the run continues; any other failure rolls the module back and stops the run (`40`).
    - `verify`: a failure rolls the module back and stops the run (`30`, or `40` for an exit code other than `30`).
    - Probes again: a scored service that passed before and fails now rolls the module back and stops the run (`30`). An `unknown` result is never a regression.
    - `cleanup`, if present.
 8. The lock is released. The operator checks that a new login still works, then types `keep`. Anything else leaves the timer armed, and when it fires it runs `rollback <run>`. Keeping after a rollback is refused as too late (`20`).
 
-**The revert timer** is a transient systemd timer `lab-revert-<run>-<n>` on Linux and a one-time scheduled task `\Labyrinth\lab-revert-<run>-<n>` running as SYSTEM on Windows. `rollback` waits up to two minutes for the run lock and then proceeds without it, so a hung run cannot stop the timer.
+**The revert timer** is a transient systemd timer `lab-revert-<run>-<n>` on Linux and a one-time scheduled task `\Labyrinth\lab-revert-<run>-<n>` running as SYSTEM on Windows. Re-arming creates the new timer first and only then removes the earlier one, so a failed re-arm leaves the run covered. `rollback` waits up to two minutes for the run lock and then proceeds without it, so a hung run cannot stop the timer.
 
 ## 4. Bash style
 

@@ -390,7 +390,12 @@ apply_one() {
     fi
   fi
 
-  record_for "$id" apply_start '' "risk $risk"
+  # Checked by hand: errexit is off inside a function called with ||, and a
+  # change the manifest does not list could never be rolled back.
+  if ! record_for "$id" apply_start '' "risk $risk"; then
+    printf '[%s] error: the run manifest cannot be written, so it is not applied\n' "$id"
+    RUN_STATE[i]=failed; return 40
+  fi
   LAB_MODULE_ID="$id" lab_log_info apply_start "applying"
   run_entry "$dir" apply "$id" 0
   case "$ENTRY_RC" in

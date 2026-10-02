@@ -192,6 +192,14 @@ Describe 'core library' {
         { Get-LabRandomPassword -Length 8 } | Should -Throw
     }
 
+    It 'safety: every character of the alphabet can appear in a password' {
+        # 5120 characters: the chance that one of 57 never appears is about 1e-37.
+        $all = -join (1..40 | ForEach-Object { Get-LabRandomPassword -Length 128 })
+        $missing = @('ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789'.ToCharArray() |
+                Where-Object { -not $all.Contains([string]$_) })
+        $missing -join '' | Should -Be ''
+    }
+
     It 'safety: the run lock' {
         Enter-LabLock | Should -Be $true
         ([IO.File]::ReadAllText((Join-Path $env:LAB_STATE_DIR 'lock\pid'))).Trim() | Should -Be "$PID"
@@ -203,6 +211,72 @@ Describe 'core library' {
         [IO.File]::WriteAllText((Join-Path $env:LAB_STATE_DIR 'lock\pid'), "$((Get-Process -Name System).Id)`n")
         Enter-LabLock | Should -Be $false
         Remove-Item -LiteralPath (Join-Path $env:LAB_STATE_DIR 'lock') -Recurse
+    }
+
+    It 'safety: the data root is private to administrators, SYSTEM and this account' {
+        $trusted = @(Get-LabTrustedSid)
+        $new = Join-Path $base 'root-new'
+        $old = Join-Path $base 'root-old'
+        New-Item -ItemType Directory -Path (Join-Path $old 'etc') -Force | Out-Null
+        Write-TestFile (Join-Path $old 'etc\hosts') @('kept')
+        foreach ($root in $new, $old) {
+            Protect-LabDataRoot -Path $root
+            $acl = Get-Acl -LiteralPath $root
+            $acl.AreAccessRulesProtected | Should -Be $true
+            $sids = @($acl.Access | ForEach-Object { $_.IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value })
+            @($sids | Where-Object { $trusted -notcontains $_ }) -join ' ' | Should -Be ''
+        }
+        Get-Content -LiteralPath (Join-Path $old 'etc\hosts') | Should -Be 'kept'
+        # Files inside inherit the private access list.
+        $fileAcl = Get-Acl -LiteralPath (Join-Path $old 'etc\hosts')
+        $sids = @($fileAcl.Access | ForEach-Object { $_.IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value })
+        @($sids | Where-Object { $trusted -notcontains $_ }) -join ' ' | Should -Be ''
+    }
+
+    It 'safety: revert-timer arguments survive a real command line' {
+        $script = Join-Path $base 'args.ps1'
+        [IO.File]::WriteAllText($script, '$args | ForEach-Object { "<$_>" }')
+        $values = @('C:\Labyrinth\', 'C:\', 'C:\Program Files\Lab', 'C:\two\\')
+        $line = '-NoProfile -NonInteractive -ExecutionPolicy Bypass -File {0} {1}' -f (ConvertTo-LabCommandLineArgument $script),
+            (($values | ForEach-Object { ConvertTo-LabCommandLineArgument $_ }) -join ' ')
+        $psi = New-Object Diagnostics.ProcessStartInfo((Get-Process -Id $PID).Path, $line)
+        $psi.UseShellExecute = $false
+        $psi.RedirectStandardOutput = $true
+        $p = [Diagnostics.Process]::Start($psi)
+        $out = $p.StandardOutput.ReadToEnd()
+        $p.WaitForExit()
+        (($out.Trim() -split '\r?\n') -join '|') | Should -Be (($values | ForEach-Object { "<$_>" }) -join '|')
+        $threw = $false
+        try { ConvertTo-LabCommandLineArgument 'a"b' } catch { $threw = $true }
+        $threw | Should -Be $true
+    }
+
+    It 'timer: a failed re-arm leaves the earlier timer armed' {
+        # Stand-ins for the scheduled-task cmdlets, in this test's scope only.
+        # The module is loaded first: loading it later would replace them.
+        Import-Module ScheduledTasks
+        $removed = Join-Path $base 'removed'
+        $dir = Get-LabRunDir $env:LAB_RUN_ID
+        New-Item -ItemType Directory -Path $dir -Force | Out-Null
+        [IO.File]::WriteAllText((Join-Path $dir 'timer-count'), "1`n")
+        [IO.File]::WriteAllText((Join-Path $dir 'timer'), "lab-revert-$($env:LAB_RUN_ID)-1`n")
+        Set-Item -Path function:Unregister-ScheduledTask -Value ([scriptblock]::Create(
+                "param(`$TaskName) Add-Content -LiteralPath '$removed' -Value `$TaskName"))
+        Set-Item -Path function:Register-ScheduledTask -Value { throw 'refused' }
+        # Never reach the real cmdlets: they would register a task.
+        foreach ($c in 'Register-ScheduledTask', 'Unregister-ScheduledTask') {
+            [string](Get-Command $c).Module | Should -Be ''
+        }
+        $threw = $false
+        try { Register-LabRevertTimer -Seconds 60 -RunId $env:LAB_RUN_ID -Execute 'cmd.exe' -Argument '/c rem' } catch { $threw = $true }
+        $threw | Should -Be $true
+        ([IO.File]::ReadAllText((Join-Path $dir 'timer'))).Trim() | Should -Be "lab-revert-$($env:LAB_RUN_ID)-1"
+        $removed | Should -Not -Exist
+        # A re-arm that works removes the earlier timer only afterwards.
+        Set-Item -Path function:Register-ScheduledTask -Value { }
+        Register-LabRevertTimer -Seconds 60 -RunId $env:LAB_RUN_ID -Execute 'cmd.exe' -Argument '/c rem'
+        ([IO.File]::ReadAllText((Join-Path $dir 'timer'))).Trim() | Should -Be "lab-revert-$($env:LAB_RUN_ID)-2"
+        (Get-Content -LiteralPath $removed) | Should -Be "lab-revert-$($env:LAB_RUN_ID)-1"
     }
 
     It 'probe: a closed port fails' {
