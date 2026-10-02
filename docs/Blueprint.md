@@ -193,7 +193,7 @@ Linux specifics link back to the §5 table and appendix A.
 - **Windows:** put RDP behind the firewall or a jump host rather than on a non-standard port (changing the port is weak on Windows); prefer allowlisting the source.
 - **CCDC note:** port-knocking (§4.7) makes SSH appear *closed* to Nmap, which saves real time. The trade-off is one more moving part on a box you also need to log into fast.
 
-  **[RULES]** Officials must be able to get in on request (NCCDC, 2025, Rule 4.1), so knocking is optional and never the only path. The knock sequence is documented on paper only.
+  **[RULES]** Officials must be able to get in on request (NCCDC, 2025, Rule 4.1), so knocking is optional and never the only path. The knock sequence is documented only in the team's offline record (design 05, section 2).
 
 ### 3.5 Dynamic banning / auto-response — **P2**
 
@@ -437,9 +437,9 @@ Tier 3 actions are printed checklists for a human. See design 01. After the lock
 
 ### 6.5 Secret handling
 
-Ship **placeholder templates** only (`.env.example`, cert paths, token *names*). Real values are supplied at run time from the event packet and the paper seed.
+Ship **placeholder templates** only (`.env.example`, cert paths, token *names*). Real values are supplied at run time from the event packet and the event seed, which is kept offline (design 03).
 
-**[RULES]** The code is public (NCCDC, 2025, Rule 5.6.1), so decoy values are derived from a secret event seed on paper (design 03) rather than stored in an encrypted repository file.
+**[RULES]** The code is public (NCCDC, 2025, Rule 5.6.1), so decoy values are derived from a secret event seed kept offline (design 03) rather than stored in an encrypted repository file.
 
 Labyrinth provisions the *shape*; the operator supplies the values. **No real credential, key, or env file ever enters the repo.**
 

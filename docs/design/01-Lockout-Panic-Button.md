@@ -38,7 +38,7 @@ The protected set is a list the operator supplies at run time, from the event pa
 | Official accounts | Accounts the White or Operations Team use | Never changed without the White Team's permission; logons alerted on (design 05, section 5) |
 | Scoring accounts | Mailbox users and other accounts the scoring engine logs in with | Never touched by automation |
 | Operator accounts | Named team accounts | Never locked or removed |
-| Break-glass account | An existing admin-class account whose rotated password is sealed on paper; no new account or key (design 05, section 5) | Never locked or removed; password rotated only in design 05's order; verified working at the console |
+| Break-glass account | An existing admin-class account whose rotated password is kept in the team's offline record; no new account or key (design 05, section 5) | Never locked or removed; password rotated only in design 05's order; verified working at the console |
 | Service accounts for scored services | Database and application accounts a scored service depends on | Never touched until the dependency map is known |
 | Built-in and machine accounts | System, machine and domain-trust accounts | Never touched |
 
@@ -126,7 +126,7 @@ flowchart TD
   - Linux: a transient systemd timer (`systemd-run --on-active=5m --unit=lab-revert-<id> <rollback command>`), cancelled with `systemctl stop lab-revert-<id>.timer`.
   - Windows: a one-time scheduled task that removes the rule, deleted after verify.
   - VyOS: `commit-confirm <minutes>` followed by `confirm`. Read the VyOS warning below first.
-- **Passwords shown once.** New credentials are displayed once, on the operator's screen, for the paper log. They are not written to disk or logs and never echoed over an unencrypted channel. Use a cryptographic random source (`/dev/urandom` or .NET `RandomNumberGenerator`), not `Get-Random`.
+- **Passwords shown once.** New credentials are displayed once, on the operator's screen, for the team's offline record (design 05, section 2). Labyrinth never writes them to disk or logs and never echoes them over an unencrypted channel. Use a cryptographic random source (`/dev/urandom` or .NET `RandomNumberGenerator`), not `Get-Random`.
 - **Acknowledge before continuing.** The operator confirms the credential is recorded before the old one is invalidated.
 
 > [!WARNING]

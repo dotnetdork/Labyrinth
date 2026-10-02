@@ -205,7 +205,7 @@ Each subsection answers four questions: what the part does, why it exists, how i
 **What it will never do.** Disable accounts wholesale, change login shells, cut all connections, delete accounts or files, stop services that are not on its candidate list, reboot, move a service into a container, change scoring accounts, or act on a host that has no emergency way in.
 
 > [!TIP]
-> **Break-glass** means a sealed emergency login, one per critical host, written on paper and kept by the team captain. It exists so that the team, and the officials, can always get back in.
+> **Break-glass** means a sealed emergency login, one per critical host, kept by the team captain in the team's **offline record**: on paper or in a local file on a team member's own machine, never in the repository or on the competition hosts. It exists so that the team, and the officials, can always get back in.
 
 ### 4.2 🟥 Passwords and SSH keys
 
@@ -216,7 +216,7 @@ Each subsection answers four questions: what the part does, why it exists, how i
 **How it works.**
 
 - **Only admin-class passwords are changed automatically** (root, Administrator and similar). The rules say these are not used for scoring. Ordinary users' passwords may be used by the scoring engine, so they are changed only by hand, following the official notification process.
-- **New passwords are shown once**, on the operator's screen, to be written in the paper log. They are never saved to disk, logs or chat.
+- **New passwords are shown once**, on the operator's screen, to be copied into the offline record. Labyrinth never saves them to disk or logs, and teammates share them only through the official team chat.
 - **The safe order.** Set the new password, test it from a fresh login, confirm it is written down, and only then close the old session. SSH keys follow the same pattern: add the new key next to the old one, test it, then remove the old one.
 - **One SSH key per role** (for example, one for Linux admin work and one for monitoring), not one per person and not one shared key. Each key only works from the control node.
 - **An approved-key list** (the registry) is kept for every host. Any key found that is not on the list is backed up and then removed.
@@ -266,12 +266,12 @@ Changes made by Labyrinth itself are in the run manifest, so they do not raise f
 
 **How it works.**
 
-- The seed is written on paper, kept by the team captain, and typed in when Labyrinth asks for it. It is never saved to disk, logs or command history.
+- The seed is kept by the team captain in the offline record and typed in when Labyrinth asks for it. Labyrinth never saves it to disk, logs or command history.
 - Labyrinth combines the seed with a label such as "decoy port number 3" using a **keyed hash** (HMAC-SHA256). The result looks random, cannot be reversed to reveal the seed, and is always the same for the same seed and label.
 - Every result is checked. A port that clashes with a scored service, or a name that clashes with a real or protected account, is skipped and reported.
 - If the seed leaks, the team picks a new one and redeploys the traps. That is designed to be a cheap, routine run.
 
-**Why not just encrypt a secrets file?** The password for that file would itself need to be shared and typed on every host, and the encrypted file would sit in a public repository where anyone could attack it at leisure. A paper seed removes the stored secret entirely.
+**Why not just encrypt a secrets file?** The password for that file would itself need to be shared and typed on every host, and the encrypted file would sit in a public repository where anyone could attack it at leisure. A seed kept offline removes the stored secret entirely.
 
 ### 4.6 🟪 The deception maze: traps and decoys
 
@@ -323,7 +323,7 @@ Passwords, keys and tokens are stripped from log excerpts before they go into a 
 
 **Tool integrity.** The real risk to the team's own tools is someone *changing* them, not someone *reading* them (the code is public anyway). So:
 
-- each release is tagged in git, and its commit ID is printed on paper;
+- each release is tagged in git, and its commit ID is kept in the offline record;
 - a **manifest** lists every file with its hash;
 - the manifest is **signed** with a team key, which proves who made it and that it has not been altered;
 - before every run, the control node checks the signature and every file's hash, and refuses to run if anything does not match.
@@ -452,16 +452,17 @@ Controls are ranked from **P0** (do first) to **P3** (do last): 🔴 P0 · 🟠 
 | Allowlist | A list of the only things that are permitted; everything else is blocked. |
 | Audit log | A log in which the operating system records who did what, such as opening a watched file. |
 | Baseline | A saved record of what a healthy host looks like, used to spot changes. |
-| Break-glass | A sealed emergency login kept on paper, used only when normal access fails. |
+| Break-glass | A sealed emergency login kept in the offline record, used only when normal access fails. |
 | Canary | A bait file whose only purpose is to raise an alarm when someone opens it. |
 | Control node | The one machine the team runs Labyrinth from. |
 | CVE | Common Vulnerabilities and Exposures: a public ID for a known security flaw. |
 | Dead-man revert timer | A timer that automatically undoes a change unless someone cancels it after confirming things still work. |
 | Default-deny | A firewall setting that blocks every incoming connection unless a rule allows it. |
-| Event seed | The secret random value, on paper, from which all trap names and ports are derived. |
+| Event seed | The secret random value, kept offline, from which all trap names and ports are derived. |
 | Firewall | Software or a device that decides which network connections are allowed. |
 | Group Policy | Settings a Windows domain pushes to every machine at once. |
 | Hash | A short fingerprint of a file that changes if the file changes. |
+| Offline record | Where the team keeps passwords, the seed and the release fingerprint: on paper or in a local file on a team member's own machine, never in the repository, a cloud drive or the competition hosts. |
 | Honey-account | A fake account nobody really uses; any login to it is an alarm. |
 | Host | Any single computer or server on the network. |
 | Idempotent | Safe to run more than once: repeating it gives the same result. |
