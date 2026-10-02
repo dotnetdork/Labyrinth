@@ -107,6 +107,7 @@ A few high-value searches beat a hundred noisy dashboards (Blueprint §3.9). The
 | Canary file read (auditd `canary_read` key or event 4663 on a canary) | Near-certain |
 | Audit log cleared (1102) or auditd rules changed | Near-certain |
 | Successful logon to an account Labyrinth locked | High |
+| Successful logon with the break-glass account or an official account | Low on its own; confirm with the captain or the White Team |
 | New member of an admin group (4728, 4732, 4756; sudoers or `wheel`/`sudo` group change) | High |
 | New service or scheduled task (4697, 7045, 4698; new systemd unit or cron entry) | Medium |
 | Many failed logons from one source | Medium |
