@@ -70,8 +70,8 @@ flowchart TD
 
 The first baseline is taken before the lockout, so it records the host as it was found, which may already include an attacker's changes. Comparing against it later would hide those changes and flag every one of ours. So, once the lockout and the persistence sweep (design 17) are finished and verified, the team **seals** the baseline:
 
-- `labyrinth baseline --seal` takes a new baseline of the cleaned host, after package verification as in section 3, and marks it as the reference. Its hash goes into the team's offline record and a copy goes off the host, as in section 3.
-- `labyrinth baseline --reseal "<reason>"` replaces the seal after a deliberate change, such as a patch (design 15) or an approved service-pack setting (design 18). The reason is required.
+- `labyrinth seal` takes a new baseline of the cleaned host, after package verification as in section 3, and marks it as the reference. Its hash goes into the team's offline record and a copy goes off the host, as in section 3.
+- `labyrinth reseal --reason "<reason>"` replaces the seal after a deliberate change, such as a patch (design 15) or an approved service-pack setting (design 18). The reason is required.
 - Every seal and reseal is logged with its time, the operator and the reason, so a reseal that hides an attacker's change can be traced.
 
 Then:
@@ -90,8 +90,8 @@ Read-only observation does not affect scored services and needs no special permi
 - A binary replaced with a trojan is caught by the package verification step, not baselined.
 - A change made by a Labyrinth module does not raise an alert.
 - Editing the baseline file on the host is detected by the check against the control node's copy.
-- After `--seal`, a cron job planted in the lab is reported at the next checkpoint, while the changes the lockout made are not.
-- `--reseal` without a reason is refused, and each seal is logged.
+- After `labyrinth seal`, a cron job planted in the lab is reported at the next checkpoint, while the changes the lockout made are not.
+- `labyrinth reseal` without `--reason` is refused, and each seal is logged.
 - Deleting `/etc/fstab` on a lab host raises a high-ranked alert before any reboot.
 
 
