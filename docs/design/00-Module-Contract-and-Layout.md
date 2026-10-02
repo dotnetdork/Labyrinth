@@ -53,8 +53,6 @@ Labyrinth/
 │   └── probe/                   # scoring-style health probes
 ├── phases/
 │   ├── lockout/
-│   │   ├── run-lockout.sh       # phase entry script
-│   │   ├── run-lockout.ps1
 │   │   └── modules/
 │   │       ├── credentials/     # one folder per module (contract below)
 │   │       ├── accounts/
@@ -98,7 +96,7 @@ flowchart TD
     end
     MAIN -->|reads| PROF
     MAIN -->|runs| PH
-    PH -->|calls| MOD
+    PH -->|holds| MOD
     MOD -->|uses| CORE
     MOD -->|uses| PLAT
     MOD -.->|may use| VEN
@@ -106,7 +104,7 @@ flowchart TD
     MAIN -->|cross-phase| REP
 ```
 
-*Figure: the main program reads a profile, runs the phase entry scripts, and each phase calls its modules, which share the core library and per-OS adapters; dashed lines are optional or run-time-only links.*
+*Figure: the main program reads a profile and runs the phase's modules in profile order, which share the core library and per-OS adapters; dashed lines are optional or run-time-only links.*
 
 ## 4. The module contract
 
@@ -185,12 +183,12 @@ Rules for module authors:
 Labyrinth runs in two modes that share the same modules:
 
 - **Local mode.** `labyrinth.sh` or `labyrinth.ps1` runs on the host it changes. This is the base: it needs nothing but the host itself, and it is the fallback when remote access is lost.
-- **Remote mode.** `labyrinth remote --targets <group> <phase>` runs on a control node. For each target it copies the release, checks it (design 07, section 5), runs the *same* local command over SSH (Linux) or PowerShell remoting or OpenSSH (Windows), and brings back the logs and the run manifest. It must cope with being cut off, because the lockout rotates the very credentials and SSH settings it connects with.
+- **Remote mode.** `labyrinth remote plan <phase> --group <group>` or `labyrinth remote apply <phase> --group <group>` runs on a control node. For each target it copies the release, checks it (design 07, section 5), runs the *same* local command over SSH (Linux) or PowerShell remoting or OpenSSH (Windows), and brings back the logs and the run manifest. It must cope with being cut off, because the lockout rotates the very credentials and SSH settings it connects with.
 
 Either way, one run does this:
 
 ```
-labyrinth <phase> --profile <name> --targets <group>   # plan mode by default
+labyrinth plan|apply <phase> [--profile <name>]        # local; remote adds --group <group>
    1. load profile → ordered module list
    2. safety gates (protected set loaded, break-glass verified; the scoring allowlist
       for modules that touch scored services)
@@ -200,7 +198,22 @@ labyrinth <phase> --profile <name> --targets <group>   # plan mode by default
    6. write run manifest; run cleanup
 ```
 
-The local commands are `labyrinth.sh <phase>` (plan), `--apply <phase>`, `probe`, `keep <run>` and `rollback <run>`, with the same commands in `labyrinth.ps1`. `docs/Conventions.md` section 3.1 gives their options and the exact order of the gates and steps in an apply.
+The steps above are the outline; `docs/Conventions.md` section 3.1 gives the exact order of the gates and steps in an apply, and it wins where the two differ.
+
+**Commands.** `labyrinth` means the installed command, or `labyrinth.sh` / `labyrinth.ps1` run directly from a release. Every command has the same shape, *verb, object, options*: `labyrinth <command> [<phase> | <run> | <name>] [options]`. Both runners accept the same commands and options (Conventions, section 3.1):
+
+| Command | Does | Where |
+|---|---|---|
+| `plan <phase>`, `apply <phase>` | Plan a phase, or apply it behind the gates | Conventions 3.1 |
+| `keep [<run>]`, `rollback <run>`, `runs` | Keep or undo a run, or list the runs and their revert timers | Conventions 3.1 |
+| `probe` | Probe every scored service once | Conventions 3.1 |
+| `help [<command>]`, `version` | Help and the version | Conventions 3.1 |
+| `remote plan <phase> --group <group>`, `remote apply <phase> --group <group>` | Run the local command on every host of a group from a control node | This section |
+| `seal`, `reseal --reason <text>` | Seal the baseline, or reseal it after an approved change | Design 04 |
+| `checkpoint` | Print the read-only health summary | Design 13 |
+| `backup <service>`, `restore <service> [--database \| --start]` | Back up a service, or restore it from a backup | Designs 14 and 15 |
+
+The commands below `help` are planned and do not exist yet. A new command takes a verb not used above, and an option that means the same thing in two commands has the same name in both.
 
 ## 6. Code and configuration are separate
 
