@@ -1,6 +1,6 @@
 # 12. Dynamic Bans
 
-**Status:** Draft · reviewed 2026-09-29 · Phase: 🟪 Deceive · Priority: P2
+**Status:** Draft · reviewed 2026-10-02 · Phase: 🟪 Deceive · Priority: P2
 
 ## 1. Goal
 
@@ -21,7 +21,7 @@ Turn repeated hostile touches into automatic, expiring blocks, and keep the bloc
 |---|---|---|
 | Any packet to a trap port | Firewall deny log (Blueprint §4.1) | Ban at once |
 | Use of the planted SSH key | sshd fingerprint log (Blueprint §4.4) | Ban at once |
-| Login to a honey-account | Trip log (design 09) | Ban at once and raise an incident (design 02) |
+| Any logon attempt on a honey-account | Trip log (design 09) | Ban at once and raise an incident (design 02) |
 | Repeated failed logins | Authentication log | Ban after a threshold within a time window |
 | Repeat offender | Ban history | Longer ban |
 
@@ -57,7 +57,8 @@ The refusal is exit code 20 (blocked by a safety gate, design 00) with a message
 
 - One kernel address set (ipset, or an nftables set) holds the banned addresses, with a timeout on each entry, and one rule per chain matches the whole set. Thousands of bans stay as fast as one (Blueprint §5.3).
 - The rule sits on the `INPUT` chain and, on hosts running Docker, also on `DOCKER-USER`, because published container ports bypass `INPUT` (Blueprint §3.3).
-- The watcher is the host's `fail2ban` if it is installed. Otherwise it is a small native Labyrinth watcher that tails the same logs and adds addresses to the set. Vendoring fail2ban is **pinned** until its license and interpreter needs are checked (design 08, section 2).
+- **The watcher** is a small native Labyrinth watcher, in bash, on every Linux host. It tails the logs above and adds addresses to the set. Most triggers in section 3 (trap ports, the planted key, honey-accounts) are not things fail2ban handles out of the box, so they would need custom rules either way.
+- **fail2ban.** Labyrinth never installs or vendors fail2ban. It needs python3, which a minimal host may lack, and on RHEL-family hosts it comes from EPEL rather than the base repositories. Installing it at the event would pull in an interpreter and libraries the scored services did not have before. On some distributions it also starts at once with an SSH ban rule on, before the never-ban list is in place. Where fail2ban is already installed and running, Labyrinth leaves it running and adds the never-ban list to its `ignoreip` setting through a drop-in file in `jail.d`, so it cannot ban the scoring engine. The native watcher still handles Labyrinth's own triggers.
 
 **Windows.** Optional and off by default. A scheduled task reads the relevant events and adds a single, grouped inbound block rule whose address list expires entries. Blocking is often better done at the perimeter (Blueprint §3.5), through the appliance runbook (design 16).
 
@@ -99,6 +100,7 @@ flowchart TD
 - Ten thousand bans do not measurably slow a scored-service probe.
 - On a Docker host, a banned address cannot reach a published container port.
 - With the never-ban list empty, the module refuses to start.
+- On a host that already runs fail2ban, the never-ban list appears in its `ignoreip`, and a failed-login burst from the lab scoring engine's address is not banned by either watcher.
 
 ## References
 

@@ -129,7 +129,7 @@ Labyrinth is organized so that new abilities can be added without rewriting the 
 
 When you point Labyrinth at a group of hosts, it looks up each host's profile, works out the modules to run, and runs them phase by phase.
 
-It is written in **bash** for Linux and **PowerShell** for Windows, because both are already installed on those systems. Nothing extra has to be downloaded during the event. Network appliances (routers and firewall boxes) are handled with prepared configuration templates and a written checklist for a person to follow, not by remote automation.
+It is written in **bash** for Linux and **PowerShell** for Windows, because both are already installed on those systems. Nothing extra has to be downloaded during the event. Labyrinth can run directly on the host it changes, or from a control node that sends the same commands to many hosts and collects the results; the first way still works if the second is cut off. Network appliances (routers and firewall boxes) are handled with prepared configuration templates and a written checklist for a person to follow, not by remote automation.
 
 ### 3.2 The life of one module
 
@@ -171,7 +171,7 @@ Two words you will see often:
 
 ### 3.3 Where things live on each host
 
-Every host uses the same folder layout, so the team always knows where to look: the Labyrinth code (read-only), its state (baselines and records), its logs (one folder per category, such as `auth`, `integrity` or `deception`) and its timestamped backups. The top-level location can be changed, so it is not a fixed, publicly known path ([design 00, section 7](design/00-Module-Contract-and-Layout.md#7-standard-paths-on-every-host)).
+Every host uses the same folder layout, so the team always knows where to look: the Labyrinth code (read-only), its run-time settings, its state (baselines and records), its logs (one folder per category, such as `auth`, `integrity` or `deception`) and its timestamped backups. All of it sits under one top-level folder that only administrators can use. That location can be changed, so it is not a fixed, publicly known path ([design 00, section 7](design/00-Module-Contract-and-Layout.md#7-standard-paths-on-every-host)).
 
 ---
 
@@ -188,7 +188,7 @@ Each subsection answers four questions: what the part does, why it exists, how i
 **How it works.** The obvious version, "reset everything, lock everything, block everything, everywhere, at once", is exactly what the rules forbid, because it breaks things the scoring engine checks. So the panic button keeps the speed but adds guard rails:
 
 - **The protected set.** Before anything else, the operator loads a list of accounts that must never be touched: the officials' accounts, the accounts the scoring engine logs in with, the team's own accounts, the emergency accounts and system accounts. If the list is missing or empty, the run stops.
-- **Safety gates.** Six checks must all pass before any change: the protected set is loaded, the scoring engine is allowed through every firewall plan, the emergency login has been tested, backups exist, the operator has reviewed the plan and typed the target group's name, and a revert timer is ready for risky changes.
+- **Safety gates.** Six checks must all pass before any change: the protected set is loaded, the scoring engine is allowed through every firewall plan, the operator has confirmed that the emergency login works at the host's own console, backups exist, the operator has reviewed the plan and typed the target group's name, and a revert timer is ready for risky changes.
 - **Risk tiers.** Every action is sorted by how much damage it could do, and riskier tiers get more caution:
 
 | Tier | What it covers | Who carries it out |
@@ -198,7 +198,7 @@ Each subsection answers four questions: what the part does, why it exists, how i
 | 2. Service-affecting | Turn on the default-deny firewall; turn off unneeded services; harden SSH; lock (never delete) unexpected local accounts | Runs host group by host group, with a check and a revert timer |
 | 3. Manual only | Ordinary users' passwords; domain accounts; network appliances; anything touching a scored service's own settings | Printed as a checklist; a person does it |
 
-- **Rings.** Changes go to one low-impact host first (the "canary", a workstation), then to the next group, and so on. If a check fails, the run stops before the problem spreads.
+- **Rings.** Changes go first to one low-impact host of each kind of system (the "canaries", for example one Linux host and one Windows workstation), then to the next group, and so on. If a check fails, the run stops before the problem spreads. A host that is the only one of its kind, such as the domain controller, has no canary to go first; it comes last and relies on the revert timer and the tests.
 - **Dead-man revert timer.** Before a firewall or SSH change, Labyrinth sets a timer that will undo the change automatically unless someone cancels it after confirming everything still works. If the change locks the team out, the timer puts things back.
 - **Checking like the scoring engine.** After each module, Labyrinth tests each scored service the way the scoring engine would (for example, fetching the web page and looking for the expected text) and compares the result with a test taken before the change. If a service got worse, that module is rolled back and the run stops.
 
@@ -215,7 +215,7 @@ Each subsection answers four questions: what the part does, why it exists, how i
 
 **How it works.**
 
-- **Only admin-class passwords are changed automatically** (root, Administrator and similar). The rules say these are not used for scoring. Ordinary users' passwords may be used by the scoring engine, so they are changed only by hand, following the official notification process.
+- **Only admin-class passwords are changed automatically** (root, Administrator and similar). The rules say these are not used for scoring. Ordinary users' passwords may be used by the scoring engine, so they are changed only by hand, following the official notification process. An admin password is also left to a person when a Windows service or scheduled task logs on with that account, because changing it would break that service the next time it starts.
 - **New passwords are shown once**, on the operator's screen, to be copied into the offline record. Labyrinth never saves them to disk or logs, and teammates share them only through the official team chat.
 - **The safe order.** Set the new password, test it from a fresh login, confirm it is written down, and only then close the old session. SSH keys follow the same pattern: add the new key next to the old one, test it, then remove the old one.
 - **One SSH key per role** (for example, one for Linux admin work and one for monitoring), not one per person and not one shared key. Each key only works from the control node.
@@ -234,8 +234,8 @@ Each subsection answers four questions: what the part does, why it exists, how i
 **How it works.**
 
 1. Check files against the operating system's records.
-2. Baseline the rest: hashes of critical files, plus accounts, keys, open ports, services and scheduled tasks.
-3. Compare against the baseline on a schedule.
+2. Baseline the rest: hashes of critical files, plus accounts, keys, open ports, services and scheduled tasks. A copy, or at least its hash, is kept off the host, because an attacker with full control of a host could edit a baseline stored there.
+3. Compare against the baseline on a schedule, after first checking the host's baseline against that copy.
 4. When something changes, look up the audit logs to see which account made the change, when, and from which network address.
 
 > [!IMPORTANT]
@@ -282,7 +282,7 @@ Changes made by Labyrinth itself are in the run manifest, so they do not raise f
 | Trap | What it is | How good is the signal? |
 |---|---|---|
 | Canary files | Tempting files, such as a fake password file, whose opening is recorded | High: nobody has a reason to open them |
-| Honey-accounts | Fake admin accounts that nobody really uses; any login raises an alarm | High |
+| Honey-accounts | Fake admin accounts that cannot log in at all; any attempt raises an alarm | High |
 | Trap ports | Network ports with no real service; any connection is recorded | High, if nothing else uses the port |
 | Tarpits | Trap ports that answer extremely slowly, so scanning tools get stuck | Medium; mostly wastes the attacker's time |
 | Banner decoys | Changed version text on *unscored* services only | Low; only slows the attacker's identification of software |
@@ -308,7 +308,7 @@ Changes made by Labyrinth itself are in the run manifest, so they do not raise f
 1. **Detect:** something raises an event, such as a trap being touched, a file changing, a suspicious login, a SIEM alert, or a team member typing "log this".
 2. **Collect:** gather the facts already on the host: time, host, account, source address, program, file and the relevant log lines.
 3. **Correlate:** group related events (same address, account or host, close in time) into one incident with a timeline.
-4. **Draft:** fill in the report template. Any field without evidence says `UNKNOWN`, never a guess.
+4. **Draft:** fill in the report template, which follows what the rules ask a report to contain: what happened, with addresses and a timeline, passwords cracked, access obtained and damage done; what was affected; and a plan to fix it. Any field without evidence says `UNKNOWN`, never a guess, and the draft lists every field still missing so the team sees it before submitting.
 5. **Review:** the incident lead edits the draft. The captain also approves any report about an action that affected a scored service.
 6. **Submit:** a person submits it through the channel the officials specify. Labyrinth never submits anything itself.
 7. **Track:** the record shows whether each report is a draft, submitted or accepted, so nothing is filed twice or forgotten.
@@ -319,14 +319,14 @@ Passwords, keys and tokens are stripped from log excerpts before they go into a 
 
 **What it does.** Leaves nothing behind at the end, and proves that the Labyrinth code on each host is exactly the code that was released ([design 07](design/07-Cleanup-and-Tool-Integrity.md)).
 
-**Cleanup.** Every module declares the files it creates, and every change goes into the run manifest. `cleanup` removes temporary files, timers, scheduled tasks and temporary accounts, but keeps logs and reports until they are collected. It never deletes evidence or anything the manifest does not list, and it only touches Labyrinth's own folders. `rollback` (undoing changes) is kept separate, so the team can tidy up without reverting its work.
+**Cleanup.** Every module declares the files it creates, and every change goes into the run manifest. `cleanup` removes temporary files, timers, scheduled tasks and temporary accounts, but keeps logs and reports until they are collected. It never deletes evidence or anything the manifest does not list, and it only touches Labyrinth's own folders. The only accounts it ever deletes are ones Labyrinth created itself, such as fake trap accounts. `rollback` (undoing changes) is kept separate, so the team can tidy up without reverting its work.
 
 **Tool integrity.** The real risk to the team's own tools is someone *changing* them, not someone *reading* them (the code is public anyway). So:
 
 - each release is tagged in git, and its commit ID is kept in the offline record;
 - a **manifest** lists every file with its hash;
 - the manifest is **signed** with a team key, which proves who made it and that it has not been altered;
-- before every run, the control node checks the signature and every file's hash, and refuses to run if anything does not match.
+- before every run, the control node checks the signature, and each host checks the manifest's hash against the one in the offline record and every file's hash against the manifest. If anything does not match, the run is refused. (Older hosts cannot check this kind of signature themselves, which is why that step happens on the control node.)
 
 ### 4.9 Learning from other teams' tools
 
@@ -341,9 +341,10 @@ Some outside repositories are kept as **reference only** ([design 08](design/08-
 **How it works.**
 
 - **Linux** hosts forward their login records, the audit log (who ran which privileged command, who touched which watched file) and firewall "blocked" messages, using the logging program that is already installed.
-- **Windows** hosts forward a short, fixed list of event IDs, the numbers Windows gives each kind of event: logons, failed logons, new accounts, new admin-group members, new services and scheduled tasks, and "the audit log was cleared".
+- **Windows** hosts forward a short, fixed list of event IDs, the numbers Windows gives each kind of event: logons, failed logons, new accounts, new admin-group members, new services and scheduled tasks, and "the audit log was cleared". The domain controller also forwards its sign-in ticket events, which show password guessing and attempts to steal service passwords.
+- The SIEM accepts logs only from the team's own hosts, so an attacker cannot flood it or plant false entries.
 - **Appliances** send their logs by **syslog**, the standard way network devices send log lines to a collector.
-- A few **saved searches** turn those logs into alerts. The ones that almost never fire by accident come first: a trap was touched, a fake account logged in, a bait file was opened, a log was wiped.
+- A few **saved searches** turn those logs into alerts. The ones that almost never fire by accident come first: a trap was touched, someone tried a fake account, a bait file was opened, a log was wiped.
 
 **What it will never do.** Send logs anywhere outside the competition network, or let logging fill a disk.
 
@@ -353,7 +354,7 @@ Some outside repositories are kept as **reference only** ([design 08](design/08-
 
 **Why it is careful.** The domain controller answers logons and DNS for the whole network. One mistake there breaks everything at once. So the rule is **blast radius**: a change that affects one machine can be automated; a change that affects the whole domain is a printed checklist.
 
-**How it works.** Ordinary Windows machines go first, one group at a time. Labyrinth changes their admin passwords, turns on the firewall, limits remote desktop to the team's admin machine, and turns off old or risky features that attackers use to steal passwords. The domain controller goes last. Anything domain-wide, such as **Group Policy** (settings the domain pushes to every machine at once), domain accounts, DNS or the special KRBTGT account, is done by a person following the checklist.
+**How it works.** Ordinary Windows machines go first, one group at a time. Labyrinth changes their admin passwords, turns on the firewall, limits remote desktop to the team's admin machine, and turns off old or risky features that attackers use to steal passwords. The domain controller goes last. Anything domain-wide, such as **Group Policy** (settings the domain pushes to every machine at once), domain accounts including the domain Administrator, DNS or the special KRBTGT account, is done by a person following the checklist.
 
 ### 4.12 🟪 Automatic bans
 
@@ -361,7 +362,7 @@ Some outside repositories are kept as **reference only** ([design 08](design/08-
 
 **The big safety catch.** If the router in front of a host rewrites every outside address into one address (NAT), the host cannot tell the scoring engine and the attacker apart. Banning that one address would block scoring. So before bans are switched on, Labyrinth checks what addresses the host really sees, and it refuses to ban if they all look the same.
 
-**Other guard rails.** A **never-ban list** (the scoring engine, the officials, the team's own machines, the SIEM) is loaded first; a trigger from one of those raises an alert instead. Bans expire. Ban thresholds are settings the team can adjust during the event without changing the frozen code.
+**Other guard rails.** A **never-ban list** (the scoring engine, the officials, the team's own machines, the SIEM) is loaded first; a trigger from one of those raises an alert instead. Bans expire. Ban thresholds are settings the team can adjust during the event without changing the frozen code. Labyrinth uses its own small watcher rather than installing a ban tool such as fail2ban, which would bring a new interpreter onto the host; where fail2ban is already installed, Labyrinth gives it the never-ban list too.
 
 **What it will never do.** Strike back at, scan or report the attacker to anyone. A ban only blocks traffic coming into the team's own host.
 
@@ -373,7 +374,7 @@ Some outside repositories are kept as **reference only** ([design 08](design/08-
 
 `labyrinth checkpoint` prints, in one screen: which services are up, new integrity findings, new accounts or open ports, open incident reports, trap hits and bans, and how long since each service was last backed up. It changes nothing.
 
-**One caveat.** The control node tests from *inside* the network. The scoring engine may test from outside, through the edge firewall. A pass from inside is good evidence, not proof.
+**Two caveats.** The control node tests from *inside* the network. The scoring engine may test from outside, through the edge firewall. A pass from inside is good evidence, not proof. And the tests check that a service answers, not that a user can log in, because the scoring engine's accounts are never used. A team can close that gap by creating its own test mailbox by hand and checking it at each checkpoint.
 
 ### 4.14 🟩 Backups you can restore
 
@@ -389,7 +390,7 @@ Some outside repositories are kept as **reference only** ([design 08](design/08-
 
 **Services.** Each kind of host has a list of services that may be turned off, with the reason and the conditions that keep one on, such as "it is scored". Turning a service off is easy to undo, so Labyrinth does it automatically with the usual checks.
 
-**Patches.** Undoing a software update is often impossible, so patching stays in human hands. Labyrinth lists the security updates available, ranks them (software that is both reachable from the network and known to be actively exploited comes first), takes a restore point, prints the command to update that one package, and tests the service afterwards. It never runs a full system upgrade in the middle of an event.
+**Patches.** Undoing a software update is often impossible, so patching stays in human hands. Labyrinth lists the security updates available, ranks them (software that is both reachable from the network and known to be actively exploited comes first; on Windows, where updates cannot be matched to that list offline, by how exposed the machine is), takes a restore point, prints the command to update that one package, and tests the service afterwards. It never runs a full system upgrade in the middle of an event.
 
 ### 4.16 🟥 Routers and firewall appliances
 
@@ -463,7 +464,7 @@ Controls are ranked from **P0** (do first) to **P3** (do last): 🔴 P0 · 🟠 
 | Group Policy | Settings a Windows domain pushes to every machine at once. |
 | Hash | A short fingerprint of a file that changes if the file changes. |
 | Offline record | Where the team keeps passwords, the seed and the release fingerprint: on paper or in a local file on a team member's own machine, never in the repository, a cloud drive or the competition hosts. |
-| Honey-account | A fake account nobody really uses; any login to it is an alarm. |
+| Honey-account | A fake account that cannot log in; any attempt to use it is an alarm. |
 | Host | Any single computer or server on the network. |
 | Idempotent | Safe to run more than once: repeating it gives the same result. |
 | KRBTGT | The hidden domain account whose password signs every Windows domain login ticket; resetting it cancels forged tickets. |
@@ -477,7 +478,7 @@ Controls are ranked from **P0** (do first) to **P3** (do last): 🔴 P0 · 🟠 
 | Protected set | Accounts Labyrinth must never touch, supplied by the operator for each event. |
 | Red Team | The attackers in the competition. |
 | Restore point | A backup of a service taken so it can be put back after damage. |
-| Ring | A group of hosts that receives a change together; the first ring is a single low-impact host. |
+| Ring | A group of hosts that receives a change together; the first ring is one low-impact host of each kind of system. |
 | Rollback | Undoing a change using the saved record of what was changed. |
 | Runbook | A tested, numbered procedure that a person follows step by step. |
 | Scored service | A service the scoring engine checks, such as a website, email or DNS. |

@@ -1,6 +1,6 @@
 # 03. Event Seed and Deception Configuration
 
-**Status:** Draft · reviewed 2026-09-29 · Phase: 🟪 Deceive · Priority: P1
+**Status:** Draft · reviewed 2026-10-02 · Phase: 🟪 Deceive · Priority: P1
 
 ## 1. The problem
 
@@ -35,7 +35,7 @@ flowchart LR
     SEED[("Event seed<br/>secret · kept offline")] --> H["HMAC-SHA256<br/>(public algorithm)"]
     LBL["purpose:index<br/>e.g. decoy-port:3"] --> H
     H --> MAP["Map into the needed<br/>range or alphabet"]
-    MAP --> CHK{"Collides with the scoring<br/>allowlist, the protected set<br/>or an existing name?"}
+    MAP --> CHK{"Collides with a scored or<br/>listening port, the protected set<br/>or an existing name?"}
     CHK -->|yes| SKIP["Skip and report"]
     CHK -->|no| VAL["Decoy value:<br/>name · port · token · path · banner"]
     classDef secret fill:#fdebdc,stroke:#c2410c,color:#4a1d06
@@ -50,7 +50,7 @@ flowchart LR
 
 ## 4. Constraints
 
-- **Never on a scored port.** Derived ports are checked against the scoring allowlist and skipped if they collide (NCCDC, 2025, Rule 9.3).
+- **Never on a scored port.** Derived ports are checked against the scored-service list (`services`) and the host's current listeners, and skipped if they collide (NCCDC, 2025, Rule 9.3). The scoring allowlist holds the scoring engine's addresses, not ports, so it is not used for this check.
 - **Never a real account name.** Derived names are checked against the protected set and existing users.
 - **Seed strength.** At least 128 bits from a cryptographic random source, written as a short readable string with a checksum group so a typo is detected.
 - **Seed handling.** The seed is never committed and never appears in shell history or logs. It is supplied by prompt at run time, held in memory and cleared after use. The offline record holds the only copy.
@@ -79,7 +79,7 @@ Deriving values from a seed kept offline removes the stored secret entirely.
 
 - The same seed yields identical values across two machines.
 - A different seed yields different values and no overlap beyond chance.
-- No derived port falls on the scoring allowlist.
+- No derived port is a scored port or a port already listening on the host.
 - A seed with a bad checksum is rejected.
 - A search of the repository for real event values finds nothing.
 - The seed never appears in logs or shell history after a run.

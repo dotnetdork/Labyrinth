@@ -1,6 +1,6 @@
 # 11. Windows and Active Directory Hardening
 
-**Status:** Draft · reviewed 2026-09-29 · Phase: 🟥 Lock out · Priority: P0 (credentials, firewall), P1 (the rest)
+**Status:** Draft · reviewed 2026-10-02 · Phase: 🟥 Lock out · Priority: P0 (credentials, firewall), P1 (the rest)
 
 ## 1. Goal
 
@@ -15,7 +15,7 @@ So this spec splits the work by blast radius. A change that affects one host is 
 | Administrator-class passwords are not used for scoring and may be changed freely; other user passwords follow the notification process (Midwest Collegiate Cyber Defense Competition [MWCCDC], 2025, Rule 13; *Provisional*). | Automation rotates only the built-in and administrator-class accounts. |
 | Scored services have used AD users, for example for POP3 (Post Office Protocol 3) mail logins (MWCCDC, 2025, Functional Services section; *Provisional*). | Domain-wide resets, domain account locks and domain policy changes are manual-only. |
 | Tools must not deliberately break expected functionality (National Collegiate Cyber Defense Competition [NCCDC], 2025, Rule 5.6.5). | Every change comes from an explicit list and skips the protected set. |
-| Officials must be given access on request (NCCDC, 2025, Rule 4.1). | Remote Desktop restrictions keep the break-glass path and the officials' access working. |
+| Officials must be given access on request (NCCDC, 2025, Rule 4.1). | When an official asks, the captain gives them a working login (design 05, section 5). Remote Desktop and firewall restrictions still allow the admin source and any official sources named in the event packet. |
 | Anything that interferes with the scoring engine is the team's responsibility (NCCDC, 2025, Rule 4.11). | DNS on the domain controller is treated as scored and changed by hand only (Blueprint §4.6). |
 
 ## 3. Blast radius decides the tier
@@ -23,9 +23,9 @@ So this spec splits the work by blast radius. A change that affects one host is 
 | Tier | Member servers and workstations | Domain controller |
 |---|---|---|
 | **0. Observe** | Local admins, services, scheduled tasks, autoruns, listeners (design 04); SMBv1, LLMNR, NBT-NS, RDP and WinRM state | All of the left, plus: privileged group membership (Domain Admins, Enterprise Admins, Schema Admins, Administrators), accounts with a service principal name, linked Group Policy objects, Print Spooler state |
-| **1. Safe and reversible** | Rotate the built-in Administrator and other local admin-class passwords (design 05); turn on the audit policy (design 10) | Rotate the domain's built-in Administrator only if it is not in the protected set; audit policy (design 10) |
+| **1. Safe and reversible** | Rotate the built-in Administrator and other local admin-class passwords that nothing logs on with (design 05, section 2); turn on the audit policy (design 10) | Audit policy (design 10). No password is rotated automatically: every account on a domain controller is a domain account (section 7) |
 | **2. Service-affecting, per host with a revert timer** | Default-deny inbound firewall (design 01); require NLA (Network Level Authentication) for RDP and allow RDP only from the admin source; restrict WinRM to the admin source; turn off SMBv1 server; turn off LLMNR and NBT-NS in local policy; stop and disable Print Spooler where nothing prints | Firewall and RDP as on the left, applied last, after the member servers pass; stop and disable Print Spooler if printing is not scored |
-| **3. Manual only** | Removing a member from local Administrators when it might be a service dependency | KRBTGT reset (twice, with a replication wait); removing members from domain admin groups; domain password resets; disabling domain accounts; any Group Policy change; service account resets; LAPS (Local Administrator Password Solution) roll-out; any DNS server change |
+| **3. Manual only** | Removing a member from local Administrators when it might be a service dependency | Rotating the domain Administrator password; KRBTGT reset (twice, with a replication wait); creating domain honey-accounts (design 09); removing members from domain admin groups; domain password resets; disabling domain accounts; any Group Policy change; service account resets; LAPS (Local Administrator Password Solution) roll-out; any DNS server change |
 
 - **Why Group Policy is manual.** One Group Policy change reaches every machine in the domain at once. That is the "indiscriminate" pattern the rules warn about (NCCDC, 2025, Rule 5.6.5), so it stays with a person who can watch the effect.
 - **Why Print Spooler.** The print spooler has had several serious remote vulnerabilities, and a domain controller rarely needs to print (*Background*). It is turned off only when printing is not a scored service on that host.
@@ -39,7 +39,7 @@ flowchart TD
     end
     MEM --> DC
     subgraph DC["Domain controller, last"]
-        D1["Tier 1 and Tier 2, host-only settings,<br/>with DNS and logon probes"] --> D3["Tier 3 checklist:<br/>KRBTGT · domain groups · Group Policy<br/>DNS · domain accounts · LAPS"]
+        D1["Tier 1 and Tier 2, host-only settings,<br/>with DNS and logon probes"] --> D3["Tier 3 checklist:<br/>domain Administrator · KRBTGT · domain groups<br/>Group Policy · DNS · domain accounts · LAPS"]
     end
     classDef observe fill:#e3eefc,stroke:#2563eb,color:#0f2a5c
     classDef ok fill:#e3f6e8,stroke:#15803d,color:#0f3d20
@@ -69,12 +69,14 @@ Scoring accounts are never used to test logons (design 01, section 4).
 
 The `windows-dc` profile prints this checklist, filled with the run's host names, for the team to work through with the captain's approval:
 
-1. **Privileged groups.** Compare the Tier 0 report with the expected members. Remove unknown members by hand, one at a time, and re-run the logon probes after each.
-2. **KRBTGT.** Reset the KRBTGT password, wait for replication, then reset it again (Blueprint §3.1). This invalidates forged Kerberos tickets.
-3. **Service accounts.** Reset only after their dependencies are known.
-4. **Unused domain accounts.** Disable, never delete, only after confirming they are not scoring or official accounts.
-5. **Group Policy.** Apply domain-wide settings (for example, turning off LLMNR everywhere) one at a time, with a scoring-style probe after each.
-6. **DNS.** Any change, including a sinkhole entry (Blueprint §4.6), is tested with a query before and after.
+1. **Domain Administrator.** Check the Tier 0 report for services and scheduled tasks that log on with it (design 05, section 2). Rotate it, update each of those, then re-run the logon probes. The new password goes in the team's offline record.
+2. **Privileged groups.** Compare the Tier 0 report with the expected members. Remove unknown members by hand, one at a time, and re-run the logon probes after each.
+3. **KRBTGT.** Reset the KRBTGT password, wait for replication, then reset it again (Blueprint §3.1). This invalidates forged Kerberos tickets.
+4. **Service accounts.** Reset only after their dependencies are known.
+5. **Unused domain accounts.** Disable, never delete, only after confirming they are not scoring or official accounts.
+6. **Group Policy.** Apply domain-wide settings (for example, turning off LLMNR everywhere) one at a time, with a scoring-style probe after each.
+7. **DNS.** Any change, including a sinkhole entry (Blueprint §4.6), is tested with a query before and after.
+8. **Domain honey-accounts.** If the team uses them (design 09), create each one by hand with the name the module prints, disabled or with no usable password, and confirm it does not collide with a scoring or official account.
 
 ## 6. Roll back
 

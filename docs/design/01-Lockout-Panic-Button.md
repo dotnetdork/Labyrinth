@@ -1,6 +1,6 @@
 # 01. Lockout ("Panic Button") Design
 
-**Status:** Draft · reviewed 2026-09-29 · Phase: 🟥 Lock out · Priority: P0
+**Status:** Draft · reviewed 2026-10-02 · Phase: 🟥 Lock out · Priority: P0
 
 ## 1. What it is
 
@@ -38,7 +38,7 @@ The protected set is a list the operator supplies at run time, from the event pa
 | Official accounts | Accounts the White or Operations Team use | Never changed without the White Team's permission; logons alerted on (design 05, section 5) |
 | Scoring accounts | Mailbox users and other accounts the scoring engine logs in with | Never touched by automation |
 | Operator accounts | Named team accounts | Never locked or removed |
-| Break-glass account | An existing admin-class account whose rotated password is kept in the team's offline record; no new account or key (design 05, section 5) | Never locked or removed; password rotated only in design 05's order; verified working at the console |
+| Break-glass account | An existing admin-class account whose rotated password is kept in the team's offline record; no new account or key (design 05, section 5) | Never locked or removed; password rotated only in design 05's order; confirmed at the console by the operator (section 7) |
 | Service accounts for scored services | Database and application accounts a scored service depends on | Never touched until the dependency map is known |
 | Built-in and machine accounts | System, machine and domain-trust accounts | Never touched |
 
@@ -47,9 +47,9 @@ The protected set is a list the operator supplies at run time, from the event pa
 | Tier | Nature | Actions | How run |
 |---|---|---|---|
 | **0. Observe only** | Read-only | Inventory of users, listeners, processes, scheduled tasks, startup items, keys and sudoers; baseline (design 04) | Automatic |
-| **1. Safe and reversible** | Cannot stop a scored service | Rotate admin-class passwords (root, Administrator and equivalents); back up, then clear, authorized keys that are not in the key registry, on accounts outside the protected set | Automatic after plan review |
-| **2. Service-affecting** | Could interrupt a scored service | Default-deny inbound firewall with the scored ports, the scoring engine and the admin path allowed; disable services from a per-profile candidate list; SSH (Secure Shell) hardening drop-in; lock (never delete) unexpected *local* accounts outside the protected set; end unexpected sessions, never an official's | Applied per ring with verify and a revert timer |
-| **3. Manual only** | High consequence | User-level password changes (notification required); locking or disabling domain accounts; KRBTGT reset; domain-wide resets; appliance changes; anything touching a scored service's own configuration | Printed checklist, human executes |
+| **1. Safe and reversible** | Cannot stop a scored service | Rotate admin-class passwords (root, Administrator and equivalents) that no service or scheduled task logs on with (design 05, section 2); back up, then clear, authorized keys that are not in the key registry, on accounts outside the protected set | Automatic after plan review |
+| **2. Service-affecting** | Could interrupt a scored service | Default-deny inbound firewall with the scored ports, the scoring engine, any official sources named in the event packet and the admin path allowed; disable services from a per-profile candidate list; SSH (Secure Shell) hardening drop-in; lock (never delete) unexpected *local* accounts outside the protected set; end unexpected sessions, never an official's | Applied per ring with verify and a revert timer |
+| **3. Manual only** | High consequence | User-level password changes (notification required); rotating an admin-class password that a service or scheduled task logs on with; locking or disabling domain accounts; KRBTGT reset; domain-wide resets; appliance changes; anything touching a scored service's own configuration | Printed checklist, human executes |
 
 ```mermaid
 flowchart LR
@@ -78,7 +78,9 @@ flowchart LR
 5. Tier 2 on the canary ring with revert timers, verify, then the remaining rings.
 6. Print the summary and the Tier 3 checklist.
 
-**Rings.** Ring 0 is one low-impact host (a workstation). Ring 1 is the next group. Later rings follow, never more than a set share of hosts at once. A failed verify stops the run.
+**Rings.** Ring 0 holds one low-impact host per platform, for example one Linux host and one Windows workstation, because a change that works on one platform proves little about another. Ring 1 is the next group. Later rings follow, never more than a set share of hosts at once. A failed verify stops the run.
+
+**Hosts with no canary.** A host that is the only one of its kind, such as the domain controller or the only mail server, has no canary that tested the change on the same software first. It goes in the last ring, and its Tier 2 changes rely on the revert timer and the before-and-after probes alone.
 
 ```mermaid
 flowchart TD
@@ -114,7 +116,7 @@ flowchart TD
 |---|---|
 | Protected set loaded | Non-empty and parsed |
 | Scoring allowlist present | In the firewall plan for every host that filters traffic |
-| Break-glass verified | The break-glass credential works at the console before any change |
+| Break-glass verified | The operator has confirmed, by typing, that the break-glass credential worked at this host's console. A script cannot reach the console, so this is asked once per host and recorded in the run manifest. |
 | Backup taken | Config backups exist for every file that will change |
 | Plan reviewed | Operator confirmed the plan by typing the group name |
 | Revert timer armed | For every Tier 2 change (section 8) |
@@ -162,6 +164,9 @@ Take probes before and after. A regression triggers automatic rollback of that m
 
 - Protected accounts are unchanged before and after.
 - A mailbox user can still authenticate after the run.
+- An admin-class account that a service or scheduled task logs on with is not rotated automatically and appears on the Tier 3 checklist.
+- A run on a host with no break-glass confirmation refuses to change it.
+- An official source named in the event packet can still connect after default-deny.
 - Every scored-service probe passes after the run, on every ring.
 - The revert timer restores the firewall when verify is deliberately failed.
 - A run with an empty protected set refuses to start.

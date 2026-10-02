@@ -1,6 +1,6 @@
 # 00. Module Contract and Repository Layout
 
-**Status:** Draft · reviewed 2026-09-29
+**Status:** Draft · reviewed 2026-10-02
 
 ## 1. Goal
 
@@ -40,8 +40,8 @@ flowchart LR
 
 ```
 Labyrinth/
-├── labyrinth.sh                 # main program for Linux control nodes (bash)
-├── labyrinth.ps1                # main program for Windows control nodes (PowerShell)
+├── labyrinth.sh                 # main program for Linux hosts and control nodes (bash)
+├── labyrinth.ps1                # main program for Windows hosts and control nodes (PowerShell)
 ├── core/                        # shared library used by every module
 │   ├── log/                     # structured logging (JSON lines)
 │   ├── manifest/                # run manifest: what was changed, for rollback and cleanup
@@ -74,7 +74,7 @@ Notes:
 
 - **Profiles** map hosts to modules, for example `linux-web`, `linux-siem`, `windows-dc`, `windows-member`, `appliance`. A profile is a list, not code.
 - **Appliances** (VyOS, Palo Alto, Cisco FTD (Firepower Threat Defense)) are handled by templated configuration and a manual runbook, not remote-execution modules.
-- **Language:** bash on Linux, PowerShell on Windows. No interpreter or package has to be installed at run time. If Ansible later proves usable, each module maps one-to-one to an Ansible role.
+- **Language:** bash on Linux, Windows PowerShell 5.1 on Windows. No interpreter or package has to be installed at run time (section 9).
 
 ```mermaid
 flowchart TD
@@ -177,6 +177,13 @@ Rules for module authors:
 
 ## 5. Execution model
 
+Labyrinth runs in two modes that share the same modules:
+
+- **Local mode.** `labyrinth.sh` or `labyrinth.ps1` runs on the host it changes. This is the base: it needs nothing but the host itself, and it is the fallback when remote access is lost.
+- **Remote mode.** `labyrinth remote --targets <group> <phase>` runs on a control node. For each target it copies the release, checks it (design 07, section 5), runs the *same* local command over SSH (Linux) or PowerShell remoting or OpenSSH (Windows), and brings back the logs and the run manifest. It must cope with being cut off, because the lockout rotates the very credentials and SSH settings it connects with.
+
+Either way, one run does this:
+
 ```
 labyrinth <phase> --profile <name> --targets <group>   # plan mode by default
    1. load profile → ordered module list
@@ -191,18 +198,22 @@ labyrinth <phase> --profile <name> --targets <group>   # plan mode by default
 
 The released code is frozen for each event (NCCDC, 2025, Rule 5.6.2). Everything that changes per event is configuration: the scoring engine addresses, the protected accounts, the event seed and the host lists. Configuration is supplied at run time and never committed; the `config/*.example` files show its shape only.
 
+Our reading is that values supplied at run time are not part of the frozen submission, so they can change after the freeze. The rule does not say so directly, so this reading must be confirmed with competition officials before relying on it.
+
 ## 7. Standard paths on every host
 
-Every host uses the same relative tree. The root is configurable, so the location is not a fixed, publicly known path.
+Every host uses the same tree, and everything Labyrinth keeps is under one root. The root is configurable, so the location is not a fixed, publicly known path, and cleanup has one place to look.
 
 | Purpose | Linux | Windows |
 |---|---|---|
-| Code (read-only, owned by root or SYSTEM) | `<root>/bin` | `<root>\bin` |
-| State: baselines, manifests, key registry | `/var/lib/labyrinth/` | `<root>\state\` |
-| Logs, one folder per category | `/var/log/labyrinth/<category>/` | `<root>\logs\<category>\` |
-| Backups, timestamped | `/var/backups/labyrinth/` | `<root>\backup\` |
+| Code (read-only) | `<root>/bin` | `<root>\bin` |
+| Run-time configuration | `<root>/etc` | `<root>\etc\` |
+| State: baselines, manifests, key registry | `<root>/state` | `<root>\state\` |
+| Logs, one folder per category | `<root>/logs/<category>` | `<root>\logs\<category>\` |
+| Backups, timestamped | `<root>/backup` | `<root>\backup\` |
 
 - **Default root:** `/opt/labyrinth` on Linux, `C:\ProgramData\Labyrinth` on Windows.
+- **Ownership.** The whole tree is owned by root (SYSTEM and Administrators on Windows). `etc`, `state` and `backup` are readable by them only, because backups can hold copies of configuration files that contain secrets and the state shows where the traps are.
 - **Log categories:** `run`, `auth`, `integrity`, `network`, `deception`, `report`, `health` (design 13).
 
 ## 8. Adding a capability
@@ -213,9 +224,9 @@ Every host uses the same relative tree. The root is configurable, so the locatio
 
 Nothing else changes.
 
-## 9. Pinned decisions
+## 9. Decisions
 
-- **Ansible or native scripts.** Pinned until the team knows what it can run from and what is reachable during the event. Native scripts work in either case, so the design assumes them.
+- **Ansible or native scripts.** Resolved: native scripts. They work in local mode with nothing installed, and the remote mode (section 5) gives the reach Ansible would have given.
 - **Windows log shipping method.** Pinned between the Splunk forwarder installer, a script posting to Splunk's HTTP Event Collector, or another method. See designs 08 and 10.
 
 ## References

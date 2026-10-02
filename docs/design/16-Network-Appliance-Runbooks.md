@@ -1,6 +1,6 @@
 # 16. Network Appliance Runbooks
 
-**Status:** Draft · reviewed 2026-09-29 · Phase: 🟥 Lock out · Priority: P0 (credentials, management plane), P1 (the rest)
+**Status:** Draft · reviewed 2026-10-02 · Phase: 🟥 Lock out · Priority: P0 (credentials, management plane), P1 (the rest)
 
 ## 1. Goal
 

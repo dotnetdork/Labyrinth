@@ -155,7 +155,8 @@ Linux specifics link back to the §5 table and appendix A.
 
 - **Principle:** no attacker keeps access through a credential you have rotated.
 - **Linux:** use `passwd` / `chpasswd` for root and administrator-class accounts only. Use `usermod -L` to lock unexpected local accounts outside the protected set. Audit `sudoers` and group membership. Back up, then empty, unexpected `~/.ssh/authorized_keys`. End stray sessions (`pkill -u`) that are not an official's. Automation never rotates or locks ordinary user accounts (for example, mailbox users).
-- **Windows/AD:** rotate the built-in Administrator and administrator-class accounts. Review `Domain Admins`, `Enterprise Admins` and local Administrators membership. By hand only, after confirming with the captain:
+- **Windows/AD:** rotate the built-in local Administrator and other local administrator-class accounts, except any that a service or scheduled task logs on with (changing those breaks the service at its next start). Review `Domain Admins`, `Enterprise Admins` and local Administrators membership. By hand only, after confirming with the captain:
+  - rotate the domain Administrator, and any admin account a service or task logs on with, updating each dependent service;
   - reset the KRBTGT password (twice, with a replication wait) to invalidate golden tickets;
   - reset service accounts once their dependencies are known;
   - disable accounts confirmed as unused.
@@ -176,7 +177,7 @@ Linux specifics link back to the §5 table and appendix A.
 
 ### 3.3 Host firewall / default-deny — **P0**
 
-- **Principle:** deny inbound by default; permit only scored services and your admin path; log denials (that log feeds the honeypot in §4.1).
+- **Principle:** deny inbound by default; permit only scored services, your admin path and any official sources named in the event packet; log denials (that log feeds the honeypot in §4.1).
 - **Linux (reference §5.2):** UFW (Uncomplicated Firewall) or nftables, default-deny in, allow out, with explicit allows per service. Use **medium logging** so every drop is logged as `[UFW BLOCK] … DPT=…`. On container hosts, also filter `DOCKER-USER`: Docker's published ports **bypass** the host `INPUT` chain, so bans and egress rules must live there too.
 - **Windows:** Windows Defender Firewall, default-deny inbound per profile; allow only graded ports; enable connection logging.
 - **Edge:** default-deny WAN; an explicit allow per service; log denies to the SIEM.
@@ -199,6 +200,7 @@ Linux specifics link back to the §5 table and appendix A.
 
 - **Principle:** turn repeated hostile touches into automatic, expiring blocks, and make the blocking scale.
 - **Linux (reference §5.3):** `fail2ban` backed by an **ipset** (one kernel hash-set and one match rule per chain) instead of one iptables rule per IP, so thousands of bans stay flat. Jails cover SSH, the trap-port honeypot, the planted-key canary, and repeat offenders. Bans apply on **both** `INPUT` and `DOCKER-USER`.
+- **Labyrinth:** a small native watcher in bash feeds the same kernel set, because fail2ban needs python3 and, on RHEL-family hosts, the EPEL repository, and Labyrinth never installs packages. A host that already runs fail2ban keeps it, with the never-ban list added to its `ignoreip` (design 12).
 - **Windows:** there is no fail2ban. Approximate it with a scheduled task or a WinLogbeat → SIEM alert that drives a firewall block, or with an IDS (intrusion detection system) at the edge. This is usually better handled at the perimeter.
 - **CCDC note:** ipset matters when a tarpit is feeding you thousands of IPs; a per-IP ruleset will bloat and slow the box.
 
@@ -276,7 +278,7 @@ Route every tripwire to **one** place (a central trip log or SIEM index), so a s
 
 Trap ports are ports you run **nothing** on, so a single inbound packet is hostile.
 
-- **Reference (log-driven, preferred):** UFW already logs every denied packet. A `fail2ban` filter matches `[UFW BLOCK] … DPT=<trap port>` and bans the source instantly through ipset (all ports, for weeks). There is no extra listener and no daemon to crash. The trap set excludes real services and allowlists operator, front-end and mesh IPs.
+- **Reference (log-driven, preferred):** UFW already logs every denied packet. A `fail2ban` filter matches `[UFW BLOCK] … DPT=<trap port>` and bans the source instantly through ipset (all ports, for weeks). There is no extra listener and no daemon to crash. Labyrinth's native watcher does the same job (§3.5, design 12). The trap set excludes real services and allowlists operator, front-end and mesh IPs.
 - **Playbook (listener-based):** a `nc -l` loop on, for example, 1433/3389 that logs every hit. It is simpler, but it needs one process per port and it *accepts* connections. Prefer the log-driven approach where you already have firewall logging.
 - **Portability:** on Windows, a firewall "block + log" rule on unused ports, feeding a Sysmon or Security alert.
 
@@ -307,7 +309,7 @@ Passive bait that raises an alert the instant it is touched: the highest-confide
 
 - **Reference (host-native):** two layers, one for *finding* the bait and one for *using* it.
   - Decoy files (a fake cloud-credentials file, a fake database dump) are watched by `auditd` (`canary_read` key), so a **read** raises an alert. You catch a snooper who merely *finds* the bait.
-  - A **planted SSH key** is authorized on no account. Because sshd logs at VERBOSE, any *use* of the key logs its fingerprint, which a `fail2ban` jail matches and bans for a year.
+  - A **planted SSH key** is authorized on no account. Because sshd logs at VERBOSE, any *use* of the key logs its fingerprint, which a `fail2ban` jail matches and bans for a year (in Labyrinth, the native watcher, design 12).
 - **Playbook (cross-platform):** `Passwords_2026.docx` on Windows shares and desktops; host-native audited bait files.
 
   **[RULES]** Hosted tracking URLs and web bugs (CanaryTokens and similar) call an outside service, so they are out (NCCDC, 2025, Rule 5.6.4). Use audited files and honey-accounts only. Names and paths derive from the event seed (design 03).
@@ -316,13 +318,13 @@ Passive bait that raises an alert the instant it is touched: the highest-confide
 
 ### 4.5 Honey-accounts
 
-A decoy admin (`backup_admin`, `svc-sql-backup`, …) that no real person uses, wired to alert on **successful authentication**. False positives are near zero.
+A decoy admin (`backup_admin`, `svc-sql-backup`, …) that no real person uses and that **cannot log in at all**, wired to alert on **any logon attempt**. False positives are near zero, and an attacker who guesses or cracks its password still gains nothing.
 
-- **Linux:** a login-triggered hook (shell profile or PAM, Pluggable Authentication Modules) writes an alert with the source IP to the local trip log the moment someone logs in. The log forwarder carries it to the SIEM.
+- **Linux:** the account has no usable password and no login shell. The authentication log records every attempt with its source IP; the watcher writes it to the local trip log, and the log forwarder carries it to the SIEM.
 
   **[RULES]** The hook never posts to an outside service (NCCDC, 2025, Rule 5.6.4).
 
-- **Windows/AD:** an account with a tempting name, either disabled until needed or enabled as a decoy with a logon script, whose logon event 4624 fires a high-priority SIEM alert. A well-known variant is a Kerberoast-bait service account with an SPN (service principal name).
+- **Windows/AD:** a disabled account with a tempting name, whose failed logon events (4625, and 4771 or 4776 on the domain controller) fire a high-priority SIEM alert. Domain honey-accounts are created by hand (design 11). A well-known variant is a Kerberoast-bait service account with an SPN (service principal name).
 - **CCDC note:** treat any honey-account hit as a confirmed intrusion. It is the cleanest alert you will get.
 
 ### 4.6 DNS sinkholing (C2 dead-ending)
@@ -395,15 +397,15 @@ This is the proven source for Labyrinth's Linux roles. Each control below is pro
 
 ### 6.1 Tooling
 
-**Native scripts first, Ansible optional.**
+**Native scripts, run locally or remotely.**
 
 **[RULES]** The 2025 Midwest packet describes a web proxy limited to essential sites and the team's declared repository (MWCCDC, 2025; *Provisional*), and team tools may not use outside resources (NCCDC, 2025, Rule 5.6.4). Packages and collections cannot be assumed to download at the event.
 
-Labyrinth is therefore bash on Linux and PowerShell on Windows, self-contained in one repository with vendored third-party code. Each module maps one-to-one to an Ansible role, so Ansible can be adopted later if it proves usable. Network appliances use templated configuration and a manual runbook. See design 00.
+Labyrinth is therefore bash on Linux and PowerShell on Windows, self-contained in one repository with vendored third-party code. It runs on each host directly (local mode), or from a control node that sends the same command over SSH or PowerShell remoting (remote mode). Ansible was considered and not adopted. Network appliances use templated configuration and a manual runbook. See design 00.
 
 ### 6.2 Layout
 
-The repository layout is defined in design 00 (`core/`, `phases/<phase>/modules/`, `profiles/`, `platform/`, `config/`). If Ansible is adopted, each phase becomes a playbook, each module a role, and each profile a group of hosts. The role names below (`ssh`, `firewall`, `nginx_edge` …) are the module names.
+The repository layout is defined in design 00 (`core/`, `phases/<phase>/modules/`, `profiles/`, `platform/`, `config/`). The role names below (`ssh`, `firewall`, `nginx_edge` …) are the module names.
 
 ### 6.3 Profiles
 
@@ -411,7 +413,7 @@ Classify each host and apply only the roles that fit:
 
 | Profile | Example host | Roles |
 |---|---|---|
-| `linux-server` | Any Linux server without a web role | identity, ssh, firewall, fail2ban, deception, egress_log, audit_motd, patching |
+| `linux-server` | Any Linux server without a web role | identity, ssh, firewall, bans, deception, egress_log, audit_motd, patching |
 | `linux-web` | Linux web or webmail server | + nginx_edge (the scanner tarpit is P1 here). No `containers` role: scored services may not be containerized (NCCDC, 2025, Rule 4.14). |
 | `windows-member` | Windows member servers and workstations | win_base, win_firewall, win_audit, honey-account, canary (design 11) |
 | `windows-dc` | Domain controller with DNS | + AD hardening checklist (design 11); KRBTGT rotation and DNS sinkhole are manual-only (§3.1, §4.6) |
@@ -428,7 +430,7 @@ The design keeps the speed and adds guard rails:
 
 - a protected set;
 - plan-before-apply;
-- rings with a canary host;
+- rings with a canary host per platform;
 - a verified break-glass path;
 - dead-man revert timers;
 - scoring-style probes after each module.

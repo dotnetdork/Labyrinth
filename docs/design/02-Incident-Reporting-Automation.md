@@ -1,6 +1,6 @@
 # 02. Incident Reporting Automation
 
-**Status:** Draft · reviewed 2026-09-29 · Phase: 🟩 Sustain (cross-phase `report/`) · Priority: P1
+**Status:** Draft · reviewed 2026-10-02 · Phase: 🟩 Sustain (cross-phase `report/`) · Priority: P1
 
 ## 1. Why this matters
 
@@ -56,11 +56,19 @@ flowchart LR
 | Source and destination addresses | Auth logs, firewall logs, decoy trip log | Yes, with last-hop caveat (section 6) |
 | Account and process involved | auditd or Windows events | Yes |
 | What happened (facts) | Timeline | Drafted, human edits |
+| Passwords cracked or exposed | Accounts named in the evidence; human confirms | Partly: listed as candidates, never as confirmed |
+| Access obtained | Logons and privilege events in the timeline | Drafted, human edits |
+| Damage done | Integrity findings, probe failures, deleted or changed files | Drafted, human edits |
+| What was affected | Affected hosts, services and accounts | Drafted, human edits |
 | Evidence (log excerpts, hashes) | Collected files | Yes |
 | Impact on scored services | Probe results | Yes |
 | Actions taken and time | Run manifest (design 00) | Yes |
-| Remediation and prevention | Human | No |
+| Remediation and prevention (the remediation plan) | Human | No |
 | Confidence and open questions | Human | No |
+
+The rows from "What happened" to "Remediation" follow the content Rule 9.4 lists: what happened, with addresses, timelines, passwords cracked, access obtained and damage done; what was affected; and a remediation plan (NCCDC, 2025, Rule 9.4). The template keeps them in that order so a reviewer can check each one.
+
+**Completeness check.** Because a vague or incomplete report earns nothing, the builder lists every required field still marked `UNKNOWN` or empty each time the draft is shown, and once more when the incident lead marks it ready to submit. The lead may still submit, since an honest `UNKNOWN` is better than a guess, but never without seeing the list.
 
 ## 5. Output formats
 
@@ -88,6 +96,7 @@ All output is text so that it works from any host and needs no interpreter on th
 - A decoy trip in the lab produces a draft with correct time, host, source address and evidence.
 - Two related events within the window merge into one incident.
 - A missing field is shown as `UNKNOWN`, never blank or guessed.
+- Every field Rule 9.4 lists has a place in the template, and a draft with an unfilled required field shows the completeness warning before it is marked ready.
 - Secrets planted in a log line are removed from the report.
 - No network call is made during report generation.
 

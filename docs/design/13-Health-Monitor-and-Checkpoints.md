@@ -1,6 +1,6 @@
 # 13. Health Monitor and Checkpoints
 
-**Status:** Draft · reviewed 2026-09-29 · Phase: 🟩 Sustain · Priority: P1
+**Status:** Draft · reviewed 2026-10-02 · Phase: 🟩 Sustain · Priority: P1
 
 ## 1. Goal
 
@@ -25,6 +25,9 @@ Today the scoring-style probes (design 01, section 9) run only when a module fin
 - **What it probes:** every service in the run-time service list, using the same probes as the panic button (design 01, section 9). Scoring accounts are never used to log in (design 01, section 4).
 - **How often:** an interval set in configuration. The timing belongs to the team's own plan, not to this public document.
 - **Where results go:** the `health` log category (design 00, section 7), forwarded to the SIEM (design 10), and a one-line summary per host in the status feed (design 06).
+
+> [!IMPORTANT]
+> **Answering is not logging in.** The probes check that a service answers, not that a user can log in to it, because scoring accounts are never used. A mail service can pass every probe while its logins are broken, and still fail scoring. To narrow this gap, the team may create a test mailbox or user by hand that is *not* a scoring account and add it to the service list with a login probe. A scheduled job cannot hold that password without storing it in a file, so the login probe runs only when an operator starts it, for example with `labyrinth checkpoint` (section 5). The password is typed in and kept only in memory, like the event seed (design 03).
 
 > [!IMPORTANT]
 > **Inside is not outside.** The control node probes from inside the network. The scoring engine checks from wherever it sits, often outside, through the edge firewall and NAT. A pass from inside does not prove the scoring engine sees a pass. Where possible, add one probe from the same side as the scoring engine, and trust the official scoreboard over the monitor.
@@ -89,6 +92,7 @@ The command takes no action. It exists so that a regular review is quick and eve
 - `labyrinth checkpoint` completes on the full lab network within the target time and changes nothing (the inventory before and after is identical).
 - Killing the monitor marks the status feed stale.
 - Probe traffic is under the target rate per service.
+- With a test mailbox configured, breaking mail logins in the lab makes the checkpoint's login probe fail even though the banner probe still passes.
 
 ## References
 

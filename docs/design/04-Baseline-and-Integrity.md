@@ -1,6 +1,6 @@
 # 04. Baseline and Integrity
 
-**Status:** Draft · reviewed 2026-09-29 · Phase: 🟦 Observe · Priority: P0 (first baseline), P1 (continuous)
+**Status:** Draft · reviewed 2026-10-02 · Phase: 🟦 Observe · Priority: P0 (first baseline), P1 (continuous)
 
 ## 1. Goal
 
@@ -25,7 +25,9 @@ Configuration files legitimately differ from their packages, so differences in `
 - Firewall state.
 - Windows: local administrators, autoruns, services, WMI (Windows Management Instrumentation) subscriptions, scheduled tasks.
 
-The baseline is stored under the state path (design 00) with a signed manifest (design 07). Baselines are compared, never silently overwritten.
+The baseline is stored under the state path (design 00). Baselines are compared, never silently overwritten.
+
+**A copy off the host.** An attacker with root or SYSTEM on a host can edit the baseline there, hiding a change, and can edit a hash stored next to it just as easily. So right after the baseline is taken, the control node keeps a copy, or at least its SHA-256, away from the host. Every comparison first checks the host's baseline against that copy. A mismatch is itself a high-ranked finding, and the comparison then uses the control node's copy. In local mode with no control node, the operator records the hash in the team's offline record (design 05, section 2).
 
 ## 4. Who, when, from where
 
@@ -78,6 +80,7 @@ Read-only observation does not affect scored services and needs no special permi
 - A file modified by hand in the lab is flagged with account, time and source address.
 - A binary replaced with a trojan is caught by the package verification step, not baselined.
 - A change made by a Labyrinth module does not raise an alert.
+- Editing the baseline file on the host is detected by the check against the control node's copy.
 - Baseline comparison completes within the target time on the lab host.
 - Auditing on the critical set does not measurably slow a scored service probe.
 
