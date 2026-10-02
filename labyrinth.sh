@@ -337,7 +337,7 @@ requires_met() {
   local i="$1" req j
   for req in ${RUN_REQUIRES[i]}; do
     for ((j = 0; j < ${#RUN_IDS[@]}; j++)); do
-      if [[ "${RUN_IDS[j]}" == "$req" && "${RUN_STATE[j]}" != done && "${RUN_STATE[j]}" != planned ]]; then
+      if [[ "${RUN_IDS[j]}" == "$req" && "${RUN_STATE[j]}" != 'done' && "${RUN_STATE[j]}" != planned ]]; then
         printf '[%s] blocked: requires %s, which did not complete\n' "${RUN_IDS[i]}" "$req"
         return 1
       fi
@@ -376,11 +376,11 @@ apply_one() {
     APPROVED="$ANSWER"
     if [[ -z "$APPROVED" ]]; then
       printf '[%s] nothing approved; nothing changed\n' "$id"
-      RUN_STATE[i]=done; return 0
+      RUN_STATE[i]='done'; return 0
     fi
   fi
   if [[ ! -f "$dir/apply.sh" ]]; then
-    RUN_STATE[i]=done; return 0
+    RUN_STATE[i]='done'; return 0
   fi
   if [[ "$risk" != read-only ]]; then
     if ! lab_timer_arm "$((LAB_EVENT[REVERT_MINUTES] * 60))" "$LAB_RUN_ID" \
@@ -435,7 +435,7 @@ apply_one() {
   fi
   printf '[%s] applied and verified\n' "$id"
   LAB_MODULE_ID="$id" lab_log_info applied "applied and verified"
-  RUN_STATE[i]=done
+  RUN_STATE[i]='done'
   return 0
 }
 
@@ -521,7 +521,7 @@ cmd_apply() {
   worst=0
   for ((i = 0; i < ${#RUN_IDS[@]}; i++)); do
     if [[ "${RUN_RC[i]}" == 20 ]]; then worst=20; RUN_STATE[i]=blocked; continue; fi
-    if [[ "${RUN_RC[i]}" != 10 ]]; then RUN_STATE[i]=done; continue; fi
+    if [[ "${RUN_RC[i]}" != 10 ]]; then RUN_STATE[i]='done'; continue; fi
     rc=0
     apply_one "$i" || rc=$?
     if (( rc > worst )); then worst=$rc; fi
