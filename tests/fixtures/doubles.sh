@@ -14,12 +14,13 @@ lab_timer_arm() {
   shift 2
   mkdir -p "$LAB_STATE_DIR/runs/$run"
   printf '%s\n' "$*" > "$LAB_STATE_DIR/runs/$run/timer"
+  lab_timer_due_write "$run" "$secs"
   printf 'arm %s %s\n' "$run" "$secs" >> "$LAB_ROOT/timer.log"
 }
 
 lab_timer_cancel() {
   [[ -f "$LAB_STATE_DIR/runs/$1/timer" ]] || return 0
-  rm -f -- "$LAB_STATE_DIR/runs/$1/timer"
+  rm -f -- "$LAB_STATE_DIR/runs/$1/timer" "$LAB_STATE_DIR/runs/$1/timer-due"
   printf 'cancel %s\n' "$1" >> "$LAB_ROOT/timer.log"
 }
 

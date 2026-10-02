@@ -221,7 +221,8 @@ stub() {
 @test "timer: arm and cancel call systemd with a fresh unit each time" {
   [ -d /run/systemd/system ] || skip 'no systemd on this machine'
   stub systemd-run 'printf "%s\n" "$*" >> "$LAB_STATE_DIR/calls"'
-  stub systemctl 'printf "systemctl %s\n" "$*" >> "$LAB_STATE_DIR/calls"'
+  # A stopped timer is no longer active.
+  stub systemctl 'printf "systemctl %s\n" "$*" >> "$LAB_STATE_DIR/calls"; [[ "$1" != is-active ]]'
   mkdir -p "$LAB_STATE_DIR"
   lab_timer_arm 300 "$LAB_RUN_ID" /bin/bash /x/labyrinth.sh rollback "$LAB_RUN_ID"
   lab_timer_armed "$LAB_RUN_ID"
@@ -248,6 +249,44 @@ stub() {
   [ "$(cat "$LAB_STATE_DIR/runs/$LAB_RUN_ID/timer")" = "lab-revert-$LAB_RUN_ID-1" ]
   run grep -q '^systemctl stop' "$LAB_STATE_DIR/calls"
   [ "$status" -ne 0 ]
+}
+
+@test "timer: arming records when the timer fires, and cancelling removes it" {
+  [ -d /run/systemd/system ] || skip 'no systemd on this machine'
+  stub systemd-run ':'
+  stub systemctl '[[ "$1" != is-active ]]'
+  mkdir -p "$LAB_STATE_DIR"
+  before="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  lab_timer_arm 300 "$LAB_RUN_ID" /bin/true
+  due="$(lab_timer_due "$LAB_RUN_ID")"
+  [[ "$due" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]]
+  [[ "$due" > "$before" ]]
+  lab_timer_cancel "$LAB_RUN_ID"
+  [ ! -e "$LAB_STATE_DIR/runs/$LAB_RUN_ID/timer-due" ]
+  run lab_timer_due "$LAB_RUN_ID"
+  [ "$status" -eq 1 ]
+}
+
+@test "timer: a timer still active after being stopped is not cancelled" {
+  [ -d /run/systemd/system ] || skip 'no systemd on this machine'
+  stub systemd-run ':'
+  stub systemctl ':'
+  mkdir -p "$LAB_STATE_DIR"
+  lab_timer_arm 300 "$LAB_RUN_ID" /bin/true
+  run lab_timer_cancel "$LAB_RUN_ID"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"still active"* ]]
+  lab_timer_armed "$LAB_RUN_ID"
+  lab_timer_due "$LAB_RUN_ID"
+}
+
+@test "timer: a missing or malformed timer-due means the time is unknown" {
+  mkdir -p "$LAB_STATE_DIR/runs/$LAB_RUN_ID"
+  run lab_timer_due "$LAB_RUN_ID"
+  [ "$status" -eq 1 ]
+  printf 'soon\n' > "$LAB_STATE_DIR/runs/$LAB_RUN_ID/timer-due"
+  run lab_timer_due "$LAB_RUN_ID"
+  [ "$status" -eq 1 ]
 }
 
 @test "probe: http through curl checks status and content" {

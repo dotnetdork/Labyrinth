@@ -169,6 +169,33 @@ Describe 'labyrinth.ps1 apply' {
         (Get-Content -LiteralPath $toggle) | Should -Be 'setting=off'
     }
 
+    It 'an armed revert timer records when it fires' {
+        $id = Get-TestRunId (Invoke-TestApply $t @('labadmin', 'ring1', 'no')).Output
+        $due = ([IO.File]::ReadAllText((Join-Path $t.Root "state\runs\$id\timer-due"))).Trim()
+        $due | Should -Match '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$'
+    }
+
+    It 'keep that cannot cancel the revert timer keeps nothing and exits 40' {
+        $id = Get-TestRunId (Invoke-TestApply $t @('labadmin', 'ring1', 'no')).Output
+        Add-Content -LiteralPath (Join-Path $lab 'core\Lab.ps1') -Value 'function Unregister-LabRevertTimer { throw ''refused'' }'
+        $k = Invoke-TestRunCommand $t 'keep' $id
+        $k.Code | Should -Be 40
+        $k.Output | Should -Match 'could not be cancelled'
+        $k.Output | Should -Not -Match 'kept: the revert timer'
+        Join-Path $t.Root "state\runs\$id\timer" | Should -Exist
+        Get-TestManifest $t $id | Should -Not -Match '"action":"run_kept"'
+    }
+
+    It 'rollback still finishes when the revert timer cannot be removed' {
+        $id = Get-TestRunId (Invoke-TestApply $t @('labadmin', 'ring1', 'no')).Output
+        Add-Content -LiteralPath (Join-Path $lab 'core\Lab.ps1') -Value 'function Unregister-LabRevertTimer { throw ''refused'' }'
+        $r = Invoke-TestRunCommand $t 'rollback' $id
+        $r.Code | Should -Be 0
+        $r.Output | Should -Match 'could not be removed'
+        $toggle | Should -Not -Exist
+        Get-TestManifest $t $id | Should -Match '"action":"run_rolled_back"'
+    }
+
     It 'keep later cancels the timer' {
         $id = Get-TestRunId (Invoke-TestApply $t @('labadmin', 'ring1', 'no')).Output
         (Invoke-TestRunCommand $t 'keep' $id).Code | Should -Be 0
