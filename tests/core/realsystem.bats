@@ -40,10 +40,15 @@ teardown() {
   run sudo -n bash -c 'printf "root\nring0\nno\n" | bash "$1" --root "$2" --config "$3" --apply observe' _ "$LAB/labyrinth.sh" "$ROOT" "$ETC"
   [ "$status" -eq 0 ]
   grep -qx 'setting=on' "$LAB/toggle.conf"
+  # The run's state is root-only, so the manifest is read through sudo. The
+  # run is rolled back once its last manifest entry is written.
+  rolled_back() {
+    sudo -n bash -c 'grep -q "\"action\":\"run_rolled_back\"" "$1"/state/runs/*/manifest.jsonl' _ "$ROOT"
+  }
   for _ in $(seq 1 30); do
-    if grep -qx 'setting=off' "$LAB/toggle.conf"; then break; fi
+    if rolled_back; then break; fi
     sleep 5
   done
+  rolled_back
   grep -qx 'setting=off' "$LAB/toggle.conf"
-  sudo -n grep -q '"action":"run_rolled_back"' "$ROOT"/state/runs/*/manifest.jsonl
 }
