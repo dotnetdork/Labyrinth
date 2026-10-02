@@ -83,7 +83,7 @@ Labyrinth is a team-written tool under the national CCDC rules, so it:
 ## Ground rule
 
 > [!CAUTION]
-> **No secrets in this repo — ever.** Labyrinth provisions *shape*, not values: placeholder templates (`.env.example`, cert paths, token names), real values supplied at run time from the event packet and a paper-only event seed (see [`docs/design/03`](docs/design/03-Event-Seed-and-Deception-Config.md)).
+> **No secrets in this repo — ever.** Labyrinth provisions *shape*, not values: placeholder templates (`.env.example`, cert paths, token names), real values supplied at run time from the event packet and an event seed kept offline (see [`docs/design/03`](docs/design/03-Event-Seed-and-Deception-Config.md)).
 > The reference documents configuration structure only; no keys, env files, or credentials are reproduced.
 
 ## References

@@ -31,9 +31,9 @@ The earlier idea was an encrypted folder, decrypted with a shared team password.
 
 | Control | How |
 |---|---|
-| Release identity | A tagged release with a commit hash. The hash is printed on paper and matches the declared release (NCCDC, 2025, Rule 5.6.2). |
+| Release identity | A tagged release with a commit hash. The hash is kept in the team's offline record (design 05, section 2) and matches the declared release (NCCDC, 2025, Rule 5.6.2). |
 | Manifest | A list of every file with its SHA-256, generated at release time. |
-| Signature | The manifest is signed with a team key. The public key is printed on paper and stored on the control node. |
+| Signature | The manifest is signed with a team key. The public key is kept in the offline record and stored on the control node. |
 | Immutable location | Code sits in a root-owned, read-only directory on each host (`<root>/bin`). |
 | Verify before run | The control node checks the manifest signature and file hashes before every run, and refuses to run on a mismatch. |
 | Push, run, delete | Code is pushed to a host, run, and removed, unless the module needs a resident component. |
@@ -42,7 +42,7 @@ Resident components (timers, watchers) are hashed by the integrity check (design
 
 ```mermaid
 flowchart TD
-    REL["Tagged release<br/>commit hash printed on paper"] --> MAN["Manifest: SHA-256 of every file"]
+    REL["Tagged release<br/>commit hash in the offline record"] --> MAN["Manifest: SHA-256 of every file"]
     MAN --> SIG["Manifest signed with the team key"]
     SIG --> CHK{"Control node checks signature<br/>and every hash before each run"}
     CHK -->|mismatch| NO(["Refuse to run"])

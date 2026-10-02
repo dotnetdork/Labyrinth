@@ -7,7 +7,7 @@
 | Rule | Effect |
 |---|---|
 | Administrator-class passwords are not used for scoring and may be changed freely; other user passwords need the notification process (Midwest Collegiate Cyber Defense Competition [MWCCDC], 2025, Rule 13) | Automation rotates admin-class credentials only. |
-| Officials must get access on request (National Collegiate Cyber Defense Competition [NCCDC], 2025, Rule 4.1) | When an official asks, the captain gives them a working credential from the paper log or logs in for them. No standing account or key is created for this (section 5). |
+| Officials must get access on request (National Collegiate Cyber Defense Competition [NCCDC], 2025, Rule 4.1) | When an official asks, the captain gives them a working credential from the team's offline record or logs in for them. No standing account or key is created for this (section 5). |
 | POP3 (Post Office Protocol 3) scoring uses domain users (MWCCDC, 2025, Functional Services section; *Provisional*) | Domain-wide password resets are manual-only. |
 | No deliberate breakage (NCCDC, 2025, Rule 5.6.5) | Never disable accounts wholesale. |
 
@@ -15,7 +15,8 @@
 
 - **Who is rotated:** root, Administrator and equivalents, and team operator accounts. Never scoring accounts.
 - **Generation:** a cryptographic random source, a length chosen by the profile, and a character set that survives the target's shell and login prompt.
-- **Record:** shown once on the operator's screen for the paper log. Never written to disk, logs, history or chat.
+- **Record:** shown once on the operator's screen, to be copied into the team's offline record. Labyrinth never writes it to disk, logs or shell history.
+- **The offline record** is where the team keeps the secrets Labyrinth must not store: new passwords, the break-glass credential, the event seed (design 03) and the release fingerprint (design 07). It stays out of the repository and off every competition host: on paper, or in a local file on an operator's own machine that is not synced to any cloud service, because outside storage and collaboration services are prohibited during the event (National Collegiate Cyber Defense Competition [NCCDC], 2025, Rule 5.2). Teammates share these secrets only through the official team chat or in person. Activity on that chat may be logged and released (NCCDC, 2025, Rule 5.5), so every credential shared there is rotated after the event (section 5).
 - **Order:**
   1. Set the new credential.
   2. Test it from a fresh session.
@@ -58,7 +59,7 @@ flowchart TD
     subgraph pw["Password rotation (section 2)"]
         direction LR
         P1["Set the new credential"] --> P2["Test it from a fresh session"]
-        P2 --> P3["Operator acknowledges it<br/>is recorded on paper"]
+        P2 --> P3["Operator acknowledges it<br/>is in the offline record"]
         P3 --> P4(["Close the old session"])
     end
     subgraph key["SSH key rotation (section 4)"]
@@ -84,7 +85,7 @@ Break-glass is how the team gets back into a host it has locked itself out of. I
 
 A break-glass path must not become a backdoor, so:
 
-- **No new account and no key.** The break-glass credential is the rotated password of an existing admin-class account (root or the local Administrator), written on paper and kept by the captain. Labyrinth never creates an account or an SSH key for it.
+- **No new account and no key.** The break-glass credential is the rotated password of an existing admin-class account (root or the local Administrator), kept by the captain in the team's offline record (section 2). Labyrinth never creates an account or an SSH key for it.
 - **Console first.** It is verified at the host's console before any change (design 01 gate). Where the platform allows it without blocking the team's own admin path, it works only at the console; on Linux, `PermitRootLogin no` in the SSH drop-in (section 4) already does this.
 - **Rotated like any admin password.** Its rotation follows section 2, and the new password is verified at the console before the next change. It is never locked or removed. Unregistered SSH keys on the account are still removed.
 - **Watched.** A successful logon with it raises an alert (design 10, section 5).
