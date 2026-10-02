@@ -1,0 +1,65 @@
+# Command-line cases shared by args.bats and Args.Tests.ps1
+# (docs/Conventions.md section 3.1). One case per line:
+#   exit|stream|text|arguments
+# stream is out or err: the stream that must contain text. Arguments are
+# split at spaces. @ROOT@, @ETC@ and @SELF@ are replaced by the test's data
+# root, configuration folder and the runner's file name. Option spellings in
+# expected text differ between runners, so text here never names an option.
+#
+# Usage errors: one line naming the word at fault, then a pointer to help.
+40|err|Usage: @SELF@ <command>|
+40|err|unknown command 'obsrve' (did you mean 'observe'?)|obsrve
+40|err|Try '@SELF@ help' for more information.|obsrve
+40|err|unknown command 'rolback' (did you mean 'rollback'?)|rolback 4f2a
+40|err|needs a phase|plan
+40|err|needs a phase|apply --root @ROOT@
+40|err|unknown phase 'lockot' (did you mean 'lockout'?)|plan lockot
+40|err|probe is a command, not a phase|plan probe
+40|err|probe is a command, not a phase|apply probe
+40|err|conflict|plan --apply observe
+40|err|cannot be used with probe|--apply probe
+40|err|cannot be used with keep|keep 20261002T140301Z-4f2a --apply
+40|err|needs a value, but got '--root'|--profile --root @ROOT@ observe
+40|err|needs a value|observe --profile
+40|err|did you mean|--profle test observe
+40|err|did you mean|observe -Prof test
+40|err|unknown option '-v'|-v
+40|err|unknown option '-Verbose'|observe -Verbose
+40|err|given twice|--root @ROOT@ --root @ROOT@ observe
+40|err|given twice|--confirm x --confirm-group y observe
+40|err|takes no value|--apply=yes observe
+40|err|unexpected word 'extra' after 'plan observe'|observe extra
+40|err|unexpected word 'extra'|probe extra
+40|err|unexpected word 'extra'|version extra
+40|err|no help for 'bogus'|help bogus
+40|err|not a run ID|keep ../x
+40|err|needs a run ID|rollback
+40|err|full path|--root relative observe
+40|err|full path|--config etc observe
+40|err|invalid profile name|--profile A;B observe
+#
+# Accepted spellings: each plans the observe phase (10).
+10|out|run |--profile test --root @ROOT@ --config @ETC@ observe
+10|out|run |PLAN OBSERVE --PROFILE test --Root @ROOT@ --CONFIG @ETC@
+10|out|run |plan observe --profile=test --root=@ROOT@ --config=@ETC@
+10|out|run |plan observe -Profile test -Root @ROOT@ -Config @ETC@
+10|out|run |plan observe -Profile:test -Root:@ROOT@ -Config:@ETC@
+10|out|run |plan observe -Root: @ROOT@ -Profile test -Config @ETC@
+10|out|run |plan observe --profile-name test --root @ROOT@ --config @ETC@
+10|out|run |--profile test --root @ROOT@ --config @ETC@ -- observe
+#
+# An option the command does not use is a warning, not an error.
+10|err|is not used by plan|plan observe --profile test --root @ROOT@ --config @ETC@ --break-glass root
+#
+# Help and version: stdout, exit 0.
+0|out|Usage: @SELF@ <command>|help
+0|out|Usage: @SELF@ <command>|--help
+0|out|Usage: @SELF@ <command>|-h
+0|out|Usage: @SELF@ plan <phase>|plan --help
+0|out|Usage: @SELF@ plan <phase>|PLAN -h
+0|out|Usage: @SELF@ apply <phase>|help apply
+0|out|Usage: @SELF@ keep|keep --help
+0|out|Usage: @SELF@ rollback <run>|HELP Rollback
+0|out|labyrinth |-V
+0|out|labyrinth |version
+0|out|labyrinth |--version

@@ -129,6 +129,8 @@ Ends with 0 when the run is kept, 20 when it is too late because the run was alr
 
 Undoes everything the run changed, newest change first. This is exactly what the revert timer does when it fires. You must name the run; without one, Labyrinth lists the runs and changes nothing. Running it twice is safe.
 
+Ends with 0 when the run is rolled back, 20 when not run as @ADMIN@, and 40 on an error.
+
 ## runs
 
 Lists this host's runs, oldest first, with the run ID, phase, start time (UTC) and state:
@@ -138,11 +140,11 @@ Lists this host's runs, oldest first, with the run ID, phase, start time (UTC) a
 - `rolled back`: the run was undone;
 - `not kept, no timer`: the run changed nothing that needed a timer.
 
-It changes nothing, but it must be run as @ADMIN@.
+It changes nothing, but it must be run as @ADMIN@. Ends with 0, 20 when not run as @ADMIN@, and 40 on an error.
 
 ## probe
 
-Tests every scored service once, the way the scoring engine would, and prints the result for each. Changes nothing. Ends with 30 if any service fails.
+Tests every scored service once, the way the scoring engine would, and prints the result for each. Changes nothing. Ends with 0 when every service passes, 20 when there is no list of scored services, 30 when any service fails, and 40 on an error.
 
 ## help [*command*]
 
