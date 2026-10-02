@@ -72,7 +72,7 @@ The same pattern (verify the package, quarantine unknown add-ons, confirm the ef
 
 SSH is often a scored service and the Red Team will attack it, so it is hardened, not left as found:
 
-- **Where SSH is scored:** password login is turned off for every account **except** the scoring accounts, which keep it through a `Match User <scoring accounts>` block, because the scoring engine logs in with a password. `AllowUsers` lists only the scoring accounts, operator accounts and accounts the packet names. `MaxAuthTries` and `LoginGraceTime` are lowered, and failed logins raise alerts (design 10).
+- **Where SSH is scored:** password login is turned off for every account **except** the scoring accounts and employee accounts (design 01, section 4), which keep it through a `Match User` block, because the scoring engine and simulated employees log in with a password. If the event packet does not say which accounts employees use, the exception covers every ordinary (non-admin) account until officials confirm, and key-only applies to admin-class accounts only. `AllowUsers` lists only the scoring accounts, operator accounts and accounts the packet names. `MaxAuthTries` and `LoginGraceTime` are lowered, and failed logins raise alerts (design 10).
 - **Where SSH is not scored:** key-only for everyone, and the port is open only to the admin source (design 01).
 - **Root** cannot log in over SSH (`PermitRootLogin no`).
 
@@ -121,7 +121,8 @@ A break-glass path must not become a backdoor, so:
 
 ### 6.1 Who is expected
 
-An account is **expected** if it is in the protected set (design 01, section 4), is a user the event packet names, or owns or runs a scored service (from the dependency map). Every other account that can log in is **unexpected**. The Tier 0 inventory lists every account and group on each host, with its creation time where the platform records one.
+An account is **expected** if it is in the protected set (design 01, section 4), including scoring and employee accounts, is a user the event packet names, or owns or runs a scored service (from the dependency map). Locking an account an employee needs can cost points (design 01, section 2), which is why unexpected accounts *without* admin rights are locked only after a person approves.
+ Every other account that can log in is **unexpected**. The Tier 0 inventory lists every account and group on each host, with its creation time where the platform records one.
 
 ### 6.2 Hidden admins
 

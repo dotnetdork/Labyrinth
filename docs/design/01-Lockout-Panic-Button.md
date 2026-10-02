@@ -18,6 +18,8 @@ The original idea ran against every reachable host in one pass, resetting creden
 | Do not mislead the scoring engine (NCCDC, 2025, Rule 9.3). | The panic button never fakes a service state. |
 | Administrator-class passwords are not used for scoring and may be changed freely. Other user passwords follow the notification process (Midwest Collegiate Cyber Defense Competition [MWCCDC], 2025, Rule 13). | Only admin-class credentials are rotated automatically. User-level rotation is manual-only. |
 | Scored services may not be migrated or containerized (NCCDC, 2025, Rule 4.14). | The panic button contains no container actions. |
+| Blue Teams should keep ICMP working on all competition devices (MWCCDC, 2025, Rule 14; *Provisional*). | Default-deny always allows ICMP, inbound and outbound, unless the run-time configuration says the event packet allows otherwise. |
+| Points can be lost for failed employee access (Northeast Collegiate Cyber Defense Competition [NECCDC], 2026, Scoring Overview; *Provisional*, another region's packet). | Accounts that simulated employees use are treated like scoring accounts: never locked, rotated or switched to key-only by automation (design 05). |
 | Team tools may not use outside resources (NCCDC, 2025, Rule 5.6.4). | Everything runs from the vendored repository. |
 
 ## 3. Design principles
@@ -40,6 +42,7 @@ The protected set is a list the operator supplies at run time, from the event pa
 |---|---|---|
 | Official accounts | Accounts the White or Operations Team use | Never changed without the White Team's permission; logons alerted on (design 05, section 5) |
 | Scoring accounts | Mailbox users and other accounts the scoring engine logs in with | Never touched by automation |
+| Employee accounts | Accounts that simulated employees (for example the Orange Team) use, as named in the event packet | Never touched by automation; treated like scoring accounts |
 | Operator accounts | Named team accounts | Never locked or removed |
 | Break-glass account | An existing admin-class account whose rotated password is kept in the team's offline record; no new account or key (design 05, section 5) | Never locked or removed; password rotated only in design 05's order; confirmed at the console by the operator (section 7) |
 | Service accounts for scored services | Database and application accounts a scored service depends on | Never touched until the dependency map is known |
@@ -51,7 +54,7 @@ The protected set is a list the operator supplies at run time, from the event pa
 |---|---|---|---|
 | **0. Observe only** | Read-only | Inventory of users, groups, listeners, processes, sessions, scheduled tasks, startup items, keys and sudoers; baseline (design 04) | Automatic |
 | **1. Safe and reversible** | Cannot stop a scored service | Rotate admin-class passwords (root, Administrator and equivalents) that no service or scheduled task logs on with (design 05, section 2); back up, then clear, authorized keys that are not in the key registry, on accounts outside the protected set; end remote sessions after rotation (section 6.2) | Automatic after plan review |
-| **2. Service-affecting** | Could interrupt a scored service | SSH (Secure Shell) configuration check and key-only drop-in (design 05, section 4); high-confidence persistence quarantine (design 17); default-deny inbound firewall with the scored ports, the scoring engine, any official sources named in the event packet and the admin path allowed; remove admin rights from unexpected *local* accounts and lock them (design 05, section 6); Windows protocol settings (design 11); automatic service-pack settings (design 18); disable services from a per-profile candidate list (design 15) | Applied per ring with verify and a revert timer |
+| **2. Service-affecting** | Could interrupt a scored service | SSH (Secure Shell) configuration check and key-only drop-in (design 05, section 4); high-confidence persistence quarantine (design 17); default-deny inbound firewall with the scored ports, the scoring engine, any official sources named in the event packet, ICMP and the admin path allowed; remove admin rights from unexpected *local* accounts and lock them (design 05, section 6); Windows protocol settings (design 11); automatic service-pack settings (design 18); disable services from a per-profile candidate list (design 15) | Applied per ring with verify and a revert timer |
 | **3. Approve, then act** | High consequence, or not provably safe | **Labyrinth acts after a person approves:** unexplained persistence items (design 17); deleting a locked account once services are confirmed working (design 05, section 6); approval-class service-pack settings (design 18); rotating an admin-class password that a service or scheduled task logs on with, once its dependents are listed. **A person acts, from a printed checklist:** user-level password changes (notification required); domain account and group changes; KRBTGT reset; Group Policy and DNS server changes; restores (design 14); patching (design 15); appliance changes (design 16) | Shown in the plan; approved per item, or per category on one host |
 
 ```mermaid
@@ -196,6 +199,7 @@ Take probes before and after. A regression triggers automatic rollback of that m
 - Every scored-service probe passes after the run, on every ring.
 - The revert timer restores the firewall when verify is deliberately failed.
 - A run with an empty protected set refuses to start.
+- After default-deny, the host still answers ping.
 - A second session stays usable throughout.
 - After the bundle, an intruder's SSH and RDP sessions are gone, while the console session, the operator's session and an admin-source session remain.
 - A planted reverse-shell cron job is quarantined in the bundle, and its connection does not return after the firewall closes.
@@ -204,6 +208,9 @@ Take probes before and after. A regression triggers automatic rollback of that m
 ## References
 
 Midwest Collegiate Cyber Defense Competition. (2025). *2025 Midwest Collegiate Cyber Defense Competition qualifier team packet* [PDF]. https://brazil.minnesota.edu/ccdc/ccdc-2025/2025MWCCDCQTeamPack.pdf
+
+Northeast Collegiate Cyber Defense Competition. (2026). *NECCDC 2026 season regional blue team packet* [PDF]. Retrieved October 2, 2026, from https://neccdl.org/history/2026/resources/Regional-Packet-NECCDC-2026.pdf
+
 
 National Collegiate Cyber Defense Competition. (2025, December 10). *Rules and requirements*. Retrieved October 2, 2026, from https://www.nationalccdc.org/rules.html
 

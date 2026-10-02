@@ -21,10 +21,11 @@ This spec finds those footholds and removes them as early as is safe, without br
 
 | Platform | Persistence points |
 |---|---|
-| Linux | System and per-user crontabs, `cron.d`, anacron, `at` jobs; systemd units and timers (system and per-user); `rc.local` and init scripts; shell startup files (`/etc/profile.d`, system and user `bashrc` and `profile`); `sudoers` and `sudoers.d`; PAM configuration; `ld.so.preload`; SSH configuration and every key source (design 05, section 4); setuid files and kernel modules not owned by a package |
-| Windows | Services; scheduled tasks; Run and RunOnce registry keys; startup folders; WMI event subscriptions; Winlogon `Userinit` and `Shell` values; Image File Execution Options debuggers; replaced accessibility programs (`sethc.exe`, `utilman.exe`); members of the local Administrators group |
+| Linux | System and per-user crontabs, `cron.d`, anacron, `at` jobs; systemd units and timers (system and per-user); `rc.local` and init scripts; shell startup files (`/etc/profile.d`, system and user `bashrc` and `profile`); `sudoers` and `sudoers.d`; PAM configuration; `ld.so.preload`; SSH configuration and every key source (design 05, section 4); setuid files and kernel modules not owned by a package; web server and PHP modules or extensions not owned by a package (Apache and nginx modules, `php.ini` `extension=` and `auto_prepend_file` lines) |
+| Windows | Services; scheduled tasks; Run and RunOnce registry keys; startup folders; WMI event subscriptions; Winlogon `Userinit` and `Shell` values; Image File Execution Options debuggers; replaced accessibility programs (`sethc.exe`, `utilman.exe`); members of the local Administrators group; unsigned DLLs in a service's own folder (report only, because DLL hijacking is hard to judge automatically); IIS modules and handlers not in the profile's known-good list |
 | SIEM host | Splunk apps, scripted inputs and alert actions (design 10, section 7) |
-| Scored apps | Files in a web root or application folder that look like web shells (flagged only; section 4) |
+| Scored apps | Files in a web root or application folder that look like web shells, and CMS plugins or themes not in the app's original install (flagged only; section 4) |
+
 
 ## 4. Classes
 
