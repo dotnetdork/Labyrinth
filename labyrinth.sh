@@ -563,7 +563,12 @@ keep_run() {
     printf 'too late: run %s was already rolled back\n' "$LAB_RUN_ID"
     return 20
   fi
-  lab_timer_cancel "$LAB_RUN_ID"
+  # Checked by hand: errexit is off inside a function called with ||.
+  if ! lab_timer_cancel "$LAB_RUN_ID"; then
+    lab_lock_release
+    printf 'labyrinth: the revert timer for run %s could not be cancelled, so the run is not kept and the timer will still roll it back; run keep again\n' "$LAB_RUN_ID" >&2
+    return 40
+  fi
   record_for '' run_kept
   lab_log_info run_kept "changes kept; revert timer cancelled"
   lab_lock_release
@@ -599,7 +604,10 @@ cmd_rollback() {
     [[ "$id" =~ $RE_MODULE_ID ]] || { printf 'skipping a bad module id in the manifest: %s\n' "$id"; rc=40; continue; }
     rollback_module "$id" || rc=40
   done
-  lab_timer_cancel "$LAB_RUN_ID"
+  # A timer left armed runs this rollback again, which is safe.
+  if ! lab_timer_cancel "$LAB_RUN_ID"; then
+    printf 'warning: the revert timer for run %s could not be removed; when it fires it repeats this rollback, which is safe\n' "$LAB_RUN_ID" >&2
+  fi
   record_for '' run_rolled_back '' "exit $rc"
   lab_log_warn run_rolled_back "run rolled back, exit $rc"
   printf 'rollback finished: exit %d\n' "$rc"
