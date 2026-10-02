@@ -11,3 +11,6 @@ prompts/
 .gemini
 .claude
 .agent
+
+# Built manuals (tools/manual/build.sh)
+build/

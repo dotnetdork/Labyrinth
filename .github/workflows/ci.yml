@@ -40,6 +40,37 @@ jobs:
           LAB_REALSYSTEM: 1
         run: bats --recursive --print-output-on-failure tests
 
+  manual:
+    name: Manuals (Linux and Windows PDFs, man page, help topic)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install pandoc
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pandoc
+          pandoc --version | head -1
+          google-chrome --version
+
+      - name: Build the manuals
+        run: bash tools/manual/build.sh build/manual
+
+      - name: Check the man page renders without warnings
+        run: |
+          # tbl warns about any table near the full width, though its cells wrap.
+          warnings="$(groff -t -man -Tutf8 -ww -z build/manual/labyrinth.1 2>&1 | grep -v 'table wider than line length' || true)"
+          if [ -n "$warnings" ]; then echo "$warnings"; exit 1; fi
+          MANWIDTH=80 man -l build/manual/labyrinth.1 > build/man.txt
+          echo "widest rendered line: $(awk '{ if (length > w) w = length } END { print w }' build/man.txt)"
+          head -20 build/man.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: labyrinth-manuals
+          path: build/manual/
+          if-no-files-found: error
+
   windows:
     name: Windows (PowerShell 5.1, PSScriptAnalyzer, Pester)
     runs-on: windows-latest
