@@ -4,7 +4,7 @@
 
 ## 1. Why this matters
 
-A thorough incident report that correctly identifies and addresses a successful Red Team attack may reduce the Red Team penalty for that attack, and incomplete or vague reports earn nothing (National Collegiate Cyber Defense Competition [NCCDC], 2025, Rule 9.4).
+A thorough incident report that correctly identifies and addresses a successful Red Team attack may reduce the Red Team penalty for that event, and incomplete or vague reports earn no partial points (National Collegiate Cyber Defense Competition [NCCDC], 2025, Rule 9.4).
 
 Hand-written reports are slow and tend to miss required fields. The aim is for the tools to assemble every fact they can observe, so a human only adds judgment and the final sentence.
 
@@ -15,7 +15,7 @@ Hand-written reports are slow and tend to miss required fields. The aim is for t
 | Report content requirements (NCCDC, 2025, Rule 9.4) | The report template is built from the required fields. Re-check the field list against the 2027 rules and packet. |
 | Reports are presented to the White Team for collection (NCCDC, 2025, Rule 9.4) | Labyrinth produces a file or text block. A human submits it through the channel the officials specify. Nothing is auto-submitted. |
 | No outside resources (NCCDC, 2025, Rule 5.6.4) | No external enrichment such as IP reputation lookups. |
-| A report earns a reduction only if it correctly identifies the attack (NCCDC, 2025, Rule 9.4) | Reports state only what evidence shows. Unknown fields say "unknown". |
+| Only a thorough report that correctly identifies and addresses the attack may reduce the penalty (NCCDC, 2025, Rule 9.4) | Reports state only what evidence shows. Unknown fields say "unknown". |
 
 ## 3. Pipeline
 

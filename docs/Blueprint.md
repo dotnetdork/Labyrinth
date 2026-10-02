@@ -92,7 +92,7 @@ The attacker's power comes from credentials and existing sessions. Remove both.
 
 - **Inventory and lock unexpected accounts:** lock (never delete) unexpected *local* accounts that are not a known operator, a required service account or a protected account. Work host by host with a verify step (design 01, Tier 2). Domain accounts are locked by hand only. End unexpected sessions, but never an official's.
 
-  **[RULES]** Never disable accounts wholesale or change every shell; the rules give those as examples of tools that break expected functionality (NCCDC, 2025, Rule 5.6.5). Officials must be able to get in on request (NCCDC, 2025, Rule 4.1), so a verified break-glass path comes first.
+  **[RULES]** Never change every shell or end connections indiscriminately; the rules give those as examples of tools that break expected functionality (NCCDC, 2025, Rule 5.6.5). Disabling accounts wholesale is the same kind of blanket action. Officials must be able to get in on request (NCCDC, 2025, Rule 4.1), so a verified break-glass path comes first.
 
 - **Verify, then baseline:** users, listening ports, processes, scheduled tasks/cron, startup items, firewall state. Check files against the package database before hashing them, so a compromised state is not recorded as normal (design 04).
 
@@ -172,7 +172,7 @@ Linux specifics link back to the §5 table and appendix A.
 - **Edge:** bind the management plane to an inside interface only; no WAN admin.
 - **CCDC note:** pair this with §3.4 (move/hide). Hardening the login is worth more once it is not on port 22/3389.
 
-  **[RULES]** Officials must retain access (NCCDC, 2025, Rule 4.1). Use a drop-in file, test with `sshd -t`, arm a revert timer, and keep the two-session rule (design 01, 05). Prefer per-role ed25519 keys with `from=`, `restrict` and forced commands (design 05).
+  **[RULES]** Officials must be given access immediately when they ask (NCCDC, 2025, Rule 4.1). Use a drop-in file, test with `sshd -t`, arm a revert timer, and keep the two-session rule (design 01, 05). Prefer per-role ed25519 keys with `from=`, `restrict` and forced commands (design 05).
 
 ### 3.3 Host firewall / default-deny — **P0**
 
@@ -202,7 +202,7 @@ Linux specifics link back to the §5 table and appendix A.
 - **Windows:** there is no fail2ban. Approximate it with a scheduled task or a WinLogbeat → SIEM alert that drives a firewall block, or with an IDS (intrusion detection system) at the edge. This is usually better handled at the perimeter.
 - **CCDC note:** ipset matters when a tarpit is feeding you thousands of IPs; a per-IP ruleset will bloat and slow the box.
 
-  **[RULES]** Bans act only on your own host's inbound traffic. Never scan, attack or contact the source (NCCDC, 2025, Rules 4.10, 4.11). The scoring engine, officials and operators are always on the ignore list. Design: 12.
+  **[RULES]** Bans act only on your own host's inbound traffic. Never scan, attack or contact the source: offensive activity outside the team's network is prohibited (NCCDC, 2025, Rule 4.10). Active response such as TCP resets is allowed, but anything that interferes with scoring is the team's responsibility (NCCDC, 2025, Rule 4.11). The scoring engine, officials and operators are always on the ignore list. Design: 12.
 
 > [!WARNING]
 > If traffic from outside reaches the host through NAT (network address translation) on the router, the scoring engine and the Red Team can appear to come from the same last-hop address, and banning that address would block scoring. Confirm what source addresses the host actually sees before enabling automatic bans.

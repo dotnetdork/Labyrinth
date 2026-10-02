@@ -81,7 +81,7 @@ Each diagram is a Mermaid block inside the document it illustrates, with a one-s
 1. Public and frozen: code must be safe for rivals and the Red Team to read (NCCDC, 2025, Rules 5.6.2, 5.6.3).
 2. No outside resources at run time other than DNS (Domain Name System) lookups (NCCDC, 2025, Rule 5.6.4).
 3. No deliberate breakage of expected functionality (NCCDC, 2025, Rule 5.6.5).
-4. Never impede the scoring engine or mislead it (NCCDC, 2025, Rules 4.11, 9.3).
+4. Never impede the scoring engine: anything that interferes with it is the team's responsibility and lowers the score (NCCDC, 2025, Rules 4.11, 9.3). Never mislead it: that can bring disqualification or penalties (NCCDC, 2025, Rule 9.3).
 5. Officials must be able to get in (NCCDC, 2025, Rule 4.1).
 6. No new devices (NCCDC, 2025, Rule 4.2); no containerizing scored services (NCCDC, 2025, Rule 4.14).
 
@@ -97,6 +97,7 @@ Each diagram is a Mermaid block inside the document it illustrates, with a one-s
 | 2026-09-29 | Color: the four phases have one color each (🟥 lock out, 🟦 observe, 🟪 deceive, 🟩 sustain) in tables, status lines and every diagram; diagrams also use amber for steps a person does and a dashed red outline for stops; the Blueprint priority scorecard is color-coded by priority. Nodes, edges and text unchanged apart from a color sentence added to each caption. |
 | 2026-09-29 | Added `docs/Overview.md`, a plain-language tour of every part of the system for non-expert readers, with three diagrams. It adds no new facts: each statement summarizes the Blueprint or a design spec. |
 | 2026-09-29 | Added designs 10 to 16 to close gaps found in a coverage review: log forwarding and detection (10), Windows and AD hardening (11), dynamic bans (12), health monitor and checkpoints (13), backup and recovery (14), patching and service reduction (15) and network appliance runbooks (16). Each turns an existing Blueprint capability into a spec; tool-specific details that were not re-checked are labeled *Background*, and open questions are pinned. Cross-links added in the Blueprint and designs 00, 01, 04, 06 and 08; `health` added to the log categories (00). |
+| 2026-10-02 | Rules wording audit: every rule citation re-checked against the 2026 rules web page, including list positions. Fixed: the 5.6.5 examples (all user shells; *indiscriminately* ending outbound connections) (01, Blueprint); disabling accounts wholesale no longer attributed to the rule's examples (Blueprint); Rule 4.1 is access on request, not retained access (Blueprint); Rule 4.11 permits active response such as TCP resets, so it is no longer cited for "never contact the source" (Blueprint); Rule 4.11 makes interference the team's responsibility, which is not the same as a ban, and constraint 4 now says so (README); Rule 9.4 wording (02). Design choices stricter than the rules, such as never installing packages, are now labeled as design, not rule. |
 
 ## References
 

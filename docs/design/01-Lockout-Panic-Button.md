@@ -12,7 +12,7 @@ The original idea ran against every reachable host in one pass, resetting creden
 
 | Rule | Effect on the design |
 |---|---|
-| Tools must not deliberately break expected functionality. The examples are setting every Linux shell to `/bin/false` and terminating all outbound connections after 30 seconds (National Collegiate Cyber Defense Competition [NCCDC], 2025, Rule 5.6.5). | No blanket actions. Every destructive action works from an explicit allowlist and skips the protected set. |
+| Tools must not deliberately break expected functionality. The examples are setting all user shells on Linux to `/bin/false` and indiscriminately terminating all outbound connections after 30 seconds (National Collegiate Cyber Defense Competition [NCCDC], 2025, Rule 5.6.5). | No blanket actions. Every destructive action works from an explicit allowlist and skips the protected set. |
 | Operations and White Team must be given access immediately on request (NCCDC, 2025, Rule 4.1). | A verified break-glass path is a precondition. Nothing removes it. |
 | Anything that interferes with the scoring engine is the team's responsibility (NCCDC, 2025, Rule 4.11). | The scoring engine allowlist is applied first. Verification uses scoring-style probes. |
 | Do not mislead the scoring engine (NCCDC, 2025, Rule 9.3). | The panic button never fakes a service state. |
