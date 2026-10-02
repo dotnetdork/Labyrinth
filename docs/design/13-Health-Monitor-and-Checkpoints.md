@@ -68,7 +68,10 @@ flowchart TD
 | Section | Source |
 |---|---|
 | Scored services: current state and any outage since the last checkpoint | Health log (this spec) |
-| Integrity: new findings since the last checkpoint | Baseline comparison (design 04) |
+| Integrity: changes since the latest sealed baseline | Baseline comparison against the seal (design 04, section 6) |
+| Persistence: new items, and items still waiting for approval | Persistence sweep in report mode (design 17, section 7) |
+| Locked accounts ready to offer for deletion, once every scored service passes | Account module (design 05, section 6.4) |
+
 | Inventory drift: new accounts, listeners, services, tasks | Inventory module (design 08, section 4.1) |
 | Open incidents and reports not yet submitted | Report tracker (design 02) |
 | Trap trips and active bans | Trip log and ban set (designs 09, 12) |
@@ -96,4 +99,4 @@ The command takes no action. It exists so that a regular review is quick and eve
 
 ## References
 
-National Collegiate Cyber Defense Competition. (2025, December 10). *Rules and requirements*. Retrieved September 29, 2026, from https://www.nationalccdc.org/rules.html
+National Collegiate Cyber Defense Competition. (2025, December 10). *Rules and requirements*. Retrieved October 2, 2026, from https://www.nationalccdc.org/rules.html

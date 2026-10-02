@@ -36,6 +36,8 @@ Each spec belongs to one phase of the doctrine, and every document uses the same
 | 14 | [Backup and recovery](14-Backup-and-Recovery.md) | 🟩 Sustain | How do we restore a scored service after damage we did not cause? |
 | 15 | [Patching and service reduction](15-Patching-and-Service-Reduction.md) | 🟥 Lock out | How do we turn off unneeded services and patch the dangerous packages without breaking scoring? |
 | 16 | [Network appliance runbooks](16-Network-Appliance-Runbooks.md) | 🟥 Lock out | How does a person lock down routers and firewall appliances safely? |
+| 17 | [Persistence sweep](17-Persistence-Sweep.md) | 🟥 Lock out | How do we find and remove the Red Team's footholds early, without breaking a scored service? |
+| 18 | [Service packs and config library](18-Service-Packs-and-Config-Library.md) | 🟥 Lock out | How do we harden the scored apps themselves, quickly and repeatably, without breaking them? |
 
 ## Diagrams
 
@@ -52,7 +54,7 @@ Each diagram is a Mermaid block inside the document it illustrates, with a one-s
 | Repository and module layout | [00, section 3](00-Module-Contract-and-Layout.md#3-repository-layout) |
 | Module lifecycle with exit codes | [00, section 4](00-Module-Contract-and-Layout.md#4-the-module-contract) |
 | Risk tiers 0 to 3 and who runs each | [01, section 5](01-Lockout-Panic-Button.md#5-actions-by-risk-tier) |
-| Panic button: gates, rings, verify, dead-man revert | [01, section 6](01-Lockout-Panic-Button.md#6-sequence) |
+| Panic button: gates, the first-minute bundle, rings, approval and seal | [01, section 6](01-Lockout-Panic-Button.md#6-sequence) |
 | Incident reporting pipeline | [02, section 3](02-Incident-Reporting-Automation.md#3-pipeline) |
 | Event seed derivation | [03, section 3](03-Event-Seed-and-Deception-Config.md#3-derivation) |
 | Baseline and integrity | [04, section 4](04-Baseline-and-Integrity.md#4-who-when-from-where) |
@@ -67,6 +69,7 @@ Each diagram is a Mermaid block inside the document it illustrates, with a one-s
 | Restore point: space check, hash, store, restore | [14, section 4](14-Backup-and-Recovery.md#4-when) |
 | Patching: check, rank, restore point, verify | [15, section 4](15-Patching-and-Service-Reduction.md#4-patching) |
 | Appliance runbook: prepare, change, confirm or revert | [16, section 4](16-Network-Appliance-Runbooks.md#4-the-runbook-steps) |
+| Persistence item: package, dependency and sign checks decide automatic quarantine or approval | [17, section 4](17-Persistence-Sweep.md#4-classes) |
 
 ## Where things live
 
@@ -84,6 +87,8 @@ Each diagram is a Mermaid block inside the document it illustrates, with a one-s
 4. Never impede the scoring engine: anything that interferes with it is the team's responsibility and lowers the score (NCCDC, 2025, Rules 4.11, 9.3). Never mislead it: that can bring disqualification or penalties (NCCDC, 2025, Rule 9.3).
 5. Officials must be given access immediately when they ask (NCCDC, 2025, Rule 4.1).
 6. No new devices (NCCDC, 2025, Rule 4.2); no containerizing scored services (NCCDC, 2025, Rule 4.14).
+7. Assume breach, and defend scored services rather than avoid them. Scoring rewards controlling and preventing unauthorized access, and successful Red Team penetrations cost points (NCCDC, 2025, Scoring section). Scored services are a primary Red Team target, so leaving them as found is not the safe choice; changing them with probes, backups and a revert timer is.
+8. Confirm, then act. What a person approves, Labyrinth carries out with the same backups, records and rollback. Only actions too broad or too hard to undo (KRBTGT, Group Policy, DNS server changes, restores, patching, appliances) stay in a person's hands.
 
 ## Review log
 
@@ -102,6 +107,9 @@ Each diagram is a Mermaid block inside the document it illustrates, with a one-s
 | 2026-10-02 | Secrets and notes are no longer assumed to be on paper. A new term, the *offline record*, means kept out of the repository and off the competition hosts, on paper or in a local unsynced file on an operator's own machine (Rule 5.2), shared only through the official team chat or in person, with credentials rotated after the event because chat may be logged (Rule 5.5) (05, section 2). References updated in designs 01, 03, 05 and 07, the Blueprint, the Overview (with a glossary entry) and the README. |
 | 2026-10-02 | Design audit of all specs; 06, 08, 14 and 16 needed no change. Fixes for real risk: an admin-class account that a service or scheduled task logs on with is not rotated automatically (01, 05); the domain Administrator is rotated by hand (11); honey-accounts cannot log in and any attempt alerts, and domain ones are created by hand (09, 10, 11, 12); decoy ports are checked against scored and listening ports, not the scoring allowlist, which holds addresses (03, 09); the report template carries every Rule 9.4 field and warns about missing ones (02); a copy or hash of each baseline is kept off the host (04); the manifest hash is in the offline record and checked on every host, while the `ssh-keygen -Y` signature is checked only on the control node, because older OpenSSH cannot (07); one canary host per platform, and hosts with no canary go last (01); the operator confirms break-glass at the console once per host, and rotation is tested with `su -` or `runas` (01, 05); default-deny also allows official sources from the event packet (01, 11). Fixes for accuracy: local and remote modes described and the Ansible question resolved as native scripts; the freeze reading marked as needing confirmation; all host paths under one root, with `etc` added and admin-only access (00); domain controller Kerberos and NTLM events, auditd `-e 2` and `-f 2` never set, and a SIEM input that is TCP and limited to managed hosts (10); fail2ban is never installed or vendored, and a host's existing fail2ban gets the never-ban list (12); Windows patches ranked by exposure only (15); the login gap in probes and an optional hand-made test mailbox (13); cleanup deletes only accounts Labyrinth created (07); Rule 4.1 effect reworded (11, constraint 5). Blueprint, Overview and `config/hosts.example` updated to match. |
 
+| 2026-10-02 | Assume breach and defend scored services. New designs 17 (persistence sweep: high-confidence footholds quarantined automatically, the rest after approval, nothing deleted) and 18 (service packs for common scored apps, with automatic, approval and runbook classes, and a `sysctl` library). The lockout now starts with a first-minute bundle per host: rotate, remove keys and check the SSH configuration, end intruder sessions (never console, operator, admin-source or protected sessions), quarantine persistence, then default-deny (01). Tier 3 is now "approve, then act", with a short person-run list, and modules gain an `approval` risk value (00, 01). SSH: planted add-on files and `Match` blocks quarantined, effective settings checked with `sshd -T`, every key source swept, and key-only login with a password exception for scoring accounts where SSH is scored (05). Accounts: an expected-user rule, hidden-admin checks, unexpected local admins locked automatically, and deletion offered after approval once services pass, with evidence saved first (05, 11). Sealed baseline with `--seal` and `--reseal` (04, 13). SIEM host hardening and watched abused tools (10). Windows protocol settings, a scoring-engine exception where RDP or WinRM is scored, and domain traffic always allowed to the domain controller (11). Old plain-text services on the Linux candidate list (15). Quarantine kept as evidence (02, 07). |
+
 ## References
 
-National Collegiate Cyber Defense Competition. (2025, December 10). *Rules and requirements*. Retrieved September 29, 2026, from https://www.nationalccdc.org/rules.html
+National Collegiate Cyber Defense Competition. (2025, December 10). *Rules and requirements*. Retrieved October 2, 2026,
+ from https://www.nationalccdc.org/rules.html

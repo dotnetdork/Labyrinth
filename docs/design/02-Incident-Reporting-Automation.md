@@ -60,7 +60,8 @@ flowchart LR
 | Access obtained | Logons and privilege events in the timeline | Drafted, human edits |
 | Damage done | Integrity findings, probe failures, deleted or changed files | Drafted, human edits |
 | What was affected | Affected hosts, services and accounts | Drafted, human edits |
-| Evidence (log excerpts, hashes) | Collected files | Yes |
+| Evidence (log excerpts, hashes) | Collected files; quarantined items with their original path and SHA-256 (design 17); saved evidence of deleted accounts (design 05, section 6.4); ended sessions (design 01, section 6.2) | Yes |
+
 | Impact on scored services | Probe results | Yes |
 | Actions taken and time | Run manifest (design 00) | Yes |
 | Remediation and prevention (the remediation plan) | Human | No |
@@ -102,4 +103,4 @@ All output is text so that it works from any host and needs no interpreter on th
 
 ## References
 
-National Collegiate Cyber Defense Competition. (2025, December 10). *Rules and requirements*. Retrieved September 29, 2026, from https://www.nationalccdc.org/rules.html
+National Collegiate Cyber Defense Competition. (2025, December 10). *Rules and requirements*. Retrieved October 2, 2026, from https://www.nationalccdc.org/rules.html

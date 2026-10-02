@@ -10,11 +10,12 @@
 | Officials must get access on request (National Collegiate Cyber Defense Competition [NCCDC], 2025, Rule 4.1) | When an official asks, the captain gives them a working credential from the team's offline record or logs in for them. No standing account or key is created for this (section 5). |
 | POP3 (Post Office Protocol 3) scoring uses domain users (MWCCDC, 2025, Functional Services section; *Provisional*) | Domain-wide password resets are manual-only. |
 | No deliberate breakage (NCCDC, 2025, Rule 5.6.5) | Never disable accounts wholesale. |
+| Scoring is based partly on controlling and preventing unauthorized access (NCCDC, 2025, Scoring section). No rule text read so far forbids locking or deleting an unauthorized account. | Unexpected accounts are locked, and deleted once a person confirms it is safe (section 6). Scored services, including SSH, are defended rather than left alone (section 4). |
 
 ## 2. Password rotation
 
 - **Who is rotated:** root, Administrator and equivalents, and team operator accounts. Never scoring accounts.
-- **Accounts something logs on with.** On Windows, a service, scheduled task or web application pool set to log on as an account stores that account's password. Changing the password breaks it at its next start, often hours later. The Tier 0 inventory lists every such logon. An admin-class account with any is not rotated automatically: its rotation goes on the Tier 3 checklist (design 01, section 5) together with the list of what must be updated. Linux services do not store their account's login password, so this mainly concerns Windows; a password written into an application's configuration file is not always found and is a reason to check the dependency map first.
+- **Accounts something logs on with.** On Windows, a service, scheduled task or web application pool set to log on as an account stores that account's password. Changing the password breaks it at its next start, often hours later. The Tier 0 inventory lists every such logon. An admin-class account with any is not rotated automatically. It is listed in Tier 3 (design 01, section 5) with everything that stores its password; once a person approves, Labyrinth rotates it, updates the stored password on each listed service, task or pool, and runs the probes. Linux services do not store their account's login password, so this mainly concerns Windows; a password written into an application's configuration file is not always found and is a reason to check the dependency map first.
 - **Generation:** a cryptographic random source, a length chosen by the profile, and a character set that survives the target's shell and login prompt.
 - **Record:** shown once on the operator's screen, to be copied into the team's offline record. Labyrinth never writes it to disk, logs or shell history.
 - **The offline record** is where the team keeps the secrets Labyrinth must not store: new passwords, the break-glass credential, the event seed (design 03) and the release fingerprint (design 07). It stays out of the repository and off every competition host: on paper, or in a local file on an operator's own machine that is not synced to any cloud service, because outside storage and collaboration services are prohibited during the event (National Collegiate Cyber Defense Competition [NCCDC], 2025, Rule 5.2). Teammates share these secrets only through the official team chat or in person. Activity on that chat may be logged and released (NCCDC, 2025, Rule 5.5), so every credential shared there is rotated after the event (section 5).
@@ -55,6 +56,28 @@ Choosing our own names or random ones is a trade-off:
 - **Ubuntu 24.04:** SSH is socket activated, so changes to the listening port need the socket unit as well as the daemon configuration.
 - **Hardening:** a drop-in file in `sshd_config.d`, tested with `sshd -t` before reload, with a dead-man revert (design 01).
 
+### 4.1 Checking the SSH configuration for planted settings
+
+An attacker who got in first may have changed SSH itself. For most settings, `sshd` uses the **first** value it reads (*Background*), so an add-on file that sorts before ours (for example `00-x.conf`) wins, and a `Match` block can override any setting for chosen users or addresses. Adding our own drop-in is therefore not enough. In the first-minute bundle (design 01, section 6.1), Labyrinth:
+
+1. **Verifies the package files** (`dpkg --verify openssh-server` or `rpm -V openssh-server`). A changed `sshd` binary or PAM module is a high-ranked finding for a person, never fixed automatically.
+2. **Quarantines unknown add-on files** in `sshd_config.d` and planted lines in the main file (`Match` blocks, `AuthorizedKeysFile`, `AuthorizedKeysCommand`, `TrustedUserCAKeys`, `PermitRootLogin yes`, `PermitEmptyPasswords yes`) that are not in the profile's known-good list (design 17, section 5).
+3. **Names our file to load first** (`00-labyrinth.conf`) and confirms the result with `sshd -T`, which prints the settings `sshd` will actually use.
+4. **Sweeps every key source:** `authorized_keys`, `authorized_keys2`, any path named by `AuthorizedKeysFile`, `~/.ssh/rc` and `/etc/ssh/sshrc`.
+5. **Handles hosts without drop-ins.** RHEL 8 has no `Include` line by default; there the main file is backed up and edited in place.
+
+The same pattern (verify the package, quarantine unknown add-ons, confirm the effective result) is used for `sudoers.d`, `pam.d` and `/etc/ld.so.preload`.
+
+### 4.2 Key-only SSH, aware of scoring
+
+SSH is often a scored service and the Red Team will attack it, so it is hardened, not left as found:
+
+- **Where SSH is scored:** password login is turned off for every account **except** the scoring accounts, which keep it through a `Match User <scoring accounts>` block, because the scoring engine logs in with a password. `AllowUsers` lists only the scoring accounts, operator accounts and accounts the packet names. `MaxAuthTries` and `LoginGraceTime` are lowered, and failed logins raise alerts (design 10).
+- **Where SSH is not scored:** key-only for everyone, and the port is open only to the admin source (design 01).
+- **Root** cannot log in over SSH (`PermitRootLogin no`).
+
+The scoring accounts and their checks come from the run-time `services` file. If the file does not say whether SSH is scored on a host, the host is treated as scored.
+
 ```mermaid
 flowchart TD
     subgraph pw["Password rotation (section 2)"]
@@ -94,7 +117,38 @@ A break-glass path must not become a backdoor, so:
 
 **Official accounts** named in the event packet are never changed without the White Team's permission. They are still watched: their logons raise an alert, and the team confirms unexpected ones with the White Team. If the White Team agrees, the captain rotates the password and hands them the new one.
 
-## 6. Acceptance tests
+## 6. Accounts: expected users, hidden admins, lock then delete
+
+### 6.1 Who is expected
+
+An account is **expected** if it is in the protected set (design 01, section 4), is a user the event packet names, or owns or runs a scored service (from the dependency map). Every other account that can log in is **unexpected**. The Tier 0 inventory lists every account and group on each host, with its creation time where the platform records one.
+
+### 6.2 Hidden admins
+
+Administrator rights can hide in places a simple group listing misses. The inventory checks for:
+
+| Platform | Signs |
+|---|---|
+| Linux | A second account with UID 0; an empty password field; `NOPASSWD` rules and `sudoers` include files; admin rights through a user's primary group (`sudo`, `wheel`, `adm`, `docker`, `lxd`, `disk`); a login shell on a system account |
+| Windows | Local Administrators, Remote Desktop Users and Remote Management Users membership; a local account with a name ending in `$` that is not a machine account; accounts with "password never expires" or "password not required" set |
+| Domain | Membership of Domain Admins, Enterprise Admins, Schema Admins, Administrators, Account Operators, Backup Operators and Server Operators; accounts protected by AdminSDHolder (`adminCount=1`) that are not in those groups any more |
+
+### 6.3 What happens
+
+| Account | Action | Tier |
+|---|---|---|
+| Unexpected *local* account with admin rights or a hidden-admin sign | Admin rights removed and the account locked, in the first-minute bundle's tier | 2, automatic |
+| Other unexpected *local* account | Listed with its evidence; locked after a person approves | 3 |
+| Unexpected *domain* account or group member | Printed on the domain checklist (design 11, section 5) | 3, person-run |
+| Expected account | Unchanged | — |
+
+Locking means: on Linux, `usermod -L` and an expiry date in the past, with the login shell left as it is (Rule 5.6.5 names shell changes); on Windows, the account disabled. Both are recorded in the run manifest and undone by `rollback`. Re-enabling a locked account raises an alert (Windows event 4722; an auditd rule on Linux; design 10).
+
+### 6.4 Delete once confirmed
+
+A locked account can be unlocked again by an attacker with admin rights, so a lock is not the end state. After the next checkpoint shows every scored service passing (design 13), Labyrinth offers each locked account for deletion. A person approves each one. Before deleting, Labyrinth saves its evidence: groups, keys, creation information and an archive of the home folder, kept in the quarantine area (design 17, section 5). It then deletes the account and checks for files still owned by the old UID or SID, which are listed for a person. Domain accounts stay on the person-run checklist.
+
+## 7. Acceptance tests
 
 - After rotation, the new credential works from a fresh session and the old fails.
 - A scoring account is unchanged.
@@ -104,11 +158,17 @@ A break-glass path must not become a backdoor, so:
 - A dead-man revert restores SSH access when verify is failed on purpose.
 - No account or SSH key is created for break-glass.
 - The break-glass password works in a fresh `su -` or `runas` session after rotation, and root cannot log in over SSH.
-- An admin-class account that a Windows service or scheduled task logs on with is not rotated automatically and is listed on the Tier 3 checklist.
+- An admin-class account that a Windows service or scheduled task logs on with is not rotated automatically. It is listed for approval in Tier 3, and once approved, the service still starts with the new password.
+
 - A logon with the break-glass credential or an official account raises an alert.
+- A planted `00-x.conf` that allows root login, and a planted `Match` block, are quarantined, and `sshd -T` shows our settings in effect.
+- Where SSH is scored, a scoring account still logs in with its password, and an unexpected account cannot use a password.
+- A second UID 0 account and an unexpected local Administrators member are found; the account loses its admin rights and is locked.
+- Re-enabling a locked account raises an alert.
+- An account is deleted only after a person approves and a checkpoint shows every scored service passing, and its evidence is saved first.
 
 ## References
 
 Midwest Collegiate Cyber Defense Competition. (2025). *2025 Midwest Collegiate Cyber Defense Competition qualifier team packet* [PDF]. https://brazil.minnesota.edu/ccdc/ccdc-2025/2025MWCCDCQTeamPack.pdf
 
-National Collegiate Cyber Defense Competition. (2025, December 10). *Rules and requirements*. Retrieved September 29, 2026, from https://www.nationalccdc.org/rules.html
+National Collegiate Cyber Defense Competition. (2025, December 10). *Rules and requirements*. Retrieved October 2, 2026, from https://www.nationalccdc.org/rules.html

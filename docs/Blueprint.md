@@ -84,17 +84,19 @@ flowchart LR
 
 ### Lock out, part 1 — Establish trust
 
-The attacker's power comes from credentials and existing sessions. Remove both.
+The attacker's power comes from credentials, existing sessions and footholds left before the event. Remove all three, on each host in one step: the first-minute bundle rotates admin passwords, removes unregistered keys and checks the SSH configuration, ends intruder sessions, quarantines high-confidence persistence, then applies default-deny (design 01, section 6.1). Scored services are a primary Red Team target, so they are defended, with probes and revert timers, rather than left as found.
 
 - **Rotate administrator-class credentials you were handed or that ship by default:** local admins, appliance web logins, SNMP (Simple Network Management Protocol) strings, and service or database accounts once the dependency map is known. Do it first, everywhere.
 
   **[RULES]** Administrator-class passwords are not used for scoring and may be changed freely; other user passwords follow the notification process (Midwest Collegiate Cyber Defense Competition [MWCCDC], 2025, Rule 13; *Provisional*, 2025 packet). Automation never rotates user-level or scoring accounts.
 
-- **Inventory and lock unexpected accounts:** lock (never delete) unexpected *local* accounts that are not a known operator, a required service account or a protected account. Work host by host with a verify step (design 01, Tier 2). Domain accounts are locked by hand only. End unexpected sessions, but never an official's.
+- **Inventory and lock unexpected accounts:** an account is expected if it is protected, named in the packet or owns a scored service. Unexpected *local* accounts with admin rights or hidden-admin signs lose those rights and are locked automatically; other unexpected local accounts are locked after approval. Once a checkpoint shows every scored service passing, a person may approve deleting them, with evidence saved first (design 05, section 6). Domain accounts are handled by hand from a checklist (design 11). End intruder sessions after rotation, but never a console session, the operator's own, an admin-source session or an official's (design 01, section 6.2).
 
   **[RULES]** Never change every shell or end connections indiscriminately; the rules give those as examples of tools that break expected functionality (NCCDC, 2025, Rule 5.6.5). Disabling accounts wholesale is the same kind of blanket action. Officials must be able to get in on request (NCCDC, 2025, Rule 4.1), so a verified break-glass path comes first.
 
-- **Verify, then baseline:** users, listening ports, processes, scheduled tasks/cron, startup items, firewall state. Check files against the package database before hashing them, so a compromised state is not recorded as normal (design 04).
+- **Sweep for persistence:** scheduled jobs, services, startup items, SSH and PAM changes, and web shells. Clear attacker footholds are quarantined automatically; anything a scored service might depend on waits for approval. Nothing is deleted (design 17).
+
+- **Verify, then baseline:** users, listening ports, processes, scheduled tasks/cron, startup items, firewall state. Check files against the package database before hashing them, so a compromised state is not recorded as normal (design 04). Once the lockout and sweep are verified, seal the baseline, so later checks compare against the cleaned host (design 04, section 6).
 
 ### Lock out, part 2 — Shrink the surface
 
@@ -154,7 +156,7 @@ Linux specifics link back to the §5 table and appendix A.
 ### 3.1 Credential reset & account control — **P0**
 
 - **Principle:** no attacker keeps access through a credential you have rotated.
-- **Linux:** use `passwd` / `chpasswd` for root and administrator-class accounts only. Use `usermod -L` to lock unexpected local accounts outside the protected set. Audit `sudoers` and group membership. Back up, then empty, unexpected `~/.ssh/authorized_keys`. End stray sessions (`pkill -u`) that are not an official's. Automation never rotates or locks ordinary user accounts (for example, mailbox users).
+- **Linux:** use `passwd` / `chpasswd` for root and administrator-class accounts only. Use `usermod -L` to lock unexpected local accounts outside the protected set. Audit `sudoers` and group membership. Back up, then empty, unexpected `~/.ssh/authorized_keys`. After rotation, end remote sessions with `loginctl terminate-session`, except console, operator, admin-source and protected sessions (design 01, section 6.2). Automation never rotates or locks ordinary user accounts (for example, mailbox users).
 - **Windows/AD:** rotate the built-in local Administrator and other local administrator-class accounts, except any that a service or scheduled task logs on with (changing those breaks the service at its next start). Review `Domain Admins`, `Enterprise Admins` and local Administrators membership. By hand only, after confirming with the captain:
   - rotate the domain Administrator, and any admin account a service or task logs on with, updating each dependent service;
   - reset the KRBTGT password (twice, with a replication wait) to invalidate golden tickets;
@@ -168,7 +170,7 @@ Linux specifics link back to the §5 table and appendix A.
 ### 3.2 Remote-admin hardening (SSH / RDP / WinRM) — **P0/P1**
 
 - **Principle:** shrink and strengthen the way *you* get in; deny every other way.
-- **Linux (reference §5.1):** key-only (`PasswordAuthentication no`), `PermitRootLogin no`, an `AllowUsers` allowlist, `MaxAuthTries 3`, no X11 or agent forwarding, weak ciphers and MACs removed, `LogLevel VERBOSE` (needed for the planted-key canary). All of it in a drop-in file, with the base config untouched.
+- **Linux (reference §5.1):** key-only (`PasswordAuthentication no`), `PermitRootLogin no`, an `AllowUsers` allowlist, `MaxAuthTries 3`, no X11 or agent forwarding, weak ciphers and MACs removed, `LogLevel VERBOSE` (needed for the planted-key canary). All of it in a drop-in file named to load first, with the base config untouched; planted add-on files and `Match` blocks are quarantined, and `sshd -T` confirms the settings in effect (design 05, section 4.1). Where SSH is scored, the scoring accounts keep password login through a `Match User` block, and every other account is key-only (design 05, section 4.2).
 - **Windows/AD:** restrict RDP to an admin jump source; enable NLA (Network Level Authentication); disable RDP where it is not needed; restrict WinRM (Windows Remote Management); remove `Everyone` and `Authenticated Users` from remote-logon rights; use LAPS (Local Administrator Password Solution) for the local admin.
 - **Edge:** bind the management plane to an inside interface only; no WAN admin.
 - **CCDC note:** pair this with §3.4 (move/hide). Hardening the login is worth more once it is not on port 22/3389.
@@ -249,7 +251,7 @@ Linux specifics link back to the §5 table and appendix A.
 - **Principle:** logs on the box die with the box. Get them off-host and make them high-signal.
 - **Linux:** `auditd` with rule keys for privileged commands, identity and sudoers, SSH keys, cron, systemd units, `/usr/local`, and **canary reads**; forward to Splunk.
 - **Windows/AD:** **Sysmon** (process creation, network, image loads) plus Windows Security auditing (4624/4625/4688/4720/4728…); forward to Splunk through the universal forwarder.
-- **SIEM:** Splunk is the aggregation point. A few high-value saved searches (new local admin, canary hit, authentication to a locked account) beat a hundred noisy dashboards.
+- **SIEM:** Splunk is the aggregation point. A few high-value saved searches (new local admin, canary hit, authentication to a locked account) beat a hundred noisy dashboards. The SIEM host is itself hardened: its admin password rotated, users and roles audited, its web and management ports open only to the admin source, its inputs only to managed hosts, and unknown apps and scripted inputs quarantined (design 10, section 7).
 - **CCDC note:** stand this up in the Observe phase, *before* deception, so the traps have somewhere to report. Design: 10.
 
 ### 3.10 Egress control — **P2**
@@ -435,7 +437,8 @@ The design keeps the speed and adds guard rails:
 - dead-man revert timers;
 - scoring-style probes after each module.
 
-Tier 3 actions are printed checklists for a human. See design 01. After the lockout, layer `observe → deceive → sustain`.
+Tier 3 actions wait for a person's approval; Labyrinth then carries them out, except a short person-run list (KRBTGT, Group Policy, DNS server changes, restores, patching and appliances). Nothing is deleted without approval: files are quarantined, and accounts are deleted only after approval once services pass. See designs 01 and 17. After the lockout, seal the baseline and layer `observe → deceive → sustain`.
+
 
 ### 6.5 Secret handling
 

@@ -117,7 +117,7 @@ Every module is a folder containing a metadata file and up to six entry points.
 | `phase` | `lockout`, `observe`, `deceive` or `sustain` |
 | `priority` | P0 to P3 (P0 runs first, P3 last) |
 | `platforms` | `ubuntu`, `rhel-family`, `windows`, `appliance` |
-| `risk` | `read-only`, `reversible`, `service-affecting` or `manual-only` |
+| `risk` | `read-only`, `reversible`, `service-affecting`, `approval` or `manual-only` |
 | `touches_scored` | `true` if it can affect a scored service or account |
 | `requires` | Other modules or facts that must exist first |
 | `outputs` | Files and state it creates, so cleanup can find them |
@@ -171,9 +171,12 @@ flowchart TD
 Rules for module authors:
 
 1. `touches_scored: true` modules run only after the scoring allowlist and the protected set are loaded.
-2. A `manual-only` module never changes anything. It prints a checklist for a human.
-3. No module downloads anything or calls outside services (National Collegiate Cyber Defense Competition [NCCDC], 2025, Rule 5.6.4).
-4. No module deliberately breaks expected functionality (NCCDC, 2025, Rule 5.6.5).
+2. An `approval` module lists each item it would change, with the reason, and changes only the items a person approves, per item or per category on one host. Approved items go through the same backup, manifest, verify and rollback as any other change.
+3. A `manual-only` module never changes anything. It prints a checklist for a human. This is kept for actions too broad or too hard to undo for Labyrinth to carry out even with approval: KRBTGT resets, Group Policy and DNS server changes, restores, patching and appliance changes.
+4. No module downloads anything or calls outside services (National Collegiate Cyber Defense Competition [NCCDC], 2025, Rule 5.6.4).
+5. No module deliberately breaks expected functionality (NCCDC, 2025, Rule 5.6.5).
+6. No module deletes a file. Anything removed is quarantined (design 17, section 5). An account is deleted only by the account module, after approval (design 05, section 6).
+
 
 ## 5. Execution model
 
@@ -231,4 +234,4 @@ Nothing else changes.
 
 ## References
 
-National Collegiate Cyber Defense Competition. (2025, December 10). *Rules and requirements*. Retrieved September 29, 2026, from https://www.nationalccdc.org/rules.html
+National Collegiate Cyber Defense Competition. (2025, December 10). *Rules and requirements*. Retrieved October 2, 2026, from https://www.nationalccdc.org/rules.html

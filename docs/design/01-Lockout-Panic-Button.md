@@ -28,6 +28,9 @@ The original idea ran against every reachable host in one pass, resetting creden
 4. **Reversible.** Every change is backed up and recorded in the run manifest.
 5. **Verify like the scoring engine.** After each module, run probes and compare with the probes taken before.
 6. **Fail toward access.** On any doubt, abort and leave the host as it was.
+7. **Assume breach.** The Red Team may already be inside when the event starts, so the first minute removes the ways back in, not just the passwords (section 6).
+8. **Defend scored services, don't avoid them.** Scored services are a primary Red Team target, and successful penetrations cost points (NCCDC, 2025, Scoring section). Leaving them untouched is not safe; changing them carefully, with probes and a revert timer, is.
+9. **Confirm, then act.** When a person confirms that something may be changed or removed, Labyrinth carries it out, with the same backups, probes and records. Only the actions on Tier 3's person-run list are left to a person's hands.
 
 ## 4. The protected set
 
@@ -46,17 +49,17 @@ The protected set is a list the operator supplies at run time, from the event pa
 
 | Tier | Nature | Actions | How run |
 |---|---|---|---|
-| **0. Observe only** | Read-only | Inventory of users, listeners, processes, scheduled tasks, startup items, keys and sudoers; baseline (design 04) | Automatic |
-| **1. Safe and reversible** | Cannot stop a scored service | Rotate admin-class passwords (root, Administrator and equivalents) that no service or scheduled task logs on with (design 05, section 2); back up, then clear, authorized keys that are not in the key registry, on accounts outside the protected set | Automatic after plan review |
-| **2. Service-affecting** | Could interrupt a scored service | Default-deny inbound firewall with the scored ports, the scoring engine, any official sources named in the event packet and the admin path allowed; disable services from a per-profile candidate list; SSH (Secure Shell) hardening drop-in; lock (never delete) unexpected *local* accounts outside the protected set; end unexpected sessions, never an official's | Applied per ring with verify and a revert timer |
-| **3. Manual only** | High consequence | User-level password changes (notification required); rotating an admin-class password that a service or scheduled task logs on with; locking or disabling domain accounts; KRBTGT reset; domain-wide resets; appliance changes; anything touching a scored service's own configuration | Printed checklist, human executes |
+| **0. Observe only** | Read-only | Inventory of users, groups, listeners, processes, sessions, scheduled tasks, startup items, keys and sudoers; baseline (design 04) | Automatic |
+| **1. Safe and reversible** | Cannot stop a scored service | Rotate admin-class passwords (root, Administrator and equivalents) that no service or scheduled task logs on with (design 05, section 2); back up, then clear, authorized keys that are not in the key registry, on accounts outside the protected set; end remote sessions after rotation (section 6.2) | Automatic after plan review |
+| **2. Service-affecting** | Could interrupt a scored service | SSH (Secure Shell) configuration check and key-only drop-in (design 05, section 4); high-confidence persistence quarantine (design 17); default-deny inbound firewall with the scored ports, the scoring engine, any official sources named in the event packet and the admin path allowed; remove admin rights from unexpected *local* accounts and lock them (design 05, section 6); Windows protocol settings (design 11); automatic service-pack settings (design 18); disable services from a per-profile candidate list (design 15) | Applied per ring with verify and a revert timer |
+| **3. Approve, then act** | High consequence, or not provably safe | **Labyrinth acts after a person approves:** unexplained persistence items (design 17); deleting a locked account once services are confirmed working (design 05, section 6); approval-class service-pack settings (design 18); rotating an admin-class password that a service or scheduled task logs on with, once its dependents are listed. **A person acts, from a printed checklist:** user-level password changes (notification required); domain account and group changes; KRBTGT reset; Group Policy and DNS server changes; restores (design 14); patching (design 15); appliance changes (design 16) | Shown in the plan; approved per item, or per category on one host |
 
 ```mermaid
 flowchart LR
     T0["<b>Tier 0</b><br/>Observe only<br/>read-only"] --> R0["Runs automatically"]
-    T1["<b>Tier 1</b><br/>Safe and reversible<br/>admin passwords, unregistered keys"] --> R1["Runs automatically<br/>after plan review"]
-    T2["<b>Tier 2</b><br/>Service-affecting<br/>firewall, services, SSH, local locks"] --> R2["Runs per ring with verify<br/>and a revert timer"]
-    T3["<b>Tier 3</b><br/>Manual only<br/>user passwords, domain, KRBTGT, appliances"] --> R3["Printed checklist;<br/>a human does it"]
+    T1["<b>Tier 1</b><br/>Safe and reversible<br/>admin passwords, keys, sessions"] --> R1["Runs automatically<br/>after plan review"]
+    T2["<b>Tier 2</b><br/>Service-affecting<br/>SSH, persistence, firewall, local admins"] --> R2["Runs per ring with verify<br/>and a revert timer"]
+    T3["<b>Tier 3</b><br/>Approve, then act<br/>unexplained items, deletions, domain"] --> R3["Labyrinth acts after approval;<br/>a few items a person runs"]
     classDef observe fill:#e3eefc,stroke:#2563eb,color:#0f2a5c
     classDef ok fill:#e3f6e8,stroke:#15803d,color:#0f3d20
     classDef human fill:#fff4d6,stroke:#b7791f,color:#4a3108
@@ -67,48 +70,69 @@ flowchart LR
     class T3 lockout
 ```
 
-*Figure: each risk tier, from read-only Tier 0 to manual-only Tier 3, and who or what carries out its actions. Colors rise with risk: blue is read-only, green safe, amber service-affecting and red manual-only.*
+*Figure: each risk tier, from read-only Tier 0 to Tier 3, which waits for a person's approval, and who or what carries out its actions. Colors rise with risk: blue is read-only, green safe, amber service-affecting and red approval-only.*
 
 ## 6. Sequence
 
 1. Load protected set and configuration.
 2. Safety gates (section 7).
 3. Tier 0 on all targets.
-4. Tier 1 on the canary ring, verify, then the remaining rings.
-5. Tier 2 on the canary ring with revert timers, verify, then the remaining rings.
-6. Print the summary and the Tier 3 checklist.
+4. **The first-minute bundle** (section 6.1) on the canary ring with a revert timer, verify, then the remaining rings.
+5. The rest of Tier 2 on the canary ring with revert timers, verify, then the remaining rings.
+6. Show the Tier 3 items for approval, carry out what is approved, and print the person-run checklist.
+7. Seal the baseline (design 04, section 6).
 
-**Rings.** Ring 0 holds one low-impact host per platform, for example one Linux host and one Windows workstation, because a change that works on one platform proves little about another. Ring 1 is the next group. Later rings follow, never more than a set share of hosts at once. A failed verify stops the run.
+**Rings.** Ring 0 holds one low-impact host per platform, for example one Linux host and one Windows workstation, because a change that works on one platform proves little about another. Ring 1 is the next group. Later rings follow, never more than a set share of hosts at once. A failed verify stops the run. The bundle takes seconds on the canary, so the rings delay the rest of the network very little.
 
 **Hosts with no canary.** A host that is the only one of its kind, such as the domain controller or the only mail server, has no canary that tested the change on the same software first. It goes in the last ring, and its Tier 2 changes rely on the revert timer and the before-and-after probes alone.
+
+### 6.1 The first-minute bundle
+
+An attacker who got in before the event can come back through a password, a key, an open session, a persistence item or an open port. Closing only some of these leaves the rest, so each host gets all of them, in this order, as one step:
+
+1. **Rotate** admin-class passwords (Tier 1; design 05, section 2).
+2. **Remove** unregistered SSH keys and **check** the SSH configuration for planted settings (Tiers 1 and 2; design 05, section 4).
+3. **End** intruder sessions (Tier 1; section 6.2).
+4. **Quarantine** high-confidence persistence (Tier 2; design 17).
+5. **Default-deny** the firewall (Tier 2).
+
+The order matters. Sessions are ended after passwords and keys change, so the attacker cannot simply log back in. Persistence is quarantined before the firewall closes, so a planted job has no chance to reopen a port afterwards. One revert timer covers the whole bundle on each host.
+
+### 6.2 Ending sessions
+
+Changing a password does not end the sessions already logged in with it. So, right after rotation, Labyrinth ends every remote session on the host (SSH, RDP and remote shells) **except**:
+
+- console sessions (`tty1` and other local terminals on Linux; the `console` session on Windows), which is how the virtualization platform's console reaches the host;
+- the operator's own session;
+- sessions from the admin source;
+- sessions of accounts in the protected set.
+
+This is not "terminating all connections" (NCCDC, 2025, Rule 5.6.5). It ends only interactive logins, after a credential change, and never touches service traffic or the excepted sessions. On Linux it uses `loginctl terminate-session`; on Windows, `logoff <session id>`. Each ended session is logged with its user, source and start time for the incident record (design 02).
 
 ```mermaid
 flowchart TD
     PS["Load protected set<br/>and configuration"] --> GATES{"All safety gates pass?<br/>(section 7)"}
     GATES -->|no| STOP(["Stop: nothing changed"])
     GATES -->|yes| T0["Tier 0 on all targets<br/>(read-only inventory and baseline)"]
-    subgraph tier1["Tier 1: safe and reversible"]
-        T1C["Tier 1 on ring 0<br/>(canary host)"] --> V1{"Verify passes?"}
-        V1 -->|no| RB1(["Roll back module, stop run"])
-        V1 -->|yes| T1R["Tier 1 on later rings,<br/>verify after each"]
+    subgraph fm["First-minute bundle, ring by ring (section 6.1)"]
+        ARM["Arm revert timer"] --> B1["Rotate admin passwords"] --> B2["Remove unregistered keys;<br/>check SSH configuration"] --> B3["End intruder sessions"] --> B4["Quarantine high-confidence<br/>persistence"] --> B5["Default-deny firewall"] --> V1{"Verify passes?"}
+        V1 -->|"no, or no one cancels"| REV(["Timer reverts; stop run"])
     end
-    subgraph tier2["Tier 2: service-affecting"]
-        ARM["Arm dead-man revert timer"] --> T2C["Tier 2 on ring 0"] --> V2{"Verify passes?"}
-        V2 -->|"no, or no one cancels"| REV(["Timer reverts the change, stop run"])
-        V2 -->|yes| CAN["Cancel timer"] --> T2R["Tier 2 on later rings:<br/>arm, apply, verify, cancel"]
+    subgraph tier2["Rest of Tier 2, ring by ring"]
+        T2C["Arm, apply, verify, cancel"]
     end
-    T0 --> T1C
-    T1R --> ARM
-    T2R --> OUT(["Print summary and<br/>Tier 3 checklist for humans"])
+    T0 --> ARM
+    V1 -->|"yes: cancel timer"| T2C
+    T2C --> T3["Tier 3: a person approves;<br/>Labyrinth acts"] --> SEAL(["Seal the baseline;<br/>print person-run checklist"])
     classDef human fill:#fff4d6,stroke:#b7791f,color:#4a3108
     classDef stop fill:#f6f6f6,stroke:#b42318,color:#4a1111,stroke-dasharray:4 3
-    class GATES,OUT human
-    class STOP,RB1,REV stop
-    style tier1 fill:#e3f6e8,stroke:#15803d,color:#0f3d20
+    class GATES,T3 human
+    class STOP,REV stop
+    style fm fill:#fde8e8,stroke:#c0392b,color:#4a1111
     style tier2 fill:#fff4d6,stroke:#b7791f,color:#4a3108
 ```
 
-*Figure: the panic button runs only after every safety gate passes, applies each tier to the canary host first and then ring by ring with a verify after each ring, and a Tier 2 change reverts itself unless verify succeeds and the timer is cancelled. The green box holds the safe Tier 1 steps, the amber box the service-affecting Tier 2 steps, and dashed red outlines mark where the run stops.*
+*Figure: once every safety gate passes, each ring gets the first-minute bundle under one revert timer, then the rest of Tier 2, then the Tier 3 items a person approves, and finally the baseline is sealed. The red box is the first-minute bundle, amber marks service-affecting work and a person's approval, and dashed red outlines mark where the run stops.*
 
 ## 7. Safety gates (all must pass)
 
@@ -152,8 +176,9 @@ Take probes before and after. A regression triggers automatic rollback of that m
 
 - Disable accounts wholesale.
 - Change shells.
-- End all connections.
-- Delete accounts or files.
+- End all connections, or end a console session, the operator's own session, an admin-source session or a protected account's session.
+- Delete a file. Persistence items are quarantined (design 17).
+- Delete an account without a person's approval, or before a checkpoint shows every scored service passing (design 05, section 6).
 - Stop services outside the candidate list.
 - Reboot.
 - Move a service into a container.
@@ -164,18 +189,22 @@ Take probes before and after. A regression triggers automatic rollback of that m
 
 - Protected accounts are unchanged before and after.
 - A mailbox user can still authenticate after the run.
-- An admin-class account that a service or scheduled task logs on with is not rotated automatically and appears on the Tier 3 checklist.
+- An admin-class account that a service or scheduled task logs on with is not rotated automatically and is listed for approval in Tier 3.
+
 - A run on a host with no break-glass confirmation refuses to change it.
 - An official source named in the event packet can still connect after default-deny.
 - Every scored-service probe passes after the run, on every ring.
 - The revert timer restores the firewall when verify is deliberately failed.
 - A run with an empty protected set refuses to start.
 - A second session stays usable throughout.
+- After the bundle, an intruder's SSH and RDP sessions are gone, while the console session, the operator's session and an admin-source session remain.
+- A planted reverse-shell cron job is quarantined in the bundle, and its connection does not return after the firewall closes.
+- A Tier 3 item a person approves is carried out by Labyrinth and recorded in the run manifest; an item not approved is left unchanged.
 
 ## References
 
 Midwest Collegiate Cyber Defense Competition. (2025). *2025 Midwest Collegiate Cyber Defense Competition qualifier team packet* [PDF]. https://brazil.minnesota.edu/ccdc/ccdc-2025/2025MWCCDCQTeamPack.pdf
 
-National Collegiate Cyber Defense Competition. (2025, December 10). *Rules and requirements*. Retrieved September 29, 2026, from https://www.nationalccdc.org/rules.html
+National Collegiate Cyber Defense Competition. (2025, December 10). *Rules and requirements*. Retrieved October 2, 2026, from https://www.nationalccdc.org/rules.html
 
 VyOS. (n.d.). *Command line interface* [VyOS 1.4.x (sagitta) documentation]. Retrieved September 29, 2026, from https://docs.vyos.io/en/1.4/cli.html

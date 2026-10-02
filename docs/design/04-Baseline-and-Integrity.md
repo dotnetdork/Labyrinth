@@ -65,10 +65,18 @@ flowchart TD
 - **Windows:** object access auditing on the critical set, process creation with command line, and Sysmon if it is available inside the environment. Only tools available to all teams and within the rules may be used (National Collegiate Cyber Defense Competition [NCCDC], 2025, Rule 5.1).
 - **All hosts:** every host forwards a small set of high-signal events first (designs 06 and 10, and the Strategic Plan).
 
-## 6. Continuous integrity
+## 6. Sealed baseline and continuous integrity
 
-- Scheduled comparison against the baseline; results go to the `integrity` log category.
-- Findings are ranked: changes to authentication, SSH, sudoers and scheduled execution rank highest.
+The first baseline is taken before the lockout, so it records the host as it was found, which may already include an attacker's changes. Comparing against it later would hide those changes and flag every one of ours. So, once the lockout and the persistence sweep (design 17) are finished and verified, the team **seals** the baseline:
+
+- `labyrinth baseline --seal` takes a new baseline of the cleaned host, after package verification as in section 3, and marks it as the reference. Its hash goes into the team's offline record and a copy goes off the host, as in section 3.
+- `labyrinth baseline --reseal "<reason>"` replaces the seal after a deliberate change, such as a patch (design 15) or an approved service-pack setting (design 18). The reason is required.
+- Every seal and reseal is logged with its time, the operator and the reason, so a reseal that hides an attacker's change can be traced.
+
+Then:
+
+- Scheduled comparison, and every checkpoint (design 13), compares against the **latest seal**; results go to the `integrity` log category.
+- Findings are ranked: changes to authentication, SSH, sudoers, accounts and scheduled execution rank highest, and any new persistence item after the seal is high-ranked (design 17, section 7).
 - A change made by Labyrinth itself is recorded in the run manifest and excluded from alerts.
 
 ## 7. Rules check
@@ -81,9 +89,12 @@ Read-only observation does not affect scored services and needs no special permi
 - A binary replaced with a trojan is caught by the package verification step, not baselined.
 - A change made by a Labyrinth module does not raise an alert.
 - Editing the baseline file on the host is detected by the check against the control node's copy.
+- After `--seal`, a cron job planted in the lab is reported at the next checkpoint, while the changes the lockout made are not.
+- `--reseal` without a reason is refused, and each seal is logged.
+
 - Baseline comparison completes within the target time on the lab host.
 - Auditing on the critical set does not measurably slow a scored service probe.
 
 ## References
 
-National Collegiate Cyber Defense Competition. (2025, December 10). *Rules and requirements*. Retrieved September 29, 2026, from https://www.nationalccdc.org/rules.html
+National Collegiate Cyber Defense Competition. (2025, December 10). *Rules and requirements*. Retrieved October 2, 2026, from https://www.nationalccdc.org/rules.html
