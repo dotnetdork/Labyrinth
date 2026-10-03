@@ -50,7 +50,8 @@ Describe 'labyrinth.ps1 host checks' {
         foreach ($words in $commands) {
             $r = Invoke-TestLabRun $t $words
             $r.Code | Should -Be 20
-            $r.Output | Should -Match 'is an appliance.*never changes it \(design 16\)'
+            $r.Output | Should -Match 'is an appliance.*never changes it'
+            $r.Output | Should -Match 'Configure it by hand, from its runbook'
         }
         $t.Root | Should -Not -Exist
     }
