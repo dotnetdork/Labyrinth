@@ -93,7 +93,7 @@ labyrinth <command> [<phase> | <run>] [options]
 | `apply <phase>` | Plan, then apply behind the gates below |
 | `keep [<run>]` | Keep a run's changes: cancel its revert timer, then record the keep. Without `<run>`, it takes the one run whose timer is armed; if several are armed, it lists them and keeps nothing (`40`) |
 | `rollback <run>` | Undo what a run applied, newest module first. The revert timer runs exactly this. `<run>` is always needed: without it, the runs are listed (`40`) |
-| `runs` | List this host's runs, oldest first: ID, phase, start time (UTC) and state, which is `armed` (with the time it rolls back), `kept`, `rolled back`, or `not kept, no timer`. Changes nothing; needs root or Administrator (`20`) |
+| `runs` | List this host's runs, oldest first: ID, phase, start time (UTC) and state, which is `armed` (with the time it rolls back), `kept`, `rolled back`, `rolled back with errors`, or `not kept, no timer`. Changes nothing; needs root or Administrator (`20`) |
 | `probe` | Probe every scored service once; exit `30` if one fails. Changes nothing |
 | `help [<command>]` | Help for every command, or for one; also `-h` and `--help` (`-Help`) |
 | `version` | Print the version; also `-V` and `--version` (`-Version`) |

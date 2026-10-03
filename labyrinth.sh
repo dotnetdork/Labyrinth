@@ -38,6 +38,7 @@ APPROVED=''                # items approved for the module being applied
 PHASE_COUNT=0              # modules of the phase in the profile
 DATA_ROOT=''               # the data root (--root)
 OPT_PROFILE='' OPT_BREAKGLASS='' OPT_CONFIRM=''
+RUN_REF=''                 # the run keep or rollback acts on
 SELF="${0##*/}"            # how the operator started this program, for hints
 readonly COMMANDS='plan apply keep rollback runs probe help version'
 
@@ -824,21 +825,148 @@ keep_run() {
   printf 'kept: the revert timer for run %s is cancelled\n' "$LAB_RUN_ID"
 }
 
+# list_runs: this host's run IDs, oldest first; only runs with a manifest,
+# because a plan writes nothing.
+list_runs() {
+  local d id
+  for d in "$LAB_STATE_DIR"/runs/*/; do
+    id="${d%/}"; id="${id##*/}"
+    if [[ "$id" =~ $RE_RUN_ID && -f "$d/manifest.jsonl" ]]; then printf '%s\n' "$id"; fi
+  done
+}
+
+# run_state RUN: the run's state, the first that applies: rolled back,
+# kept, armed (with when the timer fires), or not kept, no timer.
+run_state() {
+  local f due now line note
+  f="$(lab_manifest_file "$1")"
+  line="$(grep '"action":"run_rolled_back"' "$f" 2> /dev/null | tail -n 1)" || true
+  if [[ -n "$line" ]]; then
+    note="$(lab_json_get "$line" note)" || note=''
+    if [[ "$note" == 'exit 0' ]]; then printf 'rolled back\n'; else printf 'rolled back with errors\n'; fi
+    return 0
+  fi
+  if grep -q '"action":"run_kept"' "$f" 2> /dev/null; then printf 'kept\n'; return 0; fi
+  if lab_timer_armed "$1"; then
+    if ! due="$(lab_timer_due "$1")"; then printf 'armed: rollback time unknown\n'; return 0; fi
+    now="$(lab_now)"
+    # The times are UTC in one fixed format, so they compare as strings.
+    if [[ "$due" > "$now" ]]; then
+      printf 'armed: rolls back at %s UTC\n' "${due:11:5}"
+    else
+      printf 'armed: was due %s UTC\n' "${due:11:5}"
+    fi
+    return 0
+  fi
+  printf 'not kept, no timer\n'
+}
+
+# run_phase RUN: the phase the run applied, from its run_start entry.
+run_phase() {
+  local line note
+  line="$(grep -m 1 '"action":"run_start"' "$(lab_manifest_file "$1")" 2> /dev/null)" || true
+  note="$(lab_json_get "$line" note 2> /dev/null)" || note=''
+  note="${note#phase }"; note="${note%%,*}"
+  printf '%s\n' "${note:--}"
+}
+
+# print_runs RUN...: the runs table, at most 78 columns.
+print_runs() {
+  local id
+  printf '%-21s %-7s %-16s %s\n' RUN PHASE 'START (UTC)' STATE
+  for id in "$@"; do
+    printf '%-21s %-7s %-16s %s\n' "$id" "$(run_phase "$id")" \
+      "${id:0:4}-${id:4:2}-${id:6:2} ${id:9:2}:${id:11:2}" "$(run_state "$id")"
+  done
+}
+
+cmd_runs() {
+  local -a runs=()
+  local list
+  lab_is_admin || die 'runs needs root' 20
+  list="$(list_runs)" || die "the runs in $LAB_STATE_DIR/runs cannot be read"
+  if [[ -n "$list" ]]; then mapfile -t runs <<< "$list"; fi
+  if (( ${#runs[@]} == 0 )); then
+    printf 'no runs on this host (%s/runs)\n' "$LAB_STATE_DIR"
+    exit 0
+  fi
+  print_runs "${runs[@]}"
+  # The example names the newest armed run, the one most likely to be kept.
+  local example="${runs[${#runs[@]}-1]}" armed
+  armed="$(armed_runs)" || armed=''
+  if [[ -n "$armed" ]]; then example="${armed##*$'\n'}"; fi
+  printf "\nName a run by its last 4 characters, like '%s keep %s'.\n" "$SELF" "${example: -4}"
+  exit 0
+}
+
+# resolve_run COMMAND REF: the full run ID REF names, in RUN_REF. REF is a
+# full ID, or its last 4 characters if they match exactly one run.
+resolve_run() {
+  local cmd="$1" ref="${2,,}" id list
+  local -a hits=()
+  if [[ "$2" =~ $RE_RUN_ID ]]; then RUN_REF="$2"; return 0; fi
+  list="$(list_runs)" || die "the runs in $LAB_STATE_DIR/runs cannot be read"
+  for id in $list; do
+    if [[ "${id: -4}" == "$ref" ]]; then hits+=("$id"); fi
+  done
+  case "${#hits[@]}" in
+    0) usage_error "no run ending in '$2' on this host; '$SELF runs' lists them" "$cmd" ;;
+    1) RUN_REF="${hits[0]}"
+       printf 'using run %s\n' "$RUN_REF" ;;
+    *) usage_error "'$2' ends more than one run (${hits[*]}); give the full ID" "$cmd" ;;
+  esac
+}
+
+# armed_runs: the runs whose revert timer is armed and not yet kept or
+# rolled back.
+armed_runs() {
+  local id
+  for id in $(list_runs); do
+    if [[ "$(run_state "$id")" == armed* ]]; then printf '%s\n' "$id"; fi
+  done
+}
+
 cmd_keep() {
-  export LAB_RUN_ID="$1" LAB_DRY_RUN=0
+  local rc=0 list
+  local -a armed=()
+  export LAB_DRY_RUN=0
   lab_is_admin || die 'keep needs root' 20
+  if [[ -z "$1" ]]; then
+    # Without a run, keep the one run whose timer is armed (section 3.1).
+    list="$(armed_runs)" || die "the runs in $LAB_STATE_DIR/runs cannot be read"
+    if [[ -n "$list" ]]; then mapfile -t armed <<< "$list"; fi
+    case "${#armed[@]}" in
+      0) usage_error "no run on this host has an armed revert timer, so there is nothing to keep" keep ;;
+      1) RUN_REF="${armed[0]}"
+         printf 'using run %s\n' "$RUN_REF" ;;
+      *) print_runs "${armed[@]}" >&2
+         usage_error "more than one run has an armed revert timer; name one, like '$SELF keep ${armed[0]: -4}'" keep ;;
+    esac
+  else
+    resolve_run keep "$1"
+  fi
+  export LAB_RUN_ID="$RUN_REF"
   [[ -f "$(lab_manifest_file)" ]] || die "no run $LAB_RUN_ID on this host"
-  local rc=0
   keep_run || rc=$?
   exit "$rc"
 }
 
 cmd_rollback() {
-  local id rc=0 i
-  local -a mods=()
-  export LAB_RUN_ID="$1" LAB_DRY_RUN=0
+  local id rc=0 i list
+  local -a mods=() runs=()
+  export LAB_DRY_RUN=0
   umask 077
+  if [[ -z "$1" ]]; then
+    # Rollback always needs a run (decision D3): list them, change nothing.
+    if lab_is_admin; then
+      list="$(list_runs)" || true
+      if [[ -n "$list" ]]; then mapfile -t runs <<< "$list"; print_runs "${runs[@]}" >&2; fi
+    fi
+    usage_error "rollback needs a run ID, or its last 4 characters; '$SELF runs' lists them" rollback
+  fi
   lab_is_admin || die 'rollback needs root' 20
+  resolve_run rollback "$1"
+  export LAB_RUN_ID="$RUN_REF"
   [[ -f "$(lab_manifest_file)" ]] || die "no run $LAB_RUN_ID on this host"
   # The revert timer must work even if a hung run still holds the lock.
   if lab_lock_acquire 120; then
@@ -846,7 +974,9 @@ cmd_rollback() {
   else
     printf 'warning: rolling back without the run lock\n' >&2
   fi
-  mapfile -t mods < <(lab_manifest_applied "$LAB_RUN_ID")
+  # Captured, not read from a process substitution, so a failure is seen.
+  list="$(lab_manifest_applied "$LAB_RUN_ID")" || die "the manifest of run $LAB_RUN_ID cannot be read; nothing was rolled back"
+  if [[ -n "$list" ]]; then mapfile -t mods <<< "$list"; fi
   printf 'labyrinth %s - rolling back run %s\n' "$LAB_VERSION" "$LAB_RUN_ID"
   for ((i = ${#mods[@]} - 1; i >= 0; i--)); do
     id="${mods[i]}"
@@ -945,10 +1075,12 @@ main() {
       (( $# == 1 )) || usage_error "unexpected word '$2' after '$cmd $phase'" "$cmd"
       if [[ "$cmd" == plan ]]; then check_used plan profile; else check_used apply profile break-glass confirm-group; fi ;;
     keep | rollback)
-      (( $# > 0 )) || usage_error "$cmd needs a run ID" "$cmd"
-      (( $# == 1 )) || usage_error "unexpected word '$2' after '$cmd $1'" "$cmd"
-      [[ "$1" =~ $RE_RUN_ID ]] || usage_error "not a run ID: '$1'" "$cmd"
-      word="$1"
+      # Without a run, keep and rollback decide what to do (section 3.1).
+      (( $# <= 1 )) || usage_error "unexpected word '$2' after '$cmd $1'" "$cmd"
+      word="${1:-}"
+      if [[ -n "$word" && ! "$word" =~ $RE_RUN_ID && ! "$word" =~ ^[0-9a-fA-F]{4}$ ]]; then
+        usage_error "not a run ID: '$word' (give the ID or its last 4 characters)" "$cmd"
+      fi
       check_used "$cmd" ;;
     runs | probe)
       (( $# == 0 )) || usage_error "unexpected word '$1' after '$cmd'" "$cmd"
@@ -977,7 +1109,7 @@ main() {
     apply) cmd_apply "$phase" ;;
     keep | rollback) "cmd_$cmd" "$word" ;;
     probe) cmd_probe ;;
-    runs) usage_error 'runs is not built yet' runs ;;
+    runs) cmd_runs ;;
   esac
 }
 

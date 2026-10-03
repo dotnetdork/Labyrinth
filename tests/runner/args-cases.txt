@@ -33,7 +33,7 @@
 40|err|unexpected word 'extra'|version extra
 40|err|no help for 'bogus'|help bogus
 40|err|not a run ID|keep ../x
-40|err|needs a run ID|rollback
+40|err|needs a run ID|rollback --root @ROOT@ --config @ETC@
 40|err|full path|--root relative observe
 40|err|full path|--config etc observe
 40|err|invalid profile name|--profile A;B observe
