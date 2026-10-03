@@ -74,5 +74,11 @@ streams() {
   touch "$LAB/NOT_ADMIN"
   streams rollback --root "$ROOT" --config "$ETC"
   [ "$CODE" -eq 40 ]
-  [[ "$ERR" == *"as root, 'labyrinth.sh runs' lists them"* ]]
+  [[ "$ERR" == *"As root, 'labyrinth.sh runs' lists them."* ]]
+}
+
+@test "/? is pointed to help" {
+  streams '/?'
+  [ "$CODE" -eq 40 ]
+  [[ "$ERR" == *"unknown command '/?' (did you mean 'help'?)"* ]]
 }

@@ -79,7 +79,7 @@ function Register-LabRevertTimer {
         $r = Invoke-TestApply $t @('labadmin', 'ring1', 'keep')
         Clear-TestReadOnly $t (Get-TestRunId $r.Output)
         $r.Code | Should -Be 40
-        $r.Output | Should -Match 'the run manifest cannot be written, so it is not applied'
+        $r.Output | Should -Match 'not applied: the run manifest cannot be written'
         $r.Output | Should -Not -Match 'internal error'
         $toggle | Should -Not -Exist
     }
@@ -119,7 +119,7 @@ function Register-LabRevertTimer {
         Add-TestStandIn $t 'function Unregister-LabRevertTimer { throw ''refused'' }'
         $k = Invoke-TestRunCommand $t 'keep' $id
         $k.Code | Should -Be 40
-        $k.Output | Should -Match 'will still roll it back at \d\d:\d\d UTC'
+        $k.Output | Should -Match 'still rolls it back at \d\d:\d\d UTC'
         $k.Output | Should -Match ([regex]::Escape("Retry: labyrinth.ps1 keep $($id.Substring($id.Length - 4))"))
     }
 
@@ -129,7 +129,8 @@ function Register-LabRevertTimer {
         $k = Invoke-TestRunCommand $t 'keep' $id
         Clear-TestReadOnly $t $id
         $k.Code | Should -Be 40
-        $k.Output | Should -Match 'is cancelled, so the changes stay, but the keep could not be recorded'
+        $k.Output | Should -Match 'could not be recorded'
+        $k.Output | Should -Match 'Its revert timer is cancelled, so the changes stay\.'
         $k.Output | Should -Not -Match 'kept: the revert timer'
         $k.Output | Should -Not -Match 'internal error'
     }
@@ -140,7 +141,7 @@ function Register-LabRevertTimer {
         $r = Invoke-TestRunCommand $t 'rollback' $id
         Clear-TestReadOnly $t $id
         $r.Code | Should -Be 40
-        $r.Output | Should -Match 'is rolled back, but the manifest cannot be written to record it'
+        $r.Output | Should -Match 'rolled back, but the manifest cannot be written to record it'
         $toggle | Should -Not -Exist
     }
 }

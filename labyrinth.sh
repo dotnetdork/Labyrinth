@@ -72,6 +72,8 @@ readonly -a OPT_KEYS=('profile profilename' root config breakglass 'confirmgroup
 readonly -a OPT_VALUE=(1 1 1 1 1 0 0 0)
 declare -A GIVEN=()        # canonical option name -> value given
 declare -a WORDS=()        # the words that are not options, in order
+PARSE_ERR=""                # the first option error, reported by main
+ERROR_COUNT=0              # ERROR lines in the Summary, for the Next line
 BEFORE=''                  # probe results before the first change
 HAVE_SERVICES=0            # 1 when the scored-service list loaded
 
@@ -255,20 +257,23 @@ run_recovery() {
     if lab_timer_armed "$LAB_RUN_ID"; then
       run_stopped
     else
-      printf "The run stopped. Its manifest lists what it did; '%s rollback %s' undoes it.\n" "$SELF" "${LAB_RUN_ID: -4}"
+      printf 'The run stopped. Its manifest lists what it did.\n'
+      printf 'To undo it: %s rollback %s\n' "$SELF" "${LAB_RUN_ID: -4}"
     fi
     return 0
   fi
   case "$CMD" in
     rollback)
       if [[ -n "$ref" ]]; then
-        printf "The rollback did not finish. Run '%s rollback %s' again; it is safe to repeat.\n" "$SELF" "${ref: -4}"
+        printf 'The rollback did not finish, and it is safe to repeat.\n'
+        printf 'Retry: %s rollback %s\n' "$SELF" "${ref: -4}"
       else
         printf 'Nothing was rolled back.\n'
       fi ;;
     keep)
       if [[ -n "$ref" ]]; then
-        printf "The run may not be kept. Check with '%s runs', then run '%s keep %s' again.\n" "$SELF" "$SELF" "${ref: -4}"
+        printf "The run may not be kept; '%s runs' shows its state.\n" "$SELF"
+        printf 'Retry: %s keep %s\n' "$SELF" "${ref: -4}"
       else
         printf 'Nothing was kept.\n'
       fi ;;
@@ -287,13 +292,18 @@ run_stopped() {
   printf 'To undo them now: %s rollback %s\n' "$SELF" "${LAB_RUN_ID: -4}"
 }
 
-# usage_error MESSAGE [COMMAND]: a usage error: one line, a pointer to
-# help, exit 40 (docs/Conventions.md section 3.1).
+# usage_error MESSAGE [COMMAND] [FIX]: a usage error: one line, the fix if
+# there is one, a pointer to help, exit 40 (docs/Conventions.md section 3.1).
 usage_error() {
   printf 'labyrinth: %s\n' "$1" >&2
+  if [[ -n "${3:-}" ]]; then printf '%s\n' "$3" >&2; fi
   printf "Try '%s help%s' for more information.\n" "$SELF" "${2:+ $2}" >&2
   exit 40
 }
+
+# parse_fail MESSAGE: note the first option error; main reports it once
+# the command is known, so the pointer to help names that command.
+parse_fail() { if [[ -z "$PARSE_ERR" ]]; then PARSE_ERR="$1"; fi; }
 
 # warn MESSAGE: a warning on stderr.
 warn() { printf 'labyrinth: warning: %s\n' "$1" >&2; }
@@ -301,6 +311,9 @@ warn() { printf 'labyrinth: warning: %s\n' "$1" >&2; }
 # say WORD TEXT: a result line, the status word padded to 9 characters
 # (docs/Conventions.md section 3.2).
 say() { printf '%-9s%s\n' "$1" "$2"; }
+
+# note TEXT: a second line for a status line, indented like module output.
+note() { printf '           %s\n' "$1"; }
 
 # indent: copy standard input, each line indented 11 spaces.
 indent() {
@@ -329,6 +342,7 @@ summary() {
     if (( ${count[$w]} > 0 )); then out+="${out:+, }${count[$w]} $w"; fi
   done
   if (( notrun > 0 )); then out+="${out:+, }$notrun not run"; fi
+  ERROR_COUNT="${count[ERROR]}"
   printf 'Summary: %s\n' "${out:-no modules}"
 }
 
@@ -343,9 +357,13 @@ next_step() {
   if [[ "$mode" == apply ]] && (( STOPPED )); then
     printf 'Next: keep the earlier changes or undo them, with the commands above.\n'
   elif [[ "$mode" == apply ]] && lab_timer_armed "$LAB_RUN_ID"; then
-    printf "Next: from a NEW session, check you can log in, then '%s keep %s'.\n" "$SELF" "${LAB_RUN_ID: -4}"
+    printf "Next: check you can log in from a NEW session, then '%s keep %s'.\n" "$SELF" "${LAB_RUN_ID: -4}"
   elif (( code == 40 )); then
-    printf 'Next: fix the error above, then run the same command again.\n'
+    if (( ERROR_COUNT > 1 )); then
+      printf 'Next: fix the errors above, then run the same command again.\n'
+    else
+      printf 'Next: fix the error above, then run the same command again.\n'
+    fi
   elif (( code == 20 )); then
     printf 'Next: clear what blocked it above, then run the same command again.\n'
   elif (( code == 10 )); then
@@ -359,7 +377,12 @@ next_step() {
       if [[ -n "${GIVEN[profile]:-}" ]]; then opts+=" --profile ${GIVEN[profile]}"; fi
       if [[ -n "${GIVEN[root]:-}" ]]; then opts+=" --root $(shell_word "${GIVEN[root]}")"; fi
       if [[ -n "${GIVEN[config]:-}" ]]; then opts+=" --config $(shell_word "${GIVEN[config]}")"; fi
-      printf 'Next: %s apply %s%s\n' "$SELF" "$phase" "$opts"
+      # A command too long for one line goes on a line of its own.
+      if (( ${#SELF} + ${#phase} + ${#opts} + 13 > 78 )); then
+        printf 'Next:\n  %s apply %s%s\n' "$SELF" "$phase" "$opts"
+      else
+        printf 'Next: %s apply %s%s\n' "$SELF" "$phase" "$opts"
+      fi
     fi
   fi
 }
@@ -446,7 +469,7 @@ parse_args() {
       --) ended=1; continue ;;
       -h | '-?') w='--help' ;;
       -V) w='--version' ;;
-      -v) usage_error "unknown option '-v' (did you mean '-V', the version?)" ;;
+      -v) parse_fail "unknown option '-v' (did you mean '-V', the version?)"; continue ;;
     esac
     key="${w#-}"; key="${key#-}"
     val='' sep=''
@@ -461,23 +484,24 @@ parse_args() {
       for name in "${OPT_KEYS[@]}"; do read -ra parts <<< "$name"; keys+=("${parts[0]}"); done
       hint="$(suggest "$key" "${keys[@]}")"
       if [[ -n "$hint" ]] && opt_lookup "$hint"; then
-        usage_error "unknown option '${w%%[=:]*}' (did you mean '--${OPT_NAMES[OPT_ROW]}'?)"
+        parse_fail "unknown option '${w%%[=:]*}' (did you mean '--${OPT_NAMES[OPT_ROW]}'?)"
       fi
-      usage_error "unknown option '${w%%[=:]*}'"
+      parse_fail "unknown option '${w%%[=:]*}'"
+      continue
     fi
     name="${OPT_NAMES[OPT_ROW]}"
     if (( OPT_VALUE[OPT_ROW] )); then
       # '--name value', or PowerShell's '-Name:' with the value as the next word.
       if [[ -z "$sep" || ( "$sep" == : && -z "$val" ) ]]; then
-        (( $# > 0 )) || usage_error "--$name needs a value"
-        [[ "$1" != -?* ]] || usage_error "--$name needs a value, but got '$1'"
+        if (( $# == 0 )); then parse_fail "--$name needs a value"; continue; fi
+        if [[ "$1" == -?* ]]; then parse_fail "--$name needs a value, but got '$1'"; continue; fi
         val="$1"; shift
       fi
-      [[ -n "$val" ]] || usage_error "--$name needs a value"
+      if [[ -z "$val" ]]; then parse_fail "--$name needs a value"; continue; fi
     elif [[ -n "$sep" ]]; then
-      usage_error "--$name takes no value"
+      parse_fail "--$name takes no value"; continue
     fi
-    [[ -z "${GIVEN[$name]+set}" ]] || usage_error "--$name is given twice"
+    if [[ -n "${GIVEN[$name]+set}" ]]; then parse_fail "--$name is given twice"; continue; fi
     GIVEN[$name]="$val"
   done
 }
@@ -723,7 +747,7 @@ plan_all() {
     if (( rc > worst )); then worst=$rc; fi
   done
   if (( PHASE_COUNT == 0 )); then
-    say WARN "no $1 modules in profile $OPT_PROFILE"
+    say WARN "[$1] no modules for this phase in profile $OPT_PROFILE"
   fi
   return "$worst"
 }
@@ -738,8 +762,8 @@ gate_protected() {
     0) ;;
     2) why="$file lists no accounts"
        if [[ ! -f "$file" ]]; then why="there is no $file"; fi
-       die "the protected set is not loaded, so Labyrinth refuses to run: $why" 20 \
-         'List the accounts Labyrinth must never change in that file, one "account class" per line.' ;;
+       die "the protected set is not loaded, so nothing runs: $why" 20 \
+         'List, one "account class" per line, the accounts Labyrinth must never change.' ;;
     *) die "the protected set is malformed: $(load_reason lab_protected_load)" 40 \
          "$FIX_LINE" ;;
   esac
@@ -811,14 +835,16 @@ rollback_module() {
   if (( rc == 0 )); then
     # Checked by hand: this function is called with ||, so errexit is off.
     if ! record_for "$id" rolled_back; then
-      say ERROR "[$id] rolled back, but the manifest cannot be written, so it still lists the change; rolling back again is safe"
+      say ERROR "[$id] rolled back, but the manifest cannot be written"
+      note 'It still lists the change; rolling back again is safe.'
       return 40
     fi
     say OK "[$id] rolled back"
     LAB_MODULE_ID="$id" lab_log_warn rolled_back "rolled back"
     return 0
   fi
-  say ERROR "[$id] rollback FAILED (exit $rc): restore this module by hand from $LAB_BACKUP_DIR/$LAB_RUN_ID/$id"
+  say ERROR "[$id] rollback FAILED (exit $rc)"
+  note "Restore its files by hand from $LAB_BACKUP_DIR/$LAB_RUN_ID/$id"
   LAB_MODULE_ID="$id" lab_log_error rollback_failed "rollback failed with exit $rc"
   return 40
 }
@@ -843,7 +869,8 @@ apply_one() {
   id="${RUN_IDS[i]}"; dir="${RUN_DIR[i]}"; risk="${RUN_RISK[i]}"
   APPROVED=''
   if [[ "$risk" == manual-only ]]; then
-    say WARN "[$id] manual-only: a person carries out the checklist above; nothing changed"
+    say WARN "[$id] manual-only; nothing changed"
+    note 'A person carries out the checklist above.'
     RUN_STATE[i]=manual; return 0
   fi
   if [[ "${RUN_SCORED[i]}" == true ]]; then
@@ -856,11 +883,13 @@ apply_one() {
       RUN_STATE[i]=error; return 40
     fi
     if (( rc == 2 )); then
-      say BLOCKED "[$id] blocked: it touches scored services and the scoring allowlist is missing or empty"
+      say BLOCKED "[$id] blocked: it touches scored services"
+      note 'The scoring allowlist is missing or empty.'
       RUN_STATE[i]=blocked; return 20
     fi
     if (( ! HAVE_SERVICES )); then
-      say BLOCKED "[$id] blocked: it touches scored services and there is no service list to probe"
+      say BLOCKED "[$id] blocked: it touches scored services"
+      note 'There is no service list to probe.'
       RUN_STATE[i]=blocked; return 20
     fi
   fi
@@ -891,7 +920,7 @@ apply_one() {
   # Checked by hand: errexit is off inside a function called with ||, and a
   # change the manifest does not list could never be rolled back.
   if ! record_for "$id" apply_start '' "risk $risk"; then
-    say ERROR "[$id] error: the run manifest cannot be written, so it is not applied"
+    say ERROR "[$id] not applied: the run manifest cannot be written"
     RUN_STATE[i]=error; return 40
   fi
   LAB_MODULE_ID="$id" lab_log_info apply_start "applying"
@@ -948,7 +977,7 @@ apply_one() {
 # command still works after the configuration changes.
 check_host() {
   local rc=0 host
-  local fix='Give the folder that holds the hosts file, or leave out --config to use the one under --root.'
+  local fix='Give the folder with the hosts file, or leave out --config to use <root>/etc.'
   if [[ -n "${GIVEN[config]:-}" && -e "${GIVEN[config]}" && ! -d "${GIVEN[config]}" ]]; then
     die "the --config path is a file, not a folder: ${GIVEN[config]}" 40 "$fix"
   fi
@@ -960,10 +989,10 @@ check_host() {
   (( rc == 0 )) || return 0           # not listed: plan may still run
   case "$LAB_HOST_PLATFORM" in
     ubuntu | rhel-family) ;;
-    appliance) die "this host ($host) is an appliance in $LAB_CONFIG_DIR/hosts: Labyrinth never changes it" 20 \
-                 'Configure it by hand, from its runbook.' ;;
-    *) die "this host ($host) is listed as $LAB_HOST_PLATFORM in $LAB_CONFIG_DIR/hosts, not a platform this runner serves" 20 \
-         "Run the Labyrinth runner for $LAB_HOST_PLATFORM there, or correct this host's line in the hosts file." ;;
+    appliance) die "this host ($host) is an appliance: Labyrinth never changes it" 20 \
+                 "Configure it by hand, from its runbook, or correct its line in $LAB_CONFIG_DIR/hosts" ;;
+    *) die "this runner does not serve this host's platform, $LAB_HOST_PLATFORM" 20 \
+         "Use the runner for $LAB_HOST_PLATFORM, or correct this host's line in $LAB_CONFIG_DIR/hosts" ;;
   esac
 }
 
@@ -1014,9 +1043,11 @@ cmd_apply() {
   host="$(lab_host)"
   lab_is_admin || die 'apply needs root' 20 "$FIX_ADMIN"
   rc=0; host_lookup "$host" || rc=$?
-  (( rc == 0 )) || die "this host ($host) is not in $LAB_CONFIG_DIR/hosts, so its ring group is unknown" 20
+  (( rc == 0 )) || die "this host is not in the hosts file, so its ring group is unknown" 20 \
+    "Add the line '$host <group> <profile> <platform>' to $LAB_CONFIG_DIR/hosts"
   group="$LAB_HOST_GROUP"
-  [[ "$group" != manual ]] || die "this host ($host) is in the manual group: Labyrinth never changes it" 20
+  [[ "$group" != manual ]] || die "this host is in the manual group: Labyrinth never changes it" 20 \
+    'Configure it by hand, from its runbook.'
   if [[ -n "$OPT_PROFILE" && "$OPT_PROFILE" != "$LAB_HOST_PROFILE" ]]; then
     die "the hosts file gives this host profile $LAB_HOST_PROFILE, not $OPT_PROFILE"
   fi
@@ -1080,7 +1111,8 @@ cmd_apply() {
   if (( stopped )); then
     run_stopped
   elif lab_timer_armed "$LAB_RUN_ID"; then
-    printf 'All changes are applied and verified. From a NEW session, check that you can still log in.\n'
+    printf 'All changes are applied and verified.\n'
+    printf 'From a NEW session, check that you can still log in.\n'
     if due="$(lab_timer_due "$LAB_RUN_ID" 2> /dev/null)"; then
       printf 'The revert timer rolls this run back at %s UTC.\n' "${due:11:5}"
     fi
@@ -1113,13 +1145,15 @@ keep_run() {
     lab_lock_release
     local when='' due
     if due="$(lab_timer_due "$LAB_RUN_ID" 2> /dev/null)"; then when=" at ${due:11:5} UTC"; fi
-    printf 'labyrinth: the revert timer for run %s could not be cancelled, so the run is not kept and the timer will still roll it back%s\n' "$LAB_RUN_ID" "$when" >&2
+    printf 'labyrinth: the revert timer for run %s could not be cancelled\n' "$LAB_RUN_ID" >&2
+    printf 'The run is not kept, and the timer still rolls it back%s.\n' "$when" >&2
     printf 'Retry: %s keep %s\n' "$SELF" "${LAB_RUN_ID: -4}" >&2
     return 40
   fi
   if ! record_for '' run_kept; then
     lab_lock_release
-    printf 'labyrinth: the revert timer for run %s is cancelled, so the changes stay, but the keep could not be recorded\n' "$LAB_RUN_ID" >&2
+    printf 'labyrinth: the keep of run %s could not be recorded\n' "$LAB_RUN_ID" >&2
+    printf 'Its revert timer is cancelled, so the changes stay.\n' >&2
     return 40
   fi
   lab_log_info run_kept "changes kept; revert timer cancelled"
@@ -1190,7 +1224,8 @@ cmd_runs() {
   flush_warnings
   if [[ -n "$list" ]]; then mapfile -t runs <<< "$list"; fi
   if (( ${#runs[@]} == 0 )); then
-    printf 'no runs on this host (%s/runs)\n' "$LAB_STATE_DIR"
+    printf 'no runs on this host\n'
+    printf 'Runs are recorded in %s/runs\n' "$LAB_STATE_DIR"
     exit 0
   fi
   print_runs "${runs[@]}"
@@ -1209,7 +1244,7 @@ resolve_run() {
   local -a hits=()
   if [[ "$2" =~ $RE_RUN_ID ]]; then
     [[ -f "$LAB_STATE_DIR/runs/$2/manifest.jsonl" ]] \
-      || usage_error "no run $2 on this host; '$SELF runs' lists them" "$cmd"
+      || usage_error "no run $2 on this host" "$cmd" "'$SELF runs' lists them."
     RUN_REF="$2"; return 0
   fi
   list="$(list_runs)" || die "the runs in $LAB_STATE_DIR/runs cannot be read"
@@ -1217,10 +1252,10 @@ resolve_run() {
     if [[ "${id: -4}" == "$ref" ]]; then hits+=("$id"); fi
   done
   case "${#hits[@]}" in
-    0) usage_error "no run ending in '$2' on this host; '$SELF runs' lists them" "$cmd" ;;
+    0) usage_error "no run ending in '$2' on this host" "$cmd" "'$SELF runs' lists them." ;;
     1) RUN_REF="${hits[0]}"
        printf 'using run %s\n' "$RUN_REF" ;;
-    *) usage_error "'$2' ends more than one run (${hits[*]}); give the full ID" "$cmd" ;;
+    *) usage_error "'$2' ends more than one run; give the full ID" "$cmd" "'$SELF runs' lists them." ;;
   esac
 }
 
@@ -1243,11 +1278,11 @@ cmd_keep() {
     list="$(armed_runs)" || die "the runs in $LAB_STATE_DIR/runs cannot be read"
     if [[ -n "$list" ]]; then mapfile -t armed <<< "$list"; fi
     case "${#armed[@]}" in
-      0) usage_error "no run on this host has an armed revert timer, so there is nothing to keep" keep ;;
+      0) usage_error 'no run on this host has an armed revert timer' keep 'There is nothing to keep.' ;;
       1) RUN_REF="${armed[0]}"
          printf 'using run %s\n' "$RUN_REF" ;;
       *) print_runs "${armed[@]}" >&2
-         usage_error "more than one run has an armed revert timer; name one, like '$SELF keep ${armed[0]: -4}'" keep ;;
+         usage_error 'more than one run has an armed revert timer' keep "Name one, like '$SELF keep ${armed[0]: -4}'." ;;
     esac
   else
     resolve_run keep "$1"
@@ -1267,11 +1302,14 @@ cmd_rollback() {
   if [[ -z "$1" ]]; then
     # Rollback always needs a run (decision D3): list them, change nothing.
     if ! lab_is_admin; then
-      usage_error "rollback needs a run ID, or its last 4 characters; as root, '$SELF runs' lists them" rollback
+      usage_error 'rollback needs a run ID, or its last 4 characters' rollback "As root, '$SELF runs' lists them."
     fi
     list="$(list_runs)" || true
-    if [[ -n "$list" ]]; then mapfile -t runs <<< "$list"; print_runs "${runs[@]}" >&2; fi
-    usage_error "rollback needs a run ID, or its last 4 characters; '$SELF runs' lists them" rollback
+    if [[ -z "$list" ]]; then
+      usage_error 'rollback needs a run ID, or its last 4 characters' rollback 'There are no runs on this host.'
+    fi
+    mapfile -t runs <<< "$list"; print_runs "${runs[@]}" >&2
+    usage_error 'rollback needs a run ID, or its last 4 characters' rollback 'Pick one from the list above.'
   fi
   lab_is_admin || die 'rollback needs root' 20 "$FIX_ADMIN"
   resolve_run rollback "$1"
@@ -1285,7 +1323,7 @@ cmd_rollback() {
     printf 'warning: rolling back without the run lock\n' >&2
   fi
   # Captured, not read from a process substitution, so a failure is seen.
-  list="$(lab_manifest_applied "$LAB_RUN_ID")" || die "the manifest of run $LAB_RUN_ID cannot be read; nothing was rolled back"
+  list="$(lab_manifest_applied "$LAB_RUN_ID")" || die "the manifest of run $LAB_RUN_ID cannot be read" 40 'Nothing was rolled back.'
   if [[ -n "$list" ]]; then mapfile -t mods <<< "$list"; fi
   printf 'labyrinth %s - rolling back run %s\n' "$LAB_VERSION" "$LAB_RUN_ID"
   for ((i = ${#mods[@]} - 1; i >= 0; i--)); do
@@ -1295,14 +1333,19 @@ cmd_rollback() {
   done
   # A timer left armed runs this rollback again, which is safe.
   if ! lab_timer_cancel "$LAB_RUN_ID"; then
-    printf 'warning: the revert timer for run %s could not be removed; when it fires it repeats this rollback, which is safe\n' "$LAB_RUN_ID" >&2
+    printf 'warning: the revert timer for run %s could not be removed\n' "$LAB_RUN_ID" >&2
+    printf 'When it fires, it repeats this rollback, which is safe.\n' >&2
   fi
   if ! record_for '' run_rolled_back '' "exit $rc"; then
-    printf 'labyrinth: run %s is rolled back, but the manifest cannot be written to record it\n' "$LAB_RUN_ID" >&2
+    printf 'labyrinth: rolled back, but the manifest cannot be written to record it\n' >&2
     rc=40
   fi
   lab_log_warn run_rolled_back "run rolled back, exit $rc"
-  printf 'rollback finished: exit %d\n' "$rc"
+  if (( rc == 0 )); then
+    printf 'rollback finished: exit 0 (rolled back)\n'
+  else
+    printf 'rollback finished: exit %d (error)\n' "$rc"
+  fi
   exit "$rc"
 }
 
@@ -1316,13 +1359,40 @@ cmd_probe() {
   case "$rc" in
     0) ;;
     2) die "no service list at $LAB_CONFIG_DIR/services" 20 \
-         'List the scored services in that file, one "name proto host port expect" per line.' ;;
+         'List the scored services there, one "name proto host port expect" per line.' ;;
     *) die "the service list is malformed: $(load_reason lab_services_load)" 40 \
          "$FIX_LINE" ;;
   esac
   flush_warnings
-  printf '%s\n' "$out"
-  if grep -q '^[^ ]* fail ' <<< "$out"; then exit 30; fi
+  probe_report "$out"
+}
+
+# probe_report OUTPUT: lab_probe_all's lines as status lines, then the
+# Summary, Next and finished lines; exit 30 when a service failed.
+probe_report() {
+  local name result detail w out='' code=0
+  local -A count=([OK]=0 [WARN]=0 [FAIL]=0)
+  printf 'labyrinth %s: probe the scored services\n' "$LAB_VERSION"
+  while read -r name result detail; do
+    [[ -n "$name" ]] || continue
+    case "$result" in pass) w=OK ;; fail) w=FAIL ;; *) w=WARN ;; esac
+    count[$w]=$((${count[$w]} + 1))
+    say "$w" "[$name] $result${detail:+: $detail}"
+  done <<< "$1"
+  for w in OK WARN FAIL; do
+    if (( ${count[$w]} > 0 )); then out+="${out:+, }${count[$w]} $w"; fi
+  done
+  printf 'Summary: %s\n' "${out:-no services}"
+  if (( count[FAIL] == 1 )); then
+    printf "Next: bring the failed service back, then run '%s probe' again.\n" "$SELF"
+    printf 'probe finished: exit 30 (a service failed)\n'
+    exit 30
+  elif (( count[FAIL] > 1 )); then
+    printf "Next: bring the failed services back, then run '%s probe' again.\n" "$SELF"
+    printf 'probe finished: exit 30 (%d services failed)\n' "${count[FAIL]}"
+    exit 30
+  fi
+  printf 'probe finished: exit 0 (no service failed)\n'
   exit 0
 }
 
@@ -1330,6 +1400,16 @@ main() {
   local cmd='' word='' lc phase
   parse_args "$@"
   set -- "${WORDS[@]+"${WORDS[@]}"}"
+  if [[ -n "$PARSE_ERR" ]]; then
+    # Point to the help of the command the line names, if it names one.
+    lc="${1:-}"; lc="${lc,,}"
+    if lab_in_list "$lc" "$PHASES"; then
+      if [[ -n "${GIVEN[apply]+set}" ]]; then lc=apply; else lc=plan; fi
+    elif ! lab_in_list "$lc" "$COMMANDS" || [[ "$lc" == help || "$lc" == version ]]; then
+      lc=''
+    fi
+    usage_error "$PARSE_ERR" "$lc"
+  fi
 
   # Work out the command; the whole line must parse before help is shown.
   if (( $# > 0 )); then
@@ -1341,6 +1421,7 @@ main() {
     else
       local hint
       hint="$(suggest "$lc" $COMMANDS $PHASES)"
+      if [[ "$1" == '/?' ]]; then hint=help; fi
       usage_error "unknown command '$1'${hint:+ (did you mean '$hint'?)}"
     fi
   fi
@@ -1361,13 +1442,19 @@ main() {
     '')
       if [[ -n "${GIVEN[help]+set}" ]]; then cmd_help ''; exit 0; fi
       if [[ -n "${GIVEN[version]+set}" ]]; then cmd_version; exit 0; fi
+      printf 'labyrinth: no command given\n' >&2
       printf 'Usage: %s <command> [<phase> | <run>] [options]\n' "$SELF" >&2
       printf 'Commands: %s\n' "${COMMANDS// /, }" >&2
       printf "Try '%s help' for more information.\n" "$SELF" >&2
       exit 40 ;;
     help)
-      (( $# <= 1 )) || usage_error "unexpected word '$2' after 'help $1'" help
       word="${1:-}"; word="${word,,}"
+      if (( $# > 1 )); then
+        if lab_in_list "$word" "$COMMANDS"; then
+          usage_error "unexpected word '$2' after 'help $1'" "$word"
+        fi
+        usage_error "unexpected word '$2' after 'help $1'" help
+      fi
       if [[ -n "$word" ]] && ! lab_in_list "$word" "$COMMANDS"; then
         local hint
         hint="$(suggest "$word" $COMMANDS)"

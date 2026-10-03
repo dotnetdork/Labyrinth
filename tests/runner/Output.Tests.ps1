@@ -88,8 +88,10 @@ Describe 'labyrinth.ps1 console output' {
         $r.Code | Should -Be 10
         $lines = @(Get-TestLine $r | Where-Object { $_ -ne '' })
         $last = $lines.Count - 1
-        $lines[$last - 2] | Should -Be 'Summary: 1 OK, 1 CHANGE'
-        $lines[$last - 1] | Should -Be "Next: labyrinth.ps1 apply observe -Profile test -Root $($t.Root) -Config $($t.Etc)"
+        $lines[$last - 3] | Should -Be 'Summary: 1 OK, 1 CHANGE'
+        # Too long for one line with the test's paths, so the command has its own.
+        $lines[$last - 2] | Should -Be 'Next:'
+        $lines[$last - 1] | Should -Be "  labyrinth.ps1 apply observe -Profile test -Root $($t.Root) -Config $($t.Etc)"
         $lines[$last] | Should -Be 'plan finished: exit 10 (change needed)'
     }
 
@@ -172,14 +174,61 @@ Describe 'labyrinth.ps1 console output' {
         $b = Get-TestLineOf $r 'Type keep to keep'
         $a | Should -BeGreaterThan -1
         ($b -ge $a) | Should -BeTrue
-        $r.Output | Should -Match ([regex]::Escape("then 'labyrinth.ps1 keep $($id.Substring($id.Length - 4))'."))
+        $r.Output | Should -Match ([regex]::Escape("Next: check you can log in from a NEW session, then 'labyrinth.ps1 keep $($id.Substring($id.Length - 4))'."))
     }
 
     It 'fixed output lines are at most 78 columns' {
         Write-TestProfile $t @('observe.clean', 'observe.sample', 'observe.manual')
         foreach ($l in (Get-TestLine (Invoke-TestPlan $t))) {
-            if ($l.StartsWith('           ') -or $l.StartsWith('Next:')) { continue }
+            # Module output, and a command line, whose paths can be any length.
+            if ($l.StartsWith('           ') -or $l.StartsWith('  labyrinth.ps1 ')) { continue }
             $l.Length | Should -BeLessOrEqual 78 -Because $l
         }
+    }
+
+    It 'probe: a header, a status line per service, Summary, Next and finished' {
+        Write-TestConfig $t 'services' @('web http web.test 80 -', 'mail smtp mail.test 25 -')
+        $r = Invoke-TestLab $t @('probe', '-Root', $t.Root, '-Config', $t.Etc)
+        $r.Code | Should -Be 0
+        $lines = @(Get-TestLine $r | Where-Object { $_ -ne '' })
+        $lines[0] | Should -Match '^labyrinth [^ ]+: probe the scored services$'
+        $lines[1] | Should -BeExactly 'OK       [web] pass: fake probe'
+        $lines[3] | Should -BeExactly 'Summary: 2 OK'
+        $lines[4] | Should -BeExactly 'probe finished: exit 0 (no service failed)'
+        [IO.File]::WriteAllText((Join-Path $t.Lab 'probe-state'), "web.test fail`nmail.test fail`n")
+        $r = Invoke-TestLab $t @('probe', '-Root', $t.Root, '-Config', $t.Etc)
+        $r.Code | Should -Be 30
+        $lines = @(Get-TestLine $r | Where-Object { $_ -ne '' })
+        $lines[1] | Should -BeExactly 'FAIL     [web] fail: fake probe'
+        $lines[3] | Should -BeExactly 'Summary: 2 FAIL'
+        $lines[4] | Should -BeExactly "Next: bring the failed services back, then run 'labyrinth.ps1 probe' again."
+        $lines[5] | Should -BeExactly 'probe finished: exit 30 (2 services failed)'
+    }
+
+    It 'the Next line after several errors says errors' {
+        Write-TestProfile $t @('observe.crash', 'observe.badyml')
+        $r = Invoke-TestPlan $t
+        $r.Code | Should -Be 40
+        $r.Output | Should -Match 'Next: fix the errors above, then run the same command again\.'
+        Write-TestProfile $t @('observe.crash')
+        $r = Invoke-TestPlan $t
+        $r.Output | Should -Match 'Next: fix the error above, then run the same command again\.'
+    }
+
+    It 'a phase with no modules in the profile is a WARN naming the phase' {
+        Write-TestProfile $t @()
+        $r = Invoke-TestPlan $t
+        $r.Code | Should -Be 0
+        ((Get-TestLine $r) -ccontains 'WARN     [observe] no modules for this phase in profile test') | Should -BeTrue
+    }
+
+    It 'rollback ends with the exit code and its meaning' {
+        Write-TestProfile $t @('observe.toggle')
+        $r = Invoke-TestApply $t @('labadmin', 'ring1', 'no')
+        $id = Get-TestRunId $r.Output
+        $k = Invoke-TestRunCommand $t 'rollback' $id
+        $k.Code | Should -Be 0
+        $lines = @(Get-TestLine $k | Where-Object { $_ -ne '' })
+        $lines[-1] | Should -BeExactly 'rollback finished: exit 0 (rolled back)'
     }
 }

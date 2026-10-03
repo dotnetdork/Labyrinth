@@ -41,7 +41,7 @@ Describe 'labyrinth.ps1 recovery hints' {
         $r = Invoke-TestLabCapture $t @('plan', 'observe', '-Profile', 'test', '-Root', $t.Root, '-Config', $missing)
         $r.Code | Should -Be 40
         $r.Err | Should -Match ([regex]::Escape("labyrinth: the -Config folder does not exist: $missing"))
-        $r.Err | Should -Match 'leave out -Config'
+        $r.Err | Should -Match ([regex]::Escape('leave out -Config to use <root>\etc'))
         $file = Join-Path $t.Etc 'protected-accounts'
         $r = Invoke-TestLabCapture $t @('plan', 'observe', '-Profile', 'test', '-Root', $t.Root, '-Config', $file)
         $r.Code | Should -Be 40
@@ -68,8 +68,8 @@ Describe 'labyrinth.ps1 recovery hints' {
         Remove-Item -LiteralPath $file
         $r = Invoke-TestHint $t @('plan', 'observe', '-Profile', 'test')
         $r.Code | Should -Be 20
-        $r.Lines[0] | Should -Be "labyrinth: the protected set is not loaded, so Labyrinth refuses to run: there is no $file"
-        $r.Lines[1] | Should -Match '^List the accounts Labyrinth must never change'
+        $r.Lines[0] | Should -Be "labyrinth: the protected set is not loaded, so nothing runs: there is no $file"
+        $r.Lines[1] | Should -Match '^List, one "account class" per line, the accounts'
         Write-TestConfig $t 'protected-accounts' @()
         $r = Invoke-TestHint $t @('plan', 'observe', '-Profile', 'test')
         $r.Code | Should -Be 20
@@ -86,7 +86,7 @@ Describe 'labyrinth.ps1 recovery hints' {
         $r = Invoke-TestHint $t @('probe')
         $r.Code | Should -Be 20
         $r.Lines[0] | Should -Be "labyrinth: no service list at $(Join-Path $t.Etc 'services')"
-        $r.Lines[1] | Should -Match '^List the scored services in that file'
+        $r.Lines[1] | Should -Match '^List the scored services there'
         Write-TestConfig $t 'services' @('web')
         $r = Invoke-TestHint $t @('probe')
         $r.Code | Should -Be 40
@@ -98,6 +98,7 @@ Describe 'labyrinth.ps1 recovery hints' {
         Write-TestConfig $t 'hosts' @("$script:ThisHost ring1 test ubuntu")
         $r = Invoke-TestHint $t @('plan', 'observe')
         $r.Code | Should -Be 20
-        $r.Lines[1] | Should -Be "Run the Labyrinth runner for ubuntu there, or correct this host's line in the hosts file."
+        $r.Lines[0] | Should -Be "labyrinth: this runner does not serve this host's platform, ubuntu"
+        $r.Lines[1] | Should -Be "Use the runner for ubuntu, or correct this host's line in $(Join-Path $t.Etc 'hosts')"
     }
 }
