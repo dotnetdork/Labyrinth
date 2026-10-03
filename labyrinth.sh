@@ -144,7 +144,7 @@ ID or its last 4 characters; '$SELF runs' lists them.
 
 $where
 
-Exit: 0 kept, 20 too late (already rolled back), 40 error.
+Exit: 0 kept, 20 not root or too late (rolled back), 40 error.
 Example: $SELF keep 4f2a
 EOF
     ;;
@@ -319,6 +319,7 @@ next_step() {
     if (( other == 0 )); then
       printf 'Next: a person carries out the manual steps above; apply changes nothing.\n'
     else
+      if [[ -n "${GIVEN[profile]:-}" ]]; then opts+=" --profile ${GIVEN[profile]}"; fi
       if [[ -n "${GIVEN[root]:-}" ]]; then opts+=" --root $(shell_word "${GIVEN[root]}")"; fi
       if [[ -n "${GIVEN[config]:-}" ]]; then opts+=" --config $(shell_word "${GIVEN[config]}")"; fi
       printf 'Next: %s apply %s%s\n' "$SELF" "$phase" "$opts"
@@ -776,7 +777,7 @@ requires_met() {
 # apply_one INDEX: apply, verify and probe one module. Returns 0 (done or
 # nothing to do), 20 (blocked; continue), or 30/40 (rolled back; stop).
 apply_one() {
-  local i="$1" id dir risk after reg rc tok
+  local i="$1" id dir risk after reg rc tok why
   id="${RUN_IDS[i]}"; dir="${RUN_DIR[i]}"; risk="${RUN_RISK[i]}"
   APPROVED=''
   if [[ "$risk" == manual-only ]]; then
@@ -784,9 +785,12 @@ apply_one() {
     RUN_STATE[i]=manual; return 0
   fi
   if [[ "${RUN_SCORED[i]}" == true ]]; then
-    rc=0; lab_addrs_load scoring-allowlist || rc=$?
+    # Only the check is needed here, so the loader runs in a subshell and
+    # its reason is printed under the ERROR line.
+    rc=0; why="$(lab_addrs_load scoring-allowlist 2>&1)" || rc=$?
     if (( rc == 1 )); then
       say ERROR "[$id] error: the scoring allowlist is malformed"
+      printf '%s\n' "$why" | indent
       RUN_STATE[i]=error; return 40
     fi
     if (( rc == 2 )); then

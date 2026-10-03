@@ -18,7 +18,7 @@ This is the operator manual for Labyrinth, @MANUAL@. It explains how to run Laby
 
 **Who this is for:** the person at the keyboard during the event, who knows what a server and a command line are but has not used Labyrinth under pressure before. [How Labyrinth Works](../Overview.md) explains the ideas behind the tool; this manual explains how to use it.
 
-**Status:** Labyrinth is being built. This manual describes the commands as they are specified in [the conventions](../Conventions.md#31-commands-options-gates-and-the-order-of-an-apply). Until the command-line work is finished, the program does not yet accept every form shown here, and its output does not yet look exactly as described in section 8.
+**Status:** Labyrinth is being built. This manual describes the commands as they are specified in [the conventions](../Conventions.md#31-commands-options-gates-and-the-order-of-an-apply).
 
 # 1. What Labyrinth does
 
@@ -123,7 +123,7 @@ Ends with 0 when every change was made and checked, or the highest problem code 
 
 Keeps a run's changes: cancels its revert timer, then records that the run was kept. Without a run, it keeps the only run whose timer is armed; if more than one is armed, it lists them and keeps nothing.
 
-Ends with 0 when the run is kept, 20 when it is too late because the run was already rolled back, and 40 when the timer could not be cancelled or the keep could not be recorded. If the timer could not be cancelled, the run is **not** kept and the timer will still undo it: Labyrinth says when, and gives the command to try again.
+Ends with 0 when the run is kept, 20 when it is not run as @ADMIN@ or it is too late because the run was already rolled back, and 40 when the timer could not be cancelled or the keep could not be recorded. If the timer could not be cancelled, the run is **not** kept and the timer will still undo it: Labyrinth says when, and gives the command to try again.
 
 ## rollback *run*
 
@@ -241,7 +241,7 @@ Each module's result starts with a status word:
 A module's own messages are indented under its result line. The run ends with three lines:
 
 - `Summary:` counts the modules by status word. In an apply that stopped partway, it also counts the modules that did not run.
-- `Next:` gives the one thing to do next. It is left out when there is nothing to do.
+- `Next:` gives the one thing to do next. It is left out when there is nothing to do. After a plan, it is the apply command, with any profile, data root and configuration folder you gave the plan. If the profile is not the one this host is listed with, that apply is refused.
 - The last line gives the exit code and what it means.
 
 An apply also recaps twice. Before it asks for the group name, it lists what each module will do and says that a revert timer will be armed. Before it asks whether to keep the changes, it gives the time, in UTC, at which the revert timer will undo them.
