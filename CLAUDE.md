@@ -61,7 +61,7 @@ Each module is a folder `phases/<phase>/modules/<name>/` with `module.yml` and u
 | Path | Covers |
 |---|---|
 | `tests/core/` | The core library (`core.bats`, `Core.Tests.ps1`); real-system timer tests (`realsystem.bats`, `RealSystem.Tests.ps1`, CI only) |
-| `tests/runner/` | The runners: `apply`, `labyrinth`, and `compat` (the compatibility suite); helpers `lab_helper.bash` and `LabTestHelper.ps1` |
+| `tests/runner/` | The runners: `apply`, `labyrinth`, `args` and `help`, and `compat` (the compatibility suite); `args-cases.txt`, the command-line cases both suites read; helpers `lab_helper.bash` and `LabTestHelper.ps1` |
 | `tests/manual/` | The manual and its splitter |
 | `tests/lint/` | The guard and its fixtures |
 | `tests/fixtures/` | Fixture modules and the test doubles appended to a throwaway core |
