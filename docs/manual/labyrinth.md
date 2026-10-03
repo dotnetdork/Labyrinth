@@ -123,26 +123,29 @@ Ends with 0 when every change was made and checked, or the highest problem code 
 
 Keeps a run's changes: cancels its revert timer, then records that the run was kept. Without a run, it keeps the only run whose timer is armed; if more than one is armed, it lists them and keeps nothing.
 
-Ends with 0 when the run is kept, 20 when it is too late because the run was already rolled back, and 40 when the timer could not be cancelled. In that last case the run is **not** kept and the timer will still undo it, so run `keep` again.
+Ends with 0 when the run is kept, 20 when it is too late because the run was already rolled back, and 40 when the timer could not be cancelled or the keep could not be recorded. If the timer could not be cancelled, the run is **not** kept and the timer will still undo it: Labyrinth says when, and gives the command to try again.
 
 ## rollback *run*
 
 Undoes everything the run changed, newest change first. This is exactly what the revert timer does when it fires. You must name the run; without one, Labyrinth lists the runs and changes nothing. Running it twice is safe.
 
+Ends with 0 when the run is rolled back, 20 when not run as @ADMIN@, and 40 on an error.
+
 ## runs
 
 Lists this host's runs, oldest first, with the run ID, phase, start time (UTC) and state:
 
-- `armed`: the revert timer is set, with the time it will undo the run;
+- `armed`: the revert timer is set, with the time it will undo the run. If that time has passed, it says when the timer was due; if Labyrinth cannot tell, it says the time is unknown;
 - `kept`: someone kept the run;
 - `rolled back`: the run was undone;
+- `rolled back with errors`: the run was undone, but some of it could not be; section 11 explains what to do;
 - `not kept, no timer`: the run changed nothing that needed a timer.
 
-It changes nothing, but it must be run as @ADMIN@.
+Below the list, it shows how to name a run by its last four characters. It changes nothing, but it must be run as @ADMIN@. Ends with 0, 20 when not run as @ADMIN@, and 40 on an error.
 
 ## probe
 
-Tests every scored service once, the way the scoring engine would, and prints the result for each. Changes nothing. Ends with 30 if any service fails.
+Tests every scored service once, the way the scoring engine would, and prints the result for each. Changes nothing. Ends with 0 when every service passes, 20 when there is no list of scored services, 30 when any service fails, and 40 on an error.
 
 ## help [*command*]
 
@@ -161,7 +164,7 @@ Options can go before or after the command. Give a value with a space or an equa
 |---|---|---|
 | `--profile NAME` | Use this profile instead of the one in the `hosts` file. On apply, it must match the host's line. | plan, apply |
 | `--root DIR` | The data root, if not `/opt/labyrinth`. Must be a full path. | all |
-| `--config DIR` | The configuration folder, if not `<root>/etc`. Must be a full path. | all |
+| `--config DIR` | The configuration folder, if not `<root>/etc`. Must be a full path, and for plan, apply and probe it must exist. | all |
 | `--break-glass NAME` | Answers the break-glass prompt without typing. | apply |
 | `--confirm-group GROUP` | Answers the group-name prompt without typing. | apply |
 | `-h`, `--help` | Show help. | all |
@@ -174,7 +177,7 @@ Example: `sudo ./labyrinth.sh apply lockout --root /srv/labyrinth`
 |---|---|---|
 | `-Profile NAME` | Use this profile instead of the one in the `hosts` file. On apply, it must match the host's line. | plan, apply |
 | `-Root DIR` | The data root, if not `C:\ProgramData\Labyrinth`. Must be a full path. | all |
-| `-Config DIR` | The configuration folder, if not `<root>\etc`. Must be a full path. | all |
+| `-Config DIR` | The configuration folder, if not `<root>\etc`. Must be a full path, and for plan, apply and probe it must exist. | all |
 | `-BreakGlass NAME` | Answers the break-glass prompt without typing. | apply |
 | `-ConfirmGroup GROUP` | Answers the group-name prompt without typing. | apply |
 | `-Help`, `-?` | Show help. | all |
@@ -278,11 +281,23 @@ Each revert timer is a scheduled task named `\Labyrinth\lab-revert-<run>-<n>`, r
 
 **"protected set: ... not found" or "... is empty".** The `protected-accounts` file is not in the configuration folder, or has no accounts. Labyrinth will not change anything without it. Copy in the team's prepared file.
 
+**"folder does not exist".** The folder given with the configuration option is not there. Check the path for a typing mistake. `keep` and `rollback` still work without it.
+
+**"not a platform this runner serves".** This host's line in `hosts` names a platform this program does not serve, so `plan`, `apply` and `probe` refuse to run here. Correct the line, or use the Labyrinth runner for that platform on the host. `keep` and `rollback` still work, so a run can always be undone.
+
+**"is an appliance".** This host's line in `hosts` says it is an appliance, such as a firewall. Labyrinth never changes an appliance (design 16); follow its runbook by hand instead.
+
 **"too late".** You tried to keep a run that was already rolled back, by the timer or by hand. Its changes are gone. Plan and apply again if you still want them.
 
-**"could not be cancelled".** `keep` could not stop the revert timer, so the run was not kept and the timer will still undo it. Run `keep` again.
+**"could not be cancelled".** `keep` could not stop the revert timer, so the run was not kept and the timer will still undo it at the time shown. Run the `Retry:` command it prints.
 
-**"The run stopped".** A module failed partway through a run. The changes made before it are still in place, and the revert timer is still armed. Labyrinth prints the commands to keep or undo them. If in doubt, roll back.
+**"the keep could not be recorded".** `keep` cancelled the revert timer, so the changes stay, but the run's record could not be written. `runs` may not show the run as `kept`. Check that the data folder is not full or read-only.
+
+**"The run stopped".** A module failed partway through a run. The changes made before it are still in place, and the revert timer is still armed; Labyrinth says when it fires and prints the commands to keep or undo the changes. If in doubt, roll back.
+
+**"internal error".** Something failed that Labyrinth did not expect, such as a full disk or a damaged file. The line says where, and the next line says what it means for the run: "Nothing was changed.", "The run stopped." with the commands to keep or undo it, or the command to repeat. Exit code 40.
+
+**"rollback FAILED".** Labyrinth could not undo one module of the run. The line names the module and the backup folder that holds its files as they were before the run. The other modules are still undone, and `runs` shows the run as `rolled back with errors`. Restore that module's files by hand from the backup folder, then check the service it affects.
 
 **You are locked out.** Do nothing: when the revert timer fires, it undoes the run. If you cannot wait, log in at the console with the break-glass account and run `rollback`.
 
