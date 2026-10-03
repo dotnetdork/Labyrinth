@@ -1,5 +1,6 @@
 # Test fixture: check is blocked by a safety gate
 id: observe.blocked
+title: Blocked sample
 phase: observe
 priority: P2
 platforms: [ubuntu, rhel-family, windows]

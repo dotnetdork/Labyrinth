@@ -11,7 +11,8 @@
       labyrinth.ps1 rollback <run>     undo a run, newest change first
       labyrinth.ps1 runs               list this host's runs and their state
       labyrinth.ps1 probe              test every scored service once
-      labyrinth.ps1 help [<command>]   help; also -Help or -h
+      labyrinth.ps1 help [<topic>]     help on a command, 'basics' or a
+                                       module; also -Help or -h
       labyrinth.ps1 version            the version; also -Version or -V
 
     A phase is lockout, observe, deceive or sustain. A run is a run ID, or
@@ -27,8 +28,10 @@
     Exit codes: 0 done or nothing to do, 10 change needed, 20 blocked,
     30 a check failed (probe: a service failed), 40 error.
 
-    'labyrinth.ps1 help <command>' explains one command. The operator
-    manual is the Windows edition of the Labyrinth manual.
+    New to Labyrinth? 'labyrinth.ps1 help basics' explains the ideas in
+    plain words. 'labyrinth.ps1 help <command>' explains one command, and
+    'labyrinth.ps1 help <module-id>' one module. The operator manual is
+    the Windows edition of the Labyrinth manual.
 
 .EXAMPLE
     .\labyrinth.ps1 plan lockout
@@ -65,8 +68,8 @@ $ErrorActionPreference = 'Stop'
 
 $LabVersion = '0.1.0-dev'
 $Phases = @('lockout', 'observe', 'deceive', 'sustain')
-$ModuleKeys = @('id', 'phase', 'priority', 'platforms', 'risk', 'touches_scored', 'requires', 'outputs', 'spec')
-$RequiredKeys = @('id', 'phase', 'priority', 'platforms', 'risk', 'touches_scored')
+$ModuleKeys = @('id', 'title', 'phase', 'priority', 'platforms', 'risk', 'touches_scored', 'requires', 'outputs', 'spec')
+$RequiredKeys = @('id', 'title', 'phase', 'priority', 'platforms', 'risk', 'touches_scored')
 $Risks = @('read-only', 'reversible', 'service-affecting', 'approval', 'manual-only')
 $Platforms = @('ubuntu', 'rhel-family', 'windows', 'appliance')
 $ReRunId = '^[0-9]{8}T[0-9]{6}Z-[0-9a-f]{4}$'
@@ -132,6 +135,7 @@ Where:
     $text = switch ($Topic) {
         '' { @"
 Usage: $Self <command> [<phase> | <run>] [options]
+New to Labyrinth? Start with '$Self help basics'.
 
   plan <phase>      show what would change; changes nothing
   apply <phase>     plan, confirm, then make the changes
@@ -139,13 +143,13 @@ Usage: $Self <command> [<phase> | <run>] [options]
   rollback <run>    undo a run, newest change first
   runs              list this host's runs and their state
   probe             test every scored service once
-  help [<command>]  help for one command
+  help [<topic>]    help on a command, 'basics', or a module ID
   version           print the version
 
 Phases: lockout, observe, deceive, sustain. <run>: an ID or its last 4.
-Options: -Root DIR, -Config DIR, -Profile NAME, -Help, -V; see each command.
 Exit: 0 ok, 10 change needed, 20 blocked, 30 check failed, 40 error.
 Example: $Self plan lockout
+Manual: Get-Help about_Labyrinth once installed; docs\manual in the release.
 "@ }
         'plan' { @"
 Usage: $Self plan <phase> [options]
@@ -224,13 +228,40 @@ Exit: 0 all pass, 20 no service list, 30 a service failed, 40 error.
 Example: $Self probe
 "@ }
         'help' { @"
-Usage: $Self help [<command>]
+Usage: $Self help [<command> | basics | <module-id>]
 
 Print help for every command, or for one. '$Self <command> -Help'
-and '$Self <command> -h' print the same.
+and '$Self <command> -h' print the same. 'basics' explains the ideas
+in plain words. A module ID, such as the ones a plan prints, explains
+that module: what it checks and changes, and how to undo it.
 
-Exit: 0 printed, 40 unknown command.
+Exit: 0 printed, 40 unknown topic.
 Example: $Self help apply
+"@ }
+        'basics' { @"
+Usage: $Self help basics
+
+Labyrinth makes this host harder to break into, in four phases run in
+order: lockout, observe, deceive and sustain. Each phase is a list of
+modules. A module does one small job, such as turning off SMB version 1.
+'$Self help <module-id>' explains any module.
+
+1. Plan: '$Self plan lockout' shows what each module would change.
+   It changes nothing, so run it as often as you like.
+2. Apply: '$Self apply lockout' plans again, asks you to type this
+   host's group name, then makes the changes and checks each one.
+3. Keep: an apply is a run, named by an ID; its last 4 characters are
+   enough. A revert timer undoes the run after a few minutes unless you
+   keep it, so a change that locks you out undoes itself. Log in from
+   a new session, and if that works, run '$Self keep'.
+
+To undo a run yourself: '$Self rollback <run>'. To list the runs:
+'$Self runs'. Scored services are the ones the scoring engine tests.
+Labyrinth tests them before and after each change, and undoes a change
+that breaks one. To test them now: '$Self probe'.
+
+Exit: 0 printed.
+Example: $Self help basics
 "@ }
         'version' { @"
 Usage: $Self version
@@ -242,6 +273,73 @@ Example: $Self version
 "@ }
     }
     foreach ($l in ($text -split "`r?`n")) { [Console]::Out.WriteLine($l) }
+}
+
+# Get-LabRiskWord RISK: what a module's risk means, in plain words.
+function Get-LabRiskWord {
+    param([string] $Risk)
+    switch -CaseSensitive ($Risk) {
+        'read-only' { return 'only looks; it never changes anything' }
+        'reversible' { return 'changes this host; each change is saved first and can be undone' }
+        'service-affecting' { return 'may interrupt a service; each change can be undone' }
+        'approval' { return 'changes only what a person approves; each can be undone' }
+        'manual-only' { return 'never changes anything; it lists steps for a person' }
+    }
+    return $Risk
+}
+
+# Get-LabModuleId: every module ID in this release.
+function Get-LabModuleId {
+    $ids = @()
+    foreach ($p in $Phases) {
+        $dir = Join-Path $PSScriptRoot "phases\$p\modules"
+        if (-not (Test-Path -LiteralPath $dir -PathType Container)) { continue }
+        foreach ($d in (Get-ChildItem -LiteralPath $dir -Directory)) {
+            if (Test-Path -LiteralPath (Join-Path $d.FullName 'module.yml') -PathType Leaf) { $ids += "$p.$($d.Name)" }
+        }
+    }
+    return $ids
+}
+
+# Show-LabModuleHelp ID: one module's help page: its module.yml in plain
+# words, then its about.txt (design 00, section 4).
+function Show-LabModuleHelp {
+    param([string] $Id)
+    $phase = $Id.Split('.')[0]
+    $dir = Join-Path $PSScriptRoot ('phases\{0}\modules\{1}' -f $phase, $Id.Substring($phase.Length + 1))
+    if ($Id -cnotmatch $ReModuleId -or -not (Test-Path -LiteralPath $dir -PathType Container)) {
+        $hint = Get-LabSuggestion $Id (@('basics') + $Commands + @(Get-LabModuleId))
+        if ($hint -ne '') { Exit-LabUsage "no module '$Id' (did you mean '$hint'?)" 'help' }
+        Exit-LabUsage "no module '$Id'" 'help'
+    }
+    $file = Join-Path $dir 'module.yml'
+    $script:YmlErr = @()
+    if (-not (Read-LabModuleYml $file) -or -not (Test-LabModule $file $Id $phase)) {
+        $err = $script:YmlErr[0]
+        $at = $err.LastIndexOf(': ')
+        [Console]::Error.WriteLine("labyrinth: the module.yml of $Id is not valid: $($err.Substring($at + 2))")
+        [Console]::Error.WriteLine("Report the module to its author, or correct $($err.Substring(0, $at))")
+        exit 40
+    }
+    $m = $script:Mod
+    Write-LabLine ('{0} ({1})' -f $m['title'], $Id)
+    Write-LabLine ''
+    Write-LabLine ('Phase: {0}. Order: {1} (P0 runs first, P3 last).' -f $phase, $m['priority'])
+    Write-LabLine ('Risk: {0}.' -f (Get-LabRiskWord $m['risk']))
+    if ($m['touches_scored'] -ceq 'true') {
+        Write-LabLine 'Scored services: it can affect one, so they are tested after it.'
+    } else {
+        Write-LabLine 'Scored services: it does not touch them.'
+    }
+    Write-LabLine ('Runs on: {0}.' -f ((Get-LabListItem $m['platforms']) -join ', '))
+    Write-LabLine "Folder: $dir"
+    Write-LabLine ''
+    $about = Join-Path $dir 'about.txt'
+    if (Test-Path -LiteralPath $about -PathType Leaf) {
+        foreach ($l in [IO.File]::ReadAllLines($about)) { Write-LabLine $l }
+    } else {
+        Write-LabLine 'This module has no about.txt yet. Its scripts are in the folder above.'
+    }
 }
 
 # Exit-LabUsage MESSAGE [COMMAND] [FIX]: a usage error: one line, the fix
@@ -618,6 +716,8 @@ function Test-LabModule {
     if ($m['id'] -cne $WantId) { Write-YmlError $File "id $($m['id']) does not match $WantId"; return $false }
     if ($m['phase'] -cne $WantPhase) { Write-YmlError $File "phase $($m['phase']) does not match $WantPhase"; return $false }
     if ($m['priority'] -cnotmatch '^P[0-3]$') { Write-YmlError $File 'priority must be P0 to P3'; return $false }
+    if ($m['title'] -cnotmatch '^[ -~]+$') { Write-YmlError $File 'title must be plain ASCII text'; return $false }
+    if ($m['title'].Length -gt 40) { Write-YmlError $File "title is $($m['title'].Length) characters; the most is 40"; return $false }
     if ($Risks -cnotcontains $m['risk']) { Write-YmlError $File "unknown risk $($m['risk'])"; return $false }
     if (@('true', 'false') -cnotcontains $m['touches_scored']) { Write-YmlError $File 'touches_scored must be true or false'; return $false }
     $list = Get-LabListItem $m['platforms']
@@ -1496,9 +1596,11 @@ try {
             if ($script:Given.ContainsKey('help')) { Show-LabHelp ''; exit 0 }
             if ($script:Given.ContainsKey('version')) { Write-LabLine "labyrinth $LabVersion"; exit 0 }
             [Console]::Error.WriteLine('labyrinth: no command given')
+            [Console]::Error.WriteLine('Start here:')
+            [Console]::Error.WriteLine("  1. $Self help basics    what Labyrinth does, in plain words")
+            [Console]::Error.WriteLine("  2. $Self plan lockout   what the first phase would change; safe")
+            [Console]::Error.WriteLine("  3. $Self help           every command")
             [Console]::Error.WriteLine("Usage: $Self <command> [<phase> | <run>] [options]")
-            [Console]::Error.WriteLine("Commands: $($Commands -join ', ')")
-            [Console]::Error.WriteLine("Try '$Self help' for more information.")
             exit 40
         }
         'help' {
@@ -1509,8 +1611,10 @@ try {
             }
             $topic = ''
             if ($rest.Count -eq 1) { $topic = $rest[0].ToLowerInvariant() }
+            if ($topic -ceq 'basics') { Show-LabHelp 'basics'; exit 0 }
+            if ($topic.Contains('.')) { Show-LabModuleHelp $topic; exit 0 }
             if ($topic -ne '' -and $Commands -cnotcontains $topic) {
-                $hint = Get-LabSuggestion $topic $Commands
+                $hint = Get-LabSuggestion $topic (@('basics') + $Commands)
                 if ($hint -ne '') { Exit-LabUsage "no help for '$($rest[0])' (did you mean '$hint'?)" }
                 Exit-LabUsage "no help for '$($rest[0])'"
             }

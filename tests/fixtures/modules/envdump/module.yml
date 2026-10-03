@@ -1,5 +1,6 @@
 # Test fixture: check prints the contract environment
 id: observe.envdump
+title: Environment sample
 phase: observe
 priority: P2
 platforms: [ubuntu, rhel-family, windows]
