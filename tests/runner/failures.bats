@@ -29,7 +29,8 @@ read_only_after_cancel() {
   [[ "$output" == *"labyrinth: internal error at "* ]]
   [[ "$output" == *"The run stopped. Earlier changes stay until the revert timer undoes them."* ]]
   [[ "$output" =~ The\ revert\ timer\ rolls\ this\ run\ back\ at\ [0-9]{2}:[0-9]{2}\ UTC ]]
-  [[ "$output" == *"labyrinth.sh rollback $(run_id)"* ]]
+  id="$(run_id)"
+  [[ "$output" == *"To undo them now: labyrinth.sh rollback ${id: -4}"* ]]
   [ -f "$ROOT/state/runs/$(run_id)/timer" ]
   grep -qx 'setting=on' "$LAB/toggle.conf"
 }

@@ -105,7 +105,7 @@ Every command has the same shape: the command, then the phase or run it acts on,
 @CMD@ <command> [<phase> | <run>] [options]
 ```
 
-Commands, phases and option names can be typed in any mix of upper and lower case.
+Commands, phases, option names and run IDs can be typed in any mix of upper and lower case.
 
 ## plan *phase*
 
@@ -127,7 +127,7 @@ Ends with 0 when the run is kept, 20 when it is too late because the run was alr
 
 ## rollback *run*
 
-Undoes everything the run changed, newest change first. This is exactly what the revert timer does when it fires. You must name the run; without one, Labyrinth lists the runs and changes nothing. Running it twice is safe.
+Undoes everything the run changed, newest change first. This is exactly what the revert timer does when it fires. You must name the run; without one, it changes nothing and, run as @ADMIN@, lists the runs. Running it twice is safe.
 
 Ends with 0 when the run is rolled back, 20 when not run as @ADMIN@, and 40 on an error.
 
@@ -149,7 +149,7 @@ Tests every scored service once, the way the scoring engine would, and prints th
 
 ## help [*command*]
 
-Prints help for every command, or for one. `-h` and `--help` after any command do the same.
+Prints help for every command, or for one. `-h` and `--help` after any command do the same, once the rest of the line is correct.
 
 ## version
 
@@ -176,7 +176,7 @@ Example: `sudo ./labyrinth.sh apply lockout --root /srv/labyrinth`
 | Option | What it does | Used by |
 |---|---|---|
 | `-Profile NAME` | Use this profile instead of the one in the `hosts` file. On apply, it must match the host's line. | plan, apply |
-| `-Root DIR` | The data root, if not `C:\ProgramData\Labyrinth`. Must be a full path. | all |
+| `-Root DIR` | The data root, if not `C:\ProgramData\Labyrinth`. Must be a full path; `/` and `\` both work. | all |
 | `-Config DIR` | The configuration folder, if not `<root>\etc`. Must be a full path, and for plan, apply and probe it must exist. | all |
 | `-BreakGlass NAME` | Answers the break-glass prompt without typing. | apply |
 | `-ConfirmGroup GROUP` | Answers the group-name prompt without typing. | apply |
@@ -212,7 +212,20 @@ Some modules never change anything on their own: they print a checklist for a pe
 
 # 8. Reading the output
 
-Every run starts with a two-line header naming the version, the phase, the profile and the run ID. Write the run ID down, or remember its last four characters.
+A plan looks like this:
+
+```
+labyrinth 0.1.0: plan lockout, profile web
+run 20261002T140301Z-4f2a (plan mode: nothing is recorded)
+OK       [lockout.example] check: nothing to do
+CHANGE   [lockout.other] check: change needed; plan follows
+           what the module would change
+Summary: 1 OK, 1 CHANGE
+Next: @CMD@ apply lockout
+plan finished: exit 10 (change needed)
+```
+
+The first two lines are the header: the version, plan or `APPLY`, the phase and the profile, then the run ID. A plan records nothing, so its run ID is never listed by `runs`. In an apply, the second line also names the host and its group. Write the apply's run ID down, or remember its last four characters.
 
 Each module's result starts with a status word:
 
@@ -225,7 +238,13 @@ Each module's result starts with a status word:
 | `FAIL` | (not used) | Its check failed, or a scored service got worse. |
 | `ERROR` | Something went wrong. | The change or its undo failed. |
 
-A module's own messages are indented under its result line. The run ends with a `Summary:` line counting each status word, a `Next:` line with the one command to run next, and the exit code with its meaning.
+A module's own messages are indented under its result line. The run ends with three lines:
+
+- `Summary:` counts the modules by status word. In an apply that stopped partway, it also counts the modules that did not run.
+- `Next:` gives the one thing to do next. It is left out when there is nothing to do.
+- The last line gives the exit code and what it means.
+
+An apply also recaps twice. Before it asks for the group name, it lists what each module will do and says that a revert timer will be armed. Before it asks whether to keep the changes, it gives the time, in UTC, at which the revert timer will undo them.
 
 # 9. Exit codes
 
@@ -234,9 +253,9 @@ Every command ends with one of these numbers. Scripts can test it; people can re
 | Code | Meaning |
 |---|---|
 | 0 | Done, or nothing to do. |
-| 10 | A change is needed (plan only). |
+| 10 | A change is needed (plan), or only steps a person must carry out are left (apply). |
 | 20 | Blocked by a safety check. The blocked part changed nothing. |
-| 30 | A check after a change failed, or a probe failed. The change was undone. |
+| 30 | A check after a change failed, and that change was undone. For probe: a scored service failed. |
 | 40 | An error, including a mistyped command. Read the message. |
 
 # 10. Files

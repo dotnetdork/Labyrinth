@@ -65,3 +65,14 @@
 0|out|labyrinth |--version
 40|err|folder does not exist|plan observe --profile test --root @ROOT@ --config @ROOT@/missing
 40|err|folder does not exist|probe --root @ROOT@ --config @ROOT@/missing
+#
+# Every word is checked before help or the version is shown.
+40|err|unknown phase 'bogus'|plan bogus --help
+40|err|unexpected word 'extra'|probe extra --help
+40|err|not a run ID|keep ../x -V
+0|out|Usage: @SELF@ plan <phase>|plan observe --help
+#
+# A full run ID ignores case, like its last 4 characters. An unknown one
+# points to the list of runs.
+40|err|no run 20261002T140301Z-4f2a on this host|keep 20261002t140301z-4F2A --root @ROOT@ --config @ETC@
+40|err|runs' lists them|rollback 20261002T140301Z-4f2a --root @ROOT@ --config @ETC@
