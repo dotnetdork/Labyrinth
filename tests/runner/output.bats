@@ -60,8 +60,10 @@ line_of() { grep -nF -- "$1" <<< "$output" | head -n 1 | cut -d: -f1; }
   plan
   [ "$status" -eq 10 ]
   local last=$(( ${#lines[@]} - 1 ))
-  [ "${lines[last-2]}" = 'Summary: 1 OK, 1 CHANGE' ]
-  [ "${lines[last-1]}" = "Next: labyrinth.sh apply observe --profile test --root $ROOT --config $ETC" ]
+  [ "${lines[last-3]}" = 'Summary: 1 OK, 1 CHANGE' ]
+  # Too long for one line with the test's paths, so the command has its own.
+  [ "${lines[last-2]}" = 'Next:' ]
+  [ "${lines[last-1]}" = "  labyrinth.sh apply observe --profile test --root $ROOT --config $ETC" ]
   [ "${lines[last]}" = 'plan finished: exit 10 (change needed)' ]
 }
 
@@ -141,7 +143,7 @@ line_of() { grep -nF -- "$1" <<< "$output" | head -n 1 | cut -d: -f1; }
   a="$(line_of "The revert timer rolls this run back at ${due:11:5} UTC.")"
   b="$(line_of 'Type keep to keep')"
   [ -n "$a" ] && (( a <= b ))
-  [[ "$output" == *"Next: from a NEW session, check you can log in, then 'labyrinth.sh keep ${id: -4}'."* ]]
+  [[ "$output" == *"Next: check you can log in from a NEW session, then 'labyrinth.sh keep ${id: -4}'."* ]]
 }
 
 @test "fixed output lines are at most 78 columns" {
@@ -149,7 +151,52 @@ line_of() { grep -nF -- "$1" <<< "$output" | head -n 1 | cut -d: -f1; }
   plan
   local l
   for l in "${lines[@]}"; do
-    [[ "$l" == '           '* || "$l" == Next:* ]] && continue
+    # Module output, and a command line, whose paths can be any length.
+    [[ "$l" == '           '* || "$l" == '  labyrinth.sh '* ]] && continue
     [ "${#l}" -le 78 ] || { echo "too long: $l"; return 1; }
   done
+}
+
+@test "probe: a header, a status line per service, Summary, Next and finished" {
+  printf 'web http web.test 80 -\nmail smtp mail.test 25 -\n' > "$ETC/services"
+  run bash "$LAB/labyrinth.sh" --root "$ROOT" --config "$ETC" probe
+  [ "$status" -eq 0 ]
+  [[ "${lines[0]}" =~ ^labyrinth\ [^\ ]+:\ probe\ the\ scored\ services$ ]]
+  [ "${lines[1]}" = 'OK       [web] pass: fake probe' ]
+  [ "${lines[3]}" = 'Summary: 2 OK' ]
+  [ "${lines[4]}" = 'probe finished: exit 0 (no service failed)' ]
+  printf 'web.test fail\nmail.test fail\n' > "$LAB/probe-state"
+  run bash "$LAB/labyrinth.sh" --root "$ROOT" --config "$ETC" probe
+  [ "$status" -eq 30 ]
+  [ "${lines[1]}" = 'FAIL     [web] fail: fake probe' ]
+  [ "${lines[3]}" = 'Summary: 2 FAIL' ]
+  [ "${lines[4]}" = "Next: bring the failed services back, then run 'labyrinth.sh probe' again." ]
+  [ "${lines[5]}" = 'probe finished: exit 30 (2 services failed)' ]
+}
+
+@test "the Next line after several errors says errors" {
+  profile observe.crash observe.badyml
+  plan
+  [ "$status" -eq 40 ]
+  [[ "$output" == *'Next: fix the errors above, then run the same command again.'* ]]
+  profile observe.crash
+  plan
+  [[ "$output" == *'Next: fix the error above, then run the same command again.'* ]]
+}
+
+@test "a phase with no modules in the profile is a WARN naming the phase" {
+  profile
+  plan
+  [ "$status" -eq 0 ]
+  grep -qx 'WARN     \[observe\] no modules for this phase in profile test' <<< "$output"
+}
+
+@test "rollback ends with the exit code and its meaning" {
+  profile observe.toggle
+  answers root ring1 no
+  apply
+  id="$(run_id)"
+  run bash "$LAB/labyrinth.sh" --root "$ROOT" --config "$ETC" rollback "$id"
+  [ "$status" -eq 0 ]
+  [ "${lines[${#lines[@]}-1]}" = 'rollback finished: exit 0 (rolled back)' ]
 }

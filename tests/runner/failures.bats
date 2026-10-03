@@ -84,7 +84,7 @@ read_only_after_cancel() {
   stand_in 'lab_timer_cancel() { return 1; }'
   run bash "$LAB/labyrinth.sh" --root "$ROOT" --config "$ETC" keep "$id"
   [ "$status" -eq 40 ]
-  [[ "$output" =~ will\ still\ roll\ it\ back\ at\ [0-9]{2}:[0-9]{2}\ UTC ]]
+  [[ "$output" =~ still\ rolls\ it\ back\ at\ [0-9]{2}:[0-9]{2}\ UTC ]]
   [[ "$output" == *"Retry: labyrinth.sh keep ${id: -4}"* ]]
 }
 
@@ -96,7 +96,7 @@ read_only_after_cancel() {
   read_only_after_cancel
   run bash "$LAB/labyrinth.sh" --root "$ROOT" --config "$ETC" keep "$id"
   [ "$status" -eq 40 ]
-  [[ "$output" == *"is cancelled, so the changes stay, but the keep could not be recorded"* ]]
+  [[ "$output" == *"could not be recorded"*"Its revert timer is cancelled, so the changes stay."* ]]
   [[ "$output" != *"kept: the revert timer"* ]]
   [[ "$output" != *"internal error"* ]]
 }
@@ -109,6 +109,6 @@ read_only_after_cancel() {
   read_only_after_cancel
   run bash "$LAB/labyrinth.sh" --root "$ROOT" --config "$ETC" rollback "$id"
   [ "$status" -eq 40 ]
-  [[ "$output" == *"is rolled back, but the manifest cannot be written to record it"* ]]
+  [[ "$output" == *"rolled back, but the manifest cannot be written to record it"* ]]
   [ ! -e "$LAB/toggle.conf" ]
 }

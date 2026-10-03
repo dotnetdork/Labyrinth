@@ -57,6 +57,8 @@ $script:LabOptions = @(
 $script:Arguments = @($args)     # the words, before any function runs
 $script:Given = @{}              # canonical option name -> value given
 $script:Words = @()              # the words that are not options, in order
+$script:ParseError = ''          # the first option error, reported by main
+$script:ErrorCount = 0           # ERROR lines in the Summary, for the Next line
 
 $script:Mod = @{}
 $script:ProfileIds = @()
@@ -209,13 +211,14 @@ Example: $Self version
     foreach ($l in ($text -split "`r?`n")) { [Console]::Out.WriteLine($l) }
 }
 
-# Exit-LabUsage MESSAGE [COMMAND]: a usage error: one line, a pointer to
-# help, exit 40 (docs/Conventions.md section 3.1).
+# Exit-LabUsage MESSAGE [COMMAND] [FIX]: a usage error: one line, the fix
+# if there is one, a pointer to help, exit 40 (docs/Conventions.md 3.1).
 function Exit-LabUsage {
-    param([string] $Message, [string] $Command = '')
+    param([string] $Message, [string] $Command = '', [string] $Fix = '')
     $topic = ''
     if ($Command -ne '') { $topic = " $Command" }
     [Console]::Error.WriteLine("labyrinth: $Message")
+    if ($Fix -ne '') { [Console]::Error.WriteLine($Fix) }
     [Console]::Error.WriteLine("Try '$Self help$topic' for more information.")
     exit 40
 }
@@ -271,6 +274,13 @@ function Find-LabOption {
     return $null
 }
 
+# Add-LabParseError MESSAGE: note the first option error; main reports it
+# once the command is known, so the pointer to help names that command.
+function Add-LabParseError {
+    param([string] $Message)
+    if ($script:ParseError -eq '') { $script:ParseError = $Message }
+}
+
 # Read-LabArgument WORD...: sort the words into options ($script:Given) and
 # the rest ($script:Words). Options may come anywhere; '--' ends them.
 function Read-LabArgument {
@@ -289,7 +299,7 @@ function Read-LabArgument {
         if ($w -ceq '--') { $ended = $true; continue }
         if ($w -ceq '-h' -or $w -ceq '-?') { $w = '-Help' }
         elseif ($w -ceq '-V') { $w = '-Version' }
-        elseif ($w -ceq '-v') { Exit-LabUsage "unknown option '-v' (did you mean '-V', the version?)" }
+        elseif ($w -ceq '-v') { Add-LabParseError "unknown option '-v' (did you mean '-V', the version?)"; continue }
         $key = $w.Substring(1)
         if ($key.StartsWith('-')) { $key = $key.Substring(1) }
         $sep = ''
@@ -305,23 +315,24 @@ function Read-LabArgument {
             $hint = Get-LabSuggestion ($key.ToLowerInvariant().Replace('-', '')) @($script:LabOptions | ForEach-Object { $_.Keys[0] })
             if ($hint -ne '') {
                 $h = Find-LabOption $hint
-                Exit-LabUsage "unknown option '$shown' (did you mean '$($h.Show)'?)"
+                Add-LabParseError "unknown option '$shown' (did you mean '$($h.Show)'?)"
             }
-            Exit-LabUsage "unknown option '$shown'"
+            Add-LabParseError "unknown option '$shown'"
+            continue
         }
         if ($o.Value) {
             # '-Name value', or a session's '-Name:' with the value as the next word.
             if ($sep -eq '' -or ($sep -eq ':' -and $val -eq '')) {
-                if ($i -ge $Arguments.Count) { Exit-LabUsage "$($o.Show) needs a value" }
+                if ($i -ge $Arguments.Count) { Add-LabParseError "$($o.Show) needs a value"; continue }
                 $next = $Arguments[$i]
-                if ($next -is [string] -and $next -like '-?*') { Exit-LabUsage "$($o.Show) needs a value, but got '$next'" }
+                if ($next -is [string] -and $next -like '-?*') { Add-LabParseError "$($o.Show) needs a value, but got '$next'"; continue }
                 $val = [string] $next; $i++
             }
-            if ($val -eq '') { Exit-LabUsage "$($o.Show) needs a value" }
+            if ($val -eq '') { Add-LabParseError "$($o.Show) needs a value"; continue }
         } elseif ($sep -ne '') {
-            Exit-LabUsage "$($o.Show) takes no value"
+            Add-LabParseError "$($o.Show) takes no value"; continue
         }
-        if ($script:Given.ContainsKey($o.Name)) { Exit-LabUsage "$($o.Show) is given twice" }
+        if ($script:Given.ContainsKey($o.Name)) { Add-LabParseError "$($o.Show) is given twice"; continue }
         $script:Given[$o.Name] = $val
     }
     $script:Words = @($words)
@@ -384,6 +395,13 @@ function Write-LabStatus {
 }
 
 # Write-LabIndented LINE...: lines of module output, each indented 11 spaces.
+# Write-LabNote TEXT: a second line for a status line, indented like
+# module output.
+function Write-LabNote {
+    param([string] $Text)
+    Write-LabLine ('           ' + $Text)
+}
+
 function Write-LabIndented {
     param([AllowEmptyCollection()] [AllowEmptyString()] [string[]] $Line = @())
     foreach ($text in $Line) {
@@ -423,6 +441,7 @@ function Write-LabSummary {
         if ($n[$w] -gt 0) { $parts += "$($n[$w]) $w" }
     }
     if ($notRun -gt 0) { $parts += "$notRun not run" }
+    $script:ErrorCount = $n['ERROR']
     $text = 'no modules'
     if ($parts.Count -gt 0) { $text = $parts -join ', ' }
     Write-LabLine "Summary: $text"
@@ -442,9 +461,13 @@ function Write-LabNextStep {
     if ($Mode -ceq 'apply' -and $script:Stopped) {
         Write-LabLine 'Next: keep the earlier changes or undo them, with the commands above.'
     } elseif ($Mode -ceq 'apply' -and $script:Applied -and (Test-LabRevertTimer -RunId $env:LAB_RUN_ID)) {
-        Write-LabLine "Next: from a NEW session, check you can log in, then '$Self keep $short'."
+        Write-LabLine "Next: check you can log in from a NEW session, then '$Self keep $short'."
     } elseif ($Code -eq 40) {
-        Write-LabLine 'Next: fix the error above, then run the same command again.'
+        if ($script:ErrorCount -gt 1) {
+            Write-LabLine 'Next: fix the errors above, then run the same command again.'
+        } else {
+            Write-LabLine 'Next: fix the error above, then run the same command again.'
+        }
     } elseif ($Code -eq 20) {
         Write-LabLine 'Next: clear what blocked it above, then run the same command again.'
     } elseif ($Code -eq 10) {
@@ -456,7 +479,13 @@ function Write-LabNextStep {
             if ($script:Given.ContainsKey('profile')) { $opts += " -Profile $($script:Given['profile'])" }
             if ($script:Given.ContainsKey('root')) { $opts += " -Root $(ConvertTo-LabShellWord $script:Given['root'])" }
             if ($script:Given.ContainsKey('config')) { $opts += " -Config $(ConvertTo-LabShellWord $script:Given['config'])" }
-            Write-LabLine "Next: $Self apply $Phase$opts"
+            # A command too long for one line goes on a line of its own.
+            if (("$Self apply $Phase$opts").Length + 6 -gt 78) {
+                Write-LabLine 'Next:'
+                Write-LabLine "  $Self apply $Phase$opts"
+            } else {
+                Write-LabLine "Next: $Self apply $Phase$opts"
+            }
         }
     }
 }
@@ -492,17 +521,18 @@ function Get-LabRunStopped {
 function Get-LabRecovery {
     if ($script:RunOpen) {
         if (Test-LabRevertTimer -RunId $env:LAB_RUN_ID) { return Get-LabRunStopped }
-        return "The run stopped. Its manifest lists what it did; '$Self rollback $($env:LAB_RUN_ID.Substring($env:LAB_RUN_ID.Length - 4))' undoes it."
+        return @('The run stopped. Its manifest lists what it did.',
+            "To undo it: $Self rollback $($env:LAB_RUN_ID.Substring($env:LAB_RUN_ID.Length - 4))")
     }
     $short = ''
     if ($script:RunRef -ne '') { $short = $script:RunRef.Substring($script:RunRef.Length - 4) }
     switch ($script:Command) {
         'rollback' {
-            if ($short -ne '') { return "The rollback did not finish. Run '$Self rollback $short' again; it is safe to repeat." }
+            if ($short -ne '') { return @('The rollback did not finish, and it is safe to repeat.', "Retry: $Self rollback $short") }
             return 'Nothing was rolled back.'
         }
         'keep' {
-            if ($short -ne '') { return "The run may not be kept. Check with '$Self runs', then run '$Self keep $short' again." }
+            if ($short -ne '') { return @("The run may not be kept; '$Self runs' shows its state.", "Retry: $Self keep $short") }
             return 'Nothing was kept.'
         }
     }
@@ -725,7 +755,7 @@ function Invoke-LabPlanAll {
         Invoke-LabPlanOne $m
         if ($m.Rc -gt $worst) { $worst = $m.Rc }
     }
-    if ($script:PhaseCount -eq 0) { Write-LabStatus 'WARN' "no $Phase modules in profile $script:ProfileName" }
+    if ($script:PhaseCount -eq 0) { Write-LabStatus 'WARN' "[$Phase] no modules for this phase in profile $script:ProfileName" }
     return $worst
 }
 
@@ -738,7 +768,7 @@ function Assert-LabProtectedSet {
         $file = Join-Path $env:LAB_CONFIG_DIR 'protected-accounts'
         $why = "$file lists no accounts"
         if (-not (Test-Path -LiteralPath $file -PathType Leaf)) { $why = "there is no $file" }
-        Exit-Lab "the protected set is not loaded, so Labyrinth refuses to run: $why" 20 'List the accounts Labyrinth must never change in that file, one "account class" per line.'
+        Exit-Lab "the protected set is not loaded, so nothing runs: $why" 20 'List, one "account class" per line, the accounts Labyrinth must never change.'
     }
     $script:Protected = $set
 }
@@ -815,14 +845,16 @@ function Undo-LabModule {
             Add-LabEntryFor $Id 'rolled_back'
         } catch {
             [Console]::Error.WriteLine($_.Exception.Message)
-            Write-LabStatus 'ERROR' "[$Id] rolled back, but the manifest cannot be written, so it still lists the change; rolling back again is safe"
+            Write-LabStatus 'ERROR' "[$Id] rolled back, but the manifest cannot be written"
+            Write-LabNote 'It still lists the change; rolling back again is safe.'
             return 40
         }
         Write-LabStatus 'OK' "[$Id] rolled back"
         Write-LabLogFor $Id 'warn' 'rolled_back' 'rolled back'
         return 0
     }
-    Write-LabStatus 'ERROR' "[$Id] rollback FAILED (exit $rc): restore this module by hand from $(Join-Path (Join-Path $env:LAB_BACKUP_DIR $env:LAB_RUN_ID) $Id)"
+    Write-LabStatus 'ERROR' "[$Id] rollback FAILED (exit $rc)"
+    Write-LabNote "Restore its files by hand from $(Join-Path (Join-Path $env:LAB_BACKUP_DIR $env:LAB_RUN_ID) $Id)"
     Write-LabLogFor $Id 'error' 'rollback_failed' "rollback failed with exit $rc"
     return 40
 }
@@ -855,7 +887,8 @@ function Invoke-LabApplyOne {
     $id = $M.Id
     $script:Approved = ''
     if ($M.Risk -eq 'manual-only') {
-        Write-LabStatus 'WARN' "[$id] manual-only: a person carries out the checklist above; nothing changed"
+        Write-LabStatus 'WARN' "[$id] manual-only; nothing changed"
+        Write-LabNote 'A person carries out the checklist above.'
         $M.State = 'manual'; return 0
     }
     if ($M.Scored) {
@@ -866,11 +899,13 @@ function Invoke-LabApplyOne {
             $M.State = 'error'; return 40
         }
         if ($null -eq $allow) {
-            Write-LabStatus 'BLOCKED' "[$id] blocked: it touches scored services and the scoring allowlist is missing or empty"
+            Write-LabStatus 'BLOCKED' "[$id] blocked: it touches scored services"
+            Write-LabNote 'The scoring allowlist is missing or empty.'
             $M.State = 'blocked'; return 20
         }
         if (-not $script:HaveServices) {
-            Write-LabStatus 'BLOCKED' "[$id] blocked: it touches scored services and there is no service list to probe"
+            Write-LabStatus 'BLOCKED' "[$id] blocked: it touches scored services"
+            Write-LabNote 'There is no service list to probe.'
             $M.State = 'blocked'; return 20
         }
     }
@@ -906,7 +941,7 @@ function Invoke-LabApplyOne {
         Add-LabEntryFor $id 'apply_start' '' "risk $($M.Risk)"
     } catch {
         [Console]::Error.WriteLine($_.Exception.Message)
-        Write-LabStatus 'ERROR' "[$id] error: the run manifest cannot be written, so it is not applied"
+        Write-LabStatus 'ERROR' "[$id] not applied: the run manifest cannot be written"
         $M.State = 'error'; return 40
     }
     Write-LabLogFor $id 'info' 'apply_start' 'applying'
@@ -967,7 +1002,7 @@ function Read-LabSetting {
 # a stored revert-timer command still works after the configuration changes.
 function Assert-LabThisHost {
     param([string] $Config)
-    $fix = 'Give the folder that holds the hosts file, or leave out -Config to use the one under -Root.'
+    $fix = 'Give the folder with the hosts file, or leave out -Config to use <root>\etc.'
     if ($Config -ne '' -and (Test-Path -LiteralPath $Config -PathType Leaf)) {
         Exit-Lab "the -Config path is a file, not a folder: $Config" 40 $fix
     }
@@ -980,13 +1015,13 @@ function Assert-LabThisHost {
     $hostsFile = Join-Path $env:LAB_CONFIG_DIR 'hosts'
     switch -CaseSensitive ($entry.Platform) {
         'windows' { }
-        'appliance' { Exit-Lab "this host ($hostName) is an appliance in ${hostsFile}: Labyrinth never changes it" 20 'Configure it by hand, from its runbook.' }
-        default { Exit-Lab "this host ($hostName) is listed as $($entry.Platform) in ${hostsFile}, not a platform this runner serves" 20 "Run the Labyrinth runner for $($entry.Platform) there, or correct this host's line in the hosts file." }
+        'appliance' { Exit-Lab "this host ($hostName) is an appliance: Labyrinth never changes it" 20 "Configure it by hand, from its runbook, or correct its line in $hostsFile" }
+        default { Exit-Lab "this runner does not serve this host's platform, $($entry.Platform)" 20 "Use the runner for $($entry.Platform), or correct this host's line in $hostsFile" }
     }
 }
 
 function Find-LabThisHost {
-    try { return Find-LabHost -Name (Get-LabHostName) } catch { Exit-Lab "the hosts file is malformed: $($_.Exception.Message)" 40 'Each line is: host group profile platform. Correct it, then run the same command again.' }
+    try { return Find-LabHost -Name (Get-LabHostName) } catch { Exit-Lab "the hosts file is malformed: $($_.Exception.Message)" 40 'Each line is: host group profile platform. Correct it, then retry.' }
 }
 
 function Invoke-LabPlanCommand {
@@ -1031,9 +1066,9 @@ function Invoke-LabApplyCommand {
     # Before any configuration under the root is trusted.
     try { Protect-LabDataRoot -Path $script:DataRoot } catch { Exit-Lab "$($_.Exception.Message); nothing was changed" 20 }
     $entry = Find-LabThisHost
-    if ($null -eq $entry) { Exit-Lab "this host ($hostName) is not in $(Join-Path $env:LAB_CONFIG_DIR 'hosts'), so its ring group is unknown" 20 }
+    if ($null -eq $entry) { Exit-Lab 'this host is not in the hosts file, so its ring group is unknown' 20 "Add the line '$hostName <group> <profile> <platform>' to $(Join-Path $env:LAB_CONFIG_DIR 'hosts')" }
     $group = $entry.Group
-    if ($group -eq 'manual') { Exit-Lab "this host ($hostName) is in the manual group: Labyrinth never changes it" 20 }
+    if ($group -eq 'manual') { Exit-Lab 'this host is in the manual group: Labyrinth never changes it' 20 'Configure it by hand, from its runbook.' }
     if ($script:ProfileName -ne '' -and $script:ProfileName -cne $entry.Profile) {
         Exit-Lab "the hosts file gives this host profile $($entry.Profile), not $($script:ProfileName)"
     }
@@ -1102,7 +1137,8 @@ function Invoke-LabApplyCommand {
     if ($stopped) {
         foreach ($l in (Get-LabRunStopped)) { Write-LabLine $l }
     } elseif (Test-LabRevertTimer -RunId $env:LAB_RUN_ID) {
-        Write-LabLine 'All changes are applied and verified. From a NEW session, check that you can still log in.'
+        Write-LabLine 'All changes are applied and verified.'
+        Write-LabLine 'From a NEW session, check that you can still log in.'
         $due = Get-LabRevertTimerDue -RunId $env:LAB_RUN_ID
         if ($due -ne '') { Write-LabLine "The revert timer rolls this run back at $($due.Substring(11, 5)) UTC." }
         $ok = Read-LabAnswer "Type keep to keep the changes; anything else leaves the revert timer to undo them in $($script:Settings['REVERT_MINUTES']) minutes: "
@@ -1138,7 +1174,8 @@ function Invoke-LabKeep {
             $due = Get-LabRevertTimerDue -RunId $env:LAB_RUN_ID
             $when = ''
             if ($due -ne '') { $when = " at $($due.Substring(11, 5)) UTC" }
-            [Console]::Error.WriteLine("labyrinth: the revert timer for run $env:LAB_RUN_ID could not be cancelled, so the run is not kept and the timer will still roll it back$when")
+            [Console]::Error.WriteLine("labyrinth: the revert timer for run $env:LAB_RUN_ID could not be cancelled")
+            [Console]::Error.WriteLine("The run is not kept, and the timer still rolls it back$when.")
             [Console]::Error.WriteLine("Retry: $Self keep $($env:LAB_RUN_ID.Substring($env:LAB_RUN_ID.Length - 4))")
             return 40
         }
@@ -1146,7 +1183,8 @@ function Invoke-LabKeep {
             Add-LabEntryFor '' 'run_kept'
         } catch {
             [Console]::Error.WriteLine($_.Exception.Message)
-            [Console]::Error.WriteLine("labyrinth: the revert timer for run $env:LAB_RUN_ID is cancelled, so the changes stay, but the keep could not be recorded")
+            [Console]::Error.WriteLine("labyrinth: the keep of run $env:LAB_RUN_ID could not be recorded")
+            [Console]::Error.WriteLine('Its revert timer is cancelled, so the changes stay.')
             return 40
         }
         Write-LabLog -Level info -EventName run_kept -Message 'changes kept; revert timer cancelled'
@@ -1219,7 +1257,8 @@ function Invoke-LabRunsCommand {
     $runs = @(Get-LabRunList)
     Write-LabPendingWarning
     if ($runs.Count -eq 0) {
-        Write-LabLine "no runs on this host ($(Join-Path $env:LAB_STATE_DIR 'runs'))"
+        Write-LabLine 'no runs on this host'
+        Write-LabLine "Runs are recorded in $(Join-Path $env:LAB_STATE_DIR 'runs')"
         exit 0
     }
     foreach ($l in (Get-LabRunTable $runs)) { Write-LabLine $l }
@@ -1238,13 +1277,13 @@ function Resolve-LabRunId {
     param([string] $Command, [string] $Ref)
     if ($Ref -cmatch $ReRunId) {
         $manifest = Join-Path (Join-Path (Join-Path $env:LAB_STATE_DIR 'runs') $Ref) 'manifest.jsonl'
-        if (-not (Test-Path -LiteralPath $manifest -PathType Leaf)) { Exit-LabUsage "no run $Ref on this host; '$Self runs' lists them" $Command }
+        if (-not (Test-Path -LiteralPath $manifest -PathType Leaf)) { Exit-LabUsage "no run $Ref on this host" $Command "'$Self runs' lists them." }
         return $Ref
     }
     $suffix = $Ref.ToLowerInvariant()
     $hits = @(Get-LabRunList | Where-Object { $_.EndsWith("-$suffix", [StringComparison]::Ordinal) })
-    if ($hits.Count -eq 0) { Exit-LabUsage "no run ending in '$Ref' on this host; '$Self runs' lists them" $Command }
-    if ($hits.Count -gt 1) { Exit-LabUsage "'$Ref' ends more than one run ($($hits -join ' ')); give the full ID" $Command }
+    if ($hits.Count -eq 0) { Exit-LabUsage "no run ending in '$Ref' on this host" $Command "'$Self runs' lists them." }
+    if ($hits.Count -gt 1) { Exit-LabUsage "'$Ref' ends more than one run; give the full ID" $Command "'$Self runs' lists them." }
     Write-LabLine "using run $($hits[0])"
     return $hits[0]
 }
@@ -1256,10 +1295,10 @@ function Invoke-LabKeepCommand {
     if ($Ref -eq '') {
         # Without a run, keep the one run whose timer is armed (section 3.1).
         $armed = @(Get-LabArmedRun)
-        if ($armed.Count -eq 0) { Exit-LabUsage 'no run on this host has an armed revert timer, so there is nothing to keep' 'keep' }
+        if ($armed.Count -eq 0) { Exit-LabUsage 'no run on this host has an armed revert timer' 'keep' 'There is nothing to keep.' }
         if ($armed.Count -gt 1) {
             foreach ($l in (Get-LabRunTable $armed)) { [Console]::Error.WriteLine($l) }
-            Exit-LabUsage "more than one run has an armed revert timer; name one, like '$Self keep $($armed[0].Substring($armed[0].Length - 4))'" 'keep'
+            Exit-LabUsage 'more than one run has an armed revert timer' 'keep' "Name one, like '$Self keep $($armed[0].Substring($armed[0].Length - 4))'."
         }
         $env:LAB_RUN_ID = $armed[0]
         Write-LabLine "using run $($armed[0])"
@@ -1277,12 +1316,12 @@ function Invoke-LabRollbackCommand {
     $script:DryRun = '0'; $env:LAB_DRY_RUN = '0'
     if ($Ref -eq '') {
         # Rollback always needs a run (decision D3): list them, change nothing.
-        if (-not (Test-LabAdmin)) {
-            Exit-LabUsage "rollback needs a run ID, or its last 4 characters; as Administrator, '$Self runs' lists them" 'rollback'
-        }
+        $need = 'rollback needs a run ID, or its last 4 characters'
+        if (-not (Test-LabAdmin)) { Exit-LabUsage $need 'rollback' "As Administrator, '$Self runs' lists them." }
         $runs = @(Get-LabRunList)
-        if ($runs.Count -gt 0) { foreach ($l in (Get-LabRunTable $runs)) { [Console]::Error.WriteLine($l) } }
-        Exit-LabUsage "rollback needs a run ID, or its last 4 characters; '$Self runs' lists them" 'rollback'
+        if ($runs.Count -eq 0) { Exit-LabUsage $need 'rollback' 'There are no runs on this host.' }
+        foreach ($l in (Get-LabRunTable $runs)) { [Console]::Error.WriteLine($l) }
+        Exit-LabUsage $need 'rollback' 'Pick one from the list above.'
     }
     if (-not (Test-LabAdmin)) { Exit-Lab 'rollback needs an elevated Administrator session' 20 $FixAdmin }
     $env:LAB_RUN_ID = Resolve-LabRunId 'rollback' $Ref
@@ -1306,17 +1345,18 @@ function Invoke-LabRollbackCommand {
             Unregister-LabRevertTimer -RunId $env:LAB_RUN_ID
         } catch {
             [Console]::Error.WriteLine($_.Exception.Message)
-            [Console]::Error.WriteLine("warning: the revert timer for run $env:LAB_RUN_ID could not be removed; when it fires it repeats this rollback, which is safe")
+            [Console]::Error.WriteLine("warning: the revert timer for run $env:LAB_RUN_ID could not be removed")
+            [Console]::Error.WriteLine('When it fires, it repeats this rollback, which is safe.')
         }
         try {
             Add-LabEntryFor '' 'run_rolled_back' '' "exit $rc"
         } catch {
             [Console]::Error.WriteLine($_.Exception.Message)
-            [Console]::Error.WriteLine("labyrinth: run $env:LAB_RUN_ID is rolled back, but the manifest cannot be written to record it")
+            [Console]::Error.WriteLine('labyrinth: rolled back, but the manifest cannot be written to record it')
             $rc = 40
         }
         Write-LabLog -Level warn -EventName run_rolled_back -Message "run rolled back, exit $rc"
-        Write-LabLine "rollback finished: exit $rc"
+        if ($rc -eq 0) { Write-LabLine 'rollback finished: exit 0 (rolled back)' } else { Write-LabLine "rollback finished: exit $rc (error)" }
     } finally {
         if ($locked) { Exit-LabLock }
     }
@@ -1328,16 +1368,60 @@ function Invoke-LabProbeCommand {
     Read-LabSetting
     $out = $null
     try { $out = Get-LabProbeResult -Timeout $script:Settings['PROBE_TIMEOUT'] } catch { Exit-Lab "the service list is malformed: $($_.Exception.Message)" 40 $FixLine }
-    if ($null -eq $out) { Exit-Lab "no service list at $(Join-Path $env:LAB_CONFIG_DIR 'services')" 20 'List the scored services in that file, one "name proto host port expect" per line.' }
+    if ($null -eq $out) { Exit-Lab "no service list at $(Join-Path $env:LAB_CONFIG_DIR 'services')" 20 'List the scored services there, one "name proto host port expect" per line.' }
     Write-LabPendingWarning
-    foreach ($l in $out) { Write-LabLine $l }
-    if (@($out | Where-Object { ($_ -split ' ', 3)[1] -eq 'fail' }).Count -gt 0) { exit 30 }
+    Write-LabProbeReport @($out)
+}
+
+# Write-LabProbeReport LINES: the probe's lines as status lines, then the
+# Summary, Next and finished lines; exit 30 when a service failed.
+function Write-LabProbeReport {
+    param([string[]] $Lines)
+    $n = @{ OK = 0; WARN = 0; FAIL = 0 }
+    Write-LabLine "labyrinth ${LabVersion}: probe the scored services"
+    foreach ($l in $Lines) {
+        if ($l -eq '') { continue }
+        $f = $l -split ' ', 3
+        $w = 'WARN'
+        if ($f[1] -ceq 'pass') { $w = 'OK' } elseif ($f[1] -ceq 'fail') { $w = 'FAIL' }
+        $n[$w]++
+        $text = "[$($f[0])] $($f[1])"
+        if ($f.Count -gt 2 -and $f[2] -ne '') { $text += ": $($f[2])" }
+        Write-LabStatus $w $text
+    }
+    $parts = @()
+    foreach ($w in @('OK', 'WARN', 'FAIL')) { if ($n[$w] -gt 0) { $parts += "$($n[$w]) $w" } }
+    $text = 'no services'
+    if ($parts.Count -gt 0) { $text = $parts -join ', ' }
+    Write-LabLine "Summary: $text"
+    if ($n['FAIL'] -eq 1) {
+        Write-LabLine "Next: bring the failed service back, then run '$Self probe' again."
+        Write-LabLine 'probe finished: exit 30 (a service failed)'
+        exit 30
+    }
+    if ($n['FAIL'] -gt 1) {
+        Write-LabLine "Next: bring the failed services back, then run '$Self probe' again."
+        Write-LabLine "probe finished: exit 30 ($($n['FAIL']) services failed)"
+        exit 30
+    }
+    Write-LabLine 'probe finished: exit 0 (no service failed)'
     exit 0
 }
 
 try {
     Read-LabArgument $script:Arguments
     $words = $script:Words
+    if ($script:ParseError -ne '') {
+        # Point to the help of the command the line names, if it names one.
+        $topic = ''
+        if ($words.Count -gt 0) { $topic = $words[0].ToLowerInvariant() }
+        if ($Phases -ccontains $topic) {
+            if ($script:Given.ContainsKey('apply')) { $topic = 'apply' } else { $topic = 'plan' }
+        } elseif ($Commands -cnotcontains $topic -or $topic -ceq 'help' -or $topic -ceq 'version') {
+            $topic = ''
+        }
+        Exit-LabUsage $script:ParseError $topic
+    }
     $cmd = ''
     $first = ''
     $rest = @()
@@ -1353,6 +1437,7 @@ try {
             $rest = @($words)
         } else {
             $hint = Get-LabSuggestion $first ($Commands + $Phases)
+            if ($words[0] -ceq '/?') { $hint = 'help' }
             if ($hint -ne '') { Exit-LabUsage "unknown command '$($words[0])' (did you mean '$hint'?)" }
             Exit-LabUsage "unknown command '$($words[0])'"
         }
@@ -1377,13 +1462,18 @@ try {
         '' {
             if ($script:Given.ContainsKey('help')) { Show-LabHelp ''; exit 0 }
             if ($script:Given.ContainsKey('version')) { Write-LabLine "labyrinth $LabVersion"; exit 0 }
+            [Console]::Error.WriteLine('labyrinth: no command given')
             [Console]::Error.WriteLine("Usage: $Self <command> [<phase> | <run>] [options]")
             [Console]::Error.WriteLine("Commands: $($Commands -join ', ')")
             [Console]::Error.WriteLine("Try '$Self help' for more information.")
             exit 40
         }
         'help' {
-            if ($rest.Count -gt 1) { Exit-LabUsage "unexpected word '$($rest[1])' after 'help $($rest[0])'" 'help' }
+            if ($rest.Count -gt 1) {
+                $topic = $rest[0].ToLowerInvariant()
+                if ($Commands -cnotcontains $topic) { $topic = 'help' }
+                Exit-LabUsage "unexpected word '$($rest[1])' after 'help $($rest[0])'" $topic
+            }
             $topic = ''
             if ($rest.Count -eq 1) { $topic = $rest[0].ToLowerInvariant() }
             if ($topic -ne '' -and $Commands -cnotcontains $topic) {

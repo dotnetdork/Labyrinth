@@ -114,7 +114,7 @@ labyrinth <command> [<phase> | <run>] [options]
 
 PowerShell avoids the name `-Confirm`, which it reserves.
 
-**Usage errors** exit `40`. They print one line, `labyrinth: <what is wrong>`, then `Try 'labyrinth help[ <command>]' for more information.`, both to standard error. The line names the word at fault and, for a near miss, suggests the right one (`did you mean 'observe'?`). These are errors too:
+**Usage errors** exit `40`. They print one line, `labyrinth: <what is wrong>`, an optional line saying how to fix it, then `Try 'labyrinth help[ <command>]' for more information.`, all to standard error. The line names the word at fault and, for a near miss, suggests the right one (`did you mean 'observe'?`; `/?` gets `did you mean 'help'?`). The `Try` line names the command the line gives, even when the error is in an option, so `keep 4f2a --bogus` points to `help keep`. A line with no command prints `labyrinth: no command given`, then the short usage. These are errors too:
 
 - an option given twice;
 - an option whose value is missing, or looks like another option (`--profile needs a value, but got '--root'`);
@@ -180,25 +180,28 @@ What the runners print is part of the contract: operators read it under time pre
     - `CHANGE`: a change is needed (`10`);
     - `BLOCKED`: `20`;
     - `ERROR`: `40`, or a module that cannot be loaded;
-    - `WARN`: a module skipped on this platform, or a manual-only module that needs steps a person carries out (`10`).
+    - `WARN`: a module skipped on this platform, or a manual-only module that needs steps a person carries out (`10`). A phase with no modules in the profile is one `WARN` line naming the phase in brackets: `WARN     [observe] no modules for this phase in profile web`.
   - **In apply:**
-    - `OK`: applied and verified, nothing approved, or rolled back;
+    - `OK`: applied and verified, nothing approved, no apply step (a module with only a `check` changes nothing), or rolled back;
     - `CHANGE`: a module about to apply;
     - `WARN`: manual only, or a failed cleanup;
     - `BLOCKED`: a gate blocked the module;
     - `FAIL`: verify failed or a scored service regressed;
     - `ERROR`: apply failed, or a rollback failed.
+- **Detail lines.** When a result needs more than one short line, the status line says what happened and the detail follows on a line indented 11 spaces, like module output.
 - **Module output.** A module's own output is indented 11 spaces under its result line, in run order. `check` output is printed after its result line, because the result is known only when `check` ends; the output of later entry points is printed as it comes.
 - **Header.** Two lines, at most 78 columns:
   - the version, the mode (`plan` or `APPLY`), the phase and the profile;
   - `run <id>`, followed in plan mode by `(plan mode: nothing is recorded)` and in apply by the host and group.
 - **End of a run.** Three lines:
   - `Summary:`, the counts of each status word;
-  - `Next:`, the one command to run next, when there is one;
+  - `Next:`, the one command to run next, when there is one. A command too long for the line goes on the next line, indented 2 spaces, so it can be copied whole;
   - `<mode> finished: exit N (<meaning>)`.
+- **probe** follows the same contract: a one-line header, then one line per service, `OK` (pass), `FAIL` or `WARN` (could not be checked) with the service name in brackets, then `Summary:`, `Next:` when a service failed, and `probe finished: exit 0 (no service failed)` or `exit 30`.
+- **rollback** ends with `rollback finished: exit 0 (rolled back)`, or `exit 40 (error)` when a module could not be undone.
 - **Recaps.** Before the group-name prompt: the host, the group, what each module will do, and that a revert timer will be armed. Before the keep prompt: the time the revert timer rolls the run back, in UTC.
 - **Messages** say what failed, why, and how to recover, in one sentence each. An error that stops the runner (exit `20` or `40`) is one line on stderr, `labyrinth: <what failed>: <why>`, and, unless the fix is already in that line, a second line saying how to recover. A failure that leaves changes in place always says how to keep them and how to undo them.
-- **Text.** Fixed text is at most 78 columns, plain ASCII, with no colour.
+- **Text.** Fixed text is at most 78 columns, plain ASCII, with no colour. A line may be longer only by the length of a path it names, and the path comes last.
 
 For module authors: when an entry point exits `20`, `30` or `40`, its last line of output gives the reason. An entry point never leaves a background process holding standard output, because the runner waits for it to close.
 

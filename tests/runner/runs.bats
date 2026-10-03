@@ -32,7 +32,8 @@ streams() {
 @test "runs with no runs says so, exits 0 and creates nothing" {
   lab runs
   [ "$status" -eq 0 ]
-  [[ "$output" == "no runs on this host ($ROOT/state/runs)" ]]
+  [ "${lines[0]}" = 'no runs on this host' ]
+  [ "${lines[1]}" = "Runs are recorded in $ROOT/state/runs" ]
   [ ! -e "$ROOT" ]
 }
 

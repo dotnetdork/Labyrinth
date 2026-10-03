@@ -71,7 +71,13 @@ Describe 'labyrinth.ps1 command line' {
         New-Item -ItemType File -Path (Join-Path $t.Lab 'NOT_ADMIN') | Out-Null
         $r = Invoke-TestLabCapture $t @('rollback', '-Root', $t.Root, '-Config', $t.Etc)
         $r.Code | Should -Be 40
-        $r.Err | Should -Match ([regex]::Escape("as Administrator, 'labyrinth.ps1 runs' lists them"))
+        $r.Err | Should -Match ([regex]::Escape("As Administrator, 'labyrinth.ps1 runs' lists them."))
+    }
+
+    It '/? is pointed to help' {
+        $r = Invoke-TestLabCapture $t @('/?')
+        $r.Code | Should -Be 40
+        $r.Err | Should -Match ([regex]::Escape("unknown command '/?' (did you mean 'help'?)"))
     }
 
     It 'a Windows path with forward slashes is accepted' {

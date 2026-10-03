@@ -43,7 +43,7 @@ setup() {
   printf '%s\n' 'lab_timer_arm() { chmod a-w "$LAB_STATE_DIR/runs/$2/manifest.jsonl"; }' >> "$LAB/core/lib.sh"
   apply
   [ "$status" -eq 40 ]
-  [[ "$output" == *"the run manifest cannot be written, so it is not applied"* ]]
+  [[ "$output" == *"not applied: the run manifest cannot be written"* ]]
   [ ! -e "$LAB/toggle.conf" ]
 }
 
@@ -291,11 +291,11 @@ setup() {
   printf 'web http web.test 80 -\nmail smtp mail.test 25 -\n' > "$ETC/services"
   run bash "$LAB/labyrinth.sh" --root "$ROOT" --config "$ETC" probe
   [ "$status" -eq 0 ]
-  [[ "$output" == *"web pass"* ]]
+  [[ "$output" == *"[web] pass"* ]]
   printf 'mail.test fail\n' > "$LAB/probe-state"
   run bash "$LAB/labyrinth.sh" --root "$ROOT" --config "$ETC" probe
   [ "$status" -eq 30 ]
-  [[ "$output" == *"mail fail"* ]]
+  [[ "$output" == *"[mail] fail"* ]]
   [ ! -e "$ROOT" ]
 }
 
