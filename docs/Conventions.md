@@ -100,7 +100,7 @@ labyrinth <command> [<phase> | <run>] [options]
 
 `<phase>` is `lockout`, `observe`, `deceive` or `sustain`. `<run>` is a run ID (`20261002T140301Z-4f2a`) or its last four characters (`4f2a`). A run that does not exist, or four characters that match more than one run, is an error (`40`) that points to `runs`. Commands, phases, option names and run IDs ignore case; other values do not.
 
-**Options** may come before or after the command and its word. A value is given as `--name value`, `--name=value`, `-Name value` or `-Name:value`, and `--` ends the options. Each option has one name in both runners: bash help writes it `--break-glass`, PowerShell help writes it `-BreakGlass`, and both runners accept both spellings, because long names ignore case and dashes. The short flags `-h`, `-?` and `-V` are matched exactly, so `-v` is an error.
+**Options** may come before or after the command and its word. A value is given as `--name value`, `--name=value`, `-Name value` or `-Name:value`, and `--` ends the options. Each option has one name in both runners: bash help writes it `--break-glass`, PowerShell help writes it `-BreakGlass`, and both runners accept both spellings, because long names ignore case and dashes. The short flags `-h`, `-?` and `-V` are matched exactly, so `-v` is an error. PowerShell takes an unquoted `-?` for itself before the script runs, so the Windows help and manual offer `-h` instead.
 
 | Option | PowerShell | Value | Used by |
 |---|---|---|---|
@@ -109,8 +109,8 @@ labyrinth <command> [<phase> | <run>] [options]
 | `--config` | `-Config` | absolute folder: run-time configuration (default `<root>/etc`) | all |
 | `--break-glass` | `-BreakGlass` | NAME: answers the break-glass prompt without typing | `apply` |
 | `--confirm-group` | `-ConfirmGroup` | GROUP: answers the confirmation prompt without typing | `apply` |
-| `-h`, `--help` | `-Help`, `-?` | none | all |
-| `-V`, `--version` | `-Version` | none | all |
+| `-h`, `-?`, `--help` | `-h`, `-Help` | none | all |
+| `-V`, `--version` | `-V`, `-Version` | none | all |
 
 PowerShell avoids the name `-Confirm`, which it reserves.
 

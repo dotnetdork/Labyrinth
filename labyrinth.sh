@@ -134,7 +134,7 @@ Apply only:
 
 Exit: 0 done, 10 manual steps left, 20 blocked, 30 check failed, 40 error.
 Example: $SELF apply lockout
-Compatibility: '$SELF --apply <phase>' also applies.
+Compatibility: '$SELF <phase> --apply' also applies.
 EOF
     ;;
     keep) cat <<EOF
