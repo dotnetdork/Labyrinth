@@ -233,7 +233,7 @@ Each module's result starts with a status word:
 |---|---|---|
 | `OK` | Nothing to do. | Applied and checked, or undone cleanly. |
 | `CHANGE` | A change is needed. | About to make a change. |
-| `WARN` | Skipped on this platform. | A checklist only, or a clean-up step failed. |
+| `WARN` | Skipped on this platform, or only steps a person must carry out. | A checklist only, or a clean-up step failed. |
 | `BLOCKED` | A safety check blocks it. | A safety check blocked it. |
 | `FAIL` | (not used) | Its check failed, or a scored service got worse. |
 | `ERROR` | Something went wrong. | The change or its undo failed. |
@@ -298,13 +298,26 @@ Each revert timer is a scheduled task named `\Labyrinth\lab-revert-<run>-<n>`, r
 
 **"another Labyrinth run (pid N) holds ... lock".** A run is already in progress on this host. Wait for it to finish. If that process has ended, run the command again: a lock left by a process that is gone is taken over.
 
-**"protected set: ... not found" or "... is empty".** The `protected-accounts` file is not in the configuration folder, or has no accounts. Labyrinth will not change anything without it. Copy in the team's prepared file.
+Most errors that stop Labyrinth are two lines: what failed and why, then how to recover. Do what the second line says, then run the same command again.
 
-**"folder does not exist".** The folder given with the configuration option is not there. Check the path for a typing mistake. `keep` and `rollback` still work without it.
+<!-- linux -->
+**"needs root".** `apply`, `runs`, `keep` and `rollback` need full rights. Run the command again with `sudo`.
+<!-- end -->
+<!-- windows -->
+**"needs an elevated Administrator session".** `apply`, `runs`, `keep` and `rollback` need full rights. Open PowerShell with **Run as administrator** and run the command again.
+<!-- end -->
+
+**"the protected set is not loaded".** The line ends with the reason: there is no `protected-accounts` file in the configuration folder, or it lists no accounts. Labyrinth will not change anything without it. Copy in the team's prepared file.
+
+**"is malformed".** A line in `hosts`, `event.conf`, `protected-accounts`, `services` or a profile does not have the expected form. The message names the file and line number, and what it expected. Correct that line.
+
+**"no profile named".** No profile file has that name. The next line lists the profiles there are; check the name for a typing mistake.
+
+**"folder does not exist" or "is a file, not a folder".** The path given with the configuration option is not a folder. Give the folder that holds the `hosts` file, or leave the option out to use the one under the data root. `keep` and `rollback` still work without it.
 
 **"not a platform this runner serves".** This host's line in `hosts` names a platform this program does not serve, so `plan`, `apply` and `probe` refuse to run here. Correct the line, or use the Labyrinth runner for that platform on the host. `keep` and `rollback` still work, so a run can always be undone.
 
-**"is an appliance".** This host's line in `hosts` says it is an appliance, such as a firewall. Labyrinth never changes an appliance (design 16); follow its runbook by hand instead.
+**"is an appliance".** This host's line in `hosts` says it is an appliance, such as a firewall. Labyrinth never changes an appliance; configure it by hand, from its runbook.
 
 **"too late".** You tried to keep a run that was already rolled back, by the timer or by hand. Its changes are gone. Plan and apply again if you still want them.
 

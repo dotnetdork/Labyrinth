@@ -56,6 +56,17 @@ Describe 'labyrinth.ps1 command line' {
         $r.Err | Should -Not -Match 'warning'
     }
 
+    It 'a warning about an unused option never comes before a run-time error' {
+        $r = Invoke-TestLabCapture $t @('plan', 'observe', '-BreakGlass', 'root', '-Root', $t.Root, '-Config', (Join-Path $t.Etc 'missing'))
+        $r.Code | Should -Be 40
+        $r.Err | Should -Match 'does not exist'
+        $r.Err | Should -Not -Match 'warning'
+        $r = Invoke-TestLabCapture $t @('keep', '4f2a', '-Profile', 'test', '-Root', $t.Root, '-Config', $t.Etc)
+        $r.Code | Should -Be 40
+        $r.Err | Should -Match "no run ending in '4f2a'"
+        $r.Err | Should -Not -Match 'warning'
+    }
+
     It 'rollback with no run, not as an Administrator, says who can list the runs' {
         New-Item -ItemType File -Path (Join-Path $t.Lab 'NOT_ADMIN') | Out-Null
         $r = Invoke-TestLabCapture $t @('rollback', '-Root', $t.Root, '-Config', $t.Etc)

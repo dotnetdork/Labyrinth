@@ -59,6 +59,17 @@ streams() {
   [[ "$ERR" != *warning* ]]
 }
 
+@test "a warning about an unused option never comes before a run-time error" {
+  streams plan observe --break-glass root --root "$ROOT" --config "$ETC/missing"
+  [ "$CODE" -eq 40 ]
+  [[ "$ERR" == *'does not exist'* ]]
+  [[ "$ERR" != *warning* ]]
+  streams keep 4f2a --profile test --root "$ROOT" --config "$ETC"
+  [ "$CODE" -eq 40 ]
+  [[ "$ERR" == *"no run ending in '4f2a'"* ]]
+  [[ "$ERR" != *warning* ]]
+}
+
 @test "rollback with no run, not as root, says who can list the runs" {
   touch "$LAB/NOT_ADMIN"
   streams rollback --root "$ROOT" --config "$ETC"

@@ -120,7 +120,7 @@ PowerShell avoids the name `-Confirm`, which it reserves.
 - an option whose value is missing, or looks like another option (`--profile needs a value, but got '--root'`);
 - a command that conflicts with its options, such as `apply probe` or `--apply` with `keep`.
 
-The whole line must parse before help or the version is shown. A value option that the command does not use, such as `--profile` with `probe`, gives a warning, not an error.
+The whole line must parse before help or the version is shown. A value option that the command does not use, such as `--profile` with `probe`, gives a warning, not an error. The warning is printed once the command has passed its own checks, so it never comes before an error.
 
 **Compatibility forms** stay accepted for good. Operators have learned them, and an armed revert timer runs its stored command line even after the runner that armed it has been replaced. They are:
 
@@ -180,7 +180,7 @@ What the runners print is part of the contract: operators read it under time pre
     - `CHANGE`: a change is needed (`10`);
     - `BLOCKED`: `20`;
     - `ERROR`: `40`, or a module that cannot be loaded;
-    - `WARN`: a module skipped on this platform.
+    - `WARN`: a module skipped on this platform, or a manual-only module that needs steps a person carries out (`10`).
   - **In apply:**
     - `OK`: applied and verified, nothing approved, or rolled back;
     - `CHANGE`: a module about to apply;
@@ -197,7 +197,7 @@ What the runners print is part of the contract: operators read it under time pre
   - `Next:`, the one command to run next, when there is one;
   - `<mode> finished: exit N (<meaning>)`.
 - **Recaps.** Before the group-name prompt: the host, the group, what each module will do, and that a revert timer will be armed. Before the keep prompt: the time the revert timer rolls the run back, in UTC.
-- **Messages** say what failed, why, and how to recover, in one sentence each. A failure that leaves changes in place always says how to keep them and how to undo them.
+- **Messages** say what failed, why, and how to recover, in one sentence each. An error that stops the runner (exit `20` or `40`) is one line on stderr, `labyrinth: <what failed>: <why>`, and, unless the fix is already in that line, a second line saying how to recover. A failure that leaves changes in place always says how to keep them and how to undo them.
 - **Text.** Fixed text is at most 78 columns, plain ASCII, with no colour.
 
 For module authors: when an entry point exits `20`, `30` or `40`, its last line of output gives the reason. An entry point never leaves a background process holding standard output, because the runner waits for it to close.
