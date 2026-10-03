@@ -197,7 +197,7 @@ What the runners print is part of the contract: operators read it under time pre
   - `Next:`, the one command to run next, when there is one;
   - `<mode> finished: exit N (<meaning>)`.
 - **Recaps.** Before the group-name prompt: the host, the group, what each module will do, and that a revert timer will be armed. Before the keep prompt: the time the revert timer rolls the run back, in UTC.
-- **Messages** say what failed, why, and how to recover, in one sentence each. A failure that leaves changes in place always says how to keep them and how to undo them.
+- **Messages** say what failed, why, and how to recover, in one sentence each. An error that stops the runner (exit `20` or `40`) is one line on stderr, `labyrinth: <what failed>: <why>`, and, unless the fix is already in that line, a second line saying how to recover. A failure that leaves changes in place always says how to keep them and how to undo them.
 - **Text.** Fixed text is at most 78 columns, plain ASCII, with no colour.
 
 For module authors: when an entry point exits `20`, `30` or `40`, its last line of output gives the reason. An entry point never leaves a background process holding standard output, because the runner waits for it to close.

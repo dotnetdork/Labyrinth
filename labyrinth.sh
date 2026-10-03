@@ -210,7 +210,43 @@ EOF
 
 cmd_version() { printf 'labyrinth %s\n' "$LAB_VERSION"; }
 
-die() { printf 'labyrinth: %s\n' "$1" >&2; exit "${2:-40}"; }
+# die MESSAGE [CODE] [FIX]: the error, then how to recover, on stderr.
+die() {
+  printf 'labyrinth: %s\n' "$1" >&2
+  if [[ -n "${3:-}" ]]; then printf '%s\n' "$3" >&2; fi
+  exit "${2:-40}"
+}
+
+# How to get the rights a command needs.
+FIX_ADMIN='Run it again as root, for example with sudo.'
+FIX_LINE='Correct that line, then run the same command again.'
+
+# load_reason LOADER [ARG...]: the first error line a configuration loader
+# prints, run in a subshell so that nothing it sets is kept.
+load_reason() { "$@" 2>&1 >/dev/null | head -n 1; }
+
+# host_lookup HOST: lab_host_lookup, with a malformed hosts file an error.
+# Returns 0 when HOST is listed and 2 when it is not.
+host_lookup() {
+  local rc=0
+  lab_host_lookup "$1" 2>/dev/null || rc=$?
+  if (( rc == 1 )); then
+    die "the hosts file is malformed: $(load_reason lab_host_lookup "$1")" 40 \
+      'Each line is: host group profile platform. Correct it, then run the same command again.'
+  fi
+  return "$rc"
+}
+
+# profile_names: the profiles this host can use, comma-separated.
+profile_names() {
+  local f names=''
+  for f in "$LAB_CONFIG_DIR"/profiles/*.profile "$LAB_ROOT"/profiles/*.profile; do
+    [[ -f "$f" ]] || continue
+    f="${f##*/}"; f="${f%.profile}"
+    if [[ ", $names, " != *", $f, "* ]]; then names+="${names:+, }$f"; fi
+  done
+  printf '%s' "$names"
+}
 
 # run_recovery: after an internal error, what changed and what to do next.
 run_recovery() {
@@ -538,7 +574,14 @@ read_profile() {
   PROFILE_IDS=()
   file="$LAB_CONFIG_DIR/profiles/$name.profile"
   [[ -f "$file" ]] || file="$LAB_ROOT/profiles/$name.profile"
-  [[ -f "$file" ]] || die "no profile named $name"
+  if [[ ! -f "$file" ]]; then
+    local names
+    names="$(profile_names)"
+    if [[ -n "$names" ]]; then
+      die "no profile named $name" 40 "Profiles here: $names."
+    fi
+    die "no profile named $name" 40 "There are no profiles in $LAB_CONFIG_DIR/profiles or $LAB_ROOT/profiles."
+  fi
   while IFS= read -r raw || [[ -n "$raw" ]]; do
     n=$((n + 1))
     line="$(lab_trim "${raw%%#*}")"
@@ -689,12 +732,16 @@ plan_all() {
 # (design 01, section 7). Plan mode needs it too, because plans that touch
 # accounts depend on it.
 gate_protected() {
-  local rc=0
-  lab_protected_load || rc=$?
+  local rc=0 file="$LAB_CONFIG_DIR/protected-accounts" why
+  lab_protected_load 2>/dev/null || rc=$?
   case "$rc" in
     0) ;;
-    2) die 'the protected set is not loaded, so Labyrinth refuses to run (design 01, section 7)' 20 ;;
-    *) die 'the protected set is malformed' 40 ;;
+    2) why="$file lists no accounts"
+       if [[ ! -f "$file" ]]; then why="there is no $file"; fi
+       die "the protected set is not loaded, so Labyrinth refuses to run: $why" 20 \
+         'List the accounts Labyrinth must never change in that file, one "account class" per line.' ;;
+    *) die "the protected set is malformed: $(load_reason lab_protected_load)" 40 \
+         "$FIX_LINE" ;;
   esac
 }
 
@@ -901,25 +948,28 @@ apply_one() {
 # command still works after the configuration changes.
 check_host() {
   local rc=0 host
+  local fix='Give the folder that holds the hosts file, or leave out --config to use the one under --root.'
+  if [[ -n "${GIVEN[config]:-}" && -e "${GIVEN[config]}" && ! -d "${GIVEN[config]}" ]]; then
+    die "the --config path is a file, not a folder: ${GIVEN[config]}" 40 "$fix"
+  fi
   if [[ -n "${GIVEN[config]:-}" && ! -d "${GIVEN[config]}" ]]; then
-    die "the --config folder does not exist: ${GIVEN[config]}"
+    die "the --config folder does not exist: ${GIVEN[config]}" 40 "$fix"
   fi
   host="$(lab_host)" || host=''
-  lab_host_lookup "$host" || rc=$?
-  (( rc != 1 )) || die 'the hosts file is malformed'
+  host_lookup "$host" || rc=$?
   (( rc == 0 )) || return 0           # not listed: plan may still run
   case "$LAB_HOST_PLATFORM" in
     ubuntu | rhel-family) ;;
-    appliance) die "this host ($host) is an appliance in $LAB_CONFIG_DIR/hosts: Labyrinth never changes it (design 16)" 20 ;;
-    *) die "this host ($host) is listed as $LAB_HOST_PLATFORM in $LAB_CONFIG_DIR/hosts, not a platform this runner serves" 20 ;;
+    appliance) die "this host ($host) is an appliance in $LAB_CONFIG_DIR/hosts: Labyrinth never changes it" 20 \
+                 'Configure it by hand, from its runbook.' ;;
+    *) die "this host ($host) is listed as $LAB_HOST_PLATFORM in $LAB_CONFIG_DIR/hosts, not a platform this runner serves" 20 \
+         "Run the Labyrinth runner for $LAB_HOST_PLATFORM there, or correct this host's line in the hosts file." ;;
   esac
 }
 
 # resolve_profile: --profile, or this host's line in the hosts file.
 resolve_profile() {
-  local rc=0
-  lab_host_lookup "$(lab_host)" || rc=$?
-  (( rc != 1 )) || die 'the hosts file is malformed'
+  host_lookup "$(lab_host)" || true
   if [[ -z "$OPT_PROFILE" ]]; then
     [[ -n "$LAB_HOST_PROFILE" ]] || die "no profile: give --profile, or list this host ($(lab_host)) in $LAB_CONFIG_DIR/hosts"
     OPT_PROFILE="$LAB_HOST_PROFILE"
@@ -931,7 +981,7 @@ cmd_plan() {
   export LAB_DRY_RUN=1
   resolve_profile
   read_profile "$OPT_PROFILE"
-  lab_event_load || die 'event.conf is malformed'
+  lab_event_load 2>/dev/null || die "event.conf is malformed: $(load_reason lab_event_load)" 40 "$FIX_LINE"
   gate_protected
   flush_warnings
   printf 'labyrinth %s: plan %s, profile %s\n' "$LAB_VERSION" "$phase" "$OPT_PROFILE"
@@ -962,9 +1012,8 @@ cmd_apply() {
   export LAB_DRY_RUN=1
   umask 077
   host="$(lab_host)"
-  lab_is_admin || die 'apply needs root' 20
-  rc=0; lab_host_lookup "$host" || rc=$?
-  (( rc != 1 )) || die 'the hosts file is malformed'
+  lab_is_admin || die 'apply needs root' 20 "$FIX_ADMIN"
+  rc=0; host_lookup "$host" || rc=$?
   (( rc == 0 )) || die "this host ($host) is not in $LAB_CONFIG_DIR/hosts, so its ring group is unknown" 20
   group="$LAB_HOST_GROUP"
   [[ "$group" != manual ]] || die "this host ($host) is in the manual group: Labyrinth never changes it" 20
@@ -973,7 +1022,7 @@ cmd_apply() {
   fi
   OPT_PROFILE="$LAB_HOST_PROFILE"
   read_profile "$OPT_PROFILE"
-  lab_event_load || die 'event.conf is malformed'
+  lab_event_load 2>/dev/null || die "event.conf is malformed: $(load_reason lab_event_load)" 40 "$FIX_LINE"
   gate_protected
   lab_lock_acquire 0 || exit 20
   trap 'lab_lock_release' EXIT
@@ -1136,7 +1185,7 @@ print_runs() {
 cmd_runs() {
   local -a runs=()
   local list
-  lab_is_admin || die 'runs needs root' 20
+  lab_is_admin || die 'runs needs root' 20 "$FIX_ADMIN"
   list="$(list_runs)" || die "the runs in $LAB_STATE_DIR/runs cannot be read"
   flush_warnings
   if [[ -n "$list" ]]; then mapfile -t runs <<< "$list"; fi
@@ -1188,7 +1237,7 @@ cmd_keep() {
   local rc=0 list
   local -a armed=()
   export LAB_DRY_RUN=0
-  lab_is_admin || die 'keep needs root' 20
+  lab_is_admin || die 'keep needs root' 20 "$FIX_ADMIN"
   if [[ -z "$1" ]]; then
     # Without a run, keep the one run whose timer is armed (section 3.1).
     list="$(armed_runs)" || die "the runs in $LAB_STATE_DIR/runs cannot be read"
@@ -1224,7 +1273,7 @@ cmd_rollback() {
     if [[ -n "$list" ]]; then mapfile -t runs <<< "$list"; print_runs "${runs[@]}" >&2; fi
     usage_error "rollback needs a run ID, or its last 4 characters; '$SELF runs' lists them" rollback
   fi
-  lab_is_admin || die 'rollback needs root' 20
+  lab_is_admin || die 'rollback needs root' 20 "$FIX_ADMIN"
   resolve_run rollback "$1"
   export LAB_RUN_ID="$RUN_REF"
   [[ -f "$(lab_manifest_file)" ]] || die "no run $LAB_RUN_ID on this host"
@@ -1260,12 +1309,16 @@ cmd_rollback() {
 cmd_probe() {
   local out rc=0
   export LAB_DRY_RUN=1
-  lab_event_load || die 'event.conf is malformed'
-  out="$(lab_probe_all)" || rc=$?
+  lab_event_load 2>/dev/null || die "event.conf is malformed: $(load_reason lab_event_load)" 40 "$FIX_LINE"
+  # Loaded first and quietly, so a bad list is reported once, below.
+  lab_services_load 2>/dev/null || rc=$?
+  if (( rc == 0 )); then out="$(lab_probe_all)" || rc=$?; fi
   case "$rc" in
     0) ;;
-    2) die "no service list at $LAB_CONFIG_DIR/services" 20 ;;
-    *) die 'the service list is malformed' ;;
+    2) die "no service list at $LAB_CONFIG_DIR/services" 20 \
+         'List the scored services in that file, one "name proto host port expect" per line.' ;;
+    *) die "the service list is malformed: $(load_reason lab_services_load)" 40 \
+         "$FIX_LINE" ;;
   esac
   flush_warnings
   printf '%s\n' "$out"
