@@ -50,7 +50,7 @@ Describe 'labyrinth.ps1 hidden failures' {
         $r.Output | Should -Match 'labyrinth: internal error at line \d+: the lock is gone'
         $r.Output | Should -Match 'The run stopped\. Earlier changes stay until the revert timer undoes them\.'
         $r.Output | Should -Match 'The revert timer rolls this run back at \d\d:\d\d UTC'
-        $r.Output | Should -Match ([regex]::Escape("labyrinth.ps1 rollback $id"))
+        $r.Output | Should -Match ([regex]::Escape("To undo them now: labyrinth.ps1 rollback $($id.Substring($id.Length - 4))"))
         Join-Path $t.Root "state\runs\$id\timer" | Should -Exist
         (Get-Content -LiteralPath $toggle) | Should -Be 'setting=on'
     }

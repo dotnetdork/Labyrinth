@@ -51,3 +51,17 @@ streams() {
   for a in obsrve help -V; do streams --root "$ROOT" "$a"; done
   [ ! -e "$ROOT" ]
 }
+
+@test "a warning about an unused option never comes before an error" {
+  streams --break-glass root --root relative observe
+  [ "$CODE" -eq 40 ]
+  [[ "$ERR" == *'full path'* ]]
+  [[ "$ERR" != *warning* ]]
+}
+
+@test "rollback with no run, not as root, says who can list the runs" {
+  touch "$LAB/NOT_ADMIN"
+  streams rollback --root "$ROOT" --config "$ETC"
+  [ "$CODE" -eq 40 ]
+  [[ "$ERR" == *"as root, 'labyrinth.sh runs' lists them"* ]]
+}

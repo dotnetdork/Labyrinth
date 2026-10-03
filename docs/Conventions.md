@@ -98,7 +98,7 @@ labyrinth <command> [<phase> | <run>] [options]
 | `help [<command>]` | Help for every command, or for one; also `-h` and `--help` (`-Help`) |
 | `version` | Print the version; also `-V` and `--version` (`-Version`) |
 
-`<phase>` is `lockout`, `observe`, `deceive` or `sustain`. `<run>` is a run ID (`20261002T140301Z-4f2a`) or its last four characters (`4f2a`). Four characters that match no run, or more than one, are an error (`40`) that points to `runs`. Commands, phases and option names ignore case; values do not.
+`<phase>` is `lockout`, `observe`, `deceive` or `sustain`. `<run>` is a run ID (`20261002T140301Z-4f2a`) or its last four characters (`4f2a`). A run that does not exist, or four characters that match more than one run, is an error (`40`) that points to `runs`. Commands, phases, option names and run IDs ignore case; other values do not.
 
 **Options** may come before or after the command and its word. A value is given as `--name value`, `--name=value`, `-Name value` or `-Name:value`, and `--` ends the options. Each option has one name in both runners: bash help writes it `--break-glass`, PowerShell help writes it `-BreakGlass`, and both runners accept both spellings, because long names ignore case and dashes. The short flags `-h`, `-?` and `-V` are matched exactly, so `-v` is an error.
 
@@ -174,7 +174,7 @@ Cancelling a timer checks that it is really gone. If it is still armed, `keep` r
 
 What the runners print is part of the contract: operators read it under time pressure, and the tests pin it.
 
-- **Status words.** Every module result starts with one of `OK`, `CHANGE`, `WARN`, `BLOCKED`, `FAIL` or `ERROR`, padded to 9 characters, followed by the module ID and what happened. For example: `CHANGE   observe.sample: a change is needed`.
+- **Status words.** Every module result starts with one of `OK`, `CHANGE`, `WARN`, `BLOCKED`, `FAIL` or `ERROR`, padded to 9 characters, followed by the module ID in brackets and what happened. For example: `CHANGE   [observe.sample] check: change needed; plan follows`.
   - **In plan mode:**
     - `OK`: nothing to do (`0`);
     - `CHANGE`: a change is needed (`10`);
