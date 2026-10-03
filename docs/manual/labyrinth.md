@@ -105,7 +105,7 @@ Every command has the same shape: the command, then the phase or run it acts on,
 @CMD@ <command> [<phase> | <run>] [options]
 ```
 
-Commands, phases, option names and run IDs can be typed in any mix of upper and lower case.
+Commands, phases, option names and run IDs can be typed in any mix of upper and lower case. The short flags are the exception: type `-h` and `-V` exactly as shown, because `-v` is an error.
 
 ## plan *phase*
 
@@ -127,7 +127,7 @@ Ends with 0 when the run is kept, 20 when it is not run as @ADMIN@ or it is too 
 
 ## rollback *run*
 
-Undoes everything the run changed, newest change first. This is exactly what the revert timer does when it fires. You must name the run; without one, it changes nothing and, run as @ADMIN@, lists the runs. Running it twice is safe.
+Undoes everything the run changed, newest change first. This is exactly what the revert timer does when it fires. You must name the run. Without one, it changes nothing and ends with 40; run as @ADMIN@, it also lists the runs to choose from. Running it twice is safe.
 
 Ends with 0 when the run is rolled back, 20 when not run as @ADMIN@, and 40 on an error.
 
@@ -149,15 +149,36 @@ Tests every scored service once, the way the scoring engine would, and prints th
 
 ## help [*command*]
 
-Prints help for every command, or for one. `-h` and `--help` after any command do the same, once the rest of the line is correct.
+Prints help for every command, or for one. After any command,
+<!-- linux -->
+`-h`, `-?` or `--help`
+<!-- end -->
+<!-- windows -->
+`-h` or `-Help`
+<!-- end -->
+does the same, once the rest of the line is correct.
 
 ## version
 
-Prints Labyrinth's version. `-V` and `--version` do the same.
+Prints Labyrinth's version.
+<!-- linux -->
+`-V` or `--version`
+<!-- end -->
+<!-- windows -->
+`-V` or `-Version`
+<!-- end -->
+does the same.
 
 # 6. Options
 
-Options can go before or after the command. Give a value with a space or an equals sign.
+Options can go before or after the command. Give a value after a space, an equals sign or a colon:
+<!-- linux -->
+`--root /srv/lab`, `--root=/srv/lab` and `--root:/srv/lab`
+<!-- end -->
+<!-- windows -->
+`-Root D:\Lab`, `-Root=D:\Lab` and `-Root:D:\Lab`
+<!-- end -->
+all work.
 
 <!-- linux -->
 | Option | What it does | Used by |
@@ -167,7 +188,7 @@ Options can go before or after the command. Give a value with a space or an equa
 | `--config DIR` | The configuration folder, if not `<root>/etc`. Must be a full path, and for plan, apply and probe it must exist. | all |
 | `--break-glass NAME` | Answers the break-glass prompt without typing. | apply |
 | `--confirm-group GROUP` | Answers the group-name prompt without typing. | apply |
-| `-h`, `--help` | Show help. | all |
+| `-h`, `-?`, `--help` | Show help. | all |
 | `-V`, `--version` | Show the version. | all |
 
 Example: `sudo ./labyrinth.sh apply lockout --root /srv/labyrinth`
@@ -180,10 +201,12 @@ Example: `sudo ./labyrinth.sh apply lockout --root /srv/labyrinth`
 | `-Config DIR` | The configuration folder, if not `<root>\etc`. Must be a full path, and for plan, apply and probe it must exist. | all |
 | `-BreakGlass NAME` | Answers the break-glass prompt without typing. | apply |
 | `-ConfirmGroup GROUP` | Answers the group-name prompt without typing. | apply |
-| `-Help`, `-?` | Show help. | all |
-| `-Version` | Show the version. | all |
+| `-h`, `-Help` | Show help. | all |
+| `-V`, `-Version` | Show the version. | all |
 
 Example: `.\labyrinth.ps1 apply lockout -Root D:\Labyrinth`
+
+Use `-h` for help, not `-?`: PowerShell takes `-?` for itself and shows its own page. PowerShell's common parameters, such as `-Verbose`, are not supported.
 
 Run IDs that are all digits, such as `0123`, must be put in quotes, or PowerShell turns them into a number: `.\labyrinth.ps1 keep '0123'`.
 <!-- end -->
@@ -215,7 +238,7 @@ Some modules never change anything on their own: they print a checklist for a pe
 A plan looks like this:
 
 ```
-labyrinth 0.1.0: plan lockout, profile web
+labyrinth 0.1.0-dev: plan lockout, profile web
 run 20261002T140301Z-4f2a (plan mode: nothing is recorded)
 OK       [lockout.example] check: nothing to do
 CHANGE   [lockout.other] check: change needed; plan follows
@@ -249,7 +272,7 @@ The run ends with three lines:
 `probe` reports in the same way, one line per scored service:
 
 ```
-labyrinth 0.1.0: probe the scored services
+labyrinth 0.1.0-dev: probe the scored services
 OK       [web] pass: status 200
 FAIL     [mail] fail: no banner
 Summary: 1 OK, 1 FAIL
