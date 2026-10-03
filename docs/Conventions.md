@@ -93,7 +93,7 @@ labyrinth <command> [<phase> | <run>] [options]
 | `apply <phase>` | Plan, then apply behind the gates below |
 | `keep [<run>]` | Keep a run's changes: cancel its revert timer, then record the keep. Without `<run>`, it takes the one run whose timer is armed; if several are armed, it lists them and keeps nothing (`40`) |
 | `rollback <run>` | Undo what a run applied, newest module first. The revert timer runs exactly this. `<run>` is always needed: without it, the runs are listed (`40`) |
-| `runs` | List this host's runs, oldest first: ID, phase, start time (UTC) and state, which is `armed` (with the time it rolls back), `kept`, `rolled back`, or `not kept, no timer`. Changes nothing; needs root or Administrator (`20`) |
+| `runs` | List this host's runs, oldest first: ID, phase, start time (UTC) and state, which is `armed` (with the time it rolls back), `kept`, `rolled back`, `rolled back with errors`, or `not kept, no timer`. Changes nothing; needs root or Administrator (`20`) |
 | `probe` | Probe every scored service once; exit `30` if one fails. Changes nothing |
 | `help [<command>]` | Help for every command, or for one; also `-h` and `--help` (`-Help`) |
 | `version` | Print the version; also `-V` and `--version` (`-Version`) |
@@ -219,7 +219,7 @@ For module authors: when an entry point exits `20`, `30` or `40`, its last line 
 - `labyrinth.ps1` has no `param` block. It reads `$args` with the same option table and rules as `labyrinth.sh` (section 3.1), so both runners accept the same command lines and answer every usage error with `40`.
 - Use approved verbs. Core functions use the `Lab` noun prefix (for example `Write-LabLog`, `Add-LabManifestEntry`).
 - Never use `Invoke-Expression`, never dot-source configuration.
-- Exit with the contract codes using `exit <code>`; do not let an exception escape an entry point without being mapped to `40`.
+- Exit with the contract codes using `exit <code>`; do not let an exception escape an entry point without being mapped to `40`. In `labyrinth.ps1` the last `catch` does this: like the bash `ERR` trap (section 4), it reports an internal error with what is known about the run. A manifest write whose failure must not end the run silently gets its own `try`.
 - Use `[System.Security.Cryptography.RandomNumberGenerator]` for anything secret, never `Get-Random` (design 01, section 8).
 - PSScriptAnalyzer must pass. A suppression uses `[Diagnostics.CodeAnalysis.SuppressMessageAttribute()]` with a justification.
 

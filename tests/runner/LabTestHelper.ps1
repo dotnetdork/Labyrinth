@@ -65,6 +65,32 @@ function Invoke-TestLab {
     }
 }
 
+# Invoke-TestLabCapture T ARGS: run labyrinth.ps1 in its own process with
+# no input, keeping stdout and stderr apart. Returns Code, Out and Err.
+function Invoke-TestLabCapture {
+    param($T, [AllowEmptyCollection()] [string[]] $Arguments = @())
+    $quoted = @((Join-Path $T.Lab 'labyrinth.ps1')) + $Arguments | ForEach-Object {
+        if ($_ -eq '' -or $_ -match '[\s"]') { '"' + ($_ -replace '"', '\"') + '"' } else { $_ }
+    }
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.FileName = $script:HostExe
+    $psi.Arguments = '-NoProfile -NonInteractive -ExecutionPolicy Bypass -File ' + ($quoted -join ' ')
+    $psi.UseShellExecute = $false
+    $psi.RedirectStandardInput = $true
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError = $true
+    $p = [Diagnostics.Process]::Start($psi)
+    $p.StandardInput.Close()
+    $out = $p.StandardOutput.ReadToEndAsync()
+    $err = $p.StandardError.ReadToEndAsync()
+    $p.WaitForExit()
+    return [pscustomobject]@{
+        Code = $p.ExitCode
+        Out  = $out.Result.TrimEnd()
+        Err  = $err.Result.TrimEnd()
+    }
+}
+
 function Invoke-TestPlan {
     param($T, [string[]] $Extra = @())
     Invoke-TestLab $T (@('observe', '-Profile', 'test', '-Root', $T.Root, '-Config', $T.Etc) + $Extra)
