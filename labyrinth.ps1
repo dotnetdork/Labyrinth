@@ -1,36 +1,31 @@
-#Requires -Version 5.1
 <#
 .SYNOPSIS
-    Labyrinth main program for Windows hosts (design 00, section 5;
-    docs/Conventions.md section 3.1).
+    Labyrinth: plan, apply, keep and roll back hardening runs on a Windows
+    host (design 00, section 5; docs/Conventions.md sections 3.1 and 3.2).
 
 .DESCRIPTION
-    labyrinth.ps1 <phase> [options]           plan: show what would change (default)
-    labyrinth.ps1 <phase> -Apply [options]    apply the plan, behind the safety gates
-    labyrinth.ps1 probe [options]             probe every scored service once
-    labyrinth.ps1 keep <run> [options]        keep a run's changes: cancel its revert timer
-    labyrinth.ps1 rollback <run> [options]    undo what a run applied, newest module first
+    labyrinth.ps1 plan <phase>        show what would change; changes nothing
+    labyrinth.ps1 apply <phase>       plan, confirm, then make the changes
+    labyrinth.ps1 keep [<run>]        keep a run: cancel its revert timer
+    labyrinth.ps1 rollback <run>      undo a run, newest change first
+    labyrinth.ps1 runs                list this host's runs and their state
+    labyrinth.ps1 probe               test every scored service once
+    labyrinth.ps1 help [<command>]    help; also -Help, -h and -?
+    labyrinth.ps1 version             the version; also -Version and -V
 
-    Exit codes (design 00, section 4); the highest code from any module wins:
+    Options may come anywhere; 'labyrinth.ps1 help' lists them. Exit codes
+    (design 00, section 4); the highest code from any module wins:
     0 nothing to do or success, 10 change needed, 20 blocked,
     30 verify failed or a scored service regressed, 40 error.
 
+    The words are parsed by the same rules as labyrinth.sh, so there is no
+    param block: every word arrives in $args.
+
 .EXAMPLE
-    .\labyrinth.ps1 observe -Profile windows-member
+    .\labyrinth.ps1 plan lockout
 #>
-param(
-    [Parameter(Position = 0)] [string] $Command = '',
-    [Parameter(Position = 1)] [string] $RunId = '',
-    [Alias('Profile')] [string] $ProfileName = '',
-    [string] $Root = 'C:\ProgramData\Labyrinth',
-    [string] $Config = '',
-    [switch] $Apply,
-    [string] $BreakGlass = '',
-    [string] $ConfirmGroup = '',
-    [switch] $Version,
-    [switch] $Help,
-    [Parameter(ValueFromRemainingArguments = $true)] [string[]] $Rest = @()
-)
+
+#Requires -Version 5.1
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -43,6 +38,25 @@ $Risks = @('read-only', 'reversible', 'service-affecting', 'approval', 'manual-o
 $Platforms = @('ubuntu', 'rhel-family', 'windows', 'appliance')
 $ReRunId = '^[0-9]{8}T[0-9]{6}Z-[0-9a-f]{4}$'
 $ReModuleId = '^(lockout|observe|deceive|sustain)\.[a-z0-9_-]+$'
+$Commands = @('plan', 'apply', 'keep', 'rollback', 'runs', 'probe', 'help', 'version')
+$Self = 'labyrinth.ps1'          # the program's name, for hints
+
+# The options, one row each (docs/Conventions.md section 3.1): the canonical
+# name, how it is shown, the keys it is matched by (lower case, no dashes),
+# and whether it takes a value. The same table as labyrinth.sh.
+$script:LabOptions = @(
+    @{ Name = 'profile'; Show = '-Profile'; Keys = @('profile', 'profilename'); Value = $true }
+    @{ Name = 'root'; Show = '-Root'; Keys = @('root'); Value = $true }
+    @{ Name = 'config'; Show = '-Config'; Keys = @('config'); Value = $true }
+    @{ Name = 'break-glass'; Show = '-BreakGlass'; Keys = @('breakglass'); Value = $true }
+    @{ Name = 'confirm-group'; Show = '-ConfirmGroup'; Keys = @('confirmgroup', 'confirm'); Value = $true }
+    @{ Name = 'apply'; Show = '-Apply'; Keys = @('apply'); Value = $false }
+    @{ Name = 'help'; Show = '-Help'; Keys = @('help'); Value = $false }
+    @{ Name = 'version'; Show = '-Version'; Keys = @('version'); Value = $false }
+)
+$script:Arguments = @($args)     # the words, before any function runs
+$script:Given = @{}              # canonical option name -> value given
+$script:Words = @()              # the words that are not options, in order
 
 $script:Mod = @{}
 $script:ProfileIds = @()
@@ -55,29 +69,265 @@ $script:Settings = @{}
 $script:Before = @()
 $script:HaveServices = $false
 $script:BreakGlassAccount = ''
-$script:GivenBreakGlass = $BreakGlass   # -BreakGlass, read inside functions
-$script:GivenGroup = $ConfirmGroup      # -ConfirmGroup, read inside functions
+$script:GivenBreakGlass = ''     # -BreakGlass, read inside functions
+$script:GivenGroup = ''          # -ConfirmGroup, read inside functions
+$script:DataRoot = ''            # the data root (-Root)
 $script:Answer = ''
 
-$Usage = @'
-usage: labyrinth.ps1 <phase> [options]
-       labyrinth.ps1 <phase> -Apply [options]
-       labyrinth.ps1 probe | keep <run> | rollback <run> [options]
+# Show-LabHelp [COMMAND]: the help for every command, or for one, on stdout.
+# Each topic is at most 15 lines of at most 78 columns, with one Exit line
+# and one Example line (docs/Conventions.md section 3.2).
+function Show-LabHelp {
+    param([string] $Topic = '')
+    $where = @"
+Where:
+  -Root DIR              data root (default C:\ProgramData\Labyrinth)
+  -Config DIR            configuration folder (default <root>\etc)
+"@
+    $text = switch ($Topic) {
+        '' { @"
+Usage: $Self <command> [<phase> | <run>] [options]
 
-  <phase>              lockout | observe | deceive | sustain
-  -Profile NAME        host profile (default: this host's line in the hosts file)
-  -Root DIR            Labyrinth data root (default C:\ProgramData\Labyrinth)
-  -Config DIR          run-time configuration (default <root>\etc)
-  -Apply               apply the plan, behind the safety gates
-  -BreakGlass NAME     the break-glass account confirmed at this host's console
-  -ConfirmGroup GROUP  the host's group name, typed to approve the plan
-  -Version             print the version
-  -Help                this help
+  plan <phase>      show what would change; changes nothing
+  apply <phase>     plan, confirm, then make the changes
+  keep [<run>]      keep a run: cancel its revert timer
+  rollback <run>    undo a run, newest change first
+  runs              list this host's runs and their state
+  probe             test every scored service once
+  help [<command>]  help for one command
+  version           print the version
 
-Plan mode is the default: modules report what they would change, and
-nothing is changed. After an apply, the revert timer undoes the run unless
-it is kept: type keep when asked, or run 'labyrinth.ps1 keep <run>'.
-'@
+Phases: lockout, observe, deceive, sustain. <run>: an ID or its last 4.
+Options: -Root DIR, -Config DIR, -Profile NAME, -Help, -V; see each command.
+Exit: 0 ok, 10 change needed, 20 blocked, 30 check failed, 40 error.
+Example: $Self plan lockout
+"@ }
+        'plan' { @"
+Usage: $Self plan <phase> [options]
+
+Show what every module of the phase would change on this host.
+Nothing is changed and nothing is written. <phase> is lockout,
+observe, deceive or sustain.
+
+$where
+  -Profile NAME          use this profile, not the one in the hosts file
+
+Exit: 0 nothing to do, 10 change needed, 20 blocked, 40 error.
+Example: $Self plan lockout
+Compatibility: '$Self <phase>' also plans.
+"@ }
+        'apply' { @"
+Usage: $Self apply <phase> [options]
+
+Plan, confirm, then change; a revert timer undoes it unless kept.
+
+$where
+  -Profile NAME          must match this host's line in the hosts file
+Apply only:
+  -BreakGlass NAME       answer the break-glass prompt
+  -ConfirmGroup GROUP    answer the group-name prompt
+
+Exit: 0 done, 20 blocked, 30 check failed, 40 error.
+Example: $Self apply lockout
+Compatibility: '$Self <phase> -Apply' also applies.
+"@ }
+        'keep' { @"
+Usage: $Self keep [<run>] [options]
+
+Keep a run's changes: cancel its revert timer, then record the keep.
+Without <run>, keep the one run whose timer is armed. <run> is a run
+ID or its last 4 characters; '$Self runs' lists them.
+
+$where
+
+Exit: 0 kept, 20 too late (already rolled back), 40 error.
+Example: $Self keep 4f2a
+"@ }
+        'rollback' { @"
+Usage: $Self rollback <run> [options]
+
+Undo everything the run changed, newest change first. This is what
+the revert timer runs. Safe to run twice. <run> is a run ID or its
+last 4 characters; '$Self runs' lists them.
+
+$where
+
+Exit: 0 rolled back, 20 not an Administrator, 40 error.
+Example: $Self rollback 4f2a
+"@ }
+        'runs' { @"
+Usage: $Self runs [options]
+
+List this host's runs, oldest first: run ID, phase, start time (UTC)
+and state (armed, kept, rolled back, or not kept, no timer).
+Changes nothing; needs an Administrator.
+
+$where
+
+Exit: 0 listed, 20 not an Administrator, 40 error.
+Example: $Self runs
+"@ }
+        'probe' { @"
+Usage: $Self probe [options]
+
+Test every scored service once, the way the scoring engine would,
+and print one line per service. Changes nothing.
+
+$where
+
+Exit: 0 all pass, 20 no service list, 30 a service failed, 40 error.
+Example: $Self probe
+"@ }
+        'help' { @"
+Usage: $Self help [<command>]
+
+Print help for every command, or for one. '$Self <command> -Help'
+and '$Self <command> -h' print the same.
+
+Exit: 0 printed, 40 unknown command.
+Example: $Self help apply
+"@ }
+        'version' { @"
+Usage: $Self version
+
+Print the version of Labyrinth. '-V' and '-Version' do the same.
+
+Exit: 0 printed.
+Example: $Self version
+"@ }
+    }
+    foreach ($l in ($text -split "`r?`n")) { [Console]::Out.WriteLine($l) }
+}
+
+# Exit-LabUsage MESSAGE [COMMAND]: a usage error: one line, a pointer to
+# help, exit 40 (docs/Conventions.md section 3.1).
+function Exit-LabUsage {
+    param([string] $Message, [string] $Command = '')
+    $topic = ''
+    if ($Command -ne '') { $topic = " $Command" }
+    [Console]::Error.WriteLine("labyrinth: $Message")
+    [Console]::Error.WriteLine("Try '$Self help$topic' for more information.")
+    exit 40
+}
+
+# Write-LabWarning MESSAGE: a warning on stderr.
+function Write-LabWarning {
+    param([string] $Message)
+    [Console]::Error.WriteLine("labyrinth: warning: $Message")
+}
+
+# Measure-LabEditDistance A B: the Levenshtein distance between A and B.
+function Measure-LabEditDistance {
+    param([string] $A, [string] $B)
+    $prev = New-Object 'int[]' ($B.Length + 1)
+    for ($j = 0; $j -le $B.Length; $j++) { $prev[$j] = $j }
+    for ($i = 1; $i -le $A.Length; $i++) {
+        $cur = New-Object 'int[]' ($B.Length + 1)
+        $cur[0] = $i
+        for ($j = 1; $j -le $B.Length; $j++) {
+            $cost = 1
+            if ($A[$i - 1] -ceq $B[$j - 1]) { $cost = 0 }
+            $cur[$j] = [Math]::Min([Math]::Min($prev[$j] + 1, $cur[$j - 1] + 1), $prev[$j - 1] + $cost)
+        }
+        $prev = $cur
+    }
+    return $prev[$B.Length]
+}
+
+# Get-LabSuggestion WORD CANDIDATES: the candidate WORD most likely meant:
+# the only one it is a prefix of, else the nearest within an edit distance
+# of 2. Returns '' when there is none.
+function Get-LabSuggestion {
+    param([string] $Word, [string[]] $Candidates)
+    if ($Word -eq '') { return '' }
+    $prefix = @($Candidates | Where-Object { $_.StartsWith($Word, [StringComparison]::Ordinal) })
+    if ($prefix.Count -eq 1) { return $prefix[0] }
+    $best = ''
+    $bestd = 3
+    foreach ($c in $Candidates) {
+        $d = Measure-LabEditDistance $Word $c
+        if ($d -lt $bestd) { $bestd = $d; $best = $c }
+    }
+    return $best
+}
+
+# Find-LabOption KEY: the row of the option matched by KEY (lower case, no
+# dashes), or $null.
+function Find-LabOption {
+    param([string] $Key)
+    foreach ($o in $script:LabOptions) {
+        if ($o.Keys -ccontains $Key) { return $o }
+    }
+    return $null
+}
+
+# Read-LabArgument WORD...: sort the words into options ($script:Given) and
+# the rest ($script:Words). Options may come anywhere; '--' ends them.
+function Read-LabArgument {
+    param([object[]] $Arguments)
+    $words = New-Object System.Collections.Generic.List[string]
+    $ended = $false
+    $i = 0
+    while ($i -lt $Arguments.Count) {
+        $a = $Arguments[$i]; $i++
+        if ($a -isnot [string]) {
+            # In a PowerShell session, 0123 arrives as the number 123.
+            Exit-LabUsage "'$a' was read as a number: put it in quotes, like '0123'"
+        }
+        $w = [string] $a
+        if ($ended -or $w -notlike '-?*') { $words.Add($w); continue }
+        if ($w -ceq '--') { $ended = $true; continue }
+        if ($w -ceq '-h' -or $w -ceq '-?') { $w = '-Help' }
+        elseif ($w -ceq '-V') { $w = '-Version' }
+        elseif ($w -ceq '-v') { Exit-LabUsage "unknown option '-v' (did you mean '-V', the version?)" }
+        $key = $w.Substring(1)
+        if ($key.StartsWith('-')) { $key = $key.Substring(1) }
+        $sep = ''
+        $val = ''
+        if ($key -match '^([^=:]*)([=:])(.*)$') {
+            $key = $Matches[1]; $sep = $Matches[2]; $val = $Matches[3]
+        }
+        $shown = ($w -split '[=:]', 2)[0]
+        $o = Find-LabOption ($key.ToLowerInvariant().Replace('-', ''))
+        if ($null -eq $o) {
+            # One candidate per option, its first key, so a prefix of two
+            # keys of the same option still counts as one.
+            $hint = Get-LabSuggestion ($key.ToLowerInvariant().Replace('-', '')) @($script:LabOptions | ForEach-Object { $_.Keys[0] })
+            if ($hint -ne '') {
+                $h = Find-LabOption $hint
+                Exit-LabUsage "unknown option '$shown' (did you mean '$($h.Show)'?)"
+            }
+            Exit-LabUsage "unknown option '$shown'"
+        }
+        if ($o.Value) {
+            # '-Name value', or a session's '-Name:' with the value as the next word.
+            if ($sep -eq '' -or ($sep -eq ':' -and $val -eq '')) {
+                if ($i -ge $Arguments.Count) { Exit-LabUsage "$($o.Show) needs a value" }
+                $next = $Arguments[$i]
+                if ($next -is [string] -and $next -like '-?*') { Exit-LabUsage "$($o.Show) needs a value, but got '$next'" }
+                $val = [string] $next; $i++
+            }
+            if ($val -eq '') { Exit-LabUsage "$($o.Show) needs a value" }
+        } elseif ($sep -ne '') {
+            Exit-LabUsage "$($o.Show) takes no value"
+        }
+        if ($script:Given.ContainsKey($o.Name)) { Exit-LabUsage "$($o.Show) is given twice" }
+        $script:Given[$o.Name] = $val
+    }
+    $script:Words = @($words)
+}
+
+# Test-LabOptionUse COMMAND OPTION...: warn about value options given that
+# COMMAND does not use.
+function Test-LabOptionUse {
+    param([string] $Command, [string[]] $Used = @())
+    foreach ($name in @('profile', 'break-glass', 'confirm-group')) {
+        if ($script:Given.ContainsKey($name) -and $Used -notcontains $name) {
+            $o = $script:LabOptions | Where-Object { $_.Name -eq $name }
+            Write-LabWarning "$($o.Show) is not used by $Command"
+        }
+    }
+}
 
 function Write-LabLine {
     param([AllowEmptyString()] [string] $Text = '')
@@ -423,7 +673,7 @@ function Invoke-LabApplyOne {
         $exe = (Get-Process -Id $PID).Path
         $arg = '-NoProfile -NonInteractive -ExecutionPolicy Bypass -File {0} rollback {1} -Root {2} -Config {3}' -f `
             (ConvertTo-LabCommandLineArgument (Join-Path $env:LAB_ROOT 'labyrinth.ps1')), $env:LAB_RUN_ID,
-            (ConvertTo-LabCommandLineArgument $Root), (ConvertTo-LabCommandLineArgument $env:LAB_CONFIG_DIR)
+            (ConvertTo-LabCommandLineArgument $script:DataRoot), (ConvertTo-LabCommandLineArgument $env:LAB_CONFIG_DIR)
         try {
             Register-LabRevertTimer -Seconds ($script:Settings['REVERT_MINUTES'] * 60) -RunId $env:LAB_RUN_ID -Execute $exe -Argument $arg
         } catch {
@@ -511,7 +761,7 @@ function Invoke-LabApplyCommand {
     $hostName = Get-LabHostName
     if (-not (Test-LabAdmin)) { Exit-Lab 'apply needs an elevated Administrator session' 20 }
     # Before any configuration under the root is trusted.
-    try { Protect-LabDataRoot -Path $Root } catch { Exit-Lab "$($_.Exception.Message); nothing was changed" 20 }
+    try { Protect-LabDataRoot -Path $script:DataRoot } catch { Exit-Lab "$($_.Exception.Message); nothing was changed" 20 }
     $entry = Find-LabThisHost
     if ($null -eq $entry) { Exit-Lab "this host ($hostName) is not in $(Join-Path $env:LAB_CONFIG_DIR 'hosts'), so its ring group is unknown" 20 }
     $group = $entry.Group
@@ -669,40 +919,129 @@ function Invoke-LabProbeCommand {
 }
 
 try {
-    if ($Help) { Write-LabLine $Usage; exit 0 }
-    if ($Version) { Write-LabLine "labyrinth $LabVersion"; exit 0 }
-    if ($Rest.Count -gt 0) { Exit-Lab "unexpected argument: $($Rest[0])" }
-    if ($Command -eq '') { [Console]::Error.WriteLine($Usage); exit 40 }
-    if ($ProfileName -ne '' -and $ProfileName -cnotmatch '^[a-z0-9-]+$') { Exit-Lab "invalid profile name: $ProfileName" }
-    if ($Root -notmatch '^([A-Za-z]:\\|\\\\)') { Exit-Lab '-Root must be an absolute path' }
-    if ($Config -ne '' -and $Config -notmatch '^([A-Za-z]:\\|\\\\)') { Exit-Lab '-Config must be an absolute path' }
-    $script:ProfileName = $ProfileName
+    Read-LabArgument $script:Arguments
+    $words = $script:Words
+    $cmd = ''
+    $first = ''
+    $rest = @()
+
+    # Work out the command; the whole line must parse before help is shown.
+    if ($words.Count -gt 0) {
+        $first = $words[0].ToLowerInvariant()
+        if ($Commands -ccontains $first) {
+            $cmd = $first
+            $rest = @($words | Select-Object -Skip 1)
+        } elseif ($Phases -ccontains $first) {
+            $cmd = 'plan'                     # compatibility: a phase alone
+            $rest = @($words)
+        } else {
+            $hint = Get-LabSuggestion $first ($Commands + $Phases)
+            if ($hint -ne '') { Exit-LabUsage "unknown command '$($words[0])' (did you mean '$hint'?)" }
+            Exit-LabUsage "unknown command '$($words[0])'"
+        }
+    }
+    if ($script:Given.ContainsKey('apply')) {
+        switch ($cmd) {
+            'plan' {
+                if ($first -ceq 'plan') { Exit-LabUsage "plan and -Apply conflict; use '$Self apply <phase>'" 'apply' }
+                $cmd = 'apply'
+            }
+            'apply' { }
+            '' { Exit-LabUsage '-Apply needs a phase' 'apply' }
+            default { Exit-LabUsage "-Apply cannot be used with $cmd" $cmd }
+        }
+    }
+    if ($script:Given.ContainsKey('help')) {
+        # 'help plan -Help' is help on plan; 'help -Help' is help on help.
+        if ($cmd -ceq 'help' -and $rest.Count -gt 0) { $cmd = $rest[0].ToLowerInvariant() }
+        if ($cmd -ne '' -and $Commands -cnotcontains $cmd) { Exit-LabUsage "no help for '$cmd'" }
+        Show-LabHelp $cmd
+        exit 0
+    }
+    if ($script:Given.ContainsKey('version')) { Write-LabLine "labyrinth $LabVersion"; exit 0 }
+
+    $phase = ''
+    $run = ''
+    switch ($cmd) {
+        '' {
+            [Console]::Error.WriteLine("Usage: $Self <command> [<phase> | <run>] [options]")
+            [Console]::Error.WriteLine("Commands: $($Commands -join ', ')")
+            [Console]::Error.WriteLine("Try '$Self help' for more information.")
+            exit 40
+        }
+        'help' {
+            if ($rest.Count -gt 1) { Exit-LabUsage "unexpected word '$($rest[1])' after 'help $($rest[0])'" 'help' }
+            $topic = ''
+            if ($rest.Count -eq 1) { $topic = $rest[0].ToLowerInvariant() }
+            if ($topic -ne '' -and $Commands -cnotcontains $topic) {
+                $hint = Get-LabSuggestion $topic $Commands
+                if ($hint -ne '') { Exit-LabUsage "no help for '$($rest[0])' (did you mean '$hint'?)" }
+                Exit-LabUsage "no help for '$($rest[0])'"
+            }
+            Show-LabHelp $topic
+            exit 0
+        }
+        'version' {
+            if ($rest.Count -gt 0) { Exit-LabUsage "unexpected word '$($rest[0])' after 'version'" 'version' }
+            Write-LabLine "labyrinth $LabVersion"
+            exit 0
+        }
+        { $_ -ceq 'plan' -or $_ -ceq 'apply' } {
+            if ($rest.Count -eq 0) { Exit-LabUsage "$cmd needs a phase: lockout, observe, deceive or sustain" $cmd }
+            $phase = $rest[0].ToLowerInvariant()
+            if ($phase -ceq 'probe') { Exit-LabUsage "probe is a command, not a phase: run '$Self probe'" 'probe' }
+            if ($Phases -cnotcontains $phase) {
+                $hint = Get-LabSuggestion $phase $Phases
+                if ($hint -ne '') { Exit-LabUsage "unknown phase '$($rest[0])' (did you mean '$hint'?)" $cmd }
+                Exit-LabUsage "unknown phase '$($rest[0])'" $cmd
+            }
+            if ($rest.Count -gt 1) { Exit-LabUsage "unexpected word '$($rest[1])' after '$cmd $phase'" $cmd }
+            if ($cmd -ceq 'plan') { Test-LabOptionUse 'plan' @('profile') } else { Test-LabOptionUse 'apply' @('profile', 'break-glass', 'confirm-group') }
+        }
+        { $_ -ceq 'keep' -or $_ -ceq 'rollback' } {
+            if ($rest.Count -eq 0) { Exit-LabUsage "$cmd needs a run ID" $cmd }
+            if ($rest.Count -gt 1) { Exit-LabUsage "unexpected word '$($rest[1])' after '$cmd $($rest[0])'" $cmd }
+            if ($rest[0] -cnotmatch $ReRunId) { Exit-LabUsage "not a run ID: '$($rest[0])'" $cmd }
+            $run = $rest[0]
+            Test-LabOptionUse $cmd
+        }
+        { $_ -ceq 'runs' -or $_ -ceq 'probe' } {
+            if ($rest.Count -gt 0) { Exit-LabUsage "unexpected word '$($rest[0])' after '$cmd'" $cmd }
+            Test-LabOptionUse $cmd
+        }
+    }
+
+    $profileName = ''
+    if ($script:Given.ContainsKey('profile')) { $profileName = $script:Given['profile'] }
+    $script:DataRoot = 'C:\ProgramData\Labyrinth'
+    if ($script:Given.ContainsKey('root')) { $script:DataRoot = $script:Given['root'] }
+    $config = ''
+    if ($script:Given.ContainsKey('config')) { $config = $script:Given['config'] }
+    if ($script:Given.ContainsKey('break-glass')) { $script:GivenBreakGlass = $script:Given['break-glass'] }
+    if ($script:Given.ContainsKey('confirm-group')) { $script:GivenGroup = $script:Given['confirm-group'] }
+    if ($profileName -ne '' -and $profileName -cnotmatch '^[a-z0-9-]+$') {
+        Exit-LabUsage "invalid profile name '$profileName' (lower-case letters, digits and -)" $cmd
+    }
+    if ($script:DataRoot -notmatch '^([A-Za-z]:\\|\\\\)') { Exit-LabUsage "-Root must be a full path, not '$($script:DataRoot)'" $cmd }
+    if ($config -ne '' -and $config -notmatch '^([A-Za-z]:\\|\\\\)') { Exit-LabUsage "-Config must be a full path, not '$config'" $cmd }
+    $script:ProfileName = $profileName
     $script:DryRun = '1'
 
     $env:LAB_ROOT = $PSScriptRoot
-    if ($Config -ne '') { $env:LAB_CONFIG_DIR = $Config } else { $env:LAB_CONFIG_DIR = Join-Path $Root 'etc' }
-    $env:LAB_STATE_DIR = Join-Path $Root 'state'
-    $env:LAB_LOG_DIR = Join-Path $Root 'logs'
-    $env:LAB_BACKUP_DIR = Join-Path $Root 'backup'
+    if ($config -ne '') { $env:LAB_CONFIG_DIR = $config } else { $env:LAB_CONFIG_DIR = Join-Path $script:DataRoot 'etc' }
+    $env:LAB_STATE_DIR = Join-Path $script:DataRoot 'state'
+    $env:LAB_LOG_DIR = Join-Path $script:DataRoot 'logs'
+    $env:LAB_BACKUP_DIR = Join-Path $script:DataRoot 'backup'
     $env:LAB_RUN_ID = Get-LabRunId
     . (Join-Path $PSScriptRoot 'core\Lab.ps1')
 
-    switch -CaseSensitive ($Command) {
-        'probe' {
-            if ($RunId -ne '' -or $Apply) { Exit-Lab 'usage: labyrinth.ps1 probe' }
-            Invoke-LabProbeCommand
-        }
-        { $_ -ceq 'keep' -or $_ -ceq 'rollback' } {
-            if ($Apply) { Exit-Lab "usage: labyrinth.ps1 $Command <run>" }
-            if ($RunId -cnotmatch $ReRunId) { Exit-Lab "not a run id: $RunId" }
-            $env:LAB_RUN_ID = $RunId
-            if ($Command -ceq 'keep') { Invoke-LabKeepCommand } else { Invoke-LabRollbackCommand }
-        }
-        default {
-            if ($RunId -ne '') { Exit-Lab "unexpected argument: $RunId" }
-            if ($Phases -cnotcontains $Command) { Exit-Lab "unknown phase or command: $Command" }
-            if ($Apply) { Invoke-LabApplyCommand $Command } else { Invoke-LabPlanCommand $Command }
-        }
+    switch ($cmd) {
+        'plan' { Invoke-LabPlanCommand $phase }
+        'apply' { Invoke-LabApplyCommand $phase }
+        'keep' { $env:LAB_RUN_ID = $run; Invoke-LabKeepCommand }
+        'rollback' { $env:LAB_RUN_ID = $run; Invoke-LabRollbackCommand }
+        'probe' { Invoke-LabProbeCommand }
+        'runs' { Exit-LabUsage 'runs is not built yet' 'runs' }
     }
 } catch {
     [Console]::Error.WriteLine("labyrinth: $($_.Exception.Message)")
