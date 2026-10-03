@@ -73,6 +73,9 @@ $script:GivenBreakGlass = ''     # -BreakGlass, read inside functions
 $script:GivenGroup = ''          # -ConfirmGroup, read inside functions
 $script:DataRoot = ''            # the data root (-Root)
 $script:Answer = ''
+$script:Command = ''             # the command being run, for the last catch
+$script:RunRef = ''              # the run keep or rollback acts on
+$script:RunOpen = $false         # true once an apply has recorded run_start
 
 # Show-LabHelp [COMMAND]: the help for every command, or for one, on stdout.
 # Each topic is at most 15 lines of at most 78 columns, with one Exit line
@@ -338,6 +341,35 @@ function Exit-Lab {
     param([string] $Message, [int] $Code = 40)
     [Console]::Error.WriteLine("labyrinth: $Message")
     exit $Code
+}
+
+# Get-LabRunStopped: what the operator needs after a run stops partway.
+function Get-LabRunStopped {
+    'The run stopped. Earlier changes stay until the revert timer undoes them.'
+    $due = Get-LabRevertTimerDue -RunId $env:LAB_RUN_ID
+    if ($due -ne '') { "The revert timer rolls this run back at $($due.Substring(11, 5)) UTC." }
+    "To keep them now: labyrinth.ps1 keep $env:LAB_RUN_ID    To undo them now: labyrinth.ps1 rollback $env:LAB_RUN_ID"
+}
+
+# Get-LabRecovery: after an internal error, what changed and what to do next.
+function Get-LabRecovery {
+    if ($script:RunOpen) {
+        if (Test-LabRevertTimer -RunId $env:LAB_RUN_ID) { return Get-LabRunStopped }
+        return "The run stopped. Its manifest lists what it did; '$Self rollback $($env:LAB_RUN_ID.Substring($env:LAB_RUN_ID.Length - 4))' undoes it."
+    }
+    $short = ''
+    if ($script:RunRef -ne '') { $short = $script:RunRef.Substring($script:RunRef.Length - 4) }
+    switch ($script:Command) {
+        'rollback' {
+            if ($short -ne '') { return "The rollback did not finish. Run '$Self rollback $short' again; it is safe to repeat." }
+            return 'Nothing was rolled back.'
+        }
+        'keep' {
+            if ($short -ne '') { return "The run may not be kept. Check with '$Self runs', then run '$Self keep $short' again." }
+            return 'Nothing was kept.'
+        }
+    }
+    return 'Nothing was changed.'
 }
 
 function Write-YmlError {
@@ -607,7 +639,13 @@ function Undo-LabModule {
         try { Restore-LabBackup } catch { [Console]::Error.WriteLine($_.Exception.Message); $rc = 40 } finally { $env:LAB_MODULE_ID = '' }
     }
     if ($rc -eq 0) {
-        Add-LabEntryFor $Id 'rolled_back'
+        try {
+            Add-LabEntryFor $Id 'rolled_back'
+        } catch {
+            [Console]::Error.WriteLine($_.Exception.Message)
+            Write-LabLine "[$Id] rolled back, but the manifest cannot be written, so it still lists the change; rolling back again is safe"
+            return 40
+        }
         Write-LabLine "[$Id] rolled back"
         Write-LabLogFor $Id 'warn' 'rolled_back' 'rolled back'
         return 0
@@ -683,7 +721,14 @@ function Invoke-LabApplyOne {
         }
     }
 
-    Add-LabEntryFor $id 'apply_start' '' "risk $($M.Risk)"
+    # A change the manifest does not list could never be rolled back.
+    try {
+        Add-LabEntryFor $id 'apply_start' '' "risk $($M.Risk)"
+    } catch {
+        [Console]::Error.WriteLine($_.Exception.Message)
+        Write-LabLine "[$id] error: the run manifest cannot be written, so it is not applied"
+        $M.State = 'failed'; return 40
+    }
     Write-LabLogFor $id 'info' 'apply_start' 'applying'
     Invoke-LabEntry $M.Dir 'apply' $id '0'
     $rc = $script:EntryRc
@@ -794,8 +839,14 @@ function Invoke-LabApplyCommand {
         try {
             New-Item -ItemType Directory -Force -Path (Get-LabRunDir $env:LAB_RUN_ID), (Join-Path $env:LAB_BACKUP_DIR $env:LAB_RUN_ID) | Out-Null
         } catch { Exit-Lab 'the run and backup folders cannot be created; nothing was changed' 20 }
-        Add-LabEntryFor '' 'run_start' $hostName "phase $Phase, profile $($script:ProfileName), group $group"
-        Add-LabEntryFor '' 'breakglass_verified' $script:BreakGlassAccount
+        try {
+            Add-LabEntryFor '' 'run_start' $hostName "phase $Phase, profile $($script:ProfileName), group $group"
+            Add-LabEntryFor '' 'breakglass_verified' $script:BreakGlassAccount
+        } catch {
+            [Console]::Error.WriteLine($_.Exception.Message)
+            Exit-Lab 'the run manifest cannot be written; nothing was changed'
+        }
+        $script:RunOpen = $true
         Write-LabLog -Level info -EventName run_start -Message "apply $Phase, profile $($script:ProfileName), group $group"
         $services = $null
         try { $services = Read-LabServiceList } catch { Exit-Lab "the service list is malformed; nothing was changed: $($_.Exception.Message)" }
@@ -823,8 +874,7 @@ function Invoke-LabApplyCommand {
     }
 
     if ($stopped) {
-        Write-LabLine 'The run stopped. Earlier changes stay until the revert timer undoes them.'
-        Write-LabLine "To keep them now: labyrinth.ps1 keep $env:LAB_RUN_ID    To undo them now: labyrinth.ps1 rollback $env:LAB_RUN_ID"
+        foreach ($l in (Get-LabRunStopped)) { Write-LabLine $l }
     } elseif (Test-LabRevertTimer -RunId $env:LAB_RUN_ID) {
         Write-LabLine 'All changes are applied and verified. From a NEW session, check that you can still log in.'
         $ok = Read-LabAnswer "Type keep to keep the changes; anything else leaves the revert timer to undo them in $($script:Settings['REVERT_MINUTES']) minutes: "
@@ -856,10 +906,20 @@ function Invoke-LabKeep {
             Unregister-LabRevertTimer -RunId $env:LAB_RUN_ID
         } catch {
             [Console]::Error.WriteLine($_.Exception.Message)
-            [Console]::Error.WriteLine("labyrinth: the revert timer for run $env:LAB_RUN_ID could not be cancelled, so the run is not kept and the timer will still roll it back; run keep again")
+            $due = Get-LabRevertTimerDue -RunId $env:LAB_RUN_ID
+            $when = ''
+            if ($due -ne '') { $when = " at $($due.Substring(11, 5)) UTC" }
+            [Console]::Error.WriteLine("labyrinth: the revert timer for run $env:LAB_RUN_ID could not be cancelled, so the run is not kept and the timer will still roll it back$when")
+            [Console]::Error.WriteLine("Retry: $Self keep $($env:LAB_RUN_ID.Substring($env:LAB_RUN_ID.Length - 4))")
             return 40
         }
-        Add-LabEntryFor '' 'run_kept'
+        try {
+            Add-LabEntryFor '' 'run_kept'
+        } catch {
+            [Console]::Error.WriteLine($_.Exception.Message)
+            [Console]::Error.WriteLine("labyrinth: the revert timer for run $env:LAB_RUN_ID is cancelled, so the changes stay, but the keep could not be recorded")
+            return 40
+        }
         Write-LabLog -Level info -EventName run_kept -Message 'changes kept; revert timer cancelled'
         Write-LabLine "kept: the revert timer for run $env:LAB_RUN_ID is cancelled"
         return 0
@@ -972,6 +1032,7 @@ function Invoke-LabKeepCommand {
     } else {
         $env:LAB_RUN_ID = Resolve-LabRunId 'keep' $Ref
     }
+    $script:RunRef = $env:LAB_RUN_ID
     if (-not (Test-Path -LiteralPath (Get-LabManifestPath) -PathType Leaf)) { Exit-Lab "no run $env:LAB_RUN_ID on this host" }
     exit (Invoke-LabKeep)
 }
@@ -989,6 +1050,7 @@ function Invoke-LabRollbackCommand {
     }
     if (-not (Test-LabAdmin)) { Exit-Lab 'rollback needs an elevated Administrator session' 20 }
     $env:LAB_RUN_ID = Resolve-LabRunId 'rollback' $Ref
+    $script:RunRef = $env:LAB_RUN_ID
     if (-not (Test-Path -LiteralPath (Get-LabManifestPath) -PathType Leaf)) { Exit-Lab "no run $env:LAB_RUN_ID on this host" }
     # The revert timer must work even if a hung run still holds the lock.
     $locked = Enter-LabLock -WaitSeconds 120
@@ -1009,7 +1071,13 @@ function Invoke-LabRollbackCommand {
             [Console]::Error.WriteLine($_.Exception.Message)
             [Console]::Error.WriteLine("warning: the revert timer for run $env:LAB_RUN_ID could not be removed; when it fires it repeats this rollback, which is safe")
         }
-        Add-LabEntryFor '' 'run_rolled_back' '' "exit $rc"
+        try {
+            Add-LabEntryFor '' 'run_rolled_back' '' "exit $rc"
+        } catch {
+            [Console]::Error.WriteLine($_.Exception.Message)
+            [Console]::Error.WriteLine("labyrinth: run $env:LAB_RUN_ID is rolled back, but the manifest cannot be written to record it")
+            $rc = 40
+        }
         Write-LabLog -Level warn -EventName run_rolled_back -Message "run rolled back, exit $rc"
         Write-LabLine "rollback finished: exit $rc"
     } finally {
@@ -1148,6 +1216,7 @@ try {
     $env:LAB_RUN_ID = Get-LabRunId
     . (Join-Path $PSScriptRoot 'core\Lab.ps1')
 
+    $script:Command = $cmd
     switch ($cmd) {
         'plan' { Invoke-LabPlanCommand $phase }
         'apply' { Invoke-LabApplyCommand $phase }
@@ -1157,6 +1226,13 @@ try {
         'runs' { Invoke-LabRunsCommand }
     }
 } catch {
-    [Console]::Error.WriteLine("labyrinth: $($_.Exception.Message)")
+    # An unexpected failure (docs/Conventions.md section 4): say what is
+    # known about the run instead of only the exception.
+    [Console]::Error.WriteLine("labyrinth: internal error at line $($_.InvocationInfo.ScriptLineNumber): $($_.Exception.Message)")
+    try {
+        foreach ($l in (Get-LabRecovery)) { [Console]::Error.WriteLine($l) }
+    } catch {
+        [Console]::Error.WriteLine('The state of the run is unknown; check it with runs.')
+    }
     exit 40
 }

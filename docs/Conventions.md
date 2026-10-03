@@ -219,7 +219,7 @@ For module authors: when an entry point exits `20`, `30` or `40`, its last line 
 - `labyrinth.ps1` has no `param` block. It reads `$args` with the same option table and rules as `labyrinth.sh` (section 3.1), so both runners accept the same command lines and answer every usage error with `40`.
 - Use approved verbs. Core functions use the `Lab` noun prefix (for example `Write-LabLog`, `Add-LabManifestEntry`).
 - Never use `Invoke-Expression`, never dot-source configuration.
-- Exit with the contract codes using `exit <code>`; do not let an exception escape an entry point without being mapped to `40`.
+- Exit with the contract codes using `exit <code>`; do not let an exception escape an entry point without being mapped to `40`. In `labyrinth.ps1` the last `catch` does this: like the bash `ERR` trap (section 4), it reports an internal error with what is known about the run. A manifest write whose failure must not end the run silently gets its own `try`.
 - Use `[System.Security.Cryptography.RandomNumberGenerator]` for anything secret, never `Get-Random` (design 01, section 8).
 - PSScriptAnalyzer must pass. A suppression uses `[Diagnostics.CodeAnalysis.SuppressMessageAttribute()]` with a justification.
 
