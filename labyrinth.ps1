@@ -149,7 +149,7 @@ ID or its last 4 characters; '$Self runs' lists them.
 
 $where
 
-Exit: 0 kept, 20 too late (already rolled back), 40 error.
+Exit: 0 kept, 20 not an Administrator or too late (rolled back), 40 error.
 Example: $Self keep 4f2a
 "@ }
         'rollback' { @"
@@ -425,6 +425,7 @@ function Write-LabNextStep {
             Write-LabLine 'Next: a person carries out the manual steps above; apply changes nothing.'
         } else {
             $opts = ''
+            if ($script:Given.ContainsKey('profile')) { $opts += " -Profile $($script:Given['profile'])" }
             if ($script:Given.ContainsKey('root')) { $opts += " -Root $(ConvertTo-LabShellWord $script:Given['root'])" }
             if ($script:Given.ContainsKey('config')) { $opts += " -Config $(ConvertTo-LabShellWord $script:Given['config'])" }
             Write-LabLine "Next: $Self apply $Phase$opts"
@@ -817,7 +818,12 @@ function Invoke-LabApplyOne {
         $M.State = 'manual'; return 0
     }
     if ($M.Scored) {
-        $allow = Read-LabAddressList 'scoring-allowlist'
+        try { $allow = Read-LabAddressList 'scoring-allowlist' }
+        catch {
+            Write-LabStatus 'ERROR' "[$id] error: the scoring allowlist is malformed"
+            Write-LabIndented $_.Exception.Message
+            $M.State = 'error'; return 40
+        }
         if ($null -eq $allow) {
             Write-LabStatus 'BLOCKED' "[$id] blocked: it touches scored services and the scoring allowlist is missing or empty"
             $M.State = 'blocked'; return 20

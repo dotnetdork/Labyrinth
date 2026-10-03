@@ -237,6 +237,19 @@ setup() {
   grep -qx 'setting=on' "$LAB/toggle.conf"
 }
 
+@test "a malformed scoring allowlist is an ERROR with its reason, not an internal error" {
+  profile observe.breaker
+  printf 'web http web.test 80 -\n' > "$ETC/services"
+  printf 'not-an-address\n' > "$ETC/scoring-allowlist"
+  apply
+  [ "$status" -eq 40 ]
+  n="$(grep -nxF 'ERROR    [observe.breaker] error: the scoring allowlist is malformed' <<< "$output" | cut -d: -f1)"
+  [ -n "$n" ]
+  [[ "${lines[n]}" =~ ^\ {11}.*not\ an\ address\ or\ CIDR:\ not-an-address$ ]]
+  [[ "$output" != *'internal error'* ]]
+  [[ "$output" == *'apply finished: exit 40 (error)'* ]]
+}
+
 @test "an approval module changes only what a person approves" {
   profile observe.ask
   answers root ring1 'item-a' keep

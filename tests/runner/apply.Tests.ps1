@@ -230,6 +230,20 @@ Describe 'labyrinth.ps1 apply' {
         (Get-Content -LiteralPath $toggle) | Should -Be 'setting=on'
     }
 
+    It 'a malformed scoring allowlist is an ERROR with its reason, not an internal error' {
+        Write-TestProfile $t @('observe.breaker')
+        Write-TestConfig $t 'services' @('web http web.test 80 -')
+        Write-TestConfig $t 'scoring-allowlist' @('not-an-address')
+        $r = Invoke-TestApply $t $answers
+        $r.Code | Should -Be 40
+        $lines = @($r.Output -split "`r?`n")
+        $n = [array]::IndexOf($lines, 'ERROR    [observe.breaker] error: the scoring allowlist is malformed')
+        ($n -ge 0) | Should -BeTrue
+        $lines[$n + 1] | Should -Match '^ {11}.*not an address or CIDR: not-an-address$'
+        $r.Output | Should -Not -Match 'internal error'
+        $r.Output | Should -Match ([regex]::Escape('apply finished: exit 40 (error)'))
+    }
+
     It 'an approval module changes only what a person approves' {
         Write-TestProfile $t 'observe.ask'
         $items = Join-Path $lab 'APPROVED_ITEMS'
