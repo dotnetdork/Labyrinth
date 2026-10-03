@@ -109,6 +109,15 @@ Describe 'labyrinth.ps1 console output' {
         $r.Output | Should -Match ([regex]::Escape('Next: a person carries out the manual steps above; apply changes nothing.'))
     }
 
+    It 'plan shows a manual-only module as WARN and counts it as WARN' {
+        Write-TestProfile $t @('observe.clean', 'observe.manual')
+        $r = Invoke-TestPlan $t
+        $r.Code | Should -Be 10
+        ((Get-TestLine $r) -ccontains 'WARN     [observe.manual] check: manual steps needed; plan follows') | Should -BeTrue
+        $r.Output | Should -Match 'Summary: 1 OK, 1 WARN'
+        ($r.Output -cnotmatch 'CHANGE') | Should -BeTrue
+    }
+
     It 'apply: a two-line header, a CHANGE line before each change and OK after it' {
         Write-TestProfile $t @('observe.toggle')
         $r = Invoke-TestApply $t @('labadmin', 'ring1', 'keep')

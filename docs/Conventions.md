@@ -120,7 +120,7 @@ PowerShell avoids the name `-Confirm`, which it reserves.
 - an option whose value is missing, or looks like another option (`--profile needs a value, but got '--root'`);
 - a command that conflicts with its options, such as `apply probe` or `--apply` with `keep`.
 
-The whole line must parse before help or the version is shown. A value option that the command does not use, such as `--profile` with `probe`, gives a warning, not an error.
+The whole line must parse before help or the version is shown. A value option that the command does not use, such as `--profile` with `probe`, gives a warning, not an error. The warning is printed once the command has passed its own checks, so it never comes before an error.
 
 **Compatibility forms** stay accepted for good. Operators have learned them, and an armed revert timer runs its stored command line even after the runner that armed it has been replaced. They are:
 
@@ -180,7 +180,7 @@ What the runners print is part of the contract: operators read it under time pre
     - `CHANGE`: a change is needed (`10`);
     - `BLOCKED`: `20`;
     - `ERROR`: `40`, or a module that cannot be loaded;
-    - `WARN`: a module skipped on this platform.
+    - `WARN`: a module skipped on this platform, or a manual-only module that needs steps a person carries out (`10`).
   - **In apply:**
     - `OK`: applied and verified, nothing approved, or rolled back;
     - `CHANGE`: a module about to apply;

@@ -81,6 +81,15 @@ line_of() { grep -nF -- "$1" <<< "$output" | head -n 1 | cut -d: -f1; }
   [[ "$output" == *'Next: a person carries out the manual steps above; apply changes nothing.'* ]]
 }
 
+@test "plan shows a manual-only module as WARN and counts it as WARN" {
+  profile observe.clean observe.manual
+  plan
+  [ "$status" -eq 10 ]
+  grep -qx 'WARN     \[observe.manual\] check: manual steps needed; plan follows' <<< "$output"
+  [[ "$output" == *'Summary: 1 OK, 1 WARN'* ]]
+  [[ "$output" != *CHANGE* ]]
+}
+
 @test "apply: a two-line header, a CHANGE line before each change and OK after it" {
   profile observe.toggle
   answers root ring1 keep
