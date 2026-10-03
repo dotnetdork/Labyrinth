@@ -1,5 +1,6 @@
 # Test fixture: the no-op sample module: check says a change is needed, plan describes it, nothing is ever changed
 id: observe.sample
+title: No-op sample
 phase: observe
 priority: P2
 platforms: [ubuntu, rhel-family, windows]

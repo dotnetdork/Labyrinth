@@ -1,5 +1,6 @@
 # Test fixture: check finds nothing to do
 id: observe.clean
+title: Nothing-to-do sample
 phase: observe
 priority: P2
 platforms: [ubuntu, rhel-family, windows]

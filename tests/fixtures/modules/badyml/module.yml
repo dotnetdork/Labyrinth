@@ -1,5 +1,6 @@
 # Test fixture: module.yml with a key outside the contract
 id: observe.badyml
+title: Bad module.yml sample
 phase: observe
 priority: P2
 platforms: [ubuntu, rhel-family, windows]

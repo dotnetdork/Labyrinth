@@ -101,7 +101,7 @@ Describe 'labyrinth.ps1 plan mode' {
     ) {
         param($Platforms, $Extra)
         $dir = Join-Path $lab 'phases\observe\modules\clean'
-        $yml = @('id: observe.clean', 'phase: observe', 'priority: P2', "platforms: $Platforms",
+        $yml = @('id: observe.clean', 'title: Clean', 'phase: observe', 'priority: P2', "platforms: $Platforms",
             'risk: read-only', 'touches_scored: false', $Extra)
         Set-Content -LiteralPath (Join-Path $dir 'module.yml') -Value $yml -Encoding Ascii
         Write-TestProfile $t 'observe.clean'
@@ -112,11 +112,30 @@ Describe 'labyrinth.ps1 plan mode' {
 
     It 'a well-formed module.yml with spaces in its lists is accepted' {
         $dir = Join-Path $lab 'phases\observe\modules\clean'
-        $yml = @('# comment', '', 'id: observe.clean', 'phase: observe', 'priority: P2',
+        $yml = @('# comment', '', 'id: observe.clean', 'title: Clean: no change', 'phase: observe', 'priority: P2',
             'platforms: [ ubuntu , windows ]', 'risk: read-only', 'touches_scored: false', 'requires: []')
         Set-Content -LiteralPath (Join-Path $dir 'module.yml') -Value $yml -Encoding Ascii
         Write-TestProfile $t 'observe.clean'
         (Invoke-TestPlan $t).Code | Should -Be 0
+    }
+
+    It 'a module.yml without a title, or with one over 40 characters, is rejected' {
+        $file = Join-Path $lab 'phases\observe\modules\clean\module.yml'
+        $orig = Get-Content -LiteralPath $file
+        try {
+            Write-TestProfile $t 'observe.clean'
+            Set-Content -LiteralPath $file -Value @($orig | Where-Object { $_ -notlike 'title:*' }) -Encoding Ascii
+            $r = Invoke-TestPlan $t
+            $r.Code | Should -Be 40
+            $r.Output | Should -Match 'missing key title'
+            Set-Content -LiteralPath $file -Encoding Ascii -Value @($orig | ForEach-Object {
+                    if ($_ -like 'title:*') { 'title: A title that runs on well past forty characters' } else { $_ } })
+            $r = Invoke-TestPlan $t
+            $r.Code | Should -Be 40
+            $r.Output | Should -Match 'title is 47 characters; the most is 40'
+        } finally {
+            Set-Content -LiteralPath $file -Value $orig -Encoding Ascii
+        }
     }
 
     It 'a module.yml id that does not match its folder is rejected' {

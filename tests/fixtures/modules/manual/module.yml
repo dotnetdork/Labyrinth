@@ -1,5 +1,6 @@
 # Test fixture: a manual-only module: prints a checklist, never applies
 id: observe.manual
+title: Manual steps sample
 phase: observe
 priority: P2
 platforms: [ubuntu, rhel-family, windows]

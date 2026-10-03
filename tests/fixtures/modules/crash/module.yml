@@ -1,5 +1,6 @@
 # Test fixture: check fails with a code outside the contract
 id: observe.crash
+title: Crashing sample
 phase: observe
 priority: P2
 platforms: [ubuntu, rhel-family, windows]

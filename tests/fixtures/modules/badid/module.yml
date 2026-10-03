@@ -1,5 +1,6 @@
 # Test fixture: module.yml id does not match its folder
 id: observe.other
+title: Mismatched ID sample
 phase: observe
 priority: P2
 platforms: [ubuntu, rhel-family, windows]

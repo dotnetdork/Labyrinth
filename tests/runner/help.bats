@@ -13,11 +13,13 @@ TOPICS='plan apply keep rollback runs probe help version'
 help() { run bash "$LAB/labyrinth.sh" "$@" < /dev/null; }
 
 @test "every topic is short, fits 78 columns, and has one Exit and one Example line" {
-  local t
-  for t in '' $TOPICS; do
+  local t max
+  for t in '' $TOPICS basics; do
     help help $t
     [ "$status" -eq 0 ] || { echo "help $t: exit $status"; return 1; }
-    [ "$(wc -l <<< "$output")" -le 15 ] || { echo "help $t: over 15 lines"; return 1; }
+    # The general page also names the manual; basics is one screen.
+    case "$t" in '') max=16 ;; basics) max=24 ;; *) max=15 ;; esac
+    [ "$(wc -l <<< "$output")" -le "$max" ] || { echo "help $t: over $max lines"; return 1; }
     [ "$(awk '{ if (length > w) w = length } END { print w + 0 }' <<< "$output")" -le 78 ] \
       || { echo "help $t: a line is over 78 columns"; return 1; }
     [ "$(grep -c '^Exit: ' <<< "$output")" -eq 1 ] || { echo "help $t: Exit lines"; return 1; }
@@ -63,4 +65,49 @@ help() { run bash "$LAB/labyrinth.sh" "$@" < /dev/null; }
   run bash "$LAB/labyrinth.sh" help aply < /dev/null
   [ "$status" -eq 40 ]
   [[ "$output" == *"did you mean 'apply'"* ]]
+  run bash "$LAB/labyrinth.sh" help basic < /dev/null
+  [ "$status" -eq 40 ]
+  [[ "$output" == *"did you mean 'basics'"* ]]
+}
+
+@test "the general help points a beginner to help basics and names the manual" {
+  help help
+  [[ "$(sed -n 2p <<< "$output")" == *"labyrinth.sh help basics"* ]]
+  grep -q '^Manual: ' <<< "$output"
+}
+
+@test "help on a module ID prints its title, its risk in words, then its about.txt" {
+  help help observe.sample
+  [ "$status" -eq 0 ]
+  [ "$(head -n 1 <<< "$output")" = 'No-op sample (observe.sample)' ]
+  grep -qx 'Risk: only looks; it never changes anything.' <<< "$output"
+  grep -qx 'Runs on: ubuntu, rhel-family, windows.' <<< "$output"
+  grep -qx "What it changes: nothing. Its plan describes a change it never makes." <<< "$output"
+  help help OBSERVE.SAMPLE --help
+  [ "$status" -eq 0 ]
+  [ "$(head -n 1 <<< "$output")" = 'No-op sample (observe.sample)' ]
+}
+
+@test "help on a module without about.txt says so; any module ID works, in a profile or not" {
+  help help observe.toggle
+  [ "$status" -eq 0 ]
+  grep -qx 'Risk: changes this host; each change is saved first and can be undone.' <<< "$output"
+  grep -q '^This module has no about.txt yet' <<< "$output"
+}
+
+@test "help on an unknown or invalid module is an error that says why" {
+  run bash "$LAB/labyrinth.sh" help observe.sampel < /dev/null
+  [ "$status" -eq 40 ]
+  [[ "$output" == *"no module 'observe.sampel' (did you mean 'observe.sample'?)"* ]]
+  run bash "$LAB/labyrinth.sh" help observe.badyml < /dev/null
+  [ "$status" -eq 40 ]
+  [[ "$output" == *"the module.yml of observe.badyml is not valid: unknown key color"* ]]
+}
+
+@test "no command prints three steps to start with, and exits 40" {
+  run bash "$LAB/labyrinth.sh" < /dev/null
+  [ "$status" -eq 40 ]
+  grep -qx 'Start here:' <<< "$output"
+  grep -q '^  1\. labyrinth.sh help basics ' <<< "$output"
+  grep -q '^  2\. labyrinth.sh plan lockout ' <<< "$output"
 }
