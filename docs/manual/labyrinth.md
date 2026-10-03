@@ -123,7 +123,7 @@ Ends with 0 when every change was made and checked, or the highest problem code 
 
 Keeps a run's changes: cancels its revert timer, then records that the run was kept. Without a run, it keeps the only run whose timer is armed; if more than one is armed, it lists them and keeps nothing.
 
-Ends with 0 when the run is kept, 20 when it is too late because the run was already rolled back, and 40 when the timer could not be cancelled. In that last case the run is **not** kept and the timer will still undo it, so run `keep` again.
+Ends with 0 when the run is kept, 20 when it is too late because the run was already rolled back, and 40 when the timer could not be cancelled or the keep could not be recorded. If the timer could not be cancelled, the run is **not** kept and the timer will still undo it: Labyrinth says when, and gives the command to try again.
 
 ## rollback *run*
 
@@ -283,9 +283,13 @@ Each revert timer is a scheduled task named `\Labyrinth\lab-revert-<run>-<n>`, r
 
 **"too late".** You tried to keep a run that was already rolled back, by the timer or by hand. Its changes are gone. Plan and apply again if you still want them.
 
-**"could not be cancelled".** `keep` could not stop the revert timer, so the run was not kept and the timer will still undo it. Run `keep` again.
+**"could not be cancelled".** `keep` could not stop the revert timer, so the run was not kept and the timer will still undo it at the time shown. Run the `Retry:` command it prints.
 
-**"The run stopped".** A module failed partway through a run. The changes made before it are still in place, and the revert timer is still armed. Labyrinth prints the commands to keep or undo them. If in doubt, roll back.
+**"the keep could not be recorded".** `keep` cancelled the revert timer, so the changes stay, but the run's record could not be written. `runs` may not show the run as `kept`. Check that the data folder is not full or read-only.
+
+**"The run stopped".** A module failed partway through a run. The changes made before it are still in place, and the revert timer is still armed; Labyrinth says when it fires and prints the commands to keep or undo the changes. If in doubt, roll back.
+
+**"internal error".** Something failed that Labyrinth did not expect, such as a full disk or a damaged file. The line says where, and the next line says what it means for the run: "Nothing was changed.", "The run stopped." with the commands to keep or undo it, or the command to repeat. Exit code 40.
 
 **"rollback FAILED".** Labyrinth could not undo one module of the run. The line names the module and the backup folder that holds its files as they were before the run. The other modules are still undone, and `runs` shows the run as `rolled back with errors`. Restore that module's files by hand from the backup folder, then check the service it affects.
 

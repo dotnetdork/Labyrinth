@@ -42,7 +42,7 @@ streams() {
   [ "$status" -eq 20 ]
 }
 
-@test "runs shows each state, oldest first, within 78 columns" {
+@test "runs shows each state, in run ID order, within 78 columns" {
   local a b c
   a="$(armed_run)"
   b="$(armed_run)"; lab keep "$b"; [ "$status" -eq 0 ]
@@ -50,10 +50,13 @@ streams() {
   lab runs
   [ "$status" -eq 0 ]
   [[ "${lines[0]}" == 'RUN                   PHASE   START (UTC)      STATE' ]]
-  [[ "${lines[1]}" == "$a observe "*" armed: rolls back at "??:??" UTC" ]]
-  [[ "${lines[2]}" == "$b observe "*" kept" ]]
-  [[ "${lines[3]}" == "$c observe "*" rolled back" ]]
-  [[ "${lines[1]}" == *" ${a:0:4}-${a:4:2}-${a:6:2} ${a:9:2}:${a:11:2} "* ]]
+  # Runs started in the same second sort by their random suffix, so each
+  # run's line is found by its ID.
+  [[ "$(grep "^$a " <<< "$output")" == "$a observe "*" armed: rolls back at "??:??" UTC" ]]
+  [[ "$(grep "^$b " <<< "$output")" == "$b observe "*" kept" ]]
+  [[ "$(grep "^$c " <<< "$output")" == "$c observe "*" rolled back" ]]
+  [[ "$(grep "^$a " <<< "$output")" == *" ${a:0:4}-${a:4:2}-${a:6:2} ${a:9:2}:${a:11:2} "* ]]
+  printf '%s\n' "${lines[@]:1:3}" | LC_ALL=C sort -c
   [[ "$output" == *"like 'labyrinth.sh keep ${a: -4}'"* ]]
   [ "$(awk '{ if (length > w) w = length } END { print w }' <<< "$output")" -le 78 ]
 }

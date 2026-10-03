@@ -17,6 +17,22 @@
 #   30 verify failed or a scored service regressed, 40 error
 set -Eeuo pipefail
 
+# on_internal_error RC FILE LINE COMMAND: the ERR trap (docs/Conventions.md
+# section 4). It fires only where errexit ends the program anyway, and says
+# what is known instead of exiting silently. In a subshell it does nothing:
+# the shell that started the subshell sees the failure and reports it.
+on_internal_error() {
+  (( BASH_SUBSHELL == 0 )) || return "$1"
+  trap - ERR
+  set +e
+  local what="$4"
+  (( ${#what} <= 60 )) || what="${what:0:57}..."
+  printf 'labyrinth: internal error at %s:%s (%s), exit %s\n' "$2" "$3" "$what" "$1" >&2
+  run_recovery >&2
+  exit 40
+}
+trap 'on_internal_error "$?" "${BASH_SOURCE[0]##*/}" "$LINENO" "$BASH_COMMAND"' ERR
+
 readonly LAB_VERSION='0.1.0-dev'
 readonly PHASES='lockout observe deceive sustain'
 readonly MODULE_KEYS='id phase priority platforms risk touches_scored requires outputs spec'
@@ -39,6 +55,8 @@ PHASE_COUNT=0              # modules of the phase in the profile
 DATA_ROOT=''               # the data root (--root)
 OPT_PROFILE='' OPT_BREAKGLASS='' OPT_CONFIRM=''
 RUN_REF=''                 # the run keep or rollback acts on
+CMD=''                     # the command being run, for on_internal_error
+RUN_OPEN=0                 # 1 once an apply has recorded run_start
 SELF="${0##*/}"            # how the operator started this program, for hints
 readonly COMMANDS='plan apply keep rollback runs probe help version'
 
@@ -189,6 +207,44 @@ EOF
 cmd_version() { printf 'labyrinth %s\n' "$LAB_VERSION"; }
 
 die() { printf 'labyrinth: %s\n' "$1" >&2; exit "${2:-40}"; }
+
+# run_recovery: after an internal error, what changed and what to do next.
+run_recovery() {
+  local ref="${RUN_REF:-}"
+  if (( RUN_OPEN )); then
+    if lab_timer_armed "$LAB_RUN_ID"; then
+      run_stopped
+    else
+      printf "The run stopped. Its manifest lists what it did; '%s rollback %s' undoes it.\n" "$SELF" "${LAB_RUN_ID: -4}"
+    fi
+    return 0
+  fi
+  case "$CMD" in
+    rollback)
+      if [[ -n "$ref" ]]; then
+        printf "The rollback did not finish. Run '%s rollback %s' again; it is safe to repeat.\n" "$SELF" "${ref: -4}"
+      else
+        printf 'Nothing was rolled back.\n'
+      fi ;;
+    keep)
+      if [[ -n "$ref" ]]; then
+        printf "The run may not be kept. Check with '%s runs', then run '%s keep %s' again.\n" "$SELF" "$SELF" "${ref: -4}"
+      else
+        printf 'Nothing was kept.\n'
+      fi ;;
+    *) printf 'Nothing was changed.\n' ;;
+  esac
+}
+
+# run_stopped: what the operator needs after a run stops partway.
+run_stopped() {
+  local due
+  printf 'The run stopped. Earlier changes stay until the revert timer undoes them.\n'
+  if due="$(lab_timer_due "$LAB_RUN_ID" 2> /dev/null)"; then
+    printf 'The revert timer rolls this run back at %s UTC.\n' "${due:11:5}"
+  fi
+  printf 'To keep them now: labyrinth.sh keep %s    To undo them now: labyrinth.sh rollback %s\n' "$LAB_RUN_ID" "$LAB_RUN_ID"
+}
 
 # usage_error MESSAGE [COMMAND]: a usage error: one line, a pointer to
 # help, exit 40 (docs/Conventions.md section 3.1).
@@ -572,7 +628,11 @@ rollback_module() {
     LAB_MODULE_ID="$id" lab_restore_files || rc=$?
   fi
   if (( rc == 0 )); then
-    record_for "$id" rolled_back
+    # Checked by hand: this function is called with ||, so errexit is off.
+    if ! record_for "$id" rolled_back; then
+      printf '[%s] rolled back, but the manifest cannot be written, so it still lists the change; rolling back again is safe\n' "$id"
+      return 40
+    fi
     printf '[%s] rolled back\n' "$id"
     LAB_MODULE_ID="$id" lab_log_warn rolled_back "rolled back"
     return 0
@@ -759,8 +819,11 @@ cmd_apply() {
   export LAB_DRY_RUN=0
   mkdir -p "$LAB_STATE_DIR/runs/$LAB_RUN_ID" "$LAB_BACKUP_DIR/$LAB_RUN_ID" \
     || die 'the run and backup folders cannot be created; nothing was changed' 20
-  record_for '' run_start "$host" "phase $phase, profile $OPT_PROFILE, group $group"
-  record_for '' breakglass_verified "$BREAKGLASS"
+  if ! record_for '' run_start "$host" "phase $phase, profile $OPT_PROFILE, group $group" \
+      || ! record_for '' breakglass_verified "$BREAKGLASS"; then
+    die 'the run manifest cannot be written; nothing was changed'
+  fi
+  RUN_OPEN=1
   lab_log_info run_start "apply $phase, profile $OPT_PROFILE, group $group"
   rc=0; lab_services_load || rc=$?
   (( rc != 1 )) || die 'the service list is malformed; nothing was changed'
@@ -785,8 +848,7 @@ cmd_apply() {
   lab_lock_release
 
   if (( stopped )); then
-    printf 'The run stopped. Earlier changes stay until the revert timer undoes them.\n'
-    printf 'To keep them now: labyrinth.sh keep %s    To undo them now: labyrinth.sh rollback %s\n' "$LAB_RUN_ID" "$LAB_RUN_ID"
+    run_stopped
   elif lab_timer_armed "$LAB_RUN_ID"; then
     printf 'All changes are applied and verified. From a NEW session, check that you can still log in.\n'
     if ask "Type keep to keep the changes; anything else leaves the revert timer to undo them in ${LAB_EVENT[REVERT_MINUTES]} minutes: " \
@@ -816,10 +878,17 @@ keep_run() {
   # Checked by hand: errexit is off inside a function called with ||.
   if ! lab_timer_cancel "$LAB_RUN_ID"; then
     lab_lock_release
-    printf 'labyrinth: the revert timer for run %s could not be cancelled, so the run is not kept and the timer will still roll it back; run keep again\n' "$LAB_RUN_ID" >&2
+    local when='' due
+    if due="$(lab_timer_due "$LAB_RUN_ID" 2> /dev/null)"; then when=" at ${due:11:5} UTC"; fi
+    printf 'labyrinth: the revert timer for run %s could not be cancelled, so the run is not kept and the timer will still roll it back%s\n' "$LAB_RUN_ID" "$when" >&2
+    printf 'Retry: %s keep %s\n' "$SELF" "${LAB_RUN_ID: -4}" >&2
     return 40
   fi
-  record_for '' run_kept
+  if ! record_for '' run_kept; then
+    lab_lock_release
+    printf 'labyrinth: the revert timer for run %s is cancelled, so the changes stay, but the keep could not be recorded\n' "$LAB_RUN_ID" >&2
+    return 40
+  fi
   lab_log_info run_kept "changes kept; revert timer cancelled"
   lab_lock_release
   printf 'kept: the revert timer for run %s is cancelled\n' "$LAB_RUN_ID"
@@ -987,7 +1056,10 @@ cmd_rollback() {
   if ! lab_timer_cancel "$LAB_RUN_ID"; then
     printf 'warning: the revert timer for run %s could not be removed; when it fires it repeats this rollback, which is safe\n' "$LAB_RUN_ID" >&2
   fi
-  record_for '' run_rolled_back '' "exit $rc"
+  if ! record_for '' run_rolled_back '' "exit $rc"; then
+    printf 'labyrinth: run %s is rolled back, but the manifest cannot be written to record it\n' "$LAB_RUN_ID" >&2
+    rc=40
+  fi
   lab_log_warn run_rolled_back "run rolled back, exit $rc"
   printf 'rollback finished: exit %d\n' "$rc"
   exit "$rc"
@@ -1104,6 +1176,7 @@ main() {
   LAB_RUN_ID="$(new_run_id)"
   export LAB_CONFIG_DIR LAB_STATE_DIR LAB_LOG_DIR LAB_BACKUP_DIR LAB_RUN_ID
 
+  CMD="$cmd"
   case "$cmd" in
     plan) cmd_plan "$phase" ;;
     apply) cmd_apply "$phase" ;;
