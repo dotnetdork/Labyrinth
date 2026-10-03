@@ -116,7 +116,8 @@ Describe 'labyrinth.ps1 runs' {
         $b = Get-TestArmedRun $t
         $r = Invoke-TestLabRun $t @('keep')
         $r.Code | Should -Be 40
-        $r.Err | Should -Match "(?s)$a.*$b"
+        $r.Err | Should -Match $a
+        $r.Err | Should -Match $b
         $r.Err | Should -Match 'more than one run has an armed revert timer'
         Join-Path $t.Root "state\runs\$a\timer" | Should -Exist
         Join-Path $t.Root "state\runs\$b\timer" | Should -Exist

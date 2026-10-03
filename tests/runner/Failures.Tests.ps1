@@ -56,10 +56,11 @@ Describe 'labyrinth.ps1 hidden failures' {
     }
 
     It 'an internal error before any change says nothing was changed' {
-        Add-TestStandIn $t 'function Get-LabHostName { throw ''no host name'' }'
+        # The core is loaded after the runner's functions, so this replaces one.
+        Add-TestStandIn $t 'function Assert-LabProtectedSet { throw ''no protected set'' }'
         $r = Invoke-TestApply $t @('labadmin', 'ring1', 'keep')
         $r.Code | Should -Be 40
-        $r.Output | Should -Match 'internal error at line \d+: no host name'
+        $r.Output | Should -Match 'internal error at line \d+: no protected set'
         $r.Output | Should -Match 'Nothing was changed\.'
         $r.Output | Should -Not -Match 'At line:'
         $toggle | Should -Not -Exist
