@@ -25,7 +25,7 @@ Describe 'labyrinth.ps1 command line' {
             $words = $words.Replace('@ROOT@', $t.Root).Replace('@ETC@', $t.Etc)
             $text = $text.Replace('@SELF@', 'labyrinth.ps1')
             $argv = @($words -split ' ' | Where-Object { $_ -ne '' })
-            $r = Invoke-TestLabStreams $t $argv
+            $r = Invoke-TestLabCapture $t $argv
             $got = $r.Out
             if ($stream -eq 'err') { $got = $r.Err }
             if ("$($r.Code)" -ne $code -or -not $got.Contains($text)) {
@@ -38,14 +38,14 @@ Describe 'labyrinth.ps1 command line' {
     }
 
     It 'a usage error prints two lines, both on stderr' {
-        $r = Invoke-TestLabStreams $t @('obsrve')
+        $r = Invoke-TestLabCapture $t @('obsrve')
         $r.Code | Should -Be 40
         $r.Out | Should -BeNullOrEmpty
         @($r.Err -split "`r?`n").Count | Should -Be 2
     }
 
     It 'nothing is created by a usage error, help or the version' {
-        foreach ($a in @('obsrve', 'help', '-V')) { Invoke-TestLabStreams $t @('-Root', $t.Root, $a) | Out-Null }
+        foreach ($a in @('obsrve', 'help', '-V')) { Invoke-TestLabCapture $t @('-Root', $t.Root, $a) | Out-Null }
         $t.Root | Should -Not -Exist
     }
 

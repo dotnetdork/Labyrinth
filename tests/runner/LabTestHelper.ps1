@@ -65,9 +65,9 @@ function Invoke-TestLab {
     }
 }
 
-# Invoke-TestLabStreams T ARGS: run labyrinth.ps1 in its own process with
+# Invoke-TestLabCapture T ARGS: run labyrinth.ps1 in its own process with
 # no input, keeping stdout and stderr apart. Returns Code, Out and Err.
-function Invoke-TestLabStreams {
+function Invoke-TestLabCapture {
     param($T, [AllowEmptyCollection()] [string[]] $Arguments = @())
     $quoted = @((Join-Path $T.Lab 'labyrinth.ps1')) + $Arguments | ForEach-Object {
         if ($_ -eq '' -or $_ -match '[\s"]') { '"' + ($_ -replace '"', '\"') + '"' } else { $_ }

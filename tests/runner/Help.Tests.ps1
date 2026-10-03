@@ -17,7 +17,7 @@ Describe 'labyrinth.ps1 help' {
         foreach ($topic in @('') + $topics) {
             $argv = @('help')
             if ($topic -ne '') { $argv += $topic }
-            $r = Invoke-TestLabStreams $t $argv
+            $r = Invoke-TestLabCapture $t $argv
             $lines = @($r.Out -split "`r?`n")
             $r.Code | Should -Be 0 -Because "help $topic"
             $lines.Count | Should -BeLessOrEqual 15 -Because "help $topic"
@@ -30,9 +30,9 @@ Describe 'labyrinth.ps1 help' {
 
     It 'help X, X -Help and X -h print the same' {
         foreach ($topic in $topics) {
-            $want = (Invoke-TestLabStreams $t @('help', $topic)).Out
+            $want = (Invoke-TestLabCapture $t @('help', $topic)).Out
             foreach ($form in @('-Help', '-h', '--help')) {
-                $r = Invoke-TestLabStreams $t @($topic, $form)
+                $r = Invoke-TestLabCapture $t @($topic, $form)
                 $r.Code | Should -Be 0 -Because "$topic $form"
                 $r.Out | Should -BeExactly $want -Because "$topic $form"
             }
@@ -40,13 +40,13 @@ Describe 'labyrinth.ps1 help' {
     }
 
     It 'the general help lists every command' {
-        $r = Invoke-TestLabStreams $t @('help')
+        $r = Invoke-TestLabCapture $t @('help')
         $listed = @($r.Out -split "`r?`n" | Where-Object { $_ -match '^  [a-z]+ ' } | ForEach-Object { ($_.Trim() -split ' ')[0] })
         ($listed -join ' ') | Should -BeExactly ($topics -join ' ')
     }
 
     It 'help for an unknown command is a usage error with a suggestion' {
-        $r = Invoke-TestLabStreams $t @('help', 'aply')
+        $r = Invoke-TestLabCapture $t @('help', 'aply')
         $r.Code | Should -Be 40
         $r.Err | Should -Match "did you mean 'apply'"
     }
