@@ -112,7 +112,7 @@ streams() {
   b="$(armed_run)"
   streams keep
   [ "$CODE" -eq 40 ]
-  [[ "$ERR" == *"$a"*"$b"* ]]
+  [[ "$ERR" == *"$a"* && "$ERR" == *"$b"* ]]  # in run ID order, not start order
   [[ "$ERR" == *"more than one run has an armed revert timer"* ]]
   [ -f "$ROOT/state/runs/$a/timer" ]
   [ -f "$ROOT/state/runs/$b/timer" ]

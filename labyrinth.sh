@@ -754,6 +754,25 @@ apply_one() {
   return 0
 }
 
+# check_host: the host checks for plan, apply and probe (docs/Conventions.md
+# section 3.1). keep, rollback and runs skip them, so a stored revert-timer
+# command still works after the configuration changes.
+check_host() {
+  local rc=0 host
+  if [[ -n "${GIVEN[config]:-}" && ! -d "${GIVEN[config]}" ]]; then
+    die "the --config folder does not exist: ${GIVEN[config]}"
+  fi
+  host="$(lab_host)" || host=''
+  lab_host_lookup "$host" || rc=$?
+  (( rc != 1 )) || die 'the hosts file is malformed'
+  (( rc == 0 )) || return 0           # not listed: plan may still run
+  case "$LAB_HOST_PLATFORM" in
+    ubuntu | rhel-family) ;;
+    appliance) die "this host ($host) is an appliance in $LAB_CONFIG_DIR/hosts: Labyrinth never changes it (design 16)" 20 ;;
+    *) die "this host ($host) is listed as $LAB_HOST_PLATFORM in $LAB_CONFIG_DIR/hosts, not a platform this runner serves" 20 ;;
+  esac
+}
+
 # resolve_profile: --profile, or this host's line in the hosts file.
 resolve_profile() {
   local rc=0
@@ -1177,6 +1196,7 @@ main() {
   export LAB_CONFIG_DIR LAB_STATE_DIR LAB_LOG_DIR LAB_BACKUP_DIR LAB_RUN_ID
 
   CMD="$cmd"
+  case "$cmd" in plan | apply | probe) check_host ;; esac
   case "$cmd" in
     plan) cmd_plan "$phase" ;;
     apply) cmd_apply "$phase" ;;

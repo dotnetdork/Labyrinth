@@ -164,7 +164,7 @@ Options can go before or after the command. Give a value with a space or an equa
 |---|---|---|
 | `--profile NAME` | Use this profile instead of the one in the `hosts` file. On apply, it must match the host's line. | plan, apply |
 | `--root DIR` | The data root, if not `/opt/labyrinth`. Must be a full path. | all |
-| `--config DIR` | The configuration folder, if not `<root>/etc`. Must be a full path. | all |
+| `--config DIR` | The configuration folder, if not `<root>/etc`. Must be a full path, and for plan, apply and probe it must exist. | all |
 | `--break-glass NAME` | Answers the break-glass prompt without typing. | apply |
 | `--confirm-group GROUP` | Answers the group-name prompt without typing. | apply |
 | `-h`, `--help` | Show help. | all |
@@ -177,7 +177,7 @@ Example: `sudo ./labyrinth.sh apply lockout --root /srv/labyrinth`
 |---|---|---|
 | `-Profile NAME` | Use this profile instead of the one in the `hosts` file. On apply, it must match the host's line. | plan, apply |
 | `-Root DIR` | The data root, if not `C:\ProgramData\Labyrinth`. Must be a full path. | all |
-| `-Config DIR` | The configuration folder, if not `<root>\etc`. Must be a full path. | all |
+| `-Config DIR` | The configuration folder, if not `<root>\etc`. Must be a full path, and for plan, apply and probe it must exist. | all |
 | `-BreakGlass NAME` | Answers the break-glass prompt without typing. | apply |
 | `-ConfirmGroup GROUP` | Answers the group-name prompt without typing. | apply |
 | `-Help`, `-?` | Show help. | all |
@@ -280,6 +280,12 @@ Each revert timer is a scheduled task named `\Labyrinth\lab-revert-<run>-<n>`, r
 **"another Labyrinth run (pid N) holds ... lock".** A run is already in progress on this host. Wait for it to finish. If that process has ended, run the command again: a lock left by a process that is gone is taken over.
 
 **"protected set: ... not found" or "... is empty".** The `protected-accounts` file is not in the configuration folder, or has no accounts. Labyrinth will not change anything without it. Copy in the team's prepared file.
+
+**"folder does not exist".** The folder given with the configuration option is not there. Check the path for a typing mistake. `keep` and `rollback` still work without it.
+
+**"not a platform this runner serves".** This host's line in `hosts` names a platform this program does not serve, so `plan`, `apply` and `probe` refuse to run here. Correct the line, or use the Labyrinth runner for that platform on the host. `keep` and `rollback` still work, so a run can always be undone.
+
+**"is an appliance".** This host's line in `hosts` says it is an appliance, such as a firewall. Labyrinth never changes an appliance (design 16); follow its runbook by hand instead.
 
 **"too late".** You tried to keep a run that was already rolled back, by the timer or by hand. Its changes are gone. Plan and apply again if you still want them.
 

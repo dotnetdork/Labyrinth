@@ -779,6 +779,25 @@ function Read-LabSetting {
     try { $script:Settings = Read-LabEventConfig } catch { Exit-Lab "event.conf is malformed: $($_.Exception.Message)" }
 }
 
+# Assert-LabThisHost: the host checks for plan, apply and probe
+# (docs\Conventions.md section 3.1). keep, rollback and runs skip them, so
+# a stored revert-timer command still works after the configuration changes.
+function Assert-LabThisHost {
+    param([string] $Config)
+    if ($Config -ne '' -and -not (Test-Path -LiteralPath $Config -PathType Container)) {
+        Exit-Lab "the -Config folder does not exist: $Config"
+    }
+    $entry = Find-LabThisHost
+    if ($null -eq $entry) { return }    # not listed: plan may still run
+    $hostName = Get-LabHostName
+    $hostsFile = Join-Path $env:LAB_CONFIG_DIR 'hosts'
+    switch -CaseSensitive ($entry.Platform) {
+        'windows' { }
+        'appliance' { Exit-Lab "this host ($hostName) is an appliance in ${hostsFile}: Labyrinth never changes it (design 16)" 20 }
+        default { Exit-Lab "this host ($hostName) is listed as $($entry.Platform) in ${hostsFile}, not a platform this runner serves" 20 }
+    }
+}
+
 function Find-LabThisHost {
     try { return Find-LabHost -Name (Get-LabHostName) } catch { Exit-Lab "the hosts file is malformed: $($_.Exception.Message)" }
 }
@@ -1217,6 +1236,7 @@ try {
     . (Join-Path $PSScriptRoot 'core\Lab.ps1')
 
     $script:Command = $cmd
+    if ($cmd -in 'plan', 'apply', 'probe') { Assert-LabThisHost $config }
     switch ($cmd) {
         'plan' { Invoke-LabPlanCommand $phase }
         'apply' { Invoke-LabApplyCommand $phase }

@@ -63,3 +63,5 @@
 0|out|labyrinth |-V
 0|out|labyrinth |version
 0|out|labyrinth |--version
+40|err|folder does not exist|plan observe --profile test --root @ROOT@ --config @ROOT@/missing
+40|err|folder does not exist|probe --root @ROOT@ --config @ROOT@/missing
