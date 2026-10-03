@@ -174,7 +174,7 @@ Cancelling a timer checks that it is really gone. If it is still armed, `keep` r
 
 What the runners print is part of the contract: operators read it under time pressure, and the tests pin it.
 
-- **Status words.** Every module result starts with one of `OK`, `CHANGE`, `WARN`, `BLOCKED`, `FAIL` or `ERROR`, padded to 9 characters, followed by the module ID and what happened. For example: `CHANGE   observe.sample: a change is needed`.
+- **Status words.** Every module result starts with one of `OK`, `CHANGE`, `WARN`, `BLOCKED`, `FAIL` or `ERROR`, padded to 9 characters, followed by the module ID in brackets and what happened. For example: `CHANGE   [observe.sample] check: change needed; plan follows`.
   - **In plan mode:**
     - `OK`: nothing to do (`0`);
     - `CHANGE`: a change is needed (`10`);

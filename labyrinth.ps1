@@ -63,6 +63,12 @@ $script:ProfileIds = @()
 $script:EntryRc = 0
 $script:Approved = ''
 $script:PhaseCount = 0
+$script:LoadErrors = 0           # modules of the phase that could not be loaded
+$script:LoadSkipped = 0          # modules skipped: no entry points for this platform
+$script:YmlErr = @()             # module.yml errors, printed under the ERROR line
+$script:EntryOut = @()           # the output of an entry point run with -Capture
+$script:Stopped = $false         # true when an apply stopped partway
+$script:Applied = $false         # true once apply starts changing things
 $script:Run = @()            # the modules of this run, in run order
 $script:Protected = @{}
 $script:Settings = @{}
@@ -130,7 +136,7 @@ Apply only:
   -BreakGlass NAME       answer the break-glass prompt
   -ConfirmGroup GROUP    answer the group-name prompt
 
-Exit: 0 done, 20 blocked, 30 check failed, 40 error.
+Exit: 0 done, 10 manual steps left, 20 blocked, 30 check failed, 40 error.
 Example: $Self apply lockout
 Compatibility: '$Self <phase> -Apply' also applies.
 "@ }
@@ -343,6 +349,106 @@ function Exit-Lab {
     exit $Code
 }
 
+# Write-LabStatus WORD TEXT: a result line, the status word padded to 9
+# characters (docs/Conventions.md section 3.2).
+function Write-LabStatus {
+    param([string] $Word, [string] $Text)
+    [Console]::Out.WriteLine($Word.PadRight(9) + $Text)
+}
+
+# Write-LabIndented LINE...: lines of module output, each indented 11 spaces.
+function Write-LabIndented {
+    param([AllowEmptyCollection()] [AllowEmptyString()] [string[]] $Line = @())
+    foreach ($text in $Line) {
+        foreach ($l in ($text -split "`r?`n")) { [Console]::Out.WriteLine((' ' * 11) + $l) }
+    }
+}
+
+# ConvertTo-LabOutputText ITEM: one item of an entry point's output as text.
+# An error record becomes its message, never PowerShell's error view.
+function ConvertTo-LabOutputText {
+    param($Item)
+    if ($Item -is [System.Management.Automation.ErrorRecord]) { return $Item.Exception.Message }
+    return "$Item"
+}
+
+# Write-LabSummary MODE: how many modules ended with each status word,
+# counted from the run's list, not from the lines printed.
+function Write-LabSummary {
+    param([string] $Mode)
+    $n = @{ OK = 0; CHANGE = 0; WARN = $script:LoadSkipped; BLOCKED = 0; FAIL = 0; ERROR = $script:LoadErrors }
+    $notRun = 0
+    foreach ($m in $script:Run) {
+        $w = ''
+        if ($Mode -ceq 'plan') {
+            if ($m.Rc -eq 0) { $w = 'OK' } elseif ($m.Rc -eq 10) { $w = 'CHANGE' } elseif ($m.Rc -eq 20) { $w = 'BLOCKED' } else { $w = 'ERROR' }
+        } elseif ($m.State -ceq 'done') { $w = 'OK' }
+        elseif ($m.State -ceq 'manual') { $w = 'WARN' }
+        elseif ($m.State -ceq 'blocked') { $w = 'BLOCKED' }
+        elseif ($m.State -ceq 'failed') { $w = 'FAIL' }
+        elseif ($m.State -ceq 'error') { $w = 'ERROR' }
+        else { $notRun++ }
+        if ($w -ne '') { $n[$w]++ }
+    }
+    $parts = @()
+    foreach ($w in @('OK', 'CHANGE', 'WARN', 'BLOCKED', 'FAIL', 'ERROR')) {
+        if ($n[$w] -gt 0) { $parts += "$($n[$w]) $w" }
+    }
+    if ($notRun -gt 0) { $parts += "$notRun not run" }
+    $text = 'no modules'
+    if ($parts.Count -gt 0) { $text = $parts -join ', ' }
+    Write-LabLine "Summary: $text"
+}
+
+# ConvertTo-LabShellWord WORD: WORD, quoted if PowerShell would split it.
+function ConvertTo-LabShellWord {
+    param([string] $Word)
+    if ($Word -match '^[A-Za-z0-9\\/._:@=-]+$') { return $Word }
+    return "'" + $Word.Replace("'", "''") + "'"
+}
+
+# Write-LabNextStep MODE CODE PHASE: the one command to run next, if any.
+function Write-LabNextStep {
+    param([string] $Mode, [int] $Code, [string] $Phase)
+    $short = $env:LAB_RUN_ID.Substring($env:LAB_RUN_ID.Length - 4)
+    if ($Mode -ceq 'apply' -and $script:Stopped) {
+        Write-LabLine 'Next: keep the earlier changes or undo them, with the commands above.'
+    } elseif ($Mode -ceq 'apply' -and $script:Applied -and (Test-LabRevertTimer -RunId $env:LAB_RUN_ID)) {
+        Write-LabLine "Next: from a NEW session, check you can log in, then '$Self keep $short'."
+    } elseif ($Code -eq 40) {
+        Write-LabLine 'Next: fix the error above, then run the same command again.'
+    } elseif ($Code -eq 20) {
+        Write-LabLine 'Next: clear what blocked it above, then run the same command again.'
+    } elseif ($Code -eq 10) {
+        $other = @($script:Run | Where-Object { $_.Rc -eq 10 -and $_.Risk -ne 'manual-only' }).Count
+        if ($other -eq 0) {
+            Write-LabLine 'Next: a person carries out the manual steps above; apply changes nothing.'
+        } else {
+            $opts = ''
+            if ($script:Given.ContainsKey('root')) { $opts += " -Root $(ConvertTo-LabShellWord $script:Given['root'])" }
+            if ($script:Given.ContainsKey('config')) { $opts += " -Config $(ConvertTo-LabShellWord $script:Given['config'])" }
+            Write-LabLine "Next: $Self apply $Phase$opts"
+        }
+    }
+}
+
+# Exit-LabRun MODE CODE PHASE: the end of a plan or apply: Summary, Next
+# and the exit code with its meaning; then exit with CODE.
+function Exit-LabRun {
+    param([string] $Mode, [int] $Code, [string] $Phase)
+    $what = 'error'
+    if ($Mode -ceq 'plan' -and $Code -eq 0) { $what = 'nothing to do' }
+    elseif ($Mode -ceq 'plan' -and $Code -eq 10) { $what = 'change needed' }
+    elseif ($Mode -ceq 'apply' -and $Code -eq 0) { $what = 'done' }
+    elseif ($Mode -ceq 'apply' -and $Code -eq 10) { $what = 'manual steps needed' }
+    elseif ($Code -eq 20) { $what = 'blocked' }
+    elseif ($Code -eq 30) { $what = 'a check failed, and that change was undone' }
+    if ($Mode -ceq 'plan' -or -not $script:Applied) { Write-LabSummary 'plan' } else { Write-LabSummary 'apply' }
+    Write-LabNextStep $Mode $Code $Phase
+    Write-LabLine "$Mode finished: exit $Code ($what)"
+    exit $Code
+}
+
 # Get-LabRunStopped: what the operator needs after a run stops partway.
 function Get-LabRunStopped {
     'The run stopped. Earlier changes stay until the revert timer undoes them.'
@@ -374,9 +480,11 @@ function Get-LabRecovery {
     return 'Nothing was changed.'
 }
 
+# Write-YmlError WHERE MESSAGE: keep a module.yml error, to print under the
+# module's ERROR line.
 function Write-YmlError {
     param([string] $Where, [string] $Message)
-    [Console]::Error.WriteLine("${Where}: $Message")
+    $script:YmlErr += "${Where}: $Message"
 }
 
 # Parse module.yml, the strict flat subset in docs/Conventions.md
@@ -465,7 +573,7 @@ function Get-LabRunId {
 # (docs/Conventions.md section 3). Its output goes straight to the
 # operator; its exit code is left in $script:EntryRc.
 function Invoke-LabEntry {
-    param([string] $Dir, [string] $Entry, [string] $Id, [string] $DryRun = '1')
+    param([string] $Dir, [string] $Entry, [string] $Id, [string] $DryRun = '1', [switch] $Capture)
     $env:LAB_MODULE_ID = $Id
     $env:LAB_ENTRY = $Entry
     $env:LAB_DRY_RUN = $DryRun
@@ -475,10 +583,18 @@ function Invoke-LabEntry {
     $saved = $ErrorActionPreference
     $ErrorActionPreference = 'Continue'
     try {
-        # Piped, so the module's output reaches the operator and never becomes
-        # the return value of the function that called this one.
-        & $hostExe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File (Join-Path $Dir "$Entry.ps1") |
-            ForEach-Object { [Console]::Out.WriteLine($_) }
+        # Both streams, indented under the module's result line (section
+        # 3.2). Piped, so the output never becomes the return value of the
+        # function that called this one. With -Capture, the output is kept
+        # in EntryOut, because the result line above it is known only later.
+        $file = Join-Path $Dir "$Entry.ps1"
+        if ($Capture) {
+            $script:EntryOut = @(& $hostExe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $file 2>&1 |
+                    ForEach-Object { ConvertTo-LabOutputText $_ })
+        } else {
+            & $hostExe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $file 2>&1 |
+                ForEach-Object { Write-LabIndented (ConvertTo-LabOutputText $_) }
+        }
         $script:EntryRc = $LASTEXITCODE
     } finally {
         $ErrorActionPreference = $saved
@@ -497,24 +613,35 @@ function Import-LabRunModule {
     $worst = 0
     $found = @()
     $script:PhaseCount = 0
+    $script:LoadErrors = 0
+    $script:LoadSkipped = 0
     foreach ($id in $script:ProfileIds) {
         if (($id -split '\.', 2)[0] -cne $Phase) { continue }
         $script:PhaseCount++
         $name = ($id -split '\.', 2)[1]
         $dir = Join-Path (Join-Path (Join-Path (Join-Path $env:LAB_ROOT 'phases') $Phase) 'modules') $name
         $yml = Join-Path $dir 'module.yml'
-        if (-not (Test-Path -LiteralPath $dir -PathType Container)) { Write-LabLine "[$id] error: module not found"; $worst = 40; continue }
+        if (-not (Test-Path -LiteralPath $dir -PathType Container)) {
+            Write-LabStatus 'ERROR' "[$id] error: module not found"
+            Write-LabIndented "looked in: $dir"
+            $script:LoadErrors++; $worst = 40; continue
+        }
+        $script:YmlErr = @()
         if (-not (Read-LabModuleYml $yml) -or -not (Test-LabModule $yml $id $Phase)) {
-            Write-LabLine "[$id] error: invalid module.yml"; $worst = 40; continue
+            Write-LabStatus 'ERROR' "[$id] error: invalid module.yml"
+            Write-LabIndented $script:YmlErr
+            $script:LoadErrors++; $worst = 40; continue
         }
         if (@(Get-ChildItem -LiteralPath $dir -Filter '*.ps1' -File).Count -eq 0) {
-            Write-LabLine "[$id] skipped: no Windows entry points"; continue
+            Write-LabStatus 'WARN' "[$id] skipped: no Windows entry points"
+            $script:LoadSkipped++; continue
         }
         $needed = @('check')
         if (@('reversible', 'service-affecting', 'approval') -ccontains $script:Mod['risk']) { $needed = @('check', 'apply', 'verify', 'rollback') }
         $missing = @($needed | Where-Object { -not (Test-Path -LiteralPath (Join-Path $dir "$_.ps1") -PathType Leaf) })
         if ($missing.Count -gt 0) {
-            Write-LabLine "[$id] error: missing $($missing[0]).ps1 (needed for risk $($script:Mod['risk']))"; $worst = 40; continue
+            Write-LabStatus 'ERROR' "[$id] error: missing $($missing[0]).ps1 (needed for risk $($script:Mod['risk']))"
+            $script:LoadErrors++; $worst = 40; continue
         }
         $requires = @()
         if ($script:Mod.ContainsKey('requires')) { $requires = Get-LabListItem $script:Mod['requires'] }
@@ -533,22 +660,23 @@ function Import-LabRunModule {
 function Invoke-LabPlanOne {
     param($M)
     $id = $M.Id
-    Invoke-LabEntry $M.Dir 'check' $id
+    Invoke-LabEntry $M.Dir 'check' $id -Capture
     switch ($script:EntryRc) {
-        0 { Write-LabLine "[$id] check: nothing to do"; $M.Rc = 0; return }
+        0 { Write-LabStatus 'OK' "[$id] check: nothing to do"; Write-LabIndented $script:EntryOut; $M.Rc = 0; return }
         10 { }
-        20 { Write-LabLine "[$id] check: blocked by a safety gate"; $M.Rc = 20; return }
-        default { Write-LabLine "[$id] check: error (exit $($script:EntryRc))"; $M.Rc = 40; return }
+        20 { Write-LabStatus 'BLOCKED' "[$id] check: blocked by a safety gate"; Write-LabIndented $script:EntryOut; $M.Rc = 20; return }
+        default { Write-LabStatus 'ERROR' "[$id] check: error (exit $($script:EntryRc))"; Write-LabIndented $script:EntryOut; $M.Rc = 40; return }
     }
     if (-not (Test-Path -LiteralPath (Join-Path $M.Dir 'plan.ps1') -PathType Leaf)) {
-        Write-LabLine "[$id] error: change needed but plan.ps1 is missing"; $M.Rc = 40; return
+        Write-LabStatus 'ERROR' "[$id] error: change needed but plan.ps1 is missing"; Write-LabIndented $script:EntryOut; $M.Rc = 40; return
     }
-    Write-LabLine "[$id] check: change needed; plan follows"
+    Write-LabStatus 'CHANGE' "[$id] check: change needed; plan follows"
+    Write-LabIndented $script:EntryOut
     Invoke-LabEntry $M.Dir 'plan' $id
     switch ($script:EntryRc) {
         { $_ -eq 0 -or $_ -eq 10 } { $M.Rc = 10; return }
-        20 { Write-LabLine "[$id] plan: blocked by a safety gate"; $M.Rc = 20; return }
-        default { Write-LabLine "[$id] plan: error (exit $($script:EntryRc))"; $M.Rc = 40; return }
+        20 { Write-LabStatus 'BLOCKED' "[$id] plan: blocked by a safety gate"; $M.Rc = 20; return }
+        default { Write-LabStatus 'ERROR' "[$id] plan: error (exit $($script:EntryRc))"; $M.Rc = 40; return }
     }
 }
 
@@ -560,7 +688,7 @@ function Invoke-LabPlanAll {
         Invoke-LabPlanOne $m
         if ($m.Rc -gt $worst) { $worst = $m.Rc }
     }
-    if ($script:PhaseCount -eq 0) { Write-LabLine "no $Phase modules in profile $script:ProfileName" }
+    if ($script:PhaseCount -eq 0) { Write-LabStatus 'WARN' "no $Phase modules in profile $script:ProfileName" }
     return $worst
 }
 
@@ -645,14 +773,14 @@ function Undo-LabModule {
             Add-LabEntryFor $Id 'rolled_back'
         } catch {
             [Console]::Error.WriteLine($_.Exception.Message)
-            Write-LabLine "[$Id] rolled back, but the manifest cannot be written, so it still lists the change; rolling back again is safe"
+            Write-LabStatus 'ERROR' "[$Id] rolled back, but the manifest cannot be written, so it still lists the change; rolling back again is safe"
             return 40
         }
-        Write-LabLine "[$Id] rolled back"
+        Write-LabStatus 'OK' "[$Id] rolled back"
         Write-LabLogFor $Id 'warn' 'rolled_back' 'rolled back'
         return 0
     }
-    Write-LabLine "[$Id] rollback FAILED (exit $rc): restore this module by hand from $(Join-Path (Join-Path $env:LAB_BACKUP_DIR $env:LAB_RUN_ID) $Id)"
+    Write-LabStatus 'ERROR' "[$Id] rollback FAILED (exit $rc): restore this module by hand from $(Join-Path (Join-Path $env:LAB_BACKUP_DIR $env:LAB_RUN_ID) $Id)"
     Write-LabLogFor $Id 'error' 'rollback_failed' "rollback failed with exit $rc"
     return 40
 }
@@ -663,7 +791,7 @@ function Test-LabRequire {
     foreach ($req in $M.Requires) {
         foreach ($other in $script:Run) {
             if ($other.Id -ceq $req -and @('done', 'planned') -notcontains $other.State) {
-                Write-LabLine "[$($M.Id)] blocked: requires $req, which did not complete"
+                Write-LabStatus 'BLOCKED' "[$($M.Id)] blocked: requires $req, which did not complete"
                 return $false
             }
         }
@@ -685,17 +813,17 @@ function Invoke-LabApplyOne {
     $id = $M.Id
     $script:Approved = ''
     if ($M.Risk -eq 'manual-only') {
-        Write-LabLine "[$id] manual-only: a person carries out the checklist above; nothing changed"
+        Write-LabStatus 'WARN' "[$id] manual-only: a person carries out the checklist above; nothing changed"
         $M.State = 'manual'; return 0
     }
     if ($M.Scored) {
         $allow = Read-LabAddressList 'scoring-allowlist'
         if ($null -eq $allow) {
-            Write-LabLine "[$id] blocked: it touches scored services and the scoring allowlist is missing or empty"
+            Write-LabStatus 'BLOCKED' "[$id] blocked: it touches scored services and the scoring allowlist is missing or empty"
             $M.State = 'blocked'; return 20
         }
         if (-not $script:HaveServices) {
-            Write-LabLine "[$id] blocked: it touches scored services and there is no service list to probe"
+            Write-LabStatus 'BLOCKED' "[$id] blocked: it touches scored services and there is no service list to probe"
             $M.State = 'blocked'; return 20
         }
     }
@@ -703,12 +831,15 @@ function Invoke-LabApplyOne {
     if ($M.Risk -eq 'approval') {
         if (-not (Read-LabAnswer "[$id] Type the ids of the items to approve, separated by spaces, or press Enter for none: ")) { $script:Answer = '' }
         foreach ($tok in @($script:Answer -split '\s+' | Where-Object { $_ -ne '' })) {
-            if ($tok -cnotmatch '^[A-Za-z0-9._:@-]+$') { Write-LabLine "[$id] blocked: not an item id: $tok"; $M.State = 'blocked'; return 20 }
+            if ($tok -cnotmatch '^[A-Za-z0-9._:@-]+$') { Write-LabStatus 'BLOCKED' "[$id] blocked: not an item id: $tok"; $M.State = 'blocked'; return 20 }
         }
         $script:Approved = (@($script:Answer -split '\s+' | Where-Object { $_ -ne '' })) -join ' '
-        if ($script:Approved -eq '') { Write-LabLine "[$id] nothing approved; nothing changed"; $M.State = 'done'; return 0 }
+        if ($script:Approved -eq '') { Write-LabStatus 'OK' "[$id] nothing approved; nothing changed"; $M.State = 'done'; return 0 }
     }
-    if (-not (Test-Path -LiteralPath (Join-Path $M.Dir 'apply.ps1') -PathType Leaf)) { $M.State = 'done'; return 0 }
+    if (-not (Test-Path -LiteralPath (Join-Path $M.Dir 'apply.ps1') -PathType Leaf)) {
+        Write-LabStatus 'OK' "[$id] no apply step; nothing changed"
+        $M.State = 'done'; return 0
+    }
     if ($M.Risk -ne 'read-only') {
         $exe = (Get-Process -Id $PID).Path
         $arg = '-NoProfile -NonInteractive -ExecutionPolicy Bypass -File {0} rollback {1} -Root {2} -Config {3}' -f `
@@ -718,7 +849,7 @@ function Invoke-LabApplyOne {
             Register-LabRevertTimer -Seconds ($script:Settings['REVERT_MINUTES'] * 60) -RunId $env:LAB_RUN_ID -Execute $exe -Argument $arg
         } catch {
             [Console]::Error.WriteLine($_.Exception.Message)
-            Write-LabLine "[$id] blocked: the revert timer could not be armed"
+            Write-LabStatus 'BLOCKED' "[$id] blocked: the revert timer could not be armed"
             $M.State = 'blocked'; return 20
         }
     }
@@ -728,29 +859,31 @@ function Invoke-LabApplyOne {
         Add-LabEntryFor $id 'apply_start' '' "risk $($M.Risk)"
     } catch {
         [Console]::Error.WriteLine($_.Exception.Message)
-        Write-LabLine "[$id] error: the run manifest cannot be written, so it is not applied"
-        $M.State = 'failed'; return 40
+        Write-LabStatus 'ERROR' "[$id] error: the run manifest cannot be written, so it is not applied"
+        $M.State = 'error'; return 40
     }
     Write-LabLogFor $id 'info' 'apply_start' 'applying'
+    Write-LabStatus 'CHANGE' "[$id] applying"
     Invoke-LabEntry $M.Dir 'apply' $id '0'
     $rc = $script:EntryRc
     if ($rc -eq 20) {
-        Write-LabLine "[$id] apply: blocked by a safety gate"
+        Write-LabStatus 'BLOCKED' "[$id] apply: blocked by a safety gate"
         Add-LabEntryFor $id 'rolled_back' '' 'apply blocked before any change'
         $M.State = 'blocked'; return 20
     }
     if ($rc -ne 0) {
-        Write-LabLine "[$id] apply: error (exit $rc); rolling back"
-        $M.State = 'failed'; [void](Undo-LabModule $id); return 40
+        Write-LabStatus 'ERROR' "[$id] apply: error (exit $rc); rolling back"
+        $M.State = 'error'; [void](Undo-LabModule $id); return 40
     }
 
     if (Test-Path -LiteralPath (Join-Path $M.Dir 'verify.ps1') -PathType Leaf) {
         Invoke-LabEntry $M.Dir 'verify' $id '0'
         $rc = $script:EntryRc
         if ($rc -ne 0) {
-            Write-LabLine "[$id] verify failed (exit $rc); rolling back"
+            Write-LabStatus 'FAIL' "[$id] verify failed (exit $rc); rolling back"
             Write-LabLogFor $id 'error' 'verify_failed' "verify exited $rc"
-            $M.State = 'failed'; [void](Undo-LabModule $id)
+            $M.State = 'failed'
+            if ((Undo-LabModule $id) -ne 0) { $M.State = 'error' }
             if ($rc -eq 30) { return 30 }
             return 40
         }
@@ -760,18 +893,19 @@ function Invoke-LabApplyOne {
         $after = Get-LabProbeNow
         $reg = @(Get-LabProbeRegression -Before $script:Before -After $after)
         if ($reg.Count -gt 0) {
-            Write-LabLine "[$id] scored service regressed: $($reg -join ' '); rolling back"
+            Write-LabStatus 'FAIL' "[$id] scored service regressed: $($reg -join ' '); rolling back"
             Write-LabLogFor $id 'error' 'regression' "scored service regressed: $($reg -join ' ')"
-            $M.State = 'failed'; [void](Undo-LabModule $id)
+            $M.State = 'failed'
+            if ((Undo-LabModule $id) -ne 0) { $M.State = 'error' }
             return 30
         }
     }
 
     if (Test-Path -LiteralPath (Join-Path $M.Dir 'cleanup.ps1') -PathType Leaf) {
         Invoke-LabEntry $M.Dir 'cleanup' $id '0'
-        if ($script:EntryRc -ne 0) { Write-LabLine "[$id] cleanup: exit $($script:EntryRc) (the change is kept)" }
+        if ($script:EntryRc -ne 0) { Write-LabStatus 'WARN' "[$id] cleanup: exit $($script:EntryRc) (the change is kept)" }
     }
-    Write-LabLine "[$id] applied and verified"
+    Write-LabStatus 'OK' "[$id] applied and verified"
     Write-LabLogFor $id 'info' 'applied' 'applied and verified'
     $M.State = 'done'
     return 0
@@ -815,10 +949,26 @@ function Invoke-LabPlanCommand {
     Read-LabProfile $script:ProfileName
     Read-LabSetting
     Assert-LabProtectedSet
-    Write-LabLine ('labyrinth {0} - run {1} - {2} - profile {3} - plan mode' -f $LabVersion, $env:LAB_RUN_ID, $Phase, $script:ProfileName)
+    Write-LabLine ('labyrinth {0}: plan {1}, profile {2}' -f $LabVersion, $Phase, $script:ProfileName)
+    Write-LabLine "run $env:LAB_RUN_ID (plan mode: nothing is recorded)"
     $worst = Invoke-LabPlanAll $Phase
-    Write-LabLine "plan finished: exit $worst"
-    exit $worst
+    Exit-LabRun 'plan' $worst $Phase
+}
+
+# Write-LabRecap HOST GROUP: what apply is about to do, before the group-name
+# prompt.
+function Write-LabRecap {
+    param([string] $HostName, [string] $Group)
+    Write-LabLine "About to apply on host $HostName, group ${Group}:"
+    foreach ($m in $script:Run) {
+        $what = ''
+        if ($m.Rc -eq 10 -and $m.Risk -eq 'manual-only') { $what = 'manual' }
+        elseif ($m.Rc -eq 10) { $what = 'will change' }
+        elseif ($m.Rc -eq 20) { $what = 'blocked' }
+        if ($what -ne '') { Write-LabLine ('  {0} {1}' -f $what.PadRight(12), $m.Id) }
+    }
+    Write-LabLine "Each change arms a revert timer that undoes the run in $($script:Settings['REVERT_MINUTES']) minutes"
+    Write-LabLine 'unless you keep it.'
 }
 
 function Invoke-LabApplyCommand {
@@ -841,18 +991,18 @@ function Invoke-LabApplyCommand {
     Assert-LabProtectedSet
     if (-not (Enter-LabLock -WaitSeconds 0)) { exit 20 }
     try {
-        Write-LabLine ('labyrinth {0} - run {1} - {2} - profile {3} - host {4}, group {5} - APPLY' -f `
-                $LabVersion, $env:LAB_RUN_ID, $Phase, $script:ProfileName, $hostName, $group)
+        Write-LabLine ('labyrinth {0}: APPLY {1}, profile {2}' -f $LabVersion, $Phase, $script:ProfileName)
+        Write-LabLine "run $env:LAB_RUN_ID on host $hostName, group $group"
         $worst = Invoke-LabPlanAll $Phase
         if ($worst -ge 40) { Exit-Lab 'the plan has errors; nothing was changed' }
         $todo = @($script:Run | Where-Object { $_.Rc -eq 10 -and $_.Risk -ne 'manual-only' }).Count
         if ($todo -eq 0) {
             Write-LabLine 'nothing to apply'
-            Write-LabLine "apply finished: exit $worst"
-            exit $worst
+            Exit-LabRun 'apply' $worst $Phase
         }
 
         Assert-LabBreakGlass
+        Write-LabRecap $hostName $group
         Assert-LabPlanConfirmed $group
 
         # From here on, changes are made: everything is recorded first.
@@ -868,6 +1018,7 @@ function Invoke-LabApplyCommand {
             Exit-Lab 'the run manifest cannot be written; nothing was changed'
         }
         $script:RunOpen = $true
+        $script:Applied = $true
         Write-LabLog -Level info -EventName run_start -Message "apply $Phase, profile $($script:ProfileName), group $group"
         $services = $null
         try { $services = Read-LabServiceList } catch { Exit-Lab "the service list is malformed; nothing was changed: $($_.Exception.Message)" }
@@ -894,10 +1045,13 @@ function Invoke-LabApplyCommand {
         Exit-LabLock
     }
 
+    $script:Stopped = $stopped
     if ($stopped) {
         foreach ($l in (Get-LabRunStopped)) { Write-LabLine $l }
     } elseif (Test-LabRevertTimer -RunId $env:LAB_RUN_ID) {
         Write-LabLine 'All changes are applied and verified. From a NEW session, check that you can still log in.'
+        $due = Get-LabRevertTimerDue -RunId $env:LAB_RUN_ID
+        if ($due -ne '') { Write-LabLine "The revert timer rolls this run back at $($due.Substring(11, 5)) UTC." }
         $ok = Read-LabAnswer "Type keep to keep the changes; anything else leaves the revert timer to undo them in $($script:Settings['REVERT_MINUTES']) minutes: "
         if ($ok -and $script:Answer -ceq 'keep') {
             $rc = Invoke-LabKeep
@@ -908,8 +1062,7 @@ function Invoke-LabApplyCommand {
             Write-LabLine "To undo now: $Self rollback $short"
         }
     }
-    Write-LabLine "apply finished: exit $worst"
-    exit $worst
+    Exit-LabRun 'apply' $worst $Phase
 }
 
 # Has the current run already been rolled back as a whole?

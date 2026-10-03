@@ -52,6 +52,10 @@ declare -a PROFILE_IDS=()  # module ids from the profile, in order
 ENTRY_RC=0                 # exit code of the last entry point run
 APPROVED=''                # items approved for the module being applied
 PHASE_COUNT=0              # modules of the phase in the profile
+LOAD_ERRORS=0              # modules of the phase that could not be loaded
+LOAD_SKIPPED=0             # modules skipped: no entry points for this platform
+STOPPED=0                  # 1 when an apply stopped partway
+APPLIED=0                  # 1 once apply starts changing things
 DATA_ROOT=''               # the data root (--root)
 OPT_PROFILE='' OPT_BREAKGLASS='' OPT_CONFIRM=''
 RUN_REF=''                 # the run keep or rollback acts on
@@ -126,7 +130,7 @@ Apply only:
   --break-glass NAME     answer the break-glass prompt
   --confirm-group GROUP  answer the group-name prompt
 
-Exit: 0 done, 20 blocked, 30 check failed, 40 error.
+Exit: 0 done, 10 manual steps left, 20 blocked, 30 check failed, 40 error.
 Example: $SELF apply lockout
 Compatibility: '$SELF --apply <phase>' also applies.
 EOF
@@ -258,6 +262,89 @@ usage_error() {
 # warn MESSAGE: a warning on stderr.
 warn() { printf 'labyrinth: warning: %s\n' "$1" >&2; }
 
+# say WORD TEXT: a result line, the status word padded to 9 characters
+# (docs/Conventions.md section 3.2).
+say() { printf '%-9s%s\n' "$1" "$2"; }
+
+# indent: copy standard input, each line indented 11 spaces.
+indent() {
+  local line
+  while IFS= read -r line || [[ -n "$line" ]]; do printf '           %s\n' "$line"; done
+}
+
+# summary MODE: how many modules ended with each status word, counted
+# from the run's arrays, not from the lines printed.
+summary() {
+  local mode="$1" i w out='' notrun=0
+  local -A n=([OK]=0 [CHANGE]=0 [WARN]="$LOAD_SKIPPED" [BLOCKED]=0 [FAIL]=0 [ERROR]="$LOAD_ERRORS")
+  for ((i = 0; i < ${#RUN_IDS[@]}; i++)); do
+    if [[ "$mode" == plan ]]; then
+      case "${RUN_RC[i]}" in 0) w=OK ;; 10) w=CHANGE ;; 20) w=BLOCKED ;; *) w=ERROR ;; esac
+    else
+      case "${RUN_STATE[i]}" in
+        done) w=OK ;; manual) w=WARN ;; blocked) w=BLOCKED ;; failed) w=FAIL ;; error) w=ERROR ;;
+        *) notrun=$((notrun + 1)); continue ;;
+      esac
+    fi
+    n[$w]=$((${n[$w]} + 1))
+  done
+  for w in OK CHANGE WARN BLOCKED FAIL ERROR; do
+    if (( ${n[$w]} > 0 )); then out+="${out:+, }${n[$w]} $w"; fi
+  done
+  if (( notrun > 0 )); then out+="${out:+, }$notrun not run"; fi
+  printf 'Summary: %s\n' "${out:-no modules}"
+}
+
+# shell_word WORD: WORD, quoted if the shell would split or expand it.
+shell_word() {
+  if [[ "$1" =~ ^[A-Za-z0-9/._:@=-]+$ ]]; then printf '%s' "$1"; else printf "'%s'" "$1"; fi
+}
+
+# next_step MODE CODE PHASE: the one command to run next, if there is one.
+next_step() {
+  local mode="$1" code="$2" phase="$3" i manual=0 other=0 opts=''
+  if [[ "$mode" == apply ]] && (( STOPPED )); then
+    printf 'Next: keep the earlier changes or undo them, with the commands above.\n'
+  elif [[ "$mode" == apply ]] && lab_timer_armed "$LAB_RUN_ID"; then
+    printf "Next: from a NEW session, check you can log in, then '%s keep %s'.\n" "$SELF" "${LAB_RUN_ID: -4}"
+  elif (( code == 40 )); then
+    printf 'Next: fix the error above, then run the same command again.\n'
+  elif (( code == 20 )); then
+    printf 'Next: clear what blocked it above, then run the same command again.\n'
+  elif (( code == 10 )); then
+    for ((i = 0; i < ${#RUN_IDS[@]}; i++)); do
+      if [[ "${RUN_RC[i]}" != 10 ]]; then continue; fi
+      if [[ "${RUN_RISK[i]}" == manual-only ]]; then manual=$((manual + 1)); else other=$((other + 1)); fi
+    done
+    if (( other == 0 )); then
+      printf 'Next: a person carries out the manual steps above; apply changes nothing.\n'
+    else
+      if [[ -n "${GIVEN[root]:-}" ]]; then opts+=" --root $(shell_word "${GIVEN[root]}")"; fi
+      if [[ -n "${GIVEN[config]:-}" ]]; then opts+=" --config $(shell_word "${GIVEN[config]}")"; fi
+      printf 'Next: %s apply %s%s\n' "$SELF" "$phase" "$opts"
+    fi
+  fi
+}
+
+# finish MODE CODE PHASE: the end of a plan or apply: Summary, Next and
+# the exit code with its meaning; then exit with CODE.
+finish() {
+  local mode="$1" code="$2" what
+  case "$mode:$code" in
+    plan:0) what='nothing to do' ;;
+    plan:10) what='change needed' ;;
+    apply:0) what='done' ;;
+    apply:10) what='manual steps needed' ;;
+    *:20) what='blocked' ;;
+    *:30) what='a check failed, and that change was undone' ;;
+    *) what='error' ;;
+  esac
+  if [[ "$mode" == plan ]] || (( ! APPLIED )); then summary plan; else summary apply; fi
+  next_step "$mode" "$code" "$3"
+  printf '%s finished: exit %d (%s)\n' "$mode" "$code" "$what"
+  exit "$code"
+}
+
 # edit_distance A B: the Levenshtein distance between A and B.
 edit_distance() {
   local a="$1" b="$2" i j cost del ins sub
@@ -371,7 +458,10 @@ check_used() {
   done
 }
 
-yml_error() { printf '%s: %s\n' "$1" "$2" >&2; return 1; }
+# yml_error WHERE MESSAGE: keep a module.yml error, to print under the
+# module's ERROR line; returns 1.
+yml_error() { YML_ERR+="$1: $2"$'\n'; return 1; }
+YML_ERR=''
 
 # Parse module.yml, the strict flat subset in docs/Conventions.md
 # section 2.1, into MOD. Any other construct is an error.
@@ -455,13 +545,33 @@ new_run_id() {
 
 # run_entry DIR ENTRY ID [DRY_RUN]: run one entry point as its own process
 # with the contract's environment (docs/Conventions.md section 3). Its
-# output goes straight to the operator; its stdin is empty, so it can
+# output, both streams, goes to the operator as it comes, indented under
+# the module's result line (section 3.2); its stdin is empty, so it can
 # never take an answer meant for the runner. Its exit code is left in ENTRY_RC.
 run_entry() {
   local dir="$1" entry="$2" id="$3" dry="${4:-1}"
+  if LAB_MODULE_ID="$id" LAB_ENTRY="$entry" LAB_DRY_RUN="$dry" LAB_APPROVED="$APPROVED" \
+      bash "$dir/$entry.sh" < /dev/null 2>&1 | indent; then
+    ENTRY_RC=0
+  else
+    ENTRY_RC="${PIPESTATUS[0]}"
+  fi
+}
+
+# capture_entry DIR ENTRY ID: like run_entry in plan mode, but the output
+# is kept in ENTRY_OUT, because the result line that goes above it is known
+# only when the entry point ends.
+capture_entry() {
+  local dir="$1" entry="$2" id="$3"
   ENTRY_RC=0
-  LAB_MODULE_ID="$id" LAB_ENTRY="$entry" LAB_DRY_RUN="$dry" LAB_APPROVED="$APPROVED" \
-    bash "$dir/$entry.sh" < /dev/null || ENTRY_RC=$?
+  ENTRY_OUT="$(LAB_MODULE_ID="$id" LAB_ENTRY="$entry" LAB_DRY_RUN=1 LAB_APPROVED="$APPROVED" \
+    bash "$dir/$entry.sh" < /dev/null 2>&1)" || ENTRY_RC=$?
+}
+ENTRY_OUT=''
+
+# show_output: print ENTRY_OUT, indented.
+show_output() {
+  if [[ -n "$ENTRY_OUT" ]]; then printf '%s\n' "$ENTRY_OUT" | indent; fi
 }
 
 # load_modules PHASE: read and check every module of PHASE in the profile,
@@ -470,20 +580,26 @@ run_entry() {
 load_modules() {
   local phase="$1" id name dir worst=0 p i entry needed
   local -a ids=() dirs=() risks=() scored=() reqs=() prios=()
-  PHASE_COUNT=0
+  PHASE_COUNT=0 LOAD_ERRORS=0 LOAD_SKIPPED=0
   for id in "${PROFILE_IDS[@]+"${PROFILE_IDS[@]}"}"; do
     if [[ "${id%%.*}" != "$phase" ]]; then continue; fi
     PHASE_COUNT=$((PHASE_COUNT + 1))
     name="${id#*.}"
     dir="$LAB_ROOT/phases/$phase/modules/$name"
     if [[ ! -d "$dir" ]]; then
-      printf '[%s] error: module not found\n' "$id"; worst=40; continue
+      say ERROR "[$id] error: module not found"
+      printf 'looked in: %s\n' "$dir" | indent
+      LOAD_ERRORS=$((LOAD_ERRORS + 1)); worst=40; continue
     fi
+    YML_ERR=''
     if ! read_module_yml "$dir/module.yml" || ! validate_module "$dir/module.yml" "$id" "$phase"; then
-      printf '[%s] error: invalid module.yml\n' "$id"; worst=40; continue
+      say ERROR "[$id] error: invalid module.yml"
+      printf '%s' "$YML_ERR" | indent
+      LOAD_ERRORS=$((LOAD_ERRORS + 1)); worst=40; continue
     fi
     if ! compgen -G "$dir/*.sh" > /dev/null; then
-      printf '[%s] skipped: no Linux entry points\n' "$id"; continue
+      say WARN "[$id] skipped: no Linux entry points"
+      LOAD_SKIPPED=$((LOAD_SKIPPED + 1)); continue
     fi
     needed='check'
     case "${MOD[risk]}" in
@@ -491,7 +607,8 @@ load_modules() {
     esac
     for entry in $needed; do
       if [[ ! -f "$dir/$entry.sh" ]]; then
-        printf '[%s] error: missing %s.sh (needed for risk %s)\n' "$id" "$entry" "${MOD[risk]}"; worst=40; continue 2
+        say ERROR "[$id] error: missing $entry.sh (needed for risk ${MOD[risk]})"
+        LOAD_ERRORS=$((LOAD_ERRORS + 1)); worst=40; continue 2
       fi
     done
     ids+=("$id"); dirs+=("$dir"); risks+=("${MOD[risk]}"); scored+=("${MOD[touches_scored]}")
@@ -514,24 +631,24 @@ plan_one() {
   local i="$1" id dir rc
   id="${RUN_IDS[i]}"; dir="${RUN_DIR[i]}"
   rc=0
-  run_entry "$dir" check "$id"
+  capture_entry "$dir" check "$id"
   case "$ENTRY_RC" in
-    0)  printf '[%s] check: nothing to do\n' "$id" ;;
+    0)  say OK "[$id] check: nothing to do"; show_output ;;
     10)
       if [[ ! -f "$dir/plan.sh" ]]; then
-        printf '[%s] error: change needed but plan.sh is missing\n' "$id"; rc=40
+        say ERROR "[$id] error: change needed but plan.sh is missing"; show_output; rc=40
       else
-        printf '[%s] check: change needed; plan follows\n' "$id"
+        say CHANGE "[$id] check: change needed; plan follows"; show_output
         run_entry "$dir" plan "$id"
         case "$ENTRY_RC" in
           0 | 10) rc=10 ;;
-          20)     printf '[%s] plan: blocked by a safety gate\n' "$id"; rc=20 ;;
-          *)      printf '[%s] plan: error (exit %s)\n' "$id" "$ENTRY_RC"; rc=40 ;;
+          20)     say BLOCKED "[$id] plan: blocked by a safety gate"; rc=20 ;;
+          *)      say ERROR "[$id] plan: error (exit $ENTRY_RC)"; rc=40 ;;
         esac
       fi
       ;;
-    20) printf '[%s] check: blocked by a safety gate\n' "$id"; rc=20 ;;
-    *)  printf '[%s] check: error (exit %s)\n' "$id" "$ENTRY_RC"; rc=40 ;;
+    20) say BLOCKED "[$id] check: blocked by a safety gate"; show_output; rc=20 ;;
+    *)  say ERROR "[$id] check: error (exit $ENTRY_RC)"; show_output; rc=40 ;;
   esac
   RUN_RC[i]=$rc
   return "$rc"
@@ -547,7 +664,7 @@ plan_all() {
     if (( rc > worst )); then worst=$rc; fi
   done
   if (( PHASE_COUNT == 0 )); then
-    printf 'no %s modules in profile %s\n' "$1" "$OPT_PROFILE"
+    say WARN "no $1 modules in profile $OPT_PROFILE"
   fi
   return "$worst"
 }
@@ -631,14 +748,14 @@ rollback_module() {
   if (( rc == 0 )); then
     # Checked by hand: this function is called with ||, so errexit is off.
     if ! record_for "$id" rolled_back; then
-      printf '[%s] rolled back, but the manifest cannot be written, so it still lists the change; rolling back again is safe\n' "$id"
+      say ERROR "[$id] rolled back, but the manifest cannot be written, so it still lists the change; rolling back again is safe"
       return 40
     fi
-    printf '[%s] rolled back\n' "$id"
+    say OK "[$id] rolled back"
     LAB_MODULE_ID="$id" lab_log_warn rolled_back "rolled back"
     return 0
   fi
-  printf '[%s] rollback FAILED (exit %s): restore this module by hand from %s\n' "$id" "$rc" "$LAB_BACKUP_DIR/$LAB_RUN_ID/$id"
+  say ERROR "[$id] rollback FAILED (exit $rc): restore this module by hand from $LAB_BACKUP_DIR/$LAB_RUN_ID/$id"
   LAB_MODULE_ID="$id" lab_log_error rollback_failed "rollback failed with exit $rc"
   return 40
 }
@@ -649,7 +766,7 @@ requires_met() {
   for req in ${RUN_REQUIRES[i]}; do
     for ((j = 0; j < ${#RUN_IDS[@]}; j++)); do
       if [[ "${RUN_IDS[j]}" == "$req" && "${RUN_STATE[j]}" != 'done' && "${RUN_STATE[j]}" != planned ]]; then
-        printf '[%s] blocked: requires %s, which did not complete\n' "${RUN_IDS[i]}" "$req"
+        say BLOCKED "[${RUN_IDS[i]}] blocked: requires $req, which did not complete"
         return 1
       fi
     done
@@ -663,18 +780,21 @@ apply_one() {
   id="${RUN_IDS[i]}"; dir="${RUN_DIR[i]}"; risk="${RUN_RISK[i]}"
   APPROVED=''
   if [[ "$risk" == manual-only ]]; then
-    printf '[%s] manual-only: a person carries out the checklist above; nothing changed\n' "$id"
+    say WARN "[$id] manual-only: a person carries out the checklist above; nothing changed"
     RUN_STATE[i]=manual; return 0
   fi
   if [[ "${RUN_SCORED[i]}" == true ]]; then
     rc=0; lab_addrs_load scoring-allowlist || rc=$?
-    if (( rc == 1 )); then RUN_STATE[i]=failed; return 40; fi
+    if (( rc == 1 )); then
+      say ERROR "[$id] error: the scoring allowlist is malformed"
+      RUN_STATE[i]=error; return 40
+    fi
     if (( rc == 2 )); then
-      printf '[%s] blocked: it touches scored services and the scoring allowlist is missing or empty\n' "$id"
+      say BLOCKED "[$id] blocked: it touches scored services and the scoring allowlist is missing or empty"
       RUN_STATE[i]=blocked; return 20
     fi
     if (( ! HAVE_SERVICES )); then
-      printf '[%s] blocked: it touches scored services and there is no service list to probe\n' "$id"
+      say BLOCKED "[$id] blocked: it touches scored services and there is no service list to probe"
       RUN_STATE[i]=blocked; return 20
     fi
   fi
@@ -682,21 +802,22 @@ apply_one() {
   if [[ "$risk" == approval ]]; then
     ask "[$id] Type the ids of the items to approve, separated by spaces, or press Enter for none: " || ANSWER=''
     for tok in $ANSWER; do
-      [[ "$tok" =~ ^[A-Za-z0-9._:@-]+$ ]] || { printf '[%s] blocked: not an item id: %s\n' "$id" "$tok"; RUN_STATE[i]=blocked; return 20; }
+      [[ "$tok" =~ ^[A-Za-z0-9._:@-]+$ ]] || { say BLOCKED "[$id] blocked: not an item id: $tok"; RUN_STATE[i]=blocked; return 20; }
     done
     APPROVED="$ANSWER"
     if [[ -z "$APPROVED" ]]; then
-      printf '[%s] nothing approved; nothing changed\n' "$id"
+      say OK "[$id] nothing approved; nothing changed"
       RUN_STATE[i]='done'; return 0
     fi
   fi
   if [[ ! -f "$dir/apply.sh" ]]; then
+    say OK "[$id] no apply step; nothing changed"
     RUN_STATE[i]='done'; return 0
   fi
   if [[ "$risk" != read-only ]]; then
     if ! lab_timer_arm "$((LAB_EVENT[REVERT_MINUTES] * 60))" "$LAB_RUN_ID" \
         "$BASH" "$LAB_ROOT/labyrinth.sh" --root "$DATA_ROOT" --config "$LAB_CONFIG_DIR" rollback "$LAB_RUN_ID"; then
-      printf '[%s] blocked: the revert timer could not be armed\n' "$id"
+      say BLOCKED "[$id] blocked: the revert timer could not be armed"
       RUN_STATE[i]=blocked; return 20
     fi
   fi
@@ -704,21 +825,22 @@ apply_one() {
   # Checked by hand: errexit is off inside a function called with ||, and a
   # change the manifest does not list could never be rolled back.
   if ! record_for "$id" apply_start '' "risk $risk"; then
-    printf '[%s] error: the run manifest cannot be written, so it is not applied\n' "$id"
-    RUN_STATE[i]=failed; return 40
+    say ERROR "[$id] error: the run manifest cannot be written, so it is not applied"
+    RUN_STATE[i]=error; return 40
   fi
   LAB_MODULE_ID="$id" lab_log_info apply_start "applying"
+  say CHANGE "[$id] applying"
   run_entry "$dir" apply "$id" 0
   case "$ENTRY_RC" in
     0) ;;
     20)
-      printf '[%s] apply: blocked by a safety gate\n' "$id"
+      say BLOCKED "[$id] apply: blocked by a safety gate"
       record_for "$id" rolled_back '' 'apply blocked before any change'
       RUN_STATE[i]=blocked; return 20
       ;;
     *)
-      printf '[%s] apply: error (exit %s); rolling back\n' "$id" "$ENTRY_RC"
-      RUN_STATE[i]=failed; rollback_module "$id" || true; return 40
+      say ERROR "[$id] apply: error (exit $ENTRY_RC); rolling back"
+      RUN_STATE[i]=error; rollback_module "$id" || true; return 40
       ;;
   esac
 
@@ -726,9 +848,9 @@ apply_one() {
     run_entry "$dir" verify "$id" 0
     rc="$ENTRY_RC"
     if (( rc != 0 )); then
-      printf '[%s] verify failed (exit %s); rolling back\n' "$id" "$rc"
+      say FAIL "[$id] verify failed (exit $rc); rolling back"
       LAB_MODULE_ID="$id" lab_log_error verify_failed "verify exited $rc"
-      RUN_STATE[i]=failed; rollback_module "$id" || true
+      RUN_STATE[i]=failed; rollback_module "$id" || RUN_STATE[i]=error
       if (( rc == 30 )); then return 30; fi
       return 40
     fi
@@ -738,18 +860,18 @@ apply_one() {
     after="$(probe_now)"
     reg="$(lab_probe_regressions "$BEFORE" "$after")"
     if [[ -n "$reg" ]]; then
-      printf '[%s] scored service regressed: %s; rolling back\n' "$id" "${reg//$'\n'/ }"
+      say FAIL "[$id] scored service regressed: ${reg//$'\n'/ }; rolling back"
       LAB_MODULE_ID="$id" lab_log_error regression "scored service regressed: ${reg//$'\n'/ }"
-      RUN_STATE[i]=failed; rollback_module "$id" || true
+      RUN_STATE[i]=failed; rollback_module "$id" || RUN_STATE[i]=error
       return 30
     fi
   fi
 
   if [[ -f "$dir/cleanup.sh" ]]; then
     run_entry "$dir" cleanup "$id" 0
-    (( ENTRY_RC == 0 )) || printf '[%s] cleanup: exit %s (the change is kept)\n' "$id" "$ENTRY_RC"
+    (( ENTRY_RC == 0 )) || say WARN "[$id] cleanup: exit $ENTRY_RC (the change is kept)"
   fi
-  printf '[%s] applied and verified\n' "$id"
+  say OK "[$id] applied and verified"
   LAB_MODULE_ID="$id" lab_log_info applied "applied and verified"
   RUN_STATE[i]='done'
   return 0
@@ -792,15 +914,31 @@ cmd_plan() {
   read_profile "$OPT_PROFILE"
   lab_event_load || die 'event.conf is malformed'
   gate_protected
-  printf 'labyrinth %s - run %s - %s - profile %s - plan mode\n' \
-    "$LAB_VERSION" "$LAB_RUN_ID" "$phase" "$OPT_PROFILE"
+  printf 'labyrinth %s: plan %s, profile %s\n' "$LAB_VERSION" "$phase" "$OPT_PROFILE"
+  printf 'run %s (plan mode: nothing is recorded)\n' "$LAB_RUN_ID"
   plan_all "$phase" || worst=$?
-  printf 'plan finished: exit %d\n' "$worst"
-  exit "$worst"
+  finish plan "$worst" "$phase"
+}
+
+# recap HOST GROUP: what apply is about to do, before the group-name prompt.
+recap() {
+  local i what
+  printf 'About to apply on host %s, group %s:\n' "$1" "$2"
+  for ((i = 0; i < ${#RUN_IDS[@]}; i++)); do
+    case "${RUN_RC[i]}" in
+      10) what='will change'
+          if [[ "${RUN_RISK[i]}" == manual-only ]]; then what='manual'; fi ;;
+      20) what='blocked' ;;
+      *) continue ;;
+    esac
+    printf '  %-12s %s\n' "$what" "${RUN_IDS[i]}"
+  done
+  printf 'Each change arms a revert timer that undoes the run in %s minutes\n' "${LAB_EVENT[REVERT_MINUTES]}"
+  printf 'unless you keep it.\n'
 }
 
 cmd_apply() {
-  local phase="$1" host group worst=0 rc i todo=0 stopped=0
+  local phase="$1" host group worst=0 rc i todo=0 stopped=0 due
   export LAB_DRY_RUN=1
   umask 077
   host="$(lab_host)"
@@ -820,19 +958,20 @@ cmd_apply() {
   lab_lock_acquire 0 || exit 20
   trap 'lab_lock_release' EXIT
 
-  printf 'labyrinth %s - run %s - %s - profile %s - host %s, group %s - APPLY\n' \
-    "$LAB_VERSION" "$LAB_RUN_ID" "$phase" "$OPT_PROFILE" "$host" "$group"
+  printf 'labyrinth %s: APPLY %s, profile %s\n' "$LAB_VERSION" "$phase" "$OPT_PROFILE"
+  printf 'run %s on host %s, group %s\n' "$LAB_RUN_ID" "$host" "$group"
   plan_all "$phase" || worst=$?
   (( worst < 40 )) || die 'the plan has errors; nothing was changed'
   for ((i = 0; i < ${#RUN_IDS[@]}; i++)); do
     if [[ "${RUN_RC[i]}" == 10 && "${RUN_RISK[i]}" != manual-only ]]; then todo=$((todo + 1)); fi
   done
   if (( todo == 0 )); then
-    printf 'nothing to apply\napply finished: exit %d\n' "$worst"
-    exit "$worst"
+    printf 'nothing to apply\n'
+    finish apply "$worst" "$phase"
   fi
 
   gate_breakglass
+  recap "$host" "$group"
   gate_confirm "$group"
 
   # From here on, changes are made: everything is recorded first.
@@ -843,7 +982,7 @@ cmd_apply() {
       || ! record_for '' breakglass_verified "$BREAKGLASS"; then
     die 'the run manifest cannot be written; nothing was changed'
   fi
-  RUN_OPEN=1
+  RUN_OPEN=1 APPLIED=1
   lab_log_info run_start "apply $phase, profile $OPT_PROFILE, group $group"
   rc=0; lab_services_load || rc=$?
   (( rc != 1 )) || die 'the service list is malformed; nothing was changed'
@@ -867,10 +1006,14 @@ cmd_apply() {
   done
   lab_lock_release
 
+  STOPPED="$stopped"
   if (( stopped )); then
     run_stopped
   elif lab_timer_armed "$LAB_RUN_ID"; then
     printf 'All changes are applied and verified. From a NEW session, check that you can still log in.\n'
+    if due="$(lab_timer_due "$LAB_RUN_ID" 2> /dev/null)"; then
+      printf 'The revert timer rolls this run back at %s UTC.\n' "${due:11:5}"
+    fi
     if ask "Type keep to keep the changes; anything else leaves the revert timer to undo them in ${LAB_EVENT[REVERT_MINUTES]} minutes: " \
         && [[ "$ANSWER" == keep ]]; then
       keep_run || worst=$?
@@ -879,8 +1022,7 @@ cmd_apply() {
       printf 'To undo now: %s rollback %s\n' "$SELF" "${LAB_RUN_ID: -4}"
     fi
   fi
-  printf 'apply finished: exit %d\n' "$worst"
-  exit "$worst"
+  finish apply "$worst" "$phase"
 }
 
 # run_rolled_back: has the current run already been rolled back as a whole?
