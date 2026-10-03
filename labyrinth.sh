@@ -276,7 +276,7 @@ indent() {
 # from the run's arrays, not from the lines printed.
 summary() {
   local mode="$1" i w out='' notrun=0
-  local -A n=([OK]=0 [CHANGE]=0 [WARN]="$LOAD_SKIPPED" [BLOCKED]=0 [FAIL]=0 [ERROR]="$LOAD_ERRORS")
+  local -A count=([OK]=0 [CHANGE]=0 [WARN]="$LOAD_SKIPPED" [BLOCKED]=0 [FAIL]=0 [ERROR]="$LOAD_ERRORS")
   for ((i = 0; i < ${#RUN_IDS[@]}; i++)); do
     if [[ "$mode" == plan ]]; then
       case "${RUN_RC[i]}" in 0) w=OK ;; 10) w=CHANGE ;; 20) w=BLOCKED ;; *) w=ERROR ;; esac
@@ -286,10 +286,10 @@ summary() {
         *) notrun=$((notrun + 1)); continue ;;
       esac
     fi
-    n[$w]=$((${n[$w]} + 1))
+    count[$w]=$((${count[$w]} + 1))
   done
   for w in OK CHANGE WARN BLOCKED FAIL ERROR; do
-    if (( ${n[$w]} > 0 )); then out+="${out:+, }${n[$w]} $w"; fi
+    if (( ${count[$w]} > 0 )); then out+="${out:+, }${count[$w]} $w"; fi
   done
   if (( notrun > 0 )); then out+="${out:+, }$notrun not run"; fi
   printf 'Summary: %s\n' "${out:-no modules}"
