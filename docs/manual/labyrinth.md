@@ -56,6 +56,8 @@ You need:
 
 | Word | Meaning |
 |---|---|
+| Phase | A stage of defense. There are four, run in order: `lockout`, `observe`, `deceive` and `sustain`. |
+| Module | One small job in a phase, such as turning off password logins. Each has a plain name and an ID, such as `lockout.firewall`: the phase, a dot, then its short name. `@CMD@ help <module-id>` explains it. |
 | Run | One use of `plan` or `apply` on one host. |
 | Run ID | The name of a run, such as `20261002T140301Z-4f2a`: the start time in UTC and four random characters. Wherever a command asks for a run, the last four characters (`4f2a`) are enough. |
 | Plan | A dry run: each module reports what it would change. Nothing is changed and nothing is written. |
@@ -68,6 +70,8 @@ You need:
 | Exit code | The number Labyrinth ends with, which says how it went (section 9). |
 
 # 4. Quick start
+
+New to Labyrinth? `@CMD@ help basics` explains these ideas on one screen. Run with no command, Labyrinth prints three steps to start with.
 
 The normal way to use Labyrinth is: plan, apply, check, keep.
 
@@ -147,9 +151,14 @@ Below the list, it shows how to name a run by its last four characters. It chang
 
 Tests every scored service once, the way the scoring engine would, and prints the result for each. Changes nothing. Ends with 0 when every service passes, 20 when there is no list of scored services, 30 when any service fails, and 40 on an error.
 
-## help [*command*]
+## help [*topic*]
 
-Prints help for every command, or for one. After any command,
+Prints help for every command, or for one. Two more topics:
+
+- `@CMD@ help basics` explains phases, modules, plan and apply, runs, the revert timer, keep, rollback and scored services, in plain words, on one screen.
+- `@CMD@ help <module-id>`, such as `@CMD@ help lockout.firewall`, explains one module: its name, its phase and order, what it may change in plain words, whether it can affect a scored service, the platforms it runs on, its folder, and then its own page: what it checks and changes, why, what can go wrong, how to undo it, and what to do when it fails. Every warning, block, failure and error in the output names the page to read.
+
+After any command,
 <!-- linux -->
 `-h`, `-?` or `--help`
 <!-- end -->

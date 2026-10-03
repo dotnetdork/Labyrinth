@@ -1,5 +1,6 @@
 # Test fixture: Linux entry points only
 id: observe.linuxonly
+title: Linux-only sample
 phase: observe
 priority: P2
 platforms: [ubuntu, rhel-family, windows]

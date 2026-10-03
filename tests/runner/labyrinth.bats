@@ -83,8 +83,20 @@ setup() { lab_setup; }
 
 # yml PLATFORMS [EXTRA_LINE]: rewrite the clean fixture's module.yml
 yml() {
-  printf 'id: observe.clean\nphase: observe\npriority: P2\nplatforms: %s\nrisk: read-only\ntouches_scored: false\n%s\n' \
+  printf 'id: observe.clean\ntitle: Clean\nphase: observe\npriority: P2\nplatforms: %s\nrisk: read-only\ntouches_scored: false\n%s\n' \
     "$1" "${2:-}" > "$LAB/phases/observe/modules/clean/module.yml"
+}
+
+@test "a module.yml without a title, or with one over 40 characters, is rejected" {
+  profile observe.clean
+  sed -i '/^title:/d' "$LAB/phases/observe/modules/clean/module.yml"
+  plan
+  [ "$status" -eq 40 ]
+  [[ "$output" == *"missing key title"* ]]
+  sed -i 's/^id: .*/&\ntitle: A title that runs on well past forty characters/' "$LAB/phases/observe/modules/clean/module.yml"
+  plan
+  [ "$status" -eq 40 ]
+  [[ "$output" == *"title is 47 characters; the most is 40"* ]]
 }
 
 @test "module.yml outside the flat subset is rejected" {
@@ -102,7 +114,7 @@ yml() {
 
 @test "a well-formed module.yml with spaces in its lists is accepted" {
   profile observe.clean
-  printf '# comment\n\nid: observe.clean\nphase: observe\npriority: P2\nplatforms: [ ubuntu , windows ]\nrisk: read-only\ntouches_scored: false\nrequires: []\n' \
+  printf '# comment\n\nid: observe.clean\ntitle: Clean: no change\nphase: observe\npriority: P2\nplatforms: [ ubuntu , windows ]\nrisk: read-only\ntouches_scored: false\nrequires: []\n' \
     > "$LAB/phases/observe/modules/clean/module.yml"
   plan
   [ "$status" -eq 0 ]

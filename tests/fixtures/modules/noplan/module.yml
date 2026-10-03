@@ -1,5 +1,6 @@
 # Test fixture: check says a change is needed but there is no plan entry point
 id: observe.noplan
+title: Missing plan sample
 phase: observe
 priority: P2
 platforms: [ubuntu, rhel-family, windows]
