@@ -868,16 +868,127 @@ function Invoke-LabKeep {
     }
 }
 
+# Get-LabRunList: this host's run IDs, oldest first; only runs with a
+# manifest, because a plan writes nothing.
+function Get-LabRunList {
+    $dir = Join-Path $env:LAB_STATE_DIR 'runs'
+    if (-not (Test-Path -LiteralPath $dir -PathType Container)) { return @() }
+    return @(Get-ChildItem -LiteralPath $dir -Directory | Where-Object {
+            $_.Name -cmatch $ReRunId -and (Test-Path -LiteralPath (Join-Path $_.FullName 'manifest.jsonl') -PathType Leaf)
+        } | Sort-Object Name | ForEach-Object { $_.Name })
+}
+
+# Get-LabRunState RUN: the run's state, the first that applies: rolled
+# back, kept, armed (with when the timer fires), or not kept, no timer.
+function Get-LabRunState {
+    param([string] $RunId)
+    $entries = @(Get-LabManifestEntry -RunId $RunId)
+    $rolled = @($entries | Where-Object { $_.action -ceq 'run_rolled_back' })
+    if ($rolled.Count -gt 0) {
+        if ($rolled[-1].note -ceq 'exit 0') { return 'rolled back' }
+        return 'rolled back with errors'
+    }
+    if (@($entries | Where-Object { $_.action -ceq 'run_kept' }).Count -gt 0) { return 'kept' }
+    if (Test-LabRevertTimer -RunId $RunId) {
+        $due = Get-LabRevertTimerDue -RunId $RunId
+        if ($due -eq '') { return 'armed: rollback time unknown' }
+        # The times are UTC in one fixed format, so they compare as strings.
+        $now = [DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ', [Globalization.CultureInfo]::InvariantCulture)
+        if ([string]::CompareOrdinal($due, $now) -gt 0) { return "armed: rolls back at $($due.Substring(11, 5)) UTC" }
+        return "armed: was due $($due.Substring(11, 5)) UTC"
+    }
+    return 'not kept, no timer'
+}
+
+# Get-LabRunPhase RUN: the phase the run applied, from its run_start entry.
+function Get-LabRunPhase {
+    param([string] $RunId)
+    $start = @(Get-LabManifestEntry -RunId $RunId | Where-Object { $_.action -ceq 'run_start' })
+    if ($start.Count -eq 0 -or $start[0].note -cnotmatch '^phase ([^,]+)') { return '-' }
+    return $Matches[1]
+}
+
+# Get-LabRunTable RUN...: the runs table, at most 78 columns.
+function Get-LabRunTable {
+    param([string[]] $RunIds)
+    $f = '{0,-21} {1,-7} {2,-16} {3}'
+    $f -f 'RUN', 'PHASE', 'START (UTC)', 'STATE'
+    foreach ($id in $RunIds) {
+        $start = '{0}-{1}-{2} {3}:{4}' -f $id.Substring(0, 4), $id.Substring(4, 2), $id.Substring(6, 2), $id.Substring(9, 2), $id.Substring(11, 2)
+        $f -f $id, (Get-LabRunPhase $id), $start, (Get-LabRunState $id)
+    }
+}
+
+# Get-LabArmedRun: the runs whose revert timer is armed and not yet kept
+# or rolled back.
+function Get-LabArmedRun {
+    return @(Get-LabRunList | Where-Object { (Get-LabRunState $_) -like 'armed*' })
+}
+
+function Invoke-LabRunsCommand {
+    if (-not (Test-LabAdmin)) { Exit-Lab 'runs needs an elevated Administrator session' 20 }
+    $runs = @(Get-LabRunList)
+    if ($runs.Count -eq 0) {
+        Write-LabLine "no runs on this host ($(Join-Path $env:LAB_STATE_DIR 'runs'))"
+        exit 0
+    }
+    foreach ($l in (Get-LabRunTable $runs)) { Write-LabLine $l }
+    # The example names the newest armed run, the one most likely to be kept.
+    $example = $runs[-1]
+    $armed = @(Get-LabArmedRun)
+    if ($armed.Count -gt 0) { $example = $armed[-1] }
+    Write-LabLine ''
+    Write-LabLine "Name a run by its last 4 characters, like '$Self keep $($example.Substring($example.Length - 4))'."
+    exit 0
+}
+
+# Resolve-LabRunId COMMAND REF: the full run ID REF names. REF is a full
+# ID, or its last 4 characters if they match exactly one run.
+function Resolve-LabRunId {
+    param([string] $Command, [string] $Ref)
+    if ($Ref -cmatch $ReRunId) { return $Ref }
+    $suffix = $Ref.ToLowerInvariant()
+    $hits = @(Get-LabRunList | Where-Object { $_.EndsWith("-$suffix", [StringComparison]::Ordinal) })
+    if ($hits.Count -eq 0) { Exit-LabUsage "no run ending in '$Ref' on this host; '$Self runs' lists them" $Command }
+    if ($hits.Count -gt 1) { Exit-LabUsage "'$Ref' ends more than one run ($($hits -join ' ')); give the full ID" $Command }
+    Write-LabLine "using run $($hits[0])"
+    return $hits[0]
+}
+
 function Invoke-LabKeepCommand {
+    param([string] $Ref)
     $script:DryRun = '0'; $env:LAB_DRY_RUN = '0'
     if (-not (Test-LabAdmin)) { Exit-Lab 'keep needs an elevated Administrator session' 20 }
+    if ($Ref -eq '') {
+        # Without a run, keep the one run whose timer is armed (section 3.1).
+        $armed = @(Get-LabArmedRun)
+        if ($armed.Count -eq 0) { Exit-LabUsage 'no run on this host has an armed revert timer, so there is nothing to keep' 'keep' }
+        if ($armed.Count -gt 1) {
+            foreach ($l in (Get-LabRunTable $armed)) { [Console]::Error.WriteLine($l) }
+            Exit-LabUsage "more than one run has an armed revert timer; name one, like '$Self keep $($armed[0].Substring($armed[0].Length - 4))'" 'keep'
+        }
+        $env:LAB_RUN_ID = $armed[0]
+        Write-LabLine "using run $($armed[0])"
+    } else {
+        $env:LAB_RUN_ID = Resolve-LabRunId 'keep' $Ref
+    }
     if (-not (Test-Path -LiteralPath (Get-LabManifestPath) -PathType Leaf)) { Exit-Lab "no run $env:LAB_RUN_ID on this host" }
     exit (Invoke-LabKeep)
 }
 
 function Invoke-LabRollbackCommand {
+    param([string] $Ref)
     $script:DryRun = '0'; $env:LAB_DRY_RUN = '0'
+    if ($Ref -eq '') {
+        # Rollback always needs a run (decision D3): list them, change nothing.
+        if (Test-LabAdmin) {
+            $runs = @(Get-LabRunList)
+            if ($runs.Count -gt 0) { foreach ($l in (Get-LabRunTable $runs)) { [Console]::Error.WriteLine($l) } }
+        }
+        Exit-LabUsage "rollback needs a run ID, or its last 4 characters; '$Self runs' lists them" 'rollback'
+    }
     if (-not (Test-LabAdmin)) { Exit-Lab 'rollback needs an elevated Administrator session' 20 }
+    $env:LAB_RUN_ID = Resolve-LabRunId 'rollback' $Ref
     if (-not (Test-Path -LiteralPath (Get-LabManifestPath) -PathType Leaf)) { Exit-Lab "no run $env:LAB_RUN_ID on this host" }
     # The revert timer must work even if a hung run still holds the lock.
     $locked = Enter-LabLock -WaitSeconds 120
@@ -999,10 +1110,12 @@ try {
             if ($cmd -ceq 'plan') { Test-LabOptionUse 'plan' @('profile') } else { Test-LabOptionUse 'apply' @('profile', 'break-glass', 'confirm-group') }
         }
         { $_ -ceq 'keep' -or $_ -ceq 'rollback' } {
-            if ($rest.Count -eq 0) { Exit-LabUsage "$cmd needs a run ID" $cmd }
+            # Without a run, keep and rollback decide what to do (section 3.1).
             if ($rest.Count -gt 1) { Exit-LabUsage "unexpected word '$($rest[1])' after '$cmd $($rest[0])'" $cmd }
-            if ($rest[0] -cnotmatch $ReRunId) { Exit-LabUsage "not a run ID: '$($rest[0])'" $cmd }
-            $run = $rest[0]
+            if ($rest.Count -eq 1) { $run = $rest[0] }
+            if ($run -ne '' -and $run -cnotmatch $ReRunId -and $run -notmatch '^[0-9a-fA-F]{4}$') {
+                Exit-LabUsage "not a run ID: '$run' (give the ID or its last 4 characters)" $cmd
+            }
             Test-LabOptionUse $cmd
         }
         { $_ -ceq 'runs' -or $_ -ceq 'probe' } {
@@ -1038,10 +1151,10 @@ try {
     switch ($cmd) {
         'plan' { Invoke-LabPlanCommand $phase }
         'apply' { Invoke-LabApplyCommand $phase }
-        'keep' { $env:LAB_RUN_ID = $run; Invoke-LabKeepCommand }
-        'rollback' { $env:LAB_RUN_ID = $run; Invoke-LabRollbackCommand }
+        'keep' { Invoke-LabKeepCommand $run }
+        'rollback' { Invoke-LabRollbackCommand $run }
         'probe' { Invoke-LabProbeCommand }
-        'runs' { Exit-LabUsage 'runs is not built yet' 'runs' }
+        'runs' { Invoke-LabRunsCommand }
     }
 } catch {
     [Console]::Error.WriteLine("labyrinth: $($_.Exception.Message)")

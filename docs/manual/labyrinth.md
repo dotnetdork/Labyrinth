@@ -135,12 +135,13 @@ Ends with 0 when the run is rolled back, 20 when not run as @ADMIN@, and 40 on a
 
 Lists this host's runs, oldest first, with the run ID, phase, start time (UTC) and state:
 
-- `armed`: the revert timer is set, with the time it will undo the run;
+- `armed`: the revert timer is set, with the time it will undo the run. If that time has passed, it says when the timer was due; if Labyrinth cannot tell, it says the time is unknown;
 - `kept`: someone kept the run;
 - `rolled back`: the run was undone;
+- `rolled back with errors`: the run was undone, but some of it could not be; section 11 explains what to do;
 - `not kept, no timer`: the run changed nothing that needed a timer.
 
-It changes nothing, but it must be run as @ADMIN@. Ends with 0, 20 when not run as @ADMIN@, and 40 on an error.
+Below the list, it shows how to name a run by its last four characters. It changes nothing, but it must be run as @ADMIN@. Ends with 0, 20 when not run as @ADMIN@, and 40 on an error.
 
 ## probe
 
@@ -285,6 +286,8 @@ Each revert timer is a scheduled task named `\Labyrinth\lab-revert-<run>-<n>`, r
 **"could not be cancelled".** `keep` could not stop the revert timer, so the run was not kept and the timer will still undo it. Run `keep` again.
 
 **"The run stopped".** A module failed partway through a run. The changes made before it are still in place, and the revert timer is still armed. Labyrinth prints the commands to keep or undo them. If in doubt, roll back.
+
+**"rollback FAILED".** Labyrinth could not undo one module of the run. The line names the module and the backup folder that holds its files as they were before the run. The other modules are still undone, and `runs` shows the run as `rolled back with errors`. Restore that module's files by hand from the backup folder, then check the service it affects.
 
 **You are locked out.** Do nothing: when the revert timer fires, it undoes the run. If you cannot wait, log in at the console with the break-glass account and run `rollback`.
 
