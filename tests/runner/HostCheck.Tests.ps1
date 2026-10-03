@@ -39,7 +39,7 @@ Describe 'labyrinth.ps1 host checks' {
         foreach ($words in $commands) {
             $r = Invoke-TestLabRun $t $words
             $r.Code | Should -Be 20
-            $r.Output | Should -Match ([regex]::Escape("is listed as ubuntu in $(Join-Path $t.Etc 'hosts'), not a platform this runner serves"))
+            $r.Output | Should -Match ([regex]::Escape("does not serve this host's platform, ubuntu"))
         }
         $t.Root | Should -Not -Exist
         $toggle | Should -Not -Exist

@@ -76,3 +76,9 @@
 # points to the list of runs.
 40|err|no run 20261002T140301Z-4f2a on this host|keep 20261002t140301z-4F2A --root @ROOT@ --config @ETC@
 40|err|runs' lists them|rollback 20261002T140301Z-4f2a --root @ROOT@ --config @ETC@
+# An option error points to the help of the command the line names.
+40|err|Try '@SELF@ help keep' for more information.|keep 4f2a --bogus
+40|err|Try '@SELF@ help plan' for more information.|observe --root
+40|err|Try '@SELF@ help apply' for more information.|--apply observe --bogus
+40|err|Try '@SELF@ help keep' for more information.|help keep extra
+40|err|labyrinth: no command given|
