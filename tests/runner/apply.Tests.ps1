@@ -283,11 +283,11 @@ Describe 'labyrinth.ps1 apply' {
         Write-TestConfig $t 'services' @('web http web.test 80 -', 'mail smtp mail.test 25 -')
         $r = Invoke-TestLab $t @('probe', '-Root', $t.Root, '-Config', $t.Etc)
         $r.Code | Should -Be 0
-        $r.Output | Should -Match 'web pass'
+        $r.Output | Should -Match '\[web\] pass'
         [IO.File]::WriteAllText((Join-Path $lab 'probe-state'), "mail.test fail`n")
         $r = Invoke-TestLab $t @('probe', '-Root', $t.Root, '-Config', $t.Etc)
         $r.Code | Should -Be 30
-        $r.Output | Should -Match 'mail fail'
+        $r.Output | Should -Match '\[mail\] fail'
         $t.Root | Should -Not -Exist
     }
 }

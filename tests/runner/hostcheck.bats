@@ -23,7 +23,7 @@ lab() { run bash "$LAB/labyrinth.sh" --root "$ROOT" --config "$ETC" "$@" < /dev/
     # shellcheck disable=SC2086 # the words are split on purpose
     lab $words
     [ "$status" -eq 20 ] || { echo "$words: $status"; return 1; }
-    [[ "$output" == *"is listed as windows in $ETC/hosts, not a platform this runner serves"* ]]
+    [[ "$output" == *"does not serve this host's platform, windows"* ]]
   done
   [ ! -e "$ROOT" ]
   [ ! -e "$LAB/toggle.conf" ]

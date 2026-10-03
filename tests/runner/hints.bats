@@ -27,7 +27,7 @@ lab() { run bash "$LAB/labyrinth.sh" --root "$ROOT" --config "$ETC" "$@" < /dev/
   run bash "$LAB/labyrinth.sh" plan observe --profile test --root "$ROOT" --config "$ETC/missing"
   [ "$status" -eq 40 ]
   [ "${lines[0]}" = "labyrinth: the --config folder does not exist: $ETC/missing" ]
-  [[ "${lines[1]}" == *'leave out --config'* ]]
+  [[ "${lines[1]}" == *'leave out --config to use <root>/etc'* ]]
   run bash "$LAB/labyrinth.sh" plan observe --profile test --root "$ROOT" --config "$ETC/protected-accounts"
   [ "$status" -eq 40 ]
   [ "${lines[0]}" = "labyrinth: the --config path is a file, not a folder: $ETC/protected-accounts" ]
@@ -52,8 +52,8 @@ lab() { run bash "$LAB/labyrinth.sh" --root "$ROOT" --config "$ETC" "$@" < /dev/
   rm "$ETC/protected-accounts"
   lab plan observe --profile test
   [ "$status" -eq 20 ]
-  [ "${lines[0]}" = "labyrinth: the protected set is not loaded, so Labyrinth refuses to run: there is no $ETC/protected-accounts" ]
-  [[ "${lines[1]}" == 'List the accounts Labyrinth must never change'* ]]
+  [ "${lines[0]}" = "labyrinth: the protected set is not loaded, so nothing runs: there is no $ETC/protected-accounts" ]
+  [[ "${lines[1]}" == 'List, one "account class" per line, the accounts'* ]]
   : > "$ETC/protected-accounts"
   lab plan observe --profile test
   [ "$status" -eq 20 ]
@@ -70,7 +70,7 @@ lab() { run bash "$LAB/labyrinth.sh" --root "$ROOT" --config "$ETC" "$@" < /dev/
   lab probe
   [ "$status" -eq 20 ]
   [ "${lines[0]}" = "labyrinth: no service list at $ETC/services" ]
-  [[ "${lines[1]}" == 'List the scored services in that file'* ]]
+  [[ "${lines[1]}" == 'List the scored services there'* ]]
   printf 'web\n' > "$ETC/services"
   lab probe
   [ "$status" -eq 40 ]
@@ -82,5 +82,6 @@ lab() { run bash "$LAB/labyrinth.sh" --root "$ROOT" --config "$ETC" "$@" < /dev/
   printf '%s ring1 test windows\n' "$HOST" > "$ETC/hosts"
   lab plan observe
   [ "$status" -eq 20 ]
-  [ "${lines[1]}" = "Run the Labyrinth runner for windows there, or correct this host's line in the hosts file." ]
+  [ "${lines[0]}" = "labyrinth: this runner does not serve this host's platform, windows" ]
+  [ "${lines[1]}" = "Use the runner for windows, or correct this host's line in $ETC/hosts" ]
 }

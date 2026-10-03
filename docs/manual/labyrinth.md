@@ -238,11 +238,26 @@ Each module's result starts with a status word:
 | `FAIL` | (not used) | Its check failed, or a scored service got worse. |
 | `ERROR` | Something went wrong. | The change or its undo failed. |
 
-A module's own messages are indented under its result line. The run ends with three lines:
+A module's own messages, and any detail about its result, are indented under its result line. A module with nothing to apply shows `OK` with `no apply step; nothing changed`. If the profile has no modules for the phase, one `WARN` line names the phase in brackets.
+
+The run ends with three lines:
 
 - `Summary:` counts the modules by status word. In an apply that stopped partway, it also counts the modules that did not run.
-- `Next:` gives the one thing to do next. It is left out when there is nothing to do. After a plan, it is the apply command, with any profile, data root and configuration folder you gave the plan. If the profile is not the one this host is listed with, that apply is refused.
+- `Next:` gives the one thing to do next. It is left out when there is nothing to do. After a plan, it is the apply command, with any profile, data root and configuration folder you gave the plan. If the profile is not the one this host is listed with, that apply is refused. When the command is too long for one line, `Next:` stands alone and the command follows on the next line, indented, so you can copy it whole.
 - The last line gives the exit code and what it means.
+
+`probe` reports in the same way, one line per scored service:
+
+```
+labyrinth 0.1.0: probe the scored services
+OK       [web] pass: status 200
+FAIL     [mail] fail: no banner
+Summary: 1 OK, 1 FAIL
+Next: bring the failed service back, then run '@CMD@ probe' again.
+probe finished: exit 30 (a service failed)
+```
+
+`WARN` means a service could not be checked, for example because a tool is missing. A `rollback` ends with `rollback finished: exit 0 (rolled back)`, or `exit 40 (error)` if a module could not be undone.
 
 An apply also recaps twice. Before it asks for the group name, it lists what each module will do and says that a revert timer will be armed. Before it asks whether to keep the changes, it gives the time, in UTC, at which the revert timer will undo them.
 
@@ -315,7 +330,7 @@ Most errors that stop Labyrinth are two lines: what failed and why, then how to 
 
 **"folder does not exist" or "is a file, not a folder".** The path given with the configuration option is not a folder. Give the folder that holds the `hosts` file, or leave the option out to use the one under the data root. `keep` and `rollback` still work without it.
 
-**"not a platform this runner serves".** This host's line in `hosts` names a platform this program does not serve, so `plan`, `apply` and `probe` refuse to run here. Correct the line, or use the Labyrinth runner for that platform on the host. `keep` and `rollback` still work, so a run can always be undone.
+**"does not serve this host's platform".** This host's line in `hosts` names a platform this program does not serve, so `plan`, `apply` and `probe` refuse to run here. Correct the line, or use the Labyrinth runner for that platform on the host. `keep` and `rollback` still work, so a run can always be undone.
 
 **"is an appliance".** This host's line in `hosts` says it is an appliance, such as a firewall. Labyrinth never changes an appliance; configure it by hand, from its runbook.
 

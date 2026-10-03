@@ -40,7 +40,8 @@ Describe 'labyrinth.ps1 runs' {
     It 'runs with no runs says so, exits 0 and creates nothing' {
         $r = Invoke-TestLabRun $t @('runs')
         $r.Code | Should -Be 0
-        $r.Out | Should -BeExactly "no runs on this host ($(Join-Path $t.Root 'state\runs'))"
+        $r.Out | Should -Match '^no runs on this host\r?\n'
+        $r.Out | Should -Match ([regex]::Escape("Runs are recorded in $(Join-Path $t.Root 'state\runs')"))
         $t.Root | Should -Not -Exist
     }
 
