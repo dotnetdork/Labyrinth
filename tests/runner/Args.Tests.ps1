@@ -49,6 +49,26 @@ Describe 'labyrinth.ps1 command line' {
         $t.Root | Should -Not -Exist
     }
 
+    It 'a warning about an unused option never comes before an error' {
+        $r = Invoke-TestLabCapture $t @('-BreakGlass', 'root', '-Root', 'relative', 'observe')
+        $r.Code | Should -Be 40
+        $r.Err | Should -Match 'full path'
+        $r.Err | Should -Not -Match 'warning'
+    }
+
+    It 'rollback with no run, not as an Administrator, says who can list the runs' {
+        New-Item -ItemType File -Path (Join-Path $t.Lab 'NOT_ADMIN') | Out-Null
+        $r = Invoke-TestLabCapture $t @('rollback', '-Root', $t.Root, '-Config', $t.Etc)
+        $r.Code | Should -Be 40
+        $r.Err | Should -Match ([regex]::Escape("as Administrator, 'labyrinth.ps1 runs' lists them"))
+    }
+
+    It 'a Windows path with forward slashes is accepted' {
+        $r = Invoke-TestLabCapture $t @('plan', 'observe', '-Profile', 'test', '-Root', $t.Root.Replace('\', '/'), '-Config', $t.Etc.Replace('\', '/'))
+        $r.Code | Should -Be 10
+        $r.Err | Should -Not -Match 'full path'
+    }
+
     It 'a run ID PowerShell read as a number is refused with a hint to quote it' {
         $o = "-Root '$($t.Root)' -Config '$($t.Etc)'"
         $line = "& '$(Join-Path $t.Lab 'labyrinth.ps1')' keep 0123 $o; exit `$LASTEXITCODE"

@@ -169,6 +169,7 @@ setup() {
   apply
   [ "$status" -eq 0 ]
   [[ "$output" == *"Not kept"* ]]
+  [[ "$output" == *"To keep later: labyrinth.sh keep $(run_id | tail -c 5)"* ]]
   run_dir="$ROOT/state/runs/$(run_id)"
   [ -f "$run_dir/timer" ]
   timer_cmd="$(cat "$run_dir/timer")"
