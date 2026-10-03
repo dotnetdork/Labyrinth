@@ -89,7 +89,7 @@ Describe 'labyrinth.ps1 console output' {
         $lines = @(Get-TestLine $r | Where-Object { $_ -ne '' })
         $last = $lines.Count - 1
         $lines[$last - 2] | Should -Be 'Summary: 1 OK, 1 CHANGE'
-        $lines[$last - 1] | Should -Be "Next: labyrinth.ps1 apply observe -Root $($t.Root) -Config $($t.Etc)"
+        $lines[$last - 1] | Should -Be "Next: labyrinth.ps1 apply observe -Profile test -Root $($t.Root) -Config $($t.Etc)"
         $lines[$last] | Should -Be 'plan finished: exit 10 (change needed)'
     }
 

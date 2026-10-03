@@ -61,7 +61,7 @@ line_of() { grep -nF -- "$1" <<< "$output" | head -n 1 | cut -d: -f1; }
   [ "$status" -eq 10 ]
   local last=$(( ${#lines[@]} - 1 ))
   [ "${lines[last-2]}" = 'Summary: 1 OK, 1 CHANGE' ]
-  [ "${lines[last-1]}" = "Next: labyrinth.sh apply observe --root $ROOT --config $ETC" ]
+  [ "${lines[last-1]}" = "Next: labyrinth.sh apply observe --profile test --root $ROOT --config $ETC" ]
   [ "${lines[last]}" = 'plan finished: exit 10 (change needed)' ]
 }
 
