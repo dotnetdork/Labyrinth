@@ -60,6 +60,7 @@ $script:Words = @()              # the words that are not options, in order
 
 $script:Mod = @{}
 $script:ProfileIds = @()
+$script:PendingWarnings = @()
 $script:EntryRc = 0
 $script:Approved = ''
 $script:PhaseCount = 0
@@ -326,16 +327,24 @@ function Read-LabArgument {
     $script:Words = @($words)
 }
 
-# Test-LabOptionUse COMMAND OPTION...: warn about value options given that
-# COMMAND does not use.
+# Test-LabOptionUse COMMAND OPTION...: note a warning for each value option
+# given that COMMAND does not use. Write-LabPendingWarning prints them once
+# the command has passed its own checks, so a warning never comes before an
+# error.
 function Test-LabOptionUse {
     param([string] $Command, [string[]] $Used = @())
     foreach ($name in @('profile', 'break-glass', 'confirm-group')) {
         if ($script:Given.ContainsKey($name) -and $Used -notcontains $name) {
             $o = $script:LabOptions | Where-Object { $_.Name -eq $name }
-            Write-LabWarning "$($o.Show) is not used by $Command"
+            $script:PendingWarnings += "$($o.Show) is not used by $Command"
         }
     }
+}
+
+# Write-LabPendingWarning: print the warnings Test-LabOptionUse noted.
+function Write-LabPendingWarning {
+    foreach ($w in $script:PendingWarnings) { Write-LabWarning $w }
+    $script:PendingWarnings = @()
 }
 
 function Write-LabLine {
@@ -382,6 +391,7 @@ function Write-LabSummary {
         $w = ''
         if ($Mode -ceq 'plan') {
             if ($m.Rc -eq 0) { $w = 'OK' } elseif ($m.Rc -eq 10) { $w = 'CHANGE' } elseif ($m.Rc -eq 20) { $w = 'BLOCKED' } else { $w = 'ERROR' }
+            if ($w -ceq 'CHANGE' -and $m.Risk -eq 'manual-only') { $w = 'WARN' }
         } elseif ($m.State -ceq 'done') { $w = 'OK' }
         elseif ($m.State -ceq 'manual') { $w = 'WARN' }
         elseif ($m.State -ceq 'blocked') { $w = 'BLOCKED' }
@@ -671,7 +681,11 @@ function Invoke-LabPlanOne {
     if (-not (Test-Path -LiteralPath (Join-Path $M.Dir 'plan.ps1') -PathType Leaf)) {
         Write-LabStatus 'ERROR' "[$id] error: change needed but plan.ps1 is missing"; Write-LabIndented $script:EntryOut; $M.Rc = 40; return
     }
-    Write-LabStatus 'CHANGE' "[$id] check: change needed; plan follows"
+    if ($M.Risk -eq 'manual-only') {
+        Write-LabStatus 'WARN' "[$id] check: manual steps needed; plan follows"
+    } else {
+        Write-LabStatus 'CHANGE' "[$id] check: change needed; plan follows"
+    }
     Write-LabIndented $script:EntryOut
     Invoke-LabEntry $M.Dir 'plan' $id
     switch ($script:EntryRc) {
@@ -955,6 +969,7 @@ function Invoke-LabPlanCommand {
     Read-LabProfile $script:ProfileName
     Read-LabSetting
     Assert-LabProtectedSet
+    Write-LabPendingWarning
     Write-LabLine ('labyrinth {0}: plan {1}, profile {2}' -f $LabVersion, $Phase, $script:ProfileName)
     Write-LabLine "run $env:LAB_RUN_ID (plan mode: nothing is recorded)"
     $worst = Invoke-LabPlanAll $Phase
@@ -997,6 +1012,7 @@ function Invoke-LabApplyCommand {
     Assert-LabProtectedSet
     if (-not (Enter-LabLock -WaitSeconds 0)) { exit 20 }
     try {
+        Write-LabPendingWarning
         Write-LabLine ('labyrinth {0}: APPLY {1}, profile {2}' -f $LabVersion, $Phase, $script:ProfileName)
         Write-LabLine "run $env:LAB_RUN_ID on host $hostName, group $group"
         $worst = Invoke-LabPlanAll $Phase
@@ -1170,6 +1186,7 @@ function Get-LabArmedRun {
 function Invoke-LabRunsCommand {
     if (-not (Test-LabAdmin)) { Exit-Lab 'runs needs an elevated Administrator session' 20 }
     $runs = @(Get-LabRunList)
+    Write-LabPendingWarning
     if ($runs.Count -eq 0) {
         Write-LabLine "no runs on this host ($(Join-Path $env:LAB_STATE_DIR 'runs'))"
         exit 0
@@ -1220,6 +1237,7 @@ function Invoke-LabKeepCommand {
     }
     $script:RunRef = $env:LAB_RUN_ID
     if (-not (Test-Path -LiteralPath (Get-LabManifestPath) -PathType Leaf)) { Exit-Lab "no run $env:LAB_RUN_ID on this host" }
+    Write-LabPendingWarning
     exit (Invoke-LabKeep)
 }
 
@@ -1239,6 +1257,7 @@ function Invoke-LabRollbackCommand {
     $env:LAB_RUN_ID = Resolve-LabRunId 'rollback' $Ref
     $script:RunRef = $env:LAB_RUN_ID
     if (-not (Test-Path -LiteralPath (Get-LabManifestPath) -PathType Leaf)) { Exit-Lab "no run $env:LAB_RUN_ID on this host" }
+    Write-LabPendingWarning
     # The revert timer must work even if a hung run still holds the lock.
     $locked = Enter-LabLock -WaitSeconds 120
     if (-not $locked) { [Console]::Error.WriteLine('warning: rolling back without the run lock') }
@@ -1279,6 +1298,7 @@ function Invoke-LabProbeCommand {
     $out = $null
     try { $out = Get-LabProbeResult -Timeout $script:Settings['PROBE_TIMEOUT'] } catch { Exit-Lab "the service list is malformed: $($_.Exception.Message)" }
     if ($null -eq $out) { Exit-Lab "no service list at $(Join-Path $env:LAB_CONFIG_DIR 'services')" 20 }
+    Write-LabPendingWarning
     foreach ($l in $out) { Write-LabLine $l }
     if (@($out | Where-Object { ($_ -split ' ', 3)[1] -eq 'fail' }).Count -gt 0) { exit 30 }
     exit 0
@@ -1399,7 +1419,7 @@ try {
     $config = $config.Replace('/', '\')
     if ($script:DataRoot -notmatch '^([A-Za-z]:\\|\\\\)') { Exit-LabUsage "-Root must be a full path, not '$($script:DataRoot)'" $cmd }
     if ($config -ne '' -and $config -notmatch '^([A-Za-z]:\\|\\\\)') { Exit-LabUsage "-Config must be a full path, not '$config'" $cmd }
-    # Warnings come after every fatal check, so they never precede an error.
+    # Noted now, printed by each command once its own checks pass.
     Test-LabOptionUse $cmd $used
     $script:ProfileName = $profileName
     $script:DryRun = '1'

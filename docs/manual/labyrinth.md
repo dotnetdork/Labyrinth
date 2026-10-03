@@ -233,7 +233,7 @@ Each module's result starts with a status word:
 |---|---|---|
 | `OK` | Nothing to do. | Applied and checked, or undone cleanly. |
 | `CHANGE` | A change is needed. | About to make a change. |
-| `WARN` | Skipped on this platform. | A checklist only, or a clean-up step failed. |
+| `WARN` | Skipped on this platform, or only steps a person must carry out. | A checklist only, or a clean-up step failed. |
 | `BLOCKED` | A safety check blocks it. | A safety check blocked it. |
 | `FAIL` | (not used) | Its check failed, or a scored service got worse. |
 | `ERROR` | Something went wrong. | The change or its undo failed. |

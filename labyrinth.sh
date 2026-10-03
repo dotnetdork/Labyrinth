@@ -280,6 +280,7 @@ summary() {
   for ((i = 0; i < ${#RUN_IDS[@]}; i++)); do
     if [[ "$mode" == plan ]]; then
       case "${RUN_RC[i]}" in 0) w=OK ;; 10) w=CHANGE ;; 20) w=BLOCKED ;; *) w=ERROR ;; esac
+      if [[ "$w" == CHANGE && "${RUN_RISK[i]}" == manual-only ]]; then w=WARN; fi
     else
       case "${RUN_STATE[i]}" in
         done) w=OK ;; manual) w=WARN ;; blocked) w=BLOCKED ;; failed) w=FAIL ;; error) w=ERROR ;;
@@ -445,8 +446,9 @@ parse_args() {
   done
 }
 
-# check_used COMMAND OPTION...: warn about value options given that
-# COMMAND does not use.
+# check_used COMMAND OPTION...: note a warning for each value option given
+# that COMMAND does not use. flush_warnings prints them once the command has
+# passed its own checks, so a warning never comes before an error.
 check_used() {
   local cmd="$1" name used u
   shift
@@ -454,10 +456,18 @@ check_used() {
     used=0
     for u in "$@"; do if [[ "$u" == "$name" ]]; then used=1; fi; done
     if [[ -n "${GIVEN[$name]+set}" ]] && (( ! used )); then
-      warn "--$name is not used by $cmd"
+      PENDING_WARNINGS+=("--$name is not used by $cmd")
     fi
   done
 }
+
+# flush_warnings: print the warnings check_used noted.
+flush_warnings() {
+  local w
+  for w in "${PENDING_WARNINGS[@]+"${PENDING_WARNINGS[@]}"}"; do warn "$w"; done
+  PENDING_WARNINGS=()
+}
+PENDING_WARNINGS=()
 
 # yml_error WHERE MESSAGE: keep a module.yml error, to print under the
 # module's ERROR line; returns 1.
@@ -639,7 +649,12 @@ plan_one() {
       if [[ ! -f "$dir/plan.sh" ]]; then
         say ERROR "[$id] error: change needed but plan.sh is missing"; show_output; rc=40
       else
-        say CHANGE "[$id] check: change needed; plan follows"; show_output
+        if [[ "${RUN_RISK[i]}" == manual-only ]]; then
+          say WARN "[$id] check: manual steps needed; plan follows"
+        else
+          say CHANGE "[$id] check: change needed; plan follows"
+        fi
+        show_output
         run_entry "$dir" plan "$id"
         case "$ENTRY_RC" in
           0 | 10) rc=10 ;;
@@ -918,6 +933,7 @@ cmd_plan() {
   read_profile "$OPT_PROFILE"
   lab_event_load || die 'event.conf is malformed'
   gate_protected
+  flush_warnings
   printf 'labyrinth %s: plan %s, profile %s\n' "$LAB_VERSION" "$phase" "$OPT_PROFILE"
   printf 'run %s (plan mode: nothing is recorded)\n' "$LAB_RUN_ID"
   plan_all "$phase" || worst=$?
@@ -961,6 +977,7 @@ cmd_apply() {
   gate_protected
   lab_lock_acquire 0 || exit 20
   trap 'lab_lock_release' EXIT
+  flush_warnings
 
   printf 'labyrinth %s: APPLY %s, profile %s\n' "$LAB_VERSION" "$phase" "$OPT_PROFILE"
   printf 'run %s on host %s, group %s\n' "$LAB_RUN_ID" "$host" "$group"
@@ -1121,6 +1138,7 @@ cmd_runs() {
   local list
   lab_is_admin || die 'runs needs root' 20
   list="$(list_runs)" || die "the runs in $LAB_STATE_DIR/runs cannot be read"
+  flush_warnings
   if [[ -n "$list" ]]; then mapfile -t runs <<< "$list"; fi
   if (( ${#runs[@]} == 0 )); then
     printf 'no runs on this host (%s/runs)\n' "$LAB_STATE_DIR"
@@ -1187,6 +1205,7 @@ cmd_keep() {
   fi
   export LAB_RUN_ID="$RUN_REF"
   [[ -f "$(lab_manifest_file)" ]] || die "no run $LAB_RUN_ID on this host"
+  flush_warnings
   keep_run || rc=$?
   exit "$rc"
 }
@@ -1209,6 +1228,7 @@ cmd_rollback() {
   resolve_run rollback "$1"
   export LAB_RUN_ID="$RUN_REF"
   [[ -f "$(lab_manifest_file)" ]] || die "no run $LAB_RUN_ID on this host"
+  flush_warnings
   # The revert timer must work even if a hung run still holds the lock.
   if lab_lock_acquire 120; then
     trap 'lab_lock_release' EXIT
@@ -1247,6 +1267,7 @@ cmd_probe() {
     2) die "no service list at $LAB_CONFIG_DIR/services" 20 ;;
     *) die 'the service list is malformed' ;;
   esac
+  flush_warnings
   printf '%s\n' "$out"
   if grep -q '^[^ ]* fail ' <<< "$out"; then exit 30; fi
   exit 0
@@ -1346,7 +1367,7 @@ main() {
   [[ "$DATA_ROOT" == /* ]] || usage_error "--root must be a full path, not '$DATA_ROOT'" "$cmd"
   [[ -z "${GIVEN[config]:-}" || "${GIVEN[config]}" == /* ]] || usage_error "--config must be a full path, not '${GIVEN[config]}'" "$cmd"
 
-  # Warnings come after every fatal check, so they never precede an error.
+  # Noted now, printed by each command once its own checks pass.
   check_used "$cmd" "${used[@]+"${used[@]}"}"
 
   LAB_CONFIG_DIR="${GIVEN[config]:-$DATA_ROOT/etc}"
