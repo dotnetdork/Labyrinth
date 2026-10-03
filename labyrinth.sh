@@ -8,7 +8,8 @@
 #   labyrinth.sh rollback <run>      undo a run, newest change first
 #   labyrinth.sh runs                list this host's runs and their state
 #   labyrinth.sh probe               test every scored service once
-#   labyrinth.sh help [<command>]    help; also -h and --help
+#   labyrinth.sh help [<topic>]      help on a command, 'basics' or a module;
+#                                    also -h and --help
 #   labyrinth.sh version             the version; also -V and --version
 #
 # Options may come anywhere; 'labyrinth.sh help' lists them.
@@ -35,8 +36,8 @@ trap 'on_internal_error "$?" "${BASH_SOURCE[0]##*/}" "$LINENO" "$BASH_COMMAND"' 
 
 readonly LAB_VERSION='0.1.0-dev'
 readonly PHASES='lockout observe deceive sustain'
-readonly MODULE_KEYS='id phase priority platforms risk touches_scored requires outputs spec'
-readonly -a REQUIRED_KEYS=(id phase priority platforms risk touches_scored)
+readonly MODULE_KEYS='id title phase priority platforms risk touches_scored requires outputs spec'
+readonly -a REQUIRED_KEYS=(id title phase priority platforms risk touches_scored)
 readonly RISKS='read-only reversible service-affecting approval manual-only'
 readonly PLATFORMS='ubuntu rhel-family windows appliance'
 readonly RE_RUN_ID='^[0-9]{8}T[0-9]{6}Z-[0-9a-f]{4}$'
@@ -90,6 +91,7 @@ cmd_help() {
   case "${1:-}" in
     '') cat <<EOF
 Usage: $SELF <command> [<phase> | <run>] [options]
+New to Labyrinth? Start with '$SELF help basics'.
 
   plan <phase>      show what would change; changes nothing
   apply <phase>     plan, confirm, then make the changes
@@ -97,13 +99,13 @@ Usage: $SELF <command> [<phase> | <run>] [options]
   rollback <run>    undo a run, newest change first
   runs              list this host's runs and their state
   probe             test every scored service once
-  help [<command>]  help for one command
+  help [<topic>]    help on a command, 'basics', or a module ID
   version           print the version
 
 Phases: lockout, observe, deceive, sustain. <run>: an ID or its last 4.
-Options: --root DIR, --config DIR, --profile NAME, -h, -V; see each command.
 Exit: 0 ok, 10 change needed, 20 blocked, 30 check failed, 40 error.
 Example: $SELF plan lockout
+Manual: 'man labyrinth' once installed; docs/manual in the release.
 EOF
     ;;
     plan) cat <<EOF
@@ -189,13 +191,41 @@ Example: $SELF probe
 EOF
     ;;
     help) cat <<EOF
-Usage: $SELF help [<command>]
+Usage: $SELF help [<command> | basics | <module-id>]
 
 Print help for every command, or for one. '$SELF <command> --help'
-and '$SELF <command> -h' print the same.
+and '$SELF <command> -h' print the same. 'basics' explains the ideas
+in plain words. A module ID, such as the ones a plan prints, explains
+that module: what it checks and changes, and how to undo it.
 
-Exit: 0 printed, 40 unknown command.
+Exit: 0 printed, 40 unknown topic.
 Example: $SELF help apply
+EOF
+    ;;
+    basics) cat <<EOF
+Usage: $SELF help basics
+
+Labyrinth makes this host harder to break into, in four phases run in
+order: lockout, observe, deceive and sustain. Each phase is a list of
+modules. A module does one small job, such as turning off SSH password
+logins. '$SELF help <module-id>' explains any module.
+
+1. Plan: '$SELF plan lockout' shows what each module would change.
+   It changes nothing, so run it as often as you like.
+2. Apply: '$SELF apply lockout' plans again, asks you to type this
+   host's group name, then makes the changes and checks each one.
+3. Keep: an apply is a run, named by an ID; its last 4 characters are
+   enough. A revert timer undoes the run after a few minutes unless you
+   keep it, so a change that locks you out undoes itself. Log in from
+   a new session, and if that works, run '$SELF keep'.
+
+To undo a run yourself: '$SELF rollback <run>'. To list the runs:
+'$SELF runs'. Scored services are the ones the scoring engine tests.
+Labyrinth tests them before and after each change, and undoes a change
+that breaks one. To test them now: '$SELF probe'.
+
+Exit: 0 printed.
+Example: $SELF help basics
 EOF
     ;;
     version) cat <<EOF
@@ -211,6 +241,62 @@ EOF
 }
 
 cmd_version() { printf 'labyrinth %s\n' "$LAB_VERSION"; }
+
+# risk_words RISK: what a module's risk means, in plain words.
+risk_words() {
+  case "$1" in
+    read-only) printf 'only looks; it never changes anything' ;;
+    reversible) printf 'changes this host; each change is saved first and can be undone' ;;
+    service-affecting) printf 'may interrupt a service; each change can be undone' ;;
+    approval) printf 'changes only what a person approves; each can be undone' ;;
+    manual-only) printf 'never changes anything; it lists steps for a person' ;;
+  esac
+}
+
+# module_ids: every module ID in this release.
+module_ids() {
+  local d phase
+  for d in "$LAB_ROOT"/phases/*/modules/*/; do
+    d="${d%/}"
+    [[ -f "$d/module.yml" ]] || continue
+    phase="${d%/modules/*}"
+    printf '%s.%s\n' "${phase##*/}" "${d##*/}"
+  done
+}
+
+# cmd_help_module ID: one module's help page: its module.yml in plain
+# words, then its about.txt (design 00, section 4).
+cmd_help_module() {
+  local id="$1" phase="${1%%.*}" dir items hint
+  dir="$LAB_ROOT/phases/$phase/modules/${id#*.}"
+  if [[ ! "$id" =~ $RE_MODULE_ID || ! -d "$dir" ]]; then
+    # shellcheck disable=SC2046 # one word per module ID
+    hint="$(suggest "$id" basics $COMMANDS $(module_ids))"
+    usage_error "no module '$id'${hint:+ (did you mean '$hint'?)}" help
+  fi
+  YML_ERR=''
+  if ! read_module_yml "$dir/module.yml" || ! validate_module "$dir/module.yml" "$id" "$phase"; then
+    items="${YML_ERR%%$'\n'*}"
+    die "the module.yml of $id is not valid: ${items##*: }" 40 \
+      "Report the module to its author, or correct ${items%: *}"
+  fi
+  items="$(list_items "${MOD[platforms]}")"
+  printf '%s (%s)\n\n' "${MOD[title]}" "$id"
+  printf 'Phase: %s. Order: %s (P0 runs first, P3 last).\n' "$phase" "${MOD[priority]}"
+  printf 'Risk: %s.\n' "$(risk_words "${MOD[risk]}")"
+  if [[ "${MOD[touches_scored]}" == true ]]; then
+    printf 'Scored services: it can affect one, so they are tested after it.\n'
+  else
+    printf 'Scored services: it does not touch them.\n'
+  fi
+  printf 'Runs on: %s.\n' "${items// /, }"
+  printf 'Folder: %s\n\n' "$dir"
+  if [[ -f "$dir/about.txt" ]]; then
+    cat -- "$dir/about.txt"
+  else
+    printf 'This module has no about.txt yet. Its scripts are in the folder above.\n'
+  fi
+}
 
 # die MESSAGE [CODE] [FIX]: the error, then how to recover, on stderr.
 die() {
@@ -579,6 +665,8 @@ validate_module() {
   [[ "${MOD[id]}" == "$want_id" ]] || { yml_error "$file" "id ${MOD[id]} does not match $want_id"; return 1; }
   [[ "${MOD[phase]}" == "$want_phase" ]] || { yml_error "$file" "phase ${MOD[phase]} does not match $want_phase"; return 1; }
   [[ "${MOD[priority]}" =~ ^P[0-3]$ ]] || { yml_error "$file" 'priority must be P0 to P3'; return 1; }
+  [[ "${MOD[title]}" =~ ^[\ -~]+$ ]] || { yml_error "$file" 'title must be plain ASCII text'; return 1; }
+  (( ${#MOD[title]} <= 40 )) || { yml_error "$file" "title is ${#MOD[title]} characters; the most is 40"; return 1; }
   lab_in_list "${MOD[risk]}" "$RISKS" || { yml_error "$file" "unknown risk ${MOD[risk]}"; return 1; }
   lab_in_list "${MOD[touches_scored]}" 'true false' || { yml_error "$file" 'touches_scored must be true or false'; return 1; }
   items="$(list_items "${MOD[platforms]}")" || { yml_error "$file" 'platforms must be a list'; return 1; }
@@ -1442,10 +1530,14 @@ main() {
     '')
       if [[ -n "${GIVEN[help]+set}" ]]; then cmd_help ''; exit 0; fi
       if [[ -n "${GIVEN[version]+set}" ]]; then cmd_version; exit 0; fi
-      printf 'labyrinth: no command given\n' >&2
-      printf 'Usage: %s <command> [<phase> | <run>] [options]\n' "$SELF" >&2
-      printf 'Commands: %s\n' "${COMMANDS// /, }" >&2
-      printf "Try '%s help' for more information.\n" "$SELF" >&2
+      {
+        printf 'labyrinth: no command given\n'
+        printf 'Start here:\n'
+        printf '  1. %s help basics    what Labyrinth does, in plain words\n' "$SELF"
+        printf '  2. %s plan lockout   what the first phase would change; safe\n' "$SELF"
+        printf '  3. %s help           every command\n' "$SELF"
+        printf 'Usage: %s <command> [<phase> | <run>] [options]\n' "$SELF"
+      } >&2
       exit 40 ;;
     help)
       word="${1:-}"; word="${word,,}"
@@ -1455,9 +1547,11 @@ main() {
         fi
         usage_error "unexpected word '$2' after 'help $1'" help
       fi
+      if [[ "$word" == basics ]]; then cmd_help basics; exit 0; fi
+      if [[ "$word" == *.* ]]; then cmd_help_module "$word"; exit 0; fi
       if [[ -n "$word" ]] && ! lab_in_list "$word" "$COMMANDS"; then
         local hint
-        hint="$(suggest "$word" $COMMANDS)"
+        hint="$(suggest "$word" basics $COMMANDS)"
         usage_error "no help for '$1'${hint:+ (did you mean '$hint'?)}"
       fi
       # 'help plan --help' is help on plan; 'help --help' is help on help.

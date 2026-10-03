@@ -1,6 +1,6 @@
 # 00. Module Contract and Repository Layout
 
-**Status:** Draft · reviewed 2026-10-02
+**Status:** Draft · reviewed 2026-10-03
 
 ## 1. Goal
 
@@ -108,13 +108,14 @@ flowchart TD
 
 ## 4. The module contract
 
-Every module is a folder containing a metadata file and up to six entry points.
+Every module is a folder containing a metadata file, a help page and up to six entry points.
 
 `module.yml` fields:
 
 | Field | Meaning |
 |---|---|
 | `id` | Unique name, for example `lockout.firewall` |
+| `title` | The plain name an operator reads first, for example `Firewall`: plain ASCII, at most 40 characters |
 | `phase` | `lockout`, `observe`, `deceive` or `sustain` |
 | `priority` | P0 to P3 (P0 runs first, P3 last) |
 | `platforms` | `ubuntu`, `rhel-family`, `windows`, `appliance` |
@@ -122,6 +123,8 @@ Every module is a folder containing a metadata file and up to six entry points.
 | `touches_scored` | `true` if it can affect a scored service or account |
 | `requires` | Other modules or facts that must exist first |
 | `outputs` | Files and state it creates, so cleanup can find them |
+
+`about.txt` is the module's help page, printed by `labyrinth help <module-id>` under a summary of `module.yml` in plain words. It is plain text, at most 78 columns, and fits one screen. It answers, in this order and in short sentences: what the module checks, what it changes, why, what can go wrong and what Labyrinth does about it, how to undo it, and what to do when it fails. Every module in a release has one; a module without it still runs, and its help page says the page is missing.
 
 Entry points:
 

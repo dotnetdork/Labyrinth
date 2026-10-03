@@ -24,6 +24,7 @@ Only `key: value` lines, `key: [a, b, c]` inline lists, comments starting with `
 
 ```yaml
 id: lockout.firewall
+title: Firewall
 phase: lockout
 priority: P0
 platforms: [ubuntu, rhel-family, windows]
@@ -95,7 +96,7 @@ labyrinth <command> [<phase> | <run>] [options]
 | `rollback <run>` | Undo what a run applied, newest module first. The revert timer runs exactly this. `<run>` is always needed: without it, the runs are listed (`40`) |
 | `runs` | List this host's runs, oldest first: ID, phase, start time (UTC) and state, which is `armed` (with the time it rolls back), `kept`, `rolled back`, `rolled back with errors`, or `not kept, no timer`. Changes nothing; needs root or Administrator (`20`) |
 | `probe` | Probe every scored service once; exit `30` if one fails. Changes nothing |
-| `help [<command>]` | Help for every command, or for one; also `-h` and `--help` (`-Help`) |
+| `help [<topic>]` | Help for every command, or for one; also `-h` and `--help` (`-Help`). The topic `basics` explains the ideas in plain words, and a module ID prints that module's help page (design 00, section 4) |
 | `version` | Print the version; also `-V` and `--version` (`-Version`) |
 
 `<phase>` is `lockout`, `observe`, `deceive` or `sustain`. `<run>` is a run ID (`20261002T140301Z-4f2a`) or its last four characters (`4f2a`). A run that does not exist, or four characters that match more than one run, is an error (`40`) that points to `runs`. Commands, phases, option names and run IDs ignore case; other values do not.
@@ -114,7 +115,7 @@ labyrinth <command> [<phase> | <run>] [options]
 
 PowerShell avoids the name `-Confirm`, which it reserves.
 
-**Usage errors** exit `40`. They print one line, `labyrinth: <what is wrong>`, an optional line saying how to fix it, then `Try 'labyrinth help[ <command>]' for more information.`, all to standard error. The line names the word at fault and, for a near miss, suggests the right one (`did you mean 'observe'?`; `/?` gets `did you mean 'help'?`). The `Try` line names the command the line gives, even when the error is in an option, so `keep 4f2a --bogus` points to `help keep`. A line with no command prints `labyrinth: no command given`, then the short usage. These are errors too:
+**Usage errors** exit `40`. They print one line, `labyrinth: <what is wrong>`, an optional line saying how to fix it, then `Try 'labyrinth help[ <command>]' for more information.`, all to standard error. The line names the word at fault and, for a near miss, suggests the right one (`did you mean 'observe'?`; `/?` gets `did you mean 'help'?`). The `Try` line names the command the line gives, even when the error is in an option, so `keep 4f2a --bogus` points to `help keep`. A line with no command prints `labyrinth: no command given`, three numbered steps to start with (`help basics`, `plan lockout`, `help`), then the short usage. These are errors too:
 
 - an option given twice;
 - an option whose value is missing, or looks like another option (`--profile needs a value, but got '--root'`);

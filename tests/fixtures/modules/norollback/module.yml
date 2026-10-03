@@ -1,5 +1,6 @@
 # Test fixture: a reversible module without rollback.sh, which is invalid
 id: observe.norollback
+title: Missing rollback sample
 phase: observe
 priority: P2
 platforms: [ubuntu, rhel-family, windows]

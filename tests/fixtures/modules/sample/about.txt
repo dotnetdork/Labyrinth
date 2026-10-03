@@ -1,0 +1,6 @@
+What it checks: nothing real. It is the test suite's sample module.
+What it changes: nothing. Its plan describes a change it never makes.
+Why: it shows the shape every module follows.
+What can go wrong: nothing; it only prints.
+How to undo it: there is nothing to undo.
+If it fails: report it, with the run's log.

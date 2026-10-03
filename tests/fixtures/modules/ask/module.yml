@@ -1,5 +1,6 @@
 # Test fixture: an approval module that records the items a person approved
 id: observe.ask
+title: Approval sample
 phase: observe
 priority: P2
 platforms: [ubuntu, rhel-family, windows]

@@ -1,5 +1,6 @@
 # Test fixture: touches a scored service and breaks its (fake) probe
 id: observe.breaker
+title: Service breaker sample
 phase: observe
 priority: P2
 platforms: [ubuntu, rhel-family, windows]
