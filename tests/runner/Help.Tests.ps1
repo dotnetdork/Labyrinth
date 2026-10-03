@@ -56,4 +56,23 @@ Describe 'labyrinth.ps1 help' {
         $synopsis | Should -Match 'Labyrinth'
         $synopsis | Should -Not -Match 'Requires'
     }
+
+    It 'Get-Help is written for operators: no design notes, examples for runs and keep' {
+        $h = Get-Help (Join-Path $script:Repo 'labyrinth.ps1') -Full
+        $text = ($h.Synopsis + ' ' + (($h.Description | ForEach-Object { $_.Text }) -join ' '))
+        $text | Should -Not -Match 'design \d|Conventions|\$args|param block'
+        $text | Should -Not -Match ([regex]::Escape('-?'))
+        $examples = ($h.Examples.Example | ForEach-Object { $_.Code }) -join ' '
+        $examples | Should -Match 'labyrinth\.ps1 runs'
+        $examples | Should -Match 'labyrinth\.ps1 keep'
+        (($h.alertSet.alert | ForEach-Object { $_.Text }) -join ' ') | Should -Match 'common parameters'
+    }
+
+    It 'the help never offers -?, which PowerShell takes for itself' {
+        foreach ($topic in @('') + $topics) {
+            $argv = @('help')
+            if ($topic -ne '') { $argv += $topic }
+            (Invoke-TestLabCapture $t $argv).Out | Should -Not -Match ([regex]::Escape('-?')) -Because "help $topic"
+        }
+    }
 }

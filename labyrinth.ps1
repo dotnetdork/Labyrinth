@@ -1,28 +1,61 @@
 <#
 .SYNOPSIS
-    Labyrinth: plan, apply, keep and roll back hardening runs on a Windows
-    host (design 00, section 5; docs/Conventions.md sections 3.1 and 3.2).
+    Labyrinth: plan, apply, keep and roll back hardening runs on this
+    Windows host.
 
 .DESCRIPTION
-    labyrinth.ps1 plan <phase>        show what would change; changes nothing
-    labyrinth.ps1 apply <phase>       plan, confirm, then make the changes
-    labyrinth.ps1 keep [<run>]        keep a run: cancel its revert timer
-    labyrinth.ps1 rollback <run>      undo a run, newest change first
-    labyrinth.ps1 runs                list this host's runs and their state
-    labyrinth.ps1 probe               test every scored service once
-    labyrinth.ps1 help [<command>]    help; also -Help, -h and -?
-    labyrinth.ps1 version             the version; also -Version and -V
+    Commands:
+      labyrinth.ps1 plan <phase>       show what would change; changes nothing
+      labyrinth.ps1 apply <phase>      plan, confirm, then make the changes
+      labyrinth.ps1 keep [<run>]       keep a run: cancel its revert timer
+      labyrinth.ps1 rollback <run>     undo a run, newest change first
+      labyrinth.ps1 runs               list this host's runs and their state
+      labyrinth.ps1 probe              test every scored service once
+      labyrinth.ps1 help [<command>]   help; also -Help or -h
+      labyrinth.ps1 version            the version; also -Version or -V
 
-    Options may come anywhere; 'labyrinth.ps1 help' lists them. Exit codes
-    (design 00, section 4); the highest code from any module wins:
-    0 nothing to do or success, 10 change needed, 20 blocked,
-    30 verify failed or a scored service regressed, 40 error.
+    A phase is lockout, observe, deceive or sustain. A run is a run ID, or
+    its last 4 characters.
 
-    The words are parsed by the same rules as labyrinth.sh, so there is no
-    param block: every word arrives in $args.
+    Options, before or after the command:
+      -Profile NAME        use this profile, not the one in the hosts file
+      -Root DIR            the data root (default C:\ProgramData\Labyrinth)
+      -Config DIR          the configuration folder (default <root>\etc)
+      -BreakGlass NAME     answer the break-glass prompt (apply only)
+      -ConfirmGroup GROUP  answer the group-name prompt (apply only)
+
+    Exit codes: 0 done or nothing to do, 10 change needed, 20 blocked,
+    30 a check failed (probe: a service failed), 40 error.
+
+    'labyrinth.ps1 help <command>' explains one command. The operator
+    manual is the Windows edition of the Labyrinth manual.
 
 .EXAMPLE
     .\labyrinth.ps1 plan lockout
+
+    Shows what the lockout phase would change on this host.
+
+.EXAMPLE
+    .\labyrinth.ps1 apply lockout
+
+    Plans, asks you to confirm, then makes the changes and arms a revert
+    timer that undoes them unless you keep them.
+
+.EXAMPLE
+    .\labyrinth.ps1 runs
+
+    Lists this host's runs, with the state of each revert timer.
+
+.EXAMPLE
+    .\labyrinth.ps1 keep 4f2a
+
+    Keeps the run whose ID ends in 4f2a: its revert timer is cancelled.
+
+.NOTES
+    apply, keep, rollback and runs need PowerShell opened with 'Run as
+    administrator'. Use -h for help: PowerShell takes -? for itself. The
+    common parameters, such as -Verbose and -ErrorAction, are not
+    supported.
 #>
 
 #Requires -Version 5.1

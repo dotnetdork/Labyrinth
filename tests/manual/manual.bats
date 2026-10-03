@@ -102,3 +102,33 @@ setup() {
     END { exit bad }' "$REPO/docs/manual/labyrinth.md"
   [ "$status" -eq 0 ] || { echo "$output"; return 1; }
 }
+
+@test "each manual's options table lists the short flags that edition accepts" {
+  local rows
+  run bash "$SPLIT" linux
+  rows="$(grep -E '^\| `-[-a-zA-Z?]' <<<"$output")"
+  for o in -h '-?' -V; do
+    [[ "$rows" == *"\`$o\`"* ]] || { echo "linux: $o missing"; return 1; }
+  done
+  run bash "$SPLIT" windows
+  rows="$(grep -E '^\| `-[-a-zA-Z?]' <<<"$output")"
+  for o in -h -V; do
+    [[ "$rows" == *"\`$o\`"* ]] || { echo "windows: $o missing"; return 1; }
+  done
+  # PowerShell takes -? for itself, so the Windows manual never offers it.
+  [[ "$rows" != *'`-?`'* ]]
+}
+
+@test "the manual's sample output shows the runners' version" {
+  v="$(sed -n "s/^readonly LAB_VERSION='\(.*\)'$/\1/p" "$REPO/labyrinth.sh")"
+  [ -n "$v" ]
+  grep -q "^\$LabVersion = '$v'\$" "$REPO/labyrinth.ps1"
+  run grep -Eo '^labyrinth [^ :]+:' "$REPO/docs/manual/labyrinth.md"
+  [ "${#lines[@]}" -gt 0 ]
+  for l in "${lines[@]}"; do [ "$l" = "labyrinth $v:" ] || { echo "sample says $l"; return 1; }; done
+}
+
+@test "the README describes the commands that are built" {
+  if grep -q 'plan mode only' "$REPO/README.md"; then return 1; fi
+  grep -q 'plan, apply, keep, rollback, runs and probe' "$REPO/README.md"
+}

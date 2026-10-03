@@ -51,8 +51,8 @@ Labyrinth classifies each host into a **profile** and applies the roles that fit
 Labyrinth/
 ├── README.md                     ← you are here
 ├── CLAUDE.md                     ← working rules for contributors and AI assistants
-├── labyrinth.sh / labyrinth.ps1  ← main program (plan mode only in this build)
-├── core/ phases/ profiles/ platform/ report/   ← code layout from design 00 (empty so far)
+├── labyrinth.sh / labyrinth.ps1  ← main program: plan, apply, keep, rollback, runs, probe
+├── core/ phases/ profiles/ platform/ report/   ← code layout from design 00
 ├── config/                       ← *.example templates for run-time values; never real values
 ├── vendor/                       ← pinned third-party code, each under its own license
 ├── tests/                        ← bats and Pester tests, the guard and fixtures
@@ -75,7 +75,7 @@ Strategy, rules baseline, topology notes and the vulnerability assessment live i
 
 ## Status
 
-Core phase (reviewed 2026-10-02). The design specs are the blueprint the code is built against. The core is built for Linux and Windows: logging, the run manifest, the safety gates, the dead-man revert timer, scoring-style probes, and the main program's plan, apply, keep, rollback and probe commands (docs/Conventions.md, section 3.1). It is tested on CI, but not yet in a lab. The guard checks every script for outside calls and blanket actions. No hardening module exists yet.
+Core phase (reviewed 2026-10-02). The design specs are the blueprint the code is built against. The core is built for Linux and Windows: logging, the run manifest, the safety gates, the dead-man revert timer, scoring-style probes, and the main program's plan, apply, keep, rollback, runs and probe commands (docs/Conventions.md, section 3.1). It is tested on CI, but not yet in a lab. The guard checks every script for outside calls and blanket actions. No hardening module exists yet.
 
 
 > [!IMPORTANT]
