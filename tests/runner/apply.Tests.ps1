@@ -147,6 +147,7 @@ Describe 'labyrinth.ps1 apply' {
         $r.Code | Should -Be 0
         $r.Output | Should -Match 'Not kept'
         $id = Get-TestRunId $r.Output
+        $r.Output | Should -Match ([regex]::Escape("To keep later: labyrinth.ps1 keep $($id.Substring($id.Length - 4))"))
         $runDir = Join-Path $t.Root "state\runs\$id"
         $timerCmd = [IO.File]::ReadAllText((Join-Path $runDir 'timer'))
         $timerCmd | Should -Match ([regex]::Escape(('labyrinth.ps1" rollback {0} -Root "{1}" -Config "{2}"' -f $id, $t.Root, $t.Etc)))

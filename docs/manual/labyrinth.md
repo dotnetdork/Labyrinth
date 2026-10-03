@@ -105,7 +105,7 @@ Every command has the same shape: the command, then the phase or run it acts on,
 @CMD@ <command> [<phase> | <run>] [options]
 ```
 
-Commands, phases and option names can be typed in any mix of upper and lower case.
+Commands, phases, option names and run IDs can be typed in any mix of upper and lower case.
 
 ## plan *phase*
 
@@ -127,7 +127,7 @@ Ends with 0 when the run is kept, 20 when it is too late because the run was alr
 
 ## rollback *run*
 
-Undoes everything the run changed, newest change first. This is exactly what the revert timer does when it fires. You must name the run; without one, Labyrinth lists the runs and changes nothing. Running it twice is safe.
+Undoes everything the run changed, newest change first. This is exactly what the revert timer does when it fires. You must name the run; without one, it changes nothing and, run as @ADMIN@, lists the runs. Running it twice is safe.
 
 Ends with 0 when the run is rolled back, 20 when not run as @ADMIN@, and 40 on an error.
 
@@ -149,7 +149,7 @@ Tests every scored service once, the way the scoring engine would, and prints th
 
 ## help [*command*]
 
-Prints help for every command, or for one. `-h` and `--help` after any command do the same.
+Prints help for every command, or for one. `-h` and `--help` after any command do the same, once the rest of the line is correct.
 
 ## version
 
@@ -176,7 +176,7 @@ Example: `sudo ./labyrinth.sh apply lockout --root /srv/labyrinth`
 | Option | What it does | Used by |
 |---|---|---|
 | `-Profile NAME` | Use this profile instead of the one in the `hosts` file. On apply, it must match the host's line. | plan, apply |
-| `-Root DIR` | The data root, if not `C:\ProgramData\Labyrinth`. Must be a full path. | all |
+| `-Root DIR` | The data root, if not `C:\ProgramData\Labyrinth`. Must be a full path; `/` and `\` both work. | all |
 | `-Config DIR` | The configuration folder, if not `<root>\etc`. Must be a full path, and for plan, apply and probe it must exist. | all |
 | `-BreakGlass NAME` | Answers the break-glass prompt without typing. | apply |
 | `-ConfirmGroup GROUP` | Answers the group-name prompt without typing. | apply |

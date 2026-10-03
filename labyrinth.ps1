@@ -348,7 +348,9 @@ function Get-LabRunStopped {
     'The run stopped. Earlier changes stay until the revert timer undoes them.'
     $due = Get-LabRevertTimerDue -RunId $env:LAB_RUN_ID
     if ($due -ne '') { "The revert timer rolls this run back at $($due.Substring(11, 5)) UTC." }
-    "To keep them now: labyrinth.ps1 keep $env:LAB_RUN_ID    To undo them now: labyrinth.ps1 rollback $env:LAB_RUN_ID"
+    $short = $env:LAB_RUN_ID.Substring($env:LAB_RUN_ID.Length - 4)
+    "To keep them now: $Self keep $short"
+    "To undo them now: $Self rollback $short"
 }
 
 # Get-LabRecovery: after an internal error, what changed and what to do next.
@@ -901,7 +903,9 @@ function Invoke-LabApplyCommand {
             $rc = Invoke-LabKeep
             if ($rc -gt $worst) { $worst = $rc }
         } else {
-            Write-LabLine "Not kept. To keep later: labyrinth.ps1 keep $env:LAB_RUN_ID    To undo now: labyrinth.ps1 rollback $env:LAB_RUN_ID"
+            $short = $env:LAB_RUN_ID.Substring($env:LAB_RUN_ID.Length - 4)
+            Write-LabLine "Not kept. To keep later: $Self keep $short"
+            Write-LabLine "To undo now: $Self rollback $short"
         }
     }
     Write-LabLine "apply finished: exit $worst"
@@ -1025,7 +1029,11 @@ function Invoke-LabRunsCommand {
 # ID, or its last 4 characters if they match exactly one run.
 function Resolve-LabRunId {
     param([string] $Command, [string] $Ref)
-    if ($Ref -cmatch $ReRunId) { return $Ref }
+    if ($Ref -cmatch $ReRunId) {
+        $manifest = Join-Path (Join-Path (Join-Path $env:LAB_STATE_DIR 'runs') $Ref) 'manifest.jsonl'
+        if (-not (Test-Path -LiteralPath $manifest -PathType Leaf)) { Exit-LabUsage "no run $Ref on this host; '$Self runs' lists them" $Command }
+        return $Ref
+    }
     $suffix = $Ref.ToLowerInvariant()
     $hits = @(Get-LabRunList | Where-Object { $_.EndsWith("-$suffix", [StringComparison]::Ordinal) })
     if ($hits.Count -eq 0) { Exit-LabUsage "no run ending in '$Ref' on this host; '$Self runs' lists them" $Command }
@@ -1061,10 +1069,11 @@ function Invoke-LabRollbackCommand {
     $script:DryRun = '0'; $env:LAB_DRY_RUN = '0'
     if ($Ref -eq '') {
         # Rollback always needs a run (decision D3): list them, change nothing.
-        if (Test-LabAdmin) {
-            $runs = @(Get-LabRunList)
-            if ($runs.Count -gt 0) { foreach ($l in (Get-LabRunTable $runs)) { [Console]::Error.WriteLine($l) } }
+        if (-not (Test-LabAdmin)) {
+            Exit-LabUsage "rollback needs a run ID, or its last 4 characters; as Administrator, '$Self runs' lists them" 'rollback'
         }
+        $runs = @(Get-LabRunList)
+        if ($runs.Count -gt 0) { foreach ($l in (Get-LabRunTable $runs)) { [Console]::Error.WriteLine($l) } }
         Exit-LabUsage "rollback needs a run ID, or its last 4 characters; '$Self runs' lists them" 'rollback'
     }
     if (-not (Test-LabAdmin)) { Exit-Lab 'rollback needs an elevated Administrator session' 20 }
@@ -1149,19 +1158,15 @@ try {
             default { Exit-LabUsage "-Apply cannot be used with $cmd" $cmd }
         }
     }
-    if ($script:Given.ContainsKey('help')) {
-        # 'help plan -Help' is help on plan; 'help -Help' is help on help.
-        if ($cmd -ceq 'help' -and $rest.Count -gt 0) { $cmd = $rest[0].ToLowerInvariant() }
-        if ($cmd -ne '' -and $Commands -cnotcontains $cmd) { Exit-LabUsage "no help for '$cmd'" }
-        Show-LabHelp $cmd
-        exit 0
-    }
-    if ($script:Given.ContainsKey('version')) { Write-LabLine "labyrinth $LabVersion"; exit 0 }
-
+    # The whole line must parse before help or the version is shown.
+    $helping = $script:Given.ContainsKey('help') -or $script:Given.ContainsKey('version')
+    $used = @()
     $phase = ''
     $run = ''
     switch ($cmd) {
         '' {
+            if ($script:Given.ContainsKey('help')) { Show-LabHelp ''; exit 0 }
+            if ($script:Given.ContainsKey('version')) { Write-LabLine "labyrinth $LabVersion"; exit 0 }
             [Console]::Error.WriteLine("Usage: $Self <command> [<phase> | <run>] [options]")
             [Console]::Error.WriteLine("Commands: $($Commands -join ', ')")
             [Console]::Error.WriteLine("Try '$Self help' for more information.")
@@ -1176,40 +1181,48 @@ try {
                 if ($hint -ne '') { Exit-LabUsage "no help for '$($rest[0])' (did you mean '$hint'?)" }
                 Exit-LabUsage "no help for '$($rest[0])'"
             }
+            # 'help plan -Help' is help on plan; 'help -Help' is help on help.
+            if ($topic -eq '' -and $script:Given.ContainsKey('help')) { $topic = 'help' }
             Show-LabHelp $topic
             exit 0
         }
         'version' {
             if ($rest.Count -gt 0) { Exit-LabUsage "unexpected word '$($rest[0])' after 'version'" 'version' }
-            Write-LabLine "labyrinth $LabVersion"
-            exit 0
         }
         { $_ -ceq 'plan' -or $_ -ceq 'apply' } {
-            if ($rest.Count -eq 0) { Exit-LabUsage "$cmd needs a phase: lockout, observe, deceive or sustain" $cmd }
-            $phase = $rest[0].ToLowerInvariant()
-            if ($phase -ceq 'probe') { Exit-LabUsage "probe is a command, not a phase: run '$Self probe'" 'probe' }
-            if ($Phases -cnotcontains $phase) {
-                $hint = Get-LabSuggestion $phase $Phases
-                if ($hint -ne '') { Exit-LabUsage "unknown phase '$($rest[0])' (did you mean '$hint'?)" $cmd }
-                Exit-LabUsage "unknown phase '$($rest[0])'" $cmd
+            if ($rest.Count -eq 0) {
+                if (-not $helping) { Exit-LabUsage "$cmd needs a phase: lockout, observe, deceive or sustain" $cmd }
+            } else {
+                $phase = $rest[0].ToLowerInvariant()
+                if ($phase -ceq 'probe') { Exit-LabUsage "probe is a command, not a phase: run '$Self probe'" 'probe' }
+                if ($Phases -cnotcontains $phase) {
+                    $hint = Get-LabSuggestion $phase $Phases
+                    if ($hint -ne '') { Exit-LabUsage "unknown phase '$($rest[0])' (did you mean '$hint'?)" $cmd }
+                    Exit-LabUsage "unknown phase '$($rest[0])'" $cmd
+                }
+                if ($rest.Count -gt 1) { Exit-LabUsage "unexpected word '$($rest[1])' after '$cmd $phase'" $cmd }
             }
-            if ($rest.Count -gt 1) { Exit-LabUsage "unexpected word '$($rest[1])' after '$cmd $phase'" $cmd }
-            if ($cmd -ceq 'plan') { Test-LabOptionUse 'plan' @('profile') } else { Test-LabOptionUse 'apply' @('profile', 'break-glass', 'confirm-group') }
+            if ($cmd -ceq 'plan') { $used = @('profile') } else { $used = @('profile', 'break-glass', 'confirm-group') }
         }
         { $_ -ceq 'keep' -or $_ -ceq 'rollback' } {
             # Without a run, keep and rollback decide what to do (section 3.1).
             if ($rest.Count -gt 1) { Exit-LabUsage "unexpected word '$($rest[1])' after '$cmd $($rest[0])'" $cmd }
             if ($rest.Count -eq 1) { $run = $rest[0] }
+            # A full run ID is accepted in any case, like its last 4 characters.
+            if ($run -match '^[0-9]{8}T[0-9]{6}Z-[0-9a-f]{4}$') {
+                $low = $run.ToLowerInvariant()
+                $run = $low.Substring(0, 8) + 'T' + $low.Substring(9, 6) + 'Z' + $low.Substring(16)
+            }
             if ($run -ne '' -and $run -cnotmatch $ReRunId -and $run -notmatch '^[0-9a-fA-F]{4}$') {
                 Exit-LabUsage "not a run ID: '$run' (give the ID or its last 4 characters)" $cmd
             }
-            Test-LabOptionUse $cmd
         }
         { $_ -ceq 'runs' -or $_ -ceq 'probe' } {
             if ($rest.Count -gt 0) { Exit-LabUsage "unexpected word '$($rest[0])' after '$cmd'" $cmd }
-            Test-LabOptionUse $cmd
         }
     }
+    if ($script:Given.ContainsKey('help')) { Show-LabHelp $cmd; exit 0 }
+    if ($script:Given.ContainsKey('version') -or $cmd -ceq 'version') { Write-LabLine "labyrinth $LabVersion"; exit 0 }
 
     $profileName = ''
     if ($script:Given.ContainsKey('profile')) { $profileName = $script:Given['profile'] }
@@ -1222,8 +1235,13 @@ try {
     if ($profileName -ne '' -and $profileName -cnotmatch '^[a-z0-9-]+$') {
         Exit-LabUsage "invalid profile name '$profileName' (lower-case letters, digits and -)" $cmd
     }
+    # Windows takes / as well as \ in a path, so C:/x is accepted as C:\x.
+    $script:DataRoot = $script:DataRoot.Replace('/', '\')
+    $config = $config.Replace('/', '\')
     if ($script:DataRoot -notmatch '^([A-Za-z]:\\|\\\\)') { Exit-LabUsage "-Root must be a full path, not '$($script:DataRoot)'" $cmd }
     if ($config -ne '' -and $config -notmatch '^([A-Za-z]:\\|\\\\)') { Exit-LabUsage "-Config must be a full path, not '$config'" $cmd }
+    # Warnings come after every fatal check, so they never precede an error.
+    Test-LabOptionUse $cmd $used
     $script:ProfileName = $profileName
     $script:DryRun = '1'
 

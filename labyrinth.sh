@@ -243,7 +243,8 @@ run_stopped() {
   if due="$(lab_timer_due "$LAB_RUN_ID" 2> /dev/null)"; then
     printf 'The revert timer rolls this run back at %s UTC.\n' "${due:11:5}"
   fi
-  printf 'To keep them now: labyrinth.sh keep %s    To undo them now: labyrinth.sh rollback %s\n' "$LAB_RUN_ID" "$LAB_RUN_ID"
+  printf 'To keep them now: %s keep %s\n' "$SELF" "${LAB_RUN_ID: -4}"
+  printf 'To undo them now: %s rollback %s\n' "$SELF" "${LAB_RUN_ID: -4}"
 }
 
 # usage_error MESSAGE [COMMAND]: a usage error: one line, a pointer to
@@ -874,7 +875,8 @@ cmd_apply() {
         && [[ "$ANSWER" == keep ]]; then
       keep_run || worst=$?
     else
-      printf 'Not kept. To keep later: labyrinth.sh keep %s    To undo now: labyrinth.sh rollback %s\n' "$LAB_RUN_ID" "$LAB_RUN_ID"
+      printf 'Not kept. To keep later: %s keep %s\n' "$SELF" "${LAB_RUN_ID: -4}"
+      printf 'To undo now: %s rollback %s\n' "$SELF" "${LAB_RUN_ID: -4}"
     fi
   fi
   printf 'apply finished: exit %d\n' "$worst"
@@ -992,7 +994,11 @@ cmd_runs() {
 resolve_run() {
   local cmd="$1" ref="${2,,}" id list
   local -a hits=()
-  if [[ "$2" =~ $RE_RUN_ID ]]; then RUN_REF="$2"; return 0; fi
+  if [[ "$2" =~ $RE_RUN_ID ]]; then
+    [[ -f "$LAB_STATE_DIR/runs/$2/manifest.jsonl" ]] \
+      || usage_error "no run $2 on this host; '$SELF runs' lists them" "$cmd"
+    RUN_REF="$2"; return 0
+  fi
   list="$(list_runs)" || die "the runs in $LAB_STATE_DIR/runs cannot be read"
   for id in $list; do
     if [[ "${id: -4}" == "$ref" ]]; then hits+=("$id"); fi
@@ -1046,10 +1052,11 @@ cmd_rollback() {
   umask 077
   if [[ -z "$1" ]]; then
     # Rollback always needs a run (decision D3): list them, change nothing.
-    if lab_is_admin; then
-      list="$(list_runs)" || true
-      if [[ -n "$list" ]]; then mapfile -t runs <<< "$list"; print_runs "${runs[@]}" >&2; fi
+    if ! lab_is_admin; then
+      usage_error "rollback needs a run ID, or its last 4 characters; as root, '$SELF runs' lists them" rollback
     fi
+    list="$(list_runs)" || true
+    if [[ -n "$list" ]]; then mapfile -t runs <<< "$list"; print_runs "${runs[@]}" >&2; fi
     usage_error "rollback needs a run ID, or its last 4 characters; '$SELF runs' lists them" rollback
   fi
   lab_is_admin || die 'rollback needs root' 20
@@ -1126,21 +1133,17 @@ main() {
       *) usage_error "--apply cannot be used with $cmd" "$cmd" ;;
     esac
   fi
-  if [[ -n "${GIVEN[help]+set}" ]]; then
-    # 'help plan --help' is help on plan; 'help --help' is help on help.
-    if [[ "$cmd" == help && -n "${1:-}" ]]; then cmd="${1,,}"; fi
-    lab_in_list "${cmd:-help}" "$COMMANDS" || usage_error "no help for '$cmd'"
-    cmd_help "$cmd"; exit 0
-  fi
-  if [[ -n "${GIVEN[version]+set}" ]]; then cmd_version; exit 0; fi
+  # The whole line must parse before help or the version is shown.
+  local helping=0
+  if [[ -n "${GIVEN[help]+set}" || -n "${GIVEN[version]+set}" ]]; then helping=1; fi
+  local -a used=()
   case "$cmd" in
     '')
-      printf 'Usage: %s <command> [<phase> | <run>] [options]
-' "$SELF" >&2
-      printf 'Commands: %s
-' "${COMMANDS// /, }" >&2
-      printf "Try '%s help' for more information.
-" "$SELF" >&2
+      if [[ -n "${GIVEN[help]+set}" ]]; then cmd_help ''; exit 0; fi
+      if [[ -n "${GIVEN[version]+set}" ]]; then cmd_version; exit 0; fi
+      printf 'Usage: %s <command> [<phase> | <run>] [options]\n' "$SELF" >&2
+      printf 'Commands: %s\n' "${COMMANDS// /, }" >&2
+      printf "Try '%s help' for more information.\n" "$SELF" >&2
       exit 40 ;;
     help)
       (( $# <= 1 )) || usage_error "unexpected word '$2' after 'help $1'" help
@@ -1150,33 +1153,42 @@ main() {
         hint="$(suggest "$word" $COMMANDS)"
         usage_error "no help for '$1'${hint:+ (did you mean '$hint'?)}"
       fi
+      # 'help plan --help' is help on plan; 'help --help' is help on help.
+      if [[ -z "$word" && -n "${GIVEN[help]+set}" ]]; then word=help; fi
       cmd_help "$word"; exit 0 ;;
     version)
-      (( $# == 0 )) || usage_error "unexpected word '$1' after 'version'" version
-      cmd_version; exit 0 ;;
+      (( $# == 0 )) || usage_error "unexpected word '$1' after 'version'" version ;;
     plan | apply)
-      (( $# > 0 )) || usage_error "$cmd needs a phase: lockout, observe, deceive or sustain" "$cmd"
-      phase="${1,,}"
-      if [[ "$phase" == probe ]]; then usage_error "probe is a command, not a phase: run '$SELF probe'" probe; fi
-      if ! lab_in_list "$phase" "$PHASES"; then
-        local hint
-        hint="$(suggest "$phase" $PHASES)"
-        usage_error "unknown phase '$1'${hint:+ (did you mean '$hint'?)}" "$cmd"
+      if (( $# == 0 )); then
+        (( helping )) || usage_error "$cmd needs a phase: lockout, observe, deceive or sustain" "$cmd"
+      else
+        phase="${1,,}"
+        if [[ "$phase" == probe ]]; then usage_error "probe is a command, not a phase: run '$SELF probe'" probe; fi
+        if ! lab_in_list "$phase" "$PHASES"; then
+          local hint
+          hint="$(suggest "$phase" $PHASES)"
+          usage_error "unknown phase '$1'${hint:+ (did you mean '$hint'?)}" "$cmd"
+        fi
+        (( $# == 1 )) || usage_error "unexpected word '$2' after '$cmd $phase'" "$cmd"
       fi
-      (( $# == 1 )) || usage_error "unexpected word '$2' after '$cmd $phase'" "$cmd"
-      if [[ "$cmd" == plan ]]; then check_used plan profile; else check_used apply profile break-glass confirm-group; fi ;;
+      if [[ "$cmd" == plan ]]; then used=(profile); else used=(profile break-glass confirm-group); fi ;;
     keep | rollback)
       # Without a run, keep and rollback decide what to do (section 3.1).
       (( $# <= 1 )) || usage_error "unexpected word '$2' after '$cmd $1'" "$cmd"
       word="${1:-}"
+      # A full run ID is accepted in any case, like its last 4 characters.
+      if [[ "${word,,}" =~ ^[0-9]{8}t[0-9]{6}z-[0-9a-f]{4}$ ]]; then
+        word="${word,,}"; word="${word:0:8}T${word:9:6}Z${word:16}"
+      fi
       if [[ -n "$word" && ! "$word" =~ $RE_RUN_ID && ! "$word" =~ ^[0-9a-fA-F]{4}$ ]]; then
         usage_error "not a run ID: '$word' (give the ID or its last 4 characters)" "$cmd"
-      fi
-      check_used "$cmd" ;;
+      fi ;;
     runs | probe)
-      (( $# == 0 )) || usage_error "unexpected word '$1' after '$cmd'" "$cmd"
-      check_used "$cmd" ;;
+      (( $# == 0 )) || usage_error "unexpected word '$1' after '$cmd'" "$cmd" ;;
   esac
+  if [[ -n "${GIVEN[help]+set}" ]]; then cmd_help "$cmd"; exit 0; fi
+  if [[ -n "${GIVEN[version]+set}" ]]; then cmd_version; exit 0; fi
+  if [[ "$cmd" == version ]]; then cmd_version; exit 0; fi
 
   OPT_PROFILE="${GIVEN[profile]:-}"
   OPT_BREAKGLASS="${GIVEN[break-glass]:-}"
@@ -1187,6 +1199,9 @@ main() {
   fi
   [[ "$DATA_ROOT" == /* ]] || usage_error "--root must be a full path, not '$DATA_ROOT'" "$cmd"
   [[ -z "${GIVEN[config]:-}" || "${GIVEN[config]}" == /* ]] || usage_error "--config must be a full path, not '${GIVEN[config]}'" "$cmd"
+
+  # Warnings come after every fatal check, so they never precede an error.
+  check_used "$cmd" "${used[@]+"${used[@]}"}"
 
   LAB_CONFIG_DIR="${GIVEN[config]:-$DATA_ROOT/etc}"
   LAB_STATE_DIR="$DATA_ROOT/state"
