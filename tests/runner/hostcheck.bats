@@ -35,7 +35,7 @@ lab() { run bash "$LAB/labyrinth.sh" --root "$ROOT" --config "$ETC" "$@" < /dev/
     # shellcheck disable=SC2086 # the words are split on purpose
     lab $words
     [ "$status" -eq 20 ] || { echo "$words: $status"; return 1; }
-    [[ "$output" == *"is an appliance"*"never changes it (design 16)"* ]]
+    [[ "$output" == *"is an appliance"*"never changes it"*"Configure it by hand"* ]]
   done
   [ ! -e "$ROOT" ]
 }
