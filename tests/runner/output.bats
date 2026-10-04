@@ -1,7 +1,7 @@
 #!/usr/bin/env bats
 # labyrinth.sh console output (docs/Conventions.md section 3.2): status
-# words, indented module output, the two-line header, the end of a run and
-# the recaps. Output.Tests.ps1 checks the same for labyrinth.ps1.
+# words with plain names, labelled lines, the header, the end of a run, the
+# recaps and the run log. Output.Tests.ps1 checks the same for labyrinth.ps1.
 
 load lab_helper
 
@@ -10,40 +10,138 @@ setup() {
   hosts ring1
 }
 
-# line_of TEXT: the number of the first output line containing TEXT.
-line_of() { grep -nF -- "$1" <<< "$output" | head -n 1 | cut -d: -f1; }
+# line_of TEXT: one more than the index in lines of the first line
+# containing TEXT, so that ${lines[n]} is the line after it. lines has no
+# blank lines, so grep -n on $output would not match it.
+line_of() {
+  local i
+  for ((i = 0; i < ${#lines[@]}; i++)); do
+    if [[ "${lines[i]}" == *"$1"* ]]; then echo "$((i + 1))"; return 0; fi
+  done
+}
 
-@test "plan starts each module's result with its status word, padded to 9 characters" {
+# last_line_of TEXT: like line_of, for the last line containing TEXT.
+last_line_of() {
+  local i
+  for ((i = ${#lines[@]} - 1; i >= 0; i--)); do
+    if [[ "${lines[i]}" == *"$1"* ]]; then echo "$((i + 1))"; return 0; fi
+  done
+}
+
+# The labels a detail line may start with (docs/Conventions.md section 3.2).
+LABELS='Found|Will do|Did|Why|Risk|Problem|Cause|Fix|Undo|Note|Log|Script|It said|Before|More'
+
+@test "plan starts each module's result with its status word, then its name and ID" {
   profile observe.clean observe.sample observe.blocked observe.crash observe.winonly observe.badyml
   plan
   [ "$status" -eq 40 ]
-  grep -qx 'OK       \[observe.clean\] check: nothing to do' <<< "$output"
-  grep -qx 'CHANGE   \[observe.sample\] check: change needed; plan follows' <<< "$output"
-  grep -qx 'BLOCKED  \[observe.blocked\] check: blocked by a safety gate' <<< "$output"
-  grep -qx 'ERROR    \[observe.crash\] check: error (exit 3)' <<< "$output"
-  grep -qx 'WARN     \[observe.winonly\] skipped: no Linux entry points' <<< "$output"
-  grep -qx 'ERROR    \[observe.badyml\] error: invalid module.yml' <<< "$output"
+  grep -qx 'OK       Nothing-to-do sample (observe.clean)' <<< "$output"
+  grep -qx 'CHANGE   No-op sample (observe.sample)' <<< "$output"
+  grep -qx 'BLOCKED  Blocked sample (observe.blocked)' <<< "$output"
+  grep -qx 'ERROR    Crashing sample (observe.crash)' <<< "$output"
+  grep -qx 'WARN     Windows-only sample (observe.winonly)' <<< "$output"
+  # A module.yml that does not load has no name to show.
+  grep -qx 'ERROR    observe.badyml' <<< "$output"
 }
 
-@test "a module.yml error is printed indented under its ERROR line" {
+@test "a module.yml error is a Found line under the ERROR line" {
   profile observe.badyml
   plan
   [ "$status" -eq 40 ]
-  n="$(line_of '[observe.badyml] error: invalid module.yml')"
-  [[ "${lines[n]}" =~ ^\ {11}[^\ ].*unknown\ key\ color$ ]]
+  n="$(line_of 'ERROR    observe.badyml')"
+  [ "${lines[n]}" = '  Problem:   invalid module.yml, so the module cannot be loaded' ]
+  [[ "${lines[n+1]}" =~ ^\ \ Found:\ {5}module\.yml:[0-9]+:\ unknown\ key\ color$ ]]
 }
 
-@test "module output, both streams, is indented 11 spaces under its result line" {
+@test "module output, both streams, is shown as Note lines under its result line" {
   profile observe.clean observe.sample
   printf '#!/usr/bin/env bash\necho on-stdout\necho on-stderr >&2\nexit 0\n' \
     > "$LAB/phases/observe/modules/clean/check.sh"
   plan
   [ "$status" -eq 10 ]
-  n="$(line_of '[observe.clean] check: nothing to do')"
-  [ "${lines[n]}" = '           on-stdout' ]
-  [ "${lines[n+1]}" = '           on-stderr' ]
-  n="$(line_of '[observe.sample] check: change needed')"
-  [ "${lines[n]}" = '           sample: a change is needed' ]
+  n="$(line_of 'OK       Nothing-to-do sample (observe.clean)')"
+  [ "${lines[n]}" = '  Note:      on-stdout' ]
+  [ "${lines[n+1]}" = '  Note:      on-stderr' ]
+  n="$(line_of 'CHANGE   No-op sample (observe.sample)')"
+  [ "${lines[n]}" = '  Note:      sample: a change is needed' ]
+}
+
+@test "a module's 'key: text' lines become labelled lines; others are Notes" {
+  profile observe.sample
+  printf '%s\n' '#!/usr/bin/env bash' "echo 'found: password logins are on'" "echo 'Will do: turn them off'" \
+    "echo '  WHY: a stolen password stops working'" "echo 'risk: none'" "echo 'colour: blue'" 'echo' 'exit 10' \
+    > "$LAB/phases/observe/modules/sample/check.sh"
+  plan
+  [ "$status" -eq 10 ]
+  n="$(line_of 'CHANGE   No-op sample (observe.sample)')"
+  [ "${lines[n]}" = '  Found:     password logins are on' ]
+  [ "${lines[n+1]}" = '  Will do:   turn them off' ]
+  [ "${lines[n+2]}" = '  Why:       a stolen password stops working' ]
+  [ "${lines[n+3]}" = '  Risk:      none' ]
+  [ "${lines[n+4]}" = '  Note:      colour: blue' ]
+  # The module gave a Risk line, so the runner adds none of its own.
+  [ "$(grep -c '^  Risk:' <<< "$output")" -eq 1 ]
+}
+
+@test "a CHANGE without a Risk line gets the risk in plain words" {
+  profile observe.toggle
+  plan
+  n="$(line_of 'CHANGE   Toggle setting sample (observe.toggle)')"
+  grep -qx '  Risk:      changes this host; each change is saved first and can be undone' <<< "$output"
+}
+
+@test "a failed entry point without a 'problem:' line gets the runner's Problem, Script and It said" {
+  profile observe.crash
+  printf '%s\n' '#!/usr/bin/env bash' 'for i in 1 2 3 4 5 6 7 8 9 10 11 12; do echo "line $i"; done' 'exit 3' \
+    > "$LAB/phases/observe/modules/crash/check.sh"
+  plan
+  [ "$status" -eq 40 ]
+  grep -qx '  Problem:   its check script failed with exit code 3 and gave no reason' <<< "$output"
+  grep -qx "  Script:    $LAB/phases/observe/modules/crash/check.sh" <<< "$output"
+  # Only the last 10 lines.
+  [ "$(grep -c '^  It said:   line ' <<< "$output")" -eq 10 ]
+  grep -qx '  It said:   line 3' <<< "$output"
+  ! grep -qx '  It said:   line 2' <<< "$output"
+  [ "$(tail -n 1 <<< "$(grep '^  ' <<< "$output")")" = '  More:      labyrinth.sh help observe.crash' ]
+}
+
+@test "a failed entry point that ends with 'problem:' is shown as it said it" {
+  profile observe.crash
+  printf '%s\n' '#!/usr/bin/env bash' "echo 'found: no firewall tool'" "echo 'problem: neither ufw nor firewalld is installed'" 'exit 40' \
+    > "$LAB/phases/observe/modules/crash/check.sh"
+  plan
+  [ "$status" -eq 40 ]
+  grep -qx '  Found:     no firewall tool' <<< "$output"
+  grep -qx '  Problem:   neither ufw nor firewalld is installed' <<< "$output"
+  [[ "$output" != *'gave no reason'* && "$output" != *'It said:'* ]]
+}
+
+@test "every detail line starts with a label, and every WARN, BLOCKED or ERROR block ends with More" {
+  profile observe.clean observe.sample observe.blocked observe.crash observe.winonly observe.manual observe.toggle
+  plan
+  [ "$status" -eq 40 ]
+  local l word='' prev=''
+  while IFS= read -r l; do
+    if [[ "$l" == '  '* ]]; then
+      [[ "$l" =~ ^\ \ ($LABELS):\ +[^\ ] ]] || { echo "no label: $l"; return 1; }
+    fi
+    # A block ends at the next status line or at a line that is not a detail.
+    if [[ "$l" != '  '* ]]; then
+      if [[ "$word" =~ ^(WARN|BLOCKED|ERROR)$ ]]; then
+        [[ "$prev" == '  More:      labyrinth.sh help observe.'* ]] || { echo "no More after: $word"; return 1; }
+      fi
+      word="${l%% *}"
+    fi
+    prev="$l"
+  done <<< "$output"
+}
+
+@test "plan says it changes nothing, then names the host and how many modules it checks" {
+  profile observe.clean observe.sample
+  plan
+  [ "${lines[2]}" = "This is a plan: Labyrinth only looks, and nothing on $HOST changes." ]
+  [ "${lines[3]}" = "Host $HOST is in group ring1." ]
+  [ "${lines[4]}" = 'Checking 2 modules of profile test, most urgent first.' ]
 }
 
 @test "the plan header is two lines that say nothing is recorded" {
@@ -60,7 +158,8 @@ line_of() { grep -nF -- "$1" <<< "$output" | head -n 1 | cut -d: -f1; }
   plan
   [ "$status" -eq 10 ]
   local last=$(( ${#lines[@]} - 1 ))
-  [ "${lines[last-3]}" = 'Summary: 1 OK, 1 CHANGE' ]
+  [ "${lines[last-4]}" = 'Summary: 2 modules: 1 OK, 1 CHANGE.' ]
+  [ "${lines[last-3]}" = 'Nothing on this host was changed.' ]
   # Too long for one line with the test's paths, so the command has its own.
   [ "${lines[last-2]}" = 'Next:' ]
   [ "${lines[last-1]}" = "  labyrinth.sh apply observe --profile test --root $ROOT --config $ETC" ]
@@ -87,8 +186,9 @@ line_of() { grep -nF -- "$1" <<< "$output" | head -n 1 | cut -d: -f1; }
   profile observe.clean observe.manual
   plan
   [ "$status" -eq 10 ]
-  grep -qx 'WARN     \[observe.manual\] check: manual steps needed; plan follows' <<< "$output"
-  [[ "$output" == *'Summary: 1 OK, 1 WARN'* ]]
+  grep -qx 'WARN     Manual steps sample (observe.manual)' <<< "$output"
+  grep -qx '  Found:     this needs a person; Labyrinth will not change it' <<< "$output"
+  [[ "$output" == *'Summary: 2 modules: 1 OK, 1 WARN.'* ]]
   [[ "$output" != *CHANGE* ]]
 }
 
@@ -99,10 +199,14 @@ line_of() { grep -nF -- "$1" <<< "$output" | head -n 1 | cut -d: -f1; }
   [ "$status" -eq 0 ]
   [[ "${lines[0]}" =~ ^labyrinth\ [^\ ]+:\ APPLY\ observe,\ profile\ test$ ]]
   [[ "${lines[1]}" =~ ^run\ [0-9]{8}T[0-9]{6}Z-[0-9a-f]{4}\ on\ host\ .+,\ group\ ring1$ ]]
-  a="$(line_of 'CHANGE   [observe.toggle] applying')"
-  b="$(line_of 'OK       [observe.toggle] applied and verified')"
+  [ "${lines[2]}" = 'First Labyrinth plans; nothing changes until you confirm.' ]
+  # The plan's CHANGE line comes first; the last one starts the change.
+  a="$(last_line_of 'CHANGE   Toggle setting sample (observe.toggle)')"
+  b="$(line_of 'OK       Toggle setting sample (observe.toggle)')"
   [ -n "$a" ] && [ -n "$b" ] && (( a < b ))
-  [[ "$output" == *'Summary: 1 OK'* ]]
+  (( a > $(line_of 'Type the group name') ))
+  [ "${lines[b]}" = '  Did:       applied and verified' ]
+  [[ "$output" == *'Summary: 1 module: 1 OK.'* ]]
   [[ "$output" != *'Next:'* ]]
   [ "${lines[${#lines[@]}-1]}" = 'apply finished: exit 0 (done)' ]
 }
@@ -113,9 +217,13 @@ line_of() { grep -nF -- "$1" <<< "$output" | head -n 1 | cut -d: -f1; }
   answers root ring1
   apply
   [ "$status" -eq 30 ]
-  grep -qx 'FAIL     \[observe.toggle\] verify failed (exit 30); rolling back' <<< "$output"
-  grep -qx 'OK       \[observe.toggle\] rolled back' <<< "$output"
-  [[ "$output" == *'Summary: 1 FAIL'* ]]
+  n="$(line_of 'FAIL     Toggle setting sample (observe.toggle)')"
+  [ "${lines[n]}" = '  Problem:   its verify script failed with exit code 30 and gave no reason' ]
+  [ "${lines[n+1]}" = "  Script:    $LAB/phases/observe/modules/toggle/verify.sh" ]
+  grep -qx '  Did:       rolled back' <<< "$output"
+  grep -qx "  Log:       $ROOT/state/runs/$(run_id)/output.log" <<< "$output"
+  grep -qx '  More:      labyrinth.sh help observe.toggle' <<< "$output"
+  [[ "$output" == *'Summary: 1 module: 1 FAIL.'* ]]
   [[ "$output" == *'Next: keep the earlier changes or undo them'* ]]
   [[ "$output" == *'apply finished: exit 30 (a check failed, and that change was undone)'* ]]
 }
@@ -124,13 +232,26 @@ line_of() { grep -nF -- "$1" <<< "$output" | head -n 1 | cut -d: -f1; }
   profile observe.toggle observe.blocked observe.manual
   answers root ring1 keep
   apply
-  a="$(line_of 'break-glass: root confirmed')"
+  a="$(line_of 'Break-glass account root: confirmed and recorded.')"
   b="$(line_of 'About to apply on host')"
   c="$(line_of 'Type the group name (ring1)')"
   (( a < b && b <= c ))
-  [[ "$output" == *'  will change  observe.toggle'* ]]
-  [[ "$output" == *'  blocked      observe.blocked'* ]]
-  [[ "$output" == *'  manual       observe.manual'* ]]
+  grep -qx '  Will change: Toggle setting sample (observe.toggle)' <<< "$output"
+  grep -qx '  Blocked:     Blocked sample (observe.blocked)' <<< "$output"
+  grep -qx '  Manual:      Manual steps sample (observe.manual)' <<< "$output"
+  [ "${lines[c-2]}" = 'To go ahead, type the group name. Anything else stops here; nothing changes.' ]
+  [[ "$output" != *'connected over SSH'* ]]
+}
+
+@test "apply: over SSH, the recap warns when a change may interrupt a service" {
+  sed -i 's/^risk: .*/risk: service-affecting/' "$LAB/phases/observe/modules/toggle/module.yml"
+  profile observe.toggle
+  answers root ring1 keep
+  SSH_CONNECTION='192.0.2.9 50000 192.0.2.1 22' apply
+  [ "$status" -eq 0 ]
+  a="$(line_of 'You are connected over SSH, and a change may interrupt a service.')"
+  [ -n "$a" ] && (( a < $(line_of 'Type the group name') ))
+  [[ "$output" == *'Keep a second session open until you have checked you can log in.'* ]]
 }
 
 @test "apply: before the keep prompt, the time the revert timer rolls the run back" {
@@ -140,21 +261,84 @@ line_of() { grep -nF -- "$1" <<< "$output" | head -n 1 | cut -d: -f1; }
   [ "$status" -eq 0 ]
   id="$(run_id)"
   due="$(cat "$ROOT/state/runs/$id/timer-due")"
-  a="$(line_of "The revert timer rolls this run back at ${due:11:5} UTC.")"
+  a="$(line_of "The revert timer rolls this run back at ${due:11:5} UTC, ")"
   b="$(line_of 'Type keep to keep')"
   [ -n "$a" ] && (( a <= b ))
   [[ "$output" == *"Next: check you can log in from a NEW session, then 'labyrinth.sh keep ${id: -4}'."* ]]
 }
 
-@test "fixed output lines are at most 78 columns" {
-  profile observe.clean observe.sample observe.manual
+@test "output lines are at most 78 columns, unless they end with a path" {
+  profile observe.clean observe.sample observe.manual observe.blocked observe.crash observe.toggle
   plan
   local l
   for l in "${lines[@]}"; do
-    # Module output, and a command line, whose paths can be any length.
-    [[ "$l" == '           '* || "$l" == '  labyrinth.sh '* ]] && continue
-    [ "${#l}" -le 78 ] || { echo "too long: $l"; return 1; }
+    (( ${#l} <= 78 )) || [[ "${l##* }" == /* ]] || { echo "too long: $l"; return 1; }
   done
+  touch "$LAB/FAIL_VERIFY"
+  profile observe.toggle observe.manual observe.blocked
+  # The prompts end without a newline, so they are answered by options here.
+  apply --break-glass root --confirm-group ring1
+  for l in "${lines[@]}"; do
+    (( ${#l} <= 78 )) || [[ "${l##* }" == /* ]] || { echo "too long: $l"; return 1; }
+  done
+}
+
+@test "apply writes the run log, readable by root only, with every module line" {
+  profile observe.toggle
+  answers root ring1 keep
+  apply
+  [ "$status" -eq 0 ]
+  local log="$ROOT/state/runs/$(run_id)/output.log"
+  [ "$(stat -c %a "$log")" = 600 ]
+  grep -q "labyrinth [^ ]*: apply observe, run $(run_id)" "$log"
+  grep -qx 'observe.toggle check| toggle: setting is not on' "$log"
+  grep -qx 'observe.toggle apply| toggle: setting=on' "$log"
+  grep -Eqx '[0-9]{2}:[0-9]{2}:[0-9]{2} observe.toggle verify exited 0' "$log"
+  grep -qx 'OK       Toggle setting sample (observe.toggle)' "$log"
+  grep -q '^Type the group name (ring1) to apply this plan: ring1$' "$log"
+  grep -qx "kept: the revert timer for run $(run_id) is cancelled" "$log"
+  [ "${lines[${#lines[@]}-2]}" = "Log: $log" ] || [[ "$output" == *"Log: $log"* ]]
+}
+
+@test "the run log keeps at most 500 lines from one entry point" {
+  profile observe.toggle
+  printf '%s\n' 'for i in $(seq 1 600); do echo "out $i"; done' >> "$LAB/phases/observe/modules/toggle/apply.sh"
+  answers root ring1 keep
+  apply
+  [ "$status" -eq 0 ]
+  local log="$ROOT/state/runs/$(run_id)/output.log"
+  [ "$(grep -c '^observe.toggle apply| ' "$log")" -eq 500 ]
+  grep -qx 'observe.toggle apply: 101 more lines not logged' "$log"
+}
+
+@test "plan and a stopped apply: plan writes no log; the stopped run is marked for 'runs'" {
+  profile observe.toggle
+  plan
+  [ ! -e "$ROOT" ]
+  touch "$LAB/FAIL_VERIFY"
+  answers root ring1
+  apply
+  [ "$status" -eq 30 ]
+  id="$(run_id)"
+  [ -e "$ROOT/state/runs/$id/problems" ]
+  run bash "$LAB/labyrinth.sh" --root "$ROOT" --config "$ETC" runs
+  [ "$status" -eq 0 ]
+  grep -qx "  ${id: -4}  $ROOT/state/runs/$id/output.log" <<< "$output"
+}
+
+@test "a rollback by the revert timer adds to the run log" {
+  profile observe.toggle
+  answers root ring1 no
+  apply
+  id="$(run_id)"
+  # The stored timer command, as systemd would run it.
+  read -r -a cmd < "$ROOT/state/runs/$id/timer"
+  run "${cmd[@]}"
+  [ "$status" -eq 0 ]
+  local log="$ROOT/state/runs/$id/output.log"
+  grep -q "labyrinth [^ ]*: rollback run $id" "$log"
+  grep -qx '  Did:       rolled back' "$log"
+  grep -qx 'rollback finished: exit 0 (rolled back)' "$log"
 }
 
 @test "probe: a header, a status line per service, Summary, Next and finished" {
@@ -188,7 +372,8 @@ line_of() { grep -nF -- "$1" <<< "$output" | head -n 1 | cut -d: -f1; }
   profile
   plan
   [ "$status" -eq 0 ]
-  grep -qx 'WARN     \[observe\] no modules for this phase in profile test' <<< "$output"
+  grep -qx 'WARN     Phase observe' <<< "$output"
+  grep -qx '  Found:     profile test lists no observe modules: nothing to check' <<< "$output"
 }
 
 @test "rollback ends with the exit code and its meaning" {
@@ -198,5 +383,9 @@ line_of() { grep -nF -- "$1" <<< "$output" | head -n 1 | cut -d: -f1; }
   id="$(run_id)"
   run bash "$LAB/labyrinth.sh" --root "$ROOT" --config "$ETC" rollback "$id"
   [ "$status" -eq 0 ]
+  [ "${lines[0]}" = "labyrinth $(sed -n "s/^readonly LAB_VERSION='\(.*\)'$/\1/p" "$LAB/labyrinth.sh"): rollback run $id" ]
+  grep -qx 'OK       Toggle setting sample (observe.toggle)' <<< "$output"
+  [ "${lines[${#lines[@]}-3]}" = 'Summary: 1 module: 1 OK.' ]
+  [ "${lines[${#lines[@]}-2]}" = "Log: $ROOT/state/runs/$id/output.log" ]
   [ "${lines[${#lines[@]}-1]}" = 'rollback finished: exit 0 (rolled back)' ]
 }

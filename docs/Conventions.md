@@ -173,38 +173,58 @@ Cancelling a timer checks that it is really gone. If it is still armed, `keep` r
 
 ### 3.2 Console output
 
-What the runners print is part of the contract: operators read it under time pressure, and the tests pin it.
+What the runners print is part of the contract: operators read it under time pressure, many of them new to the tool, and the tests pin it. The output is written for a beginner: plain words, one idea per line, and every problem says what to do next.
 
-- **Status words.** Every module result starts with one of `OK`, `CHANGE`, `WARN`, `BLOCKED`, `FAIL` or `ERROR`, padded to 9 characters, followed by the module ID in brackets and what happened. For example: `CHANGE   [observe.sample] check: change needed; plan follows`.
+- **Status words.** Every module result starts with one of `OK`, `CHANGE`, `WARN`, `BLOCKED`, `FAIL` or `ERROR`, padded to 9 characters, then the module's title and its ID in brackets: `CHANGE   Toggle setting sample (observe.toggle)`. A module whose `module.yml` cannot be read has no title, so its line shows the ID alone.
   - **In plan mode:**
     - `OK`: nothing to do (`0`);
     - `CHANGE`: a change is needed (`10`);
     - `BLOCKED`: `20`;
     - `ERROR`: `40`, or a module that cannot be loaded;
-    - `WARN`: a module skipped on this platform, or a manual-only module that needs steps a person carries out (`10`). A phase with no modules in the profile is one `WARN` line naming the phase in brackets: `WARN     [observe] no modules for this phase in profile web`.
+    - `WARN`: a module skipped on this platform, or a manual-only module that needs steps a person carries out (`10`). A phase with no modules in the profile is one `WARN` line, `WARN     Phase observe`, with its own Found, Fix and More lines.
   - **In apply:**
     - `OK`: applied and verified, nothing approved, no apply step (a module with only a `check` changes nothing), or rolled back;
-    - `CHANGE`: a module about to apply;
+    - `CHANGE`: a module about to apply, or about to be rolled back;
     - `WARN`: manual only, or a failed cleanup;
     - `BLOCKED`: a gate blocked the module;
     - `FAIL`: verify failed or a scored service regressed;
     - `ERROR`: apply failed, or a rollback failed.
-- **Detail lines.** When a result needs more than one short line, the status line says what happened and the detail follows on a line indented 11 spaces, like module output.
-- **Module output.** A module's own output is indented 11 spaces under its result line, in run order. `check` output is printed after its result line, because the result is known only when `check` ends; the output of later entry points is printed as it comes.
+- **Labelled lines.** Everything under a status line is a labelled line: two spaces, the label and a colon padded to 11 characters, then the text: `  Found:     password logins are on`. The labels are:
+  - from modules: `Found` (what it saw), `Will do` (what apply would change), `Did` (what it changed), `Why`, `Risk`, `Problem`, `Cause`, `Fix` and `Undo`;
+  - from the runner: `Note` (any other module line), `Script` (the entry point that failed), `It said` (its last lines), `Log` (the run log), `Before` and `More` (`<SELF> help <module-id>`).
+
+  Text longer than 65 characters wraps at a space onto another line with the same label, so each line makes sense alone; a word longer than that, such as a path, is never split.
+- **Module output.** A module prints `key: text` lines, with a key from the module labels above, in any case: `found: password logins are on`. The runner shows each such line with its label, any other line as a `Note`, and drops blank lines. `check` and `plan` output is shown after the result line, because the result is known only when they end; the output of later entry points is shown as it comes. A `CHANGE` with no `Risk` line gets the module's risk in plain words.
+- **The `problem:` line.** An entry point that exits `20`, `30` or `40` prints a `problem:` line last, saying what stopped it. The runner shows it as given. Without one, the runner says the script gave no reason, names the script, and in plan mode shows its last 10 lines as `It said` lines.
+- **Blocks.** Every `WARN`, `BLOCKED`, `FAIL` or `ERROR` block says what failed (`Problem`, or `Found` for a `WARN`), how to recover (`Fix`, or the `Did: rolled back` of an automatic rollback), and ends with `More`. A `FAIL` or `ERROR` in apply also names the run log.
 - **Header.** Two lines, at most 78 columns:
   - the version, the mode (`plan` or `APPLY`), the phase and the profile;
   - `run <id>`, followed in plan mode by `(plan mode: nothing is recorded)` and in apply by the host and group.
-- **End of a run.** Three lines:
-  - `Summary:`, the counts of each status word;
+
+  Then, in plan mode, that nothing on the host changes and the host's group; in apply, that nothing changes until the operator confirms; and how many modules are checked.
+- **End of a run.** After a blank line:
+  - `Summary:`, the number of modules and the count of each status word: `Summary: 2 modules: 1 OK, 1 CHANGE.`;
+  - `Nothing on this host was changed.` after a plan, or an apply that changed nothing;
+  - `Log:` and the run log's path, when there is one;
   - `Next:`, the one command to run next, when there is one. A command too long for the line goes on the next line, indented 2 spaces, so it can be copied whole;
   - `<mode> finished: exit N (<meaning>)`.
 - **probe** follows the same contract: a one-line header, then one line per service, `OK` (pass), `FAIL` or `WARN` (could not be checked) with the service name in brackets, then `Summary:`, `Next:` when a service failed, and `probe finished: exit 0 (no service failed)` or `exit 30`.
-- **rollback** ends with `rollback finished: exit 0 (rolled back)`, or `exit 40 (error)` when a module could not be undone.
-- **Recaps.** Before the group-name prompt: the host, the group, what each module will do, and that a revert timer will be armed. Before the keep prompt: the time the revert timer rolls the run back, in UTC.
+- **rollback** says how many modules it undoes, gives each a `CHANGE` line and then `OK` or `ERROR`, and ends with `Summary:`, `Log:` and `rollback finished: exit 0 (rolled back)`, or `exit 40 (error)` with a `Next:` line when a module could not be undone.
+- **Recaps.** Before the group-name prompt: the host, the group, one line per module (`Will change:`, `Blocked:` or `Manual:`), that a revert timer will be armed, and, when a change may interrupt a service and the operator is connected remotely, to keep a second session open. Before the keep prompt: when the revert timer rolls the run back, in UTC and in minutes from now.
 - **Messages** say what failed, why, and how to recover, in one sentence each. An error that stops the runner (exit `20` or `40`) is one line on stderr, `labyrinth: <what failed>: <why>`, and, unless the fix is already in that line, a second line saying how to recover. A failure that leaves changes in place always says how to keep them and how to undo them.
 - **Text.** Fixed text is at most 78 columns, plain ASCII, with no colour. A line may be longer only by the length of a path it names, and the path comes last.
 
-For module authors: when an entry point exits `20`, `30` or `40`, its last line of output gives the reason. An entry point never leaves a background process holding standard output, because the runner waits for it to close.
+For module authors: when an entry point exits `20`, `30` or `40`, its last line of output is a `problem:` line. An entry point never leaves a background process holding standard output, because the runner waits for it to close.
+
+#### The run log
+
+Every apply, keep and rollback writes `<state>/runs/<run>/output.log`, readable by root or the administrators only (mode `600` on Linux; the data root's access list on Windows). A plan writes nothing.
+
+- The first line gives the time, the version and what wrote to the log; a keep or rollback adds its own first line to the same file, including a rollback started by the revert timer, which no one watches.
+- It holds every line the operator saw, the prompts with the answers typed, and each entry point's own lines as given, as `<id> <entry>| <line>`, at most 500 per entry point, with the time each started and its exit code.
+- An apply's lines are kept from the header on and written once the run folder exists, after the group is confirmed.
+- A run that stopped, or had a `FAIL` or `ERROR`, is marked with a `problems` file, and `runs` lists the logs of those runs.
+- A log that cannot be written never stops a run.
 
 ## 4. Bash style
 

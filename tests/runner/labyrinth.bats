@@ -29,7 +29,7 @@ setup() { lab_setup; }
   profile observe.clean
   plan
   [ "$status" -eq 0 ]
-  [[ "$output" == *"[observe.clean] check: nothing to do"* ]]
+  grep -qx 'OK       Nothing-to-do sample (observe.clean)' <<< "$output"
 }
 
 @test "a safety-gate block exits 20" {
@@ -42,7 +42,7 @@ setup() { lab_setup; }
   profile observe.crash
   plan
   [ "$status" -eq 40 ]
-  [[ "$output" == *"error (exit 3)"* ]]
+  [[ "$output" == *"failed with exit code 3"* ]]
 }
 
 @test "a change with no plan entry point is an error" {

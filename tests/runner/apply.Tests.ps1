@@ -26,7 +26,7 @@ Describe 'labyrinth.ps1 apply' {
         $r = Invoke-TestApply $t $answers
         $r.Code | Should -Be 0
         (Get-Content -LiteralPath $toggle) | Should -Be 'setting=on'
-        $r.Output | Should -Match '\[observe\.toggle\] applied and verified'
+        (@($r.Output -split "`r?`n") -ccontains '  Did:       applied and verified') | Should -BeTrue
         $r.Output | Should -Match 'kept: the revert timer'
         $m = Get-TestManifest $t (Get-TestRunId $r.Output)
         foreach ($a in 'run_start', 'breakglass_verified', 'apply_start', 'file_created', 'run_kept') {
@@ -88,7 +88,7 @@ Describe 'labyrinth.ps1 apply' {
         [IO.File]::WriteAllText($toggle, "setting=off`n")
         $r = Invoke-TestApply $t @('ring1', 'keep')
         $r.Code | Should -Be 0
-        $r.Output | Should -Match 'break-glass: confirmed earlier for labadmin'
+        $r.Output | Should -Match ([regex]::Escape('Break-glass account labadmin: confirmed earlier, so not asked again.'))
         (Get-Content -LiteralPath $toggle) | Should -Be 'setting=on'
     }
 
@@ -121,8 +121,8 @@ Describe 'labyrinth.ps1 apply' {
         New-Item -ItemType File -Path (Join-Path $lab 'FAIL_VERIFY') | Out-Null
         $r = Invoke-TestApply $t $answers
         $r.Code | Should -Be 30
-        $r.Output | Should -Match 'verify failed'
-        $r.Output | Should -Match '\[observe\.toggle\] rolled back'
+        $r.Output | Should -Match 'its verify script failed'
+        (@($r.Output -split "`r?`n") -ccontains '  Did:       rolled back') | Should -BeTrue
         (Get-Content -LiteralPath $toggle) | Should -Be 'setting=off'
         Get-TestManifest $t (Get-TestRunId $r.Output) | Should -Match '"action":"rolled_back"'
     }
@@ -215,8 +215,10 @@ Describe 'labyrinth.ps1 apply' {
         Write-TestConfig $t 'scoring-allowlist' @('198.51.100.0/28')
         $r = Invoke-TestApply $t $answers
         $r.Code | Should -Be 30
-        $r.Output | Should -Match 'scored service regressed: web'
-        $r.Output | Should -Match '\[observe\.breaker\] rolled back'
+        $r.Output | Should -Match 'a scored service stopped working after the change: web'
+        $lines = @($r.Output -split "`r?`n")
+        ($lines -ccontains '  Found:     web: fail (fake probe); it passed before') | Should -BeTrue
+        ($lines -ccontains '  Did:       rolled back') | Should -BeTrue
         Join-Path $lab 'probe-state' | Should -Not -Exist
     }
 
@@ -225,7 +227,7 @@ Describe 'labyrinth.ps1 apply' {
         Write-TestConfig $t 'services' @('web http web.test 80 -')
         $r = Invoke-TestApply $t $answers
         $r.Code | Should -Be 20
-        $r.Output | Should -Match '\[observe\.breaker\] blocked'
+        (@($r.Output -split "`r?`n") -ccontains 'BLOCKED  Service breaker sample (observe.breaker)') | Should -BeTrue
         Join-Path $lab 'probe-state' | Should -Not -Exist
         (Get-Content -LiteralPath $toggle) | Should -Be 'setting=on'
     }
@@ -237,9 +239,9 @@ Describe 'labyrinth.ps1 apply' {
         $r = Invoke-TestApply $t $answers
         $r.Code | Should -Be 40
         $lines = @($r.Output -split "`r?`n")
-        $n = [array]::IndexOf($lines, 'ERROR    [observe.breaker] error: the scoring allowlist is malformed')
-        ($n -ge 0) | Should -BeTrue
-        $lines[$n + 1] | Should -Match '^ {11}.*not an address or CIDR: not-an-address$'
+        ($lines -ccontains 'ERROR    Service breaker sample (observe.breaker)') | Should -BeTrue
+        ($lines -ccontains '  Problem:   the scoring allowlist is malformed') | Should -BeTrue
+        ($lines -ccontains '  Found:     scoring-allowlist:1: not an address or CIDR: not-an-address') | Should -BeTrue
         $r.Output | Should -Not -Match 'internal error'
         $r.Output | Should -Match ([regex]::Escape('apply finished: exit 40 (error)'))
     }
