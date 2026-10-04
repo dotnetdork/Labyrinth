@@ -145,7 +145,7 @@ Lists this host's runs, oldest first, with the run ID, phase, start time (UTC) a
 - `rolled back with errors`: the run was undone, but some of it could not be; section 11 explains what to do;
 - `not kept, no timer`: the run changed nothing that needed a timer.
 
-Below the list, it shows how to name a run by its last four characters. It changes nothing, but it must be run as @ADMIN@. Ends with 0, 20 when not run as @ADMIN@, and 40 on an error.
+Below the list, it shows how to name a run by its last four characters. Then it lists the logs of the runs that had problems (section 11). It changes nothing, but it must be run as @ADMIN@. Ends with 0, 20 when not run as @ADMIN@, and 40 on an error.
 
 ## probe
 
@@ -249,33 +249,60 @@ A plan looks like this:
 ```
 labyrinth 0.1.0-dev: plan lockout, profile web
 run 20261002T140301Z-4f2a (plan mode: nothing is recorded)
-OK       [lockout.example] check: nothing to do
-CHANGE   [lockout.other] check: change needed; plan follows
-           what the module would change
-Summary: 1 OK, 1 CHANGE
+This is a plan: Labyrinth only looks, and nothing on web1 changes.
+Host web1 is in group ring1.
+Checking 2 modules of profile web, most urgent first.
+
+OK       Example check (lockout.example)
+  Found:     nothing to do
+CHANGE   Password logins (lockout.other)
+  Found:     password logins are on
+  Will do:   turn password logins off
+  Risk:      changes this host; each change is saved first and can be undone
+
+Summary: 2 modules: 1 OK, 1 CHANGE.
+Nothing on this host was changed.
 Next: @CMD@ apply lockout
 plan finished: exit 10 (change needed)
 ```
 
-The first two lines are the header: the version, plan or `APPLY`, the phase and the profile, then the run ID. A plan records nothing, so its run ID is never listed by `runs`. In an apply, the second line also names the host and its group. Write the apply's run ID down, or remember its last four characters.
+The first two lines are the header: the version, plan or `APPLY`, the phase and the profile, then the run ID. A plan records nothing, so its run ID is never listed by `runs`. In an apply, the second line also names the host and its group. Write the apply's run ID down, or remember its last four characters. The next lines say what the run will do and how many modules it checks.
 
-Each module's result starts with a status word:
+Each module's result starts with a status word, then the module's title and, in brackets, its ID:
 
 | Word | In a plan | In an apply |
 |---|---|---|
 | `OK` | Nothing to do. | Applied and checked, or undone cleanly. |
-| `CHANGE` | A change is needed. | About to make a change. |
+| `CHANGE` | A change is needed. | About to make a change, or to undo one. |
 | `WARN` | Skipped on this platform, or only steps a person must carry out. | A checklist only, or a clean-up step failed. |
 | `BLOCKED` | A safety check blocks it. | A safety check blocked it. |
 | `FAIL` | (not used) | Its check failed, or a scored service got worse. |
 | `ERROR` | Something went wrong. | The change or its undo failed. |
 
-A module's own messages, and any detail about its result, are indented under its result line. A module with nothing to apply shows `OK` with `no apply step; nothing changed`. If the profile has no modules for the phase, one `WARN` line names the phase in brackets.
+Under the result, each line starts with a label that says what kind of line it is:
 
-The run ends with three lines:
+| Label | Means |
+|---|---|
+| `Found:` | What the module saw on the host. |
+| `Will do:` | What an apply would change. |
+| `Did:` | What the module changed, or `rolled back` when Labyrinth undid it. |
+| `Why:`, `Risk:` | Why the change matters, and what it could break. |
+| `Problem:`, `Cause:` | What went wrong, and why. |
+| `Fix:` | What to do about it. |
+| `Undo:` | How the change is undone. |
+| `Note:` | Anything else the module printed. |
+| `Script:`, `It said:` | The module's script that failed, and its last lines when it gave no reason. |
+| `Log:` | The run log, which holds everything (section 11). |
+| `More:` | The command that explains the module: `@CMD@ help <module-id>`. |
 
-- `Summary:` counts the modules by status word. In an apply that stopped partway, it also counts the modules that did not run.
-- `Next:` gives the one thing to do next. It is left out when there is nothing to do. After a plan, it is the apply command, with any profile, data root and configuration folder you gave the plan. If the profile is not the one this host is listed with, that apply is refused. When the command is too long for one line, `Next:` stands alone and the command follows on the next line, indented, so you can copy it whole.
+A long line wraps onto another line with the same label. Every `WARN`, `BLOCKED`, `FAIL` or `ERROR` says what went wrong, what to do, and ends with `More:`. A module with nothing to apply shows `OK` with `no apply step; nothing changed`. If the profile has no modules for the phase, one `WARN` line names the phase.
+
+After a blank line, the run ends with:
+
+- `Summary:` the number of modules, and how many got each status word. In an apply that stopped partway, it also counts the modules that did not run.
+- `Nothing on this host was changed.` after a plan, or an apply that changed nothing.
+- `Log:` the path of the run log, when there is one.
+- `Next:` the one thing to do next. It is left out when there is nothing to do. After a plan, it is the apply command, with any profile, data root and configuration folder you gave the plan. If the profile is not the one this host is listed with, that apply is refused. When the command is too long for one line, `Next:` stands alone and the command follows on the next line, indented, so you can copy it whole.
 - The last line gives the exit code and what it means.
 
 `probe` reports in the same way, one line per scored service:
@@ -289,9 +316,9 @@ Next: bring the failed service back, then run '@CMD@ probe' again.
 probe finished: exit 30 (a service failed)
 ```
 
-`WARN` means a service could not be checked, for example because a tool is missing. A `rollback` ends with `rollback finished: exit 0 (rolled back)`, or `exit 40 (error)` if a module could not be undone.
+`WARN` means a service could not be checked, for example because a tool is missing. A `rollback` says how many modules it undoes, shows each as `CHANGE` and then `OK` or `ERROR`, and ends with `rollback finished: exit 0 (rolled back)`, or `exit 40 (error)` if a module could not be undone.
 
-An apply also recaps twice. Before it asks for the group name, it lists what each module will do and says that a revert timer will be armed. Before it asks whether to keep the changes, it gives the time, in UTC, at which the revert timer will undo them.
+An apply also recaps twice. Before it asks for the group name, it lists what each module will do and says that a revert timer will be armed. If you are connected over the network, it also reminds you to keep a second session open. Before it asks whether to keep the changes, it gives the time, in UTC and in minutes from now, at which the revert timer will undo them.
 
 # 9. Exit codes
 
@@ -314,7 +341,7 @@ Everything Labyrinth keeps is under one folder, the **data root**: `@ROOT@` unle
 |---|---|
 | `<root>/bin` | The program. |
 | `<root>/etc` | The event's configuration: `hosts`, `protected-accounts`, `event.conf`, `services`, `scoring-allowlist`, `never-ban`. |
-| `<root>/state` | Run records: one folder per run under `state/runs`, with the run's change record (`manifest.jsonl`) and its timer. |
+| `<root>/state` | Run records: one folder per run under `state/runs`, with the run's change record (`manifest.jsonl`), its timer, and its log (`output.log`). |
 | `<root>/logs` | Logs, one folder per kind. |
 | `<root>/backup` | Copies of every file taken before it was changed. |
 
@@ -325,7 +352,7 @@ Only root can read `etc`, `state` and `backup`.
 |---|---|
 | `<root>\bin` | The program. |
 | `<root>\etc` | The event's configuration: `hosts`, `protected-accounts`, `event.conf`, `services`, `scoring-allowlist`, `never-ban`. |
-| `<root>\state` | Run records: one folder per run under `state\runs`, with the run's change record (`manifest.jsonl`) and its timer. |
+| `<root>\state` | Run records: one folder per run under `state\runs`, with the run's change record (`manifest.jsonl`), its timer, and its log (`output.log`). |
 | `<root>\logs` | Logs, one folder per kind. |
 | `<root>\backup` | Copies of every file taken before it was changed. |
 
@@ -346,6 +373,10 @@ Each revert timer is a scheduled task named `\Labyrinth\lab-revert-<run>-<n>`, r
 **"another Labyrinth run (pid N) holds ... lock".** A run is already in progress on this host. Wait for it to finish. If that process has ended, run the command again: a lock left by a process that is gone is taken over.
 
 Most errors that stop Labyrinth are two lines: what failed and why, then how to recover. Do what the second line says, then run the same command again.
+
+**Read the run log.** Every apply, keep and rollback writes a log of the run: everything you saw, your answers to the questions, and every line the modules printed, with the time each started and how it ended. A `FAIL` or `ERROR` shows its path on a `Log:` line, and so does the end of the run. `runs` lists the logs of the runs that had problems. Only @ADMIN@ can read the log; open it with any text viewer. A plan writes no log: its output is all there is.
+
+**A module's `Problem:` line** says what stopped it. If the module gave no reason, Labyrinth says so, names the module's script on a `Script:` line, and in a plan shows the script's last lines as `It said:` lines. The `More:` line gives the command that explains the module.
 
 <!-- linux -->
 **"needs root".** `apply`, `runs`, `keep` and `rollback` need full rights. Run the command again with `sudo`.
