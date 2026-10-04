@@ -37,9 +37,9 @@ BeforeAll {
         return -1
     }
 
-    # Set-TestEntry T MODULE ENTRY LINE...: replace an entry point of a
+    # Write-TestEntry T MODULE ENTRY LINE...: replace an entry point of a
     # fixture module.
-    function Set-TestEntry {
+    function Write-TestEntry {
         param($T, [string] $Module, [string] $Entry, [string[]] $Line)
         Set-Content -LiteralPath (Join-Path $T.Lab "phases\observe\modules\$Module\$Entry.ps1") -Encoding Ascii -Value $Line
     }
@@ -80,7 +80,7 @@ Describe 'labyrinth.ps1 console output' {
 
     It 'module output, both streams, is shown as Note lines under its result line' {
         Write-TestProfile $t @('observe.clean', 'observe.sample')
-        Set-TestEntry $t 'clean' 'check' @("Write-Output 'on-stdout'", "[Console]::Error.WriteLine('on-stderr')", 'exit 0')
+        Write-TestEntry $t 'clean' 'check' @("Write-Output 'on-stdout'", "[Console]::Error.WriteLine('on-stderr')", 'exit 0')
         $r = Invoke-TestPlan $t
         $r.Code | Should -Be 10
         $lines = Get-TestLine $r
@@ -94,7 +94,7 @@ Describe 'labyrinth.ps1 console output' {
 
     It "a module's 'key: text' lines become labelled lines; others are Notes" {
         Write-TestProfile $t @('observe.sample')
-        Set-TestEntry $t 'sample' 'check' @("'found: password logins are on'", "'Will do: turn them off'",
+        Write-TestEntry $t 'sample' 'check' @("'found: password logins are on'", "'Will do: turn them off'",
             "'  WHY: a stolen password stops working'", "'risk: none'", "'colour: blue'", "''", 'exit 10')
         $r = Invoke-TestPlan $t
         $r.Code | Should -Be 10
@@ -117,7 +117,7 @@ Describe 'labyrinth.ps1 console output' {
 
     It "a failed entry point without a 'problem:' line gets the runner's Problem, Script and It said" {
         Write-TestProfile $t @('observe.crash')
-        Set-TestEntry $t 'crash' 'check' @('1..12 | ForEach-Object { "line $_" }', 'exit 3')
+        Write-TestEntry $t 'crash' 'check' @('1..12 | ForEach-Object { "line $_" }', 'exit 3')
         $r = Invoke-TestPlan $t
         $r.Code | Should -Be 40
         $lines = Get-TestLine $r
@@ -132,7 +132,7 @@ Describe 'labyrinth.ps1 console output' {
 
     It "a failed entry point that ends with 'problem:' is shown as it said it" {
         Write-TestProfile $t @('observe.crash')
-        Set-TestEntry $t 'crash' 'check' @("'found: no firewall tool'", "'problem: Windows Defender Firewall is off'", 'exit 40')
+        Write-TestEntry $t 'crash' 'check' @("'found: no firewall tool'", "'problem: Windows Defender Firewall is off'", 'exit 40')
         $r = Invoke-TestPlan $t
         $r.Code | Should -Be 40
         $lines = Get-TestLine $r
