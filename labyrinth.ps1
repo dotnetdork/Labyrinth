@@ -122,6 +122,7 @@ $script:Command = ''             # the command being run, for the last catch
 $script:RunRef = ''              # the run keep or rollback acts on
 $script:RunOpen = $false         # true once an apply has recorded run_start
 $script:GaveReason = $false      # did the last entry point end with a 'problem:' line?
+$script:EntryLast = ''           # the last line an entry point printed that was not blank
 $script:Titles = @{}             # module ID -> title, for the status lines
 $script:LogFile = ''             # the run's output.log, once it is open
 $script:LogOn = $false           # keep lines for the run log before it opens
@@ -628,7 +629,7 @@ function Test-LabLabel {
 function Add-LabLogLine {
     param([AllowEmptyString()] [string] $Text)
     if ($script:LogFile -ne '') {
-        try { [IO.File]::AppendAllText($script:LogFile, $Text + "`n", (New-Object Text.UTF8Encoding $false)) } catch { }
+        try { [IO.File]::AppendAllText($script:LogFile, $Text + "`n", (New-Object Text.UTF8Encoding $false)) } catch { $null = $_ }
     } elseif ($script:LogOn) {
         $script:LogBuf.Add($Text)
     }
@@ -646,7 +647,7 @@ function Open-LabRunLog {
         foreach ($l in $script:LogBuf) { $text += "$l`n" }
         [IO.File]::AppendAllText($file, $text, (New-Object Text.UTF8Encoding $false))
         $script:LogFile = $file
-    } catch { }
+    } catch { $null = $_ }
     $script:LogBuf.Clear()
 }
 
@@ -812,7 +813,7 @@ function Exit-LabRun {
 # Add-LabProblemMark: note in the run folder that the run had problems, so
 # that 'runs' points to its log.
 function Add-LabProblemMark {
-    try { [IO.File]::WriteAllText((Join-Path (Get-LabRunDir $env:LAB_RUN_ID) 'problems'), '') } catch { }
+    try { [IO.File]::WriteAllText((Join-Path (Get-LabRunDir $env:LAB_RUN_ID) 'problems'), '') } catch { $null = $_ }
 }
 
 # Get-LabRunStopped: what the operator needs after a run stops partway.
@@ -978,7 +979,7 @@ function Invoke-LabEntry {
     $script:EntryRc = 0
     $saved = $ErrorActionPreference
     $ErrorActionPreference = 'Continue'
-    $last = ''
+    $script:EntryLast = ''
     try {
         # Piped, so the output never becomes the return value of the
         # function that called this one.
@@ -987,7 +988,7 @@ function Invoke-LabEntry {
             $script:EntryOut = @(& $hostExe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $file 2>&1 |
                     ForEach-Object { (ConvertTo-LabOutputText $_) -split "`r?`n" })
             $script:EntryRc = $LASTEXITCODE
-            foreach ($l in $script:EntryOut) { if ($l.Trim() -ne '') { $last = $l } }
+            foreach ($l in $script:EntryOut) { if ($l.Trim() -ne '') { $script:EntryLast = $l } }
         } else {
             Add-LabLogLine "$([DateTime]::UtcNow.ToString('HH:mm:ss')) $Id $Entry started"
             $n = 0
@@ -996,7 +997,7 @@ function Invoke-LabEntry {
                     Show-LabOutput $l
                     $n++
                     if ($n -le $LogCap) { Add-LabLogLine "$Id $Entry| $l" }
-                    if ($l.Trim() -ne '') { $last = $l }
+                    if ($l.Trim() -ne '') { $script:EntryLast = $l }
                 }
             }
             $script:EntryRc = $LASTEXITCODE
@@ -1009,7 +1010,7 @@ function Invoke-LabEntry {
         $env:LAB_DRY_RUN = $script:DryRun
         $env:LAB_APPROVED = ''
     }
-    $script:GaveReason = Test-LabProblemLine $last
+    $script:GaveReason = Test-LabProblemLine $script:EntryLast
     if ($Capture) { Write-LabEntryLog $Id $Entry }
     else { Add-LabLogLine "$([DateTime]::UtcNow.ToString('HH:mm:ss')) $Id $Entry exited $($script:EntryRc)" }
 }
