@@ -77,6 +77,12 @@ PARSE_ERR=""                # the first option error, reported by main
 ERROR_COUNT=0              # ERROR lines in the Summary, for the Next line
 BEFORE=''                  # probe results before the first change
 HAVE_SERVICES=0            # 1 when the scored-service list loaded
+GAVE_REASON=0              # 1 when the last entry point ended with 'problem:'
+declare -A TITLES=()       # module id -> its plain name, from module.yml
+LOG_FILE=''                # the run's output.log, once its folder exists
+LOG_ON=0                   # 1 when this command keeps a run log
+LOG_BUF=''                 # log lines from before the run folder existed
+readonly LOG_CAP=500       # most lines logged from one entry point
 
 # The modules of this run, in run order, one array element per module.
 declare -a RUN_IDS=() RUN_DIR=() RUN_RISK=() RUN_SCORED=() RUN_REQUIRES=() RUN_RC=() RUN_STATE=()
@@ -301,7 +307,8 @@ cmd_help_module() {
 # die MESSAGE [CODE] [FIX]: the error, then how to recover, on stderr.
 die() {
   printf 'labyrinth: %s\n' "$1" >&2
-  if [[ -n "${3:-}" ]]; then printf '%s\n' "$3" >&2; fi
+  log_line "labyrinth: $1"
+  if [[ -n "${3:-}" ]]; then printf '%s\n' "$3" >&2; log_line "$3"; fi
   exit "${2:-40}"
 }
 
@@ -369,13 +376,31 @@ run_recovery() {
 
 # run_stopped: what the operator needs after a run stops partway.
 run_stopped() {
-  local due
-  printf 'The run stopped. Earlier changes stay until the revert timer undoes them.\n'
-  if due="$(lab_timer_due "$LAB_RUN_ID" 2> /dev/null)"; then
-    printf 'The revert timer rolls this run back at %s UTC.\n' "${due:11:5}"
+  local when
+  out 'The run stopped. Earlier changes stay until the revert timer undoes them.'
+  if when="$(due_words "$LAB_RUN_ID")"; then
+    out "The revert timer rolls this run back $when."
   fi
-  printf 'To keep them now: %s keep %s\n' "$SELF" "${LAB_RUN_ID: -4}"
-  printf 'To undo them now: %s rollback %s\n' "$SELF" "${LAB_RUN_ID: -4}"
+  out "To keep them now: $SELF keep ${LAB_RUN_ID: -4}"
+  out "To undo them now: $SELF rollback ${LAB_RUN_ID: -4}"
+}
+
+# due_words RUN: when the run's revert timer fires, as 'at HH:MM UTC, in N
+# minutes'. Returns 1 when the time is not known.
+due_words() {
+  local due at now mins
+  due="$(lab_timer_due "$1" 2> /dev/null)" || return 1
+  at="$(date -u -d "$due" +%s 2> /dev/null)" || at=''
+  now="$(date -u +%s)"
+  if [[ -z "$at" ]]; then printf 'at %s UTC' "${due:11:5}"; return 0; fi
+  mins=$(( (at - now + 59) / 60 ))
+  if (( mins > 1 )); then
+    printf 'at %s UTC, in %d minutes' "${due:11:5}" "$mins"
+  elif (( mins == 1 )); then
+    printf 'at %s UTC, in 1 minute' "${due:11:5}"
+  else
+    printf 'at %s UTC, which is now' "${due:11:5}"
+  fi
 }
 
 # usage_error MESSAGE [COMMAND] [FIX]: a usage error: one line, the fix if
@@ -396,21 +421,135 @@ warn() { printf 'labyrinth: warning: %s\n' "$1" >&2; }
 
 # say WORD TEXT: a result line, the status word padded to 9 characters
 # (docs/Conventions.md section 3.2).
-say() { printf '%-9s%s\n' "$1" "$2"; }
+say() {
+  local l
+  printf -v l '%-9s%s' "$1" "$2"
+  out "$l"
+}
 
-# note TEXT: a second line for a status line, indented like module output.
-note() { printf '           %s\n' "$1"; }
+# out TEXT: one line to the operator, and to the run log unless NO_LOG is 1.
+out() {
+  printf '%s\n' "$1"
+  if (( ! ${NO_LOG:-0} )); then log_line "$1"; fi
+}
 
-# indent: copy standard input, each line indented 11 spaces.
-indent() {
-  local line
-  while IFS= read -r line || [[ -n "$line" ]]; do printf '           %s\n' "$line"; done
+# err TEXT: one line on stderr, and to the run log.
+err() { printf '%s\n' "$1" >&2; log_line "$1"; }
+
+# detail LABEL TEXT: a labelled line under a status line (section 3.2).
+# Long text wraps onto more lines with the same label, so that each line
+# makes sense alone; a word longer than a line, such as a path, is not split.
+detail() {
+  local label="$1:" text="$2" head l
+  while (( ${#text} > 65 )); do
+    head="${text:0:66}"; head="${head% *}"
+    if [[ "$head" == "${text:0:66}" || -z "$head" ]]; then break; fi
+    printf -v l '  %-11s%s' "$label" "$head"; out "$l"
+    text="${text:${#head}+1}"
+  done
+  printf -v l '  %-11s%s' "$label" "$text"; out "$l"
+}
+
+# more ID: the last line of a WARN, BLOCKED, FAIL or ERROR block.
+more() { detail More "$SELF help $1"; }
+
+# log_ref: the run log's path, under a FAIL or ERROR line.
+log_ref() { if [[ -n "$LOG_FILE" ]]; then detail Log "$LOG_FILE"; fi; }
+
+# module_name ID: 'Title (id)', or the ID alone when its title is unknown.
+module_name() {
+  if [[ -n "${TITLES[$1]:-}" ]]; then printf '%s (%s)' "${TITLES[$1]}" "$1"; else printf '%s' "$1"; fi
+}
+
+# load_title ID: keep the title of module ID, if its module.yml reads.
+load_title() {
+  local dir="$LAB_ROOT/phases/${1%%.*}/modules/${1#*.}"
+  YML_ERR=''
+  if [[ -z "${TITLES[$1]:-}" ]] && read_module_yml "$dir/module.yml" && [[ -n "${MOD[title]:-}" ]]; then
+    TITLES[$1]="${MOD[title]}"
+  fi
+  YML_ERR=''
+}
+
+# label_line LINE: one line a module printed, as a labelled line. A line
+# 'key: text', with a key from the label list, keeps that label; any other
+# line is a Note (docs/Conventions.md section 3.2). Blank lines are dropped.
+label_line() {
+  local line="${1%$'\r'}" key
+  if [[ -z "${line//[[:space:]]/}" ]]; then return 0; fi
+  line="${line#"${line%%[![:space:]]*}"}"
+  if [[ "$line" =~ ^([A-Za-z][A-Za-z ]*):[[:space:]]+(.*)$ ]]; then
+    key="${BASH_REMATCH[1],,}"
+    case "$key" in
+      found | 'will do' | did | why | risk | problem | cause | fix | undo)
+        detail "${key^}" "${BASH_REMATCH[2]}"; return 0 ;;
+    esac
+  fi
+  detail Note "$line"
+}
+
+# is_problem_line LINE: is LINE a 'problem:' line?
+is_problem_line() { [[ "${1,,}" =~ ^[[:space:]]*problem:[[:space:]] ]]; }
+
+# has_label KEY TEXT: does TEXT have a 'KEY:' line?
+has_label() { grep -qi "^[[:space:]]*$1:[[:space:]]" <<< "$2"; }
+
+# log_line TEXT: add TEXT to the run log, or keep it until the log exists.
+# A log that cannot be written never stops a run.
+log_line() {
+  if [[ -n "$LOG_FILE" ]]; then
+    printf '%s\n' "$1" >> "$LOG_FILE" 2> /dev/null || true
+  elif (( LOG_ON )); then
+    LOG_BUF+="$1"$'\n'
+  fi
+}
+
+# log_open WHAT: open the run's output.log, readable by root only, with a
+# line saying what writes to it, then the lines kept so far.
+log_open() {
+  local file="$LAB_STATE_DIR/runs/$LAB_RUN_ID/output.log"
+  if ( umask 077; printf '%s %s: %s\n' "$(lab_now)" "labyrinth $LAB_VERSION" "$1" >> "$file" ) 2> /dev/null \
+      && chmod 600 "$file" 2> /dev/null; then
+    LOG_FILE="$file"
+    if [[ -n "$LOG_BUF" ]]; then printf '%s' "$LOG_BUF" >> "$LOG_FILE" 2> /dev/null || true; fi
+  fi
+  LOG_BUF=''
+}
+
+# log_entry ID ENTRY: the raw output of an entry point (ENTRY_OUT) and its
+# exit code, for the run log; at most LOG_CAP lines.
+log_entry() {
+  local n=0 line
+  if [[ -z "$LOG_FILE" ]] && (( ! LOG_ON )); then return 0; fi
+  if [[ -n "$ENTRY_OUT" ]]; then
+    while IFS= read -r line; do
+      n=$((n + 1))
+      if (( n <= LOG_CAP )); then log_line "$1 $2| ${line%$'\r'}"; fi
+    done <<< "$ENTRY_OUT"
+  fi
+  if (( n > LOG_CAP )); then log_line "$1 $2: $((n - LOG_CAP)) more lines not logged"; fi
+  log_line "$(date -u +%H:%M:%S) $1 $2 exited $ENTRY_RC"
+}
+
+# stream ID ENTRY: an entry point's output, as it comes: labelled lines to
+# the operator, raw lines to the run log. Returns 0 when its last line was
+# a 'problem:' line, and 1 when it was not.
+stream() {
+  local line last='' n=0 NO_LOG=1
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    label_line "$line"
+    n=$((n + 1))
+    if (( n <= LOG_CAP )); then log_line "$1 $2| ${line%$'\r'}"; fi
+    if [[ -n "${line//[[:space:]]/}" ]]; then last="$line"; fi
+  done
+  if (( n > LOG_CAP )); then log_line "$1 $2: $((n - LOG_CAP)) more lines not logged"; fi
+  is_problem_line "$last"
 }
 
 # summary MODE: how many modules ended with each status word, counted
 # from the run's arrays, not from the lines printed.
 summary() {
-  local mode="$1" i w out='' notrun=0
+  local mode="$1" i w out='' notrun=0 total=0
   local -A count=([OK]=0 [CHANGE]=0 [WARN]="$LOAD_SKIPPED" [BLOCKED]=0 [FAIL]=0 [ERROR]="$LOAD_ERRORS")
   for ((i = 0; i < ${#RUN_IDS[@]}; i++)); do
     if [[ "$mode" == plan ]]; then
@@ -425,11 +564,19 @@ summary() {
     count[$w]=$((${count[$w]} + 1))
   done
   for w in OK CHANGE WARN BLOCKED FAIL ERROR; do
+    total=$((total + ${count[$w]}))
     if (( ${count[$w]} > 0 )); then out+="${out:+, }${count[$w]} $w"; fi
   done
+  total=$((total + notrun))
   if (( notrun > 0 )); then out+="${out:+, }$notrun not run"; fi
   ERROR_COUNT="${count[ERROR]}"
-  printf 'Summary: %s\n' "${out:-no modules}"
+  if (( total == 0 )); then
+    out 'Summary: no modules.'
+  elif (( total == 1 )); then
+    out "Summary: 1 module: $out."
+  else
+    out "Summary: $total modules: $out."
+  fi
 }
 
 # shell_word WORD: WORD, quoted if the shell would split or expand it.
@@ -441,55 +588,74 @@ shell_word() {
 next_step() {
   local mode="$1" code="$2" phase="$3" i manual=0 other=0 opts=''
   if [[ "$mode" == apply ]] && (( STOPPED )); then
-    printf 'Next: keep the earlier changes or undo them, with the commands above.\n'
+    out 'Next: keep the earlier changes or undo them, with the commands above.'
   elif [[ "$mode" == apply ]] && lab_timer_armed "$LAB_RUN_ID"; then
-    printf "Next: check you can log in from a NEW session, then '%s keep %s'.\n" "$SELF" "${LAB_RUN_ID: -4}"
+    out "Next: check you can log in from a NEW session, then '$SELF keep ${LAB_RUN_ID: -4}'."
   elif (( code == 40 )); then
     if (( ERROR_COUNT > 1 )); then
-      printf 'Next: fix the errors above, then run the same command again.\n'
+      out 'Next: fix the errors above, then run the same command again.'
     else
-      printf 'Next: fix the error above, then run the same command again.\n'
+      out 'Next: fix the error above, then run the same command again.'
     fi
   elif (( code == 20 )); then
-    printf 'Next: clear what blocked it above, then run the same command again.\n'
+    out 'Next: clear what blocked it above, then run the same command again.'
   elif (( code == 10 )); then
     for ((i = 0; i < ${#RUN_IDS[@]}; i++)); do
       if [[ "${RUN_RC[i]}" != 10 ]]; then continue; fi
       if [[ "${RUN_RISK[i]}" == manual-only ]]; then manual=$((manual + 1)); else other=$((other + 1)); fi
     done
     if (( other == 0 )); then
-      printf 'Next: a person carries out the manual steps above; apply changes nothing.\n'
+      out 'Next: a person carries out the manual steps above; apply changes nothing.'
     else
       if [[ -n "${GIVEN[profile]:-}" ]]; then opts+=" --profile ${GIVEN[profile]}"; fi
       if [[ -n "${GIVEN[root]:-}" ]]; then opts+=" --root $(shell_word "${GIVEN[root]}")"; fi
       if [[ -n "${GIVEN[config]:-}" ]]; then opts+=" --config $(shell_word "${GIVEN[config]}")"; fi
       # A command too long for one line goes on a line of its own.
       if (( ${#SELF} + ${#phase} + ${#opts} + 13 > 78 )); then
-        printf 'Next:\n  %s apply %s%s\n' "$SELF" "$phase" "$opts"
+        out 'Next:'
+        out "  $SELF apply $phase$opts"
       else
-        printf 'Next: %s apply %s%s\n' "$SELF" "$phase" "$opts"
+        out "Next: $SELF apply $phase$opts"
       fi
     fi
   fi
 }
 
-# finish MODE CODE PHASE: the end of a plan or apply: Summary, Next and
-# the exit code with its meaning; then exit with CODE.
+# finish MODE CODE PHASE: the end of a plan or apply: Summary, what
+# changed, the log, Next and the exit code with its meaning; then exit.
 finish() {
-  local mode="$1" code="$2" what
+  local mode="$1" code="$2" what i problems="$STOPPED"
   case "$mode:$code" in
     plan:0) what='nothing to do' ;;
     plan:10) what='change needed' ;;
+    plan:40) what='error: a module could not be checked' ;;
     apply:0) what='done' ;;
     apply:10) what='manual steps needed' ;;
     *:20) what='blocked' ;;
     *:30) what='a check failed, and that change was undone' ;;
     *) what='error' ;;
   esac
-  if [[ "$mode" == plan ]] || (( ! APPLIED )); then summary plan; else summary apply; fi
+  out ''
+  if [[ "$mode" == plan ]] || (( ! APPLIED )); then
+    summary plan
+    out 'Nothing on this host was changed.'
+  else
+    summary apply
+    for ((i = 0; i < ${#RUN_IDS[@]}; i++)); do
+      case "${RUN_STATE[i]}" in failed | error) problems=1 ;; esac
+    done
+    if (( problems )); then mark_problems; fi
+  fi
+  if [[ -n "$LOG_FILE" ]]; then out "Log: $LOG_FILE"; fi
   next_step "$mode" "$code" "$3"
-  printf '%s finished: exit %d (%s)\n' "$mode" "$code" "$what"
+  out "$mode finished: exit $code ($what)"
   exit "$code"
+}
+
+# mark_problems: note in the run folder that the run had problems, so
+# that 'runs' points to its log.
+mark_problems() {
+  : > "$LAB_STATE_DIR/runs/$LAB_RUN_ID/problems" 2> /dev/null || true
 }
 
 # edit_distance A B: the Levenshtein distance between A and B.
@@ -711,40 +877,82 @@ new_run_id() {
 
 # run_entry DIR ENTRY ID [DRY_RUN]: run one entry point as its own process
 # with the contract's environment (docs/Conventions.md section 3). Its
-# output, both streams, goes to the operator as it comes, indented under
-# the module's result line (section 3.2); its stdin is empty, so it can
-# never take an answer meant for the runner. Its exit code is left in ENTRY_RC.
+# output, both streams, goes to the operator as it comes, as labelled lines
+# (section 3.2), and to the run log; its stdin is empty, so it can never take
+# an answer meant for the runner. Its exit code is left in ENTRY_RC, and
+# whether it ended with a 'problem:' line in GAVE_REASON.
 run_entry() {
   local dir="$1" entry="$2" id="$3" dry="${4:-1}"
+  local -a st
+  log_line "$(date -u +%H:%M:%S) $id $entry started"
   if LAB_MODULE_ID="$id" LAB_ENTRY="$entry" LAB_DRY_RUN="$dry" LAB_APPROVED="$APPROVED" \
-      bash "$dir/$entry.sh" < /dev/null 2>&1 | indent; then
-    ENTRY_RC=0
+      bash "$dir/$entry.sh" < /dev/null 2>&1 | stream "$id" "$entry"; then
+    st=("${PIPESTATUS[@]}")
   else
-    ENTRY_RC="${PIPESTATUS[0]}"
+    st=("${PIPESTATUS[@]}")
   fi
+  ENTRY_RC="${st[0]}"
+  if (( ${st[1]} == 0 )); then GAVE_REASON=1; else GAVE_REASON=0; fi
+  log_line "$(date -u +%H:%M:%S) $id $entry exited $ENTRY_RC"
 }
 
-# capture_entry DIR ENTRY ID: like run_entry in plan mode, but the output
-# is kept in ENTRY_OUT, because the result line that goes above it is known
-# only when the entry point ends.
+# capture_entry DIR ENTRY ID: run an entry point in plan mode, keeping its
+# output in ENTRY_OUT, because the result line that goes above it is known
+# only when it ends. Sets ENTRY_RC and GAVE_REASON like run_entry.
 capture_entry() {
-  local dir="$1" entry="$2" id="$3"
+  local dir="$1" entry="$2" id="$3" line last=''
   ENTRY_RC=0
   ENTRY_OUT="$(LAB_MODULE_ID="$id" LAB_ENTRY="$entry" LAB_DRY_RUN=1 LAB_APPROVED="$APPROVED" \
     bash "$dir/$entry.sh" < /dev/null 2>&1)" || ENTRY_RC=$?
+  while IFS= read -r line; do
+    if [[ -n "${line//[[:space:]]/}" ]]; then last="$line"; fi
+  done <<< "$ENTRY_OUT"
+  if is_problem_line "$last"; then GAVE_REASON=1; else GAVE_REASON=0; fi
+  log_entry "$id" "$entry"
 }
 ENTRY_OUT=''
 
-# show_output: print ENTRY_OUT, indented.
+# show_output [TEXT]: TEXT, or ENTRY_OUT, as labelled lines. The run log
+# has the raw lines already.
 show_output() {
-  if [[ -n "$ENTRY_OUT" ]]; then printf '%s\n' "$ENTRY_OUT" | indent; fi
+  local text="${1-$ENTRY_OUT}" line NO_LOG=1
+  if [[ -z "$text" ]]; then return 0; fi
+  while IFS= read -r line; do label_line "$line"; done <<< "$text"
+}
+
+# failed ENTRY CODE SCRIPT: the Problem line after an entry point failed
+# (design 00: a failing entry point prints a 'problem:' line last). Without
+# one, the runner says it gave no reason, and where the script is.
+failed() {
+  local what="failed with exit code $2"
+  if [[ "$2" == 20 ]]; then what='was blocked (exit code 20)'; fi
+  if (( GAVE_REASON )); then
+    detail Problem "its $1 script $what, for the reason above"
+  else
+    detail Problem "its $1 script $what and gave no reason"
+    detail Script "$3"
+  fi
+}
+
+# explain ENTRY CODE SCRIPT: in plan mode, what a failed entry point said:
+# its labelled lines when it gave a reason; otherwise the runner's Problem
+# line and its last 10 lines.
+explain() {
+  local line n=0
+  if (( GAVE_REASON )); then show_output; return 0; fi
+  failed "$1" "$2" "$3"
+  if [[ -z "${ENTRY_OUT//[[:space:]]/}" ]]; then detail 'It said' nothing; return 0; fi
+  while IFS= read -r line; do
+    line="${line%$'\r'}"
+    if [[ -n "${line//[[:space:]]/}" ]]; then detail 'It said' "$line"; n=$((n + 1)); fi
+  done < <(printf '%s\n' "$ENTRY_OUT" | grep -v '^[[:space:]]*$' | tail -n 10)
 }
 
 # load_modules PHASE: read and check every module of PHASE in the profile,
 # then put them in run order: by priority, P0 first, and in profile order
 # within a priority. Returns 40 if any module is invalid.
 load_modules() {
-  local phase="$1" id name dir worst=0 p i entry needed
+  local phase="$1" id name dir worst=0 p i entry needed line
   local -a ids=() dirs=() risks=() scored=() reqs=() prios=()
   PHASE_COUNT=0 LOAD_ERRORS=0 LOAD_SKIPPED=0
   for id in "${PROFILE_IDS[@]+"${PROFILE_IDS[@]}"}"; do
@@ -753,18 +961,27 @@ load_modules() {
     name="${id#*.}"
     dir="$LAB_ROOT/phases/$phase/modules/$name"
     if [[ ! -d "$dir" ]]; then
-      say ERROR "[$id] error: module not found"
-      printf 'looked in: %s\n' "$dir" | indent
+      say ERROR "$id"
+      detail Problem 'module not found: the profile lists it, but there is no such module'
+      detail Found "no folder $dir"
+      detail Fix "correct the ID in profile $OPT_PROFILE, or add the module"
       LOAD_ERRORS=$((LOAD_ERRORS + 1)); worst=40; continue
     fi
     YML_ERR=''
     if ! read_module_yml "$dir/module.yml" || ! validate_module "$dir/module.yml" "$id" "$phase"; then
-      say ERROR "[$id] error: invalid module.yml"
-      printf '%s' "$YML_ERR" | indent
+      say ERROR "$id"
+      detail Problem 'invalid module.yml, so the module cannot be loaded'
+      while IFS= read -r line; do
+        if [[ -n "$line" ]]; then detail Found "${line#"$dir/"}"; fi
+      done <<< "$YML_ERR"
+      detail Fix "report the module to its author, or correct it in $dir"
       LOAD_ERRORS=$((LOAD_ERRORS + 1)); worst=40; continue
     fi
+    TITLES[$id]="${MOD[title]}"
     if ! compgen -G "$dir/*.sh" > /dev/null; then
-      say WARN "[$id] skipped: no Linux entry points"
+      say WARN "$(module_name "$id")"
+      detail Found 'skipped: no Linux entry points; it runs on other hosts'
+      more "$id"
       LOAD_SKIPPED=$((LOAD_SKIPPED + 1)); continue
     fi
     needed='check'
@@ -773,7 +990,10 @@ load_modules() {
     esac
     for entry in $needed; do
       if [[ ! -f "$dir/$entry.sh" ]]; then
-        say ERROR "[$id] error: missing $entry.sh (needed for risk ${MOD[risk]})"
+        say ERROR "$(module_name "$id")"
+        detail Problem "missing $entry.sh, which a module of risk ${MOD[risk]} needs"
+        detail Fix 'report the module to its author'
+        more "$id"
         LOAD_ERRORS=$((LOAD_ERRORS + 1)); worst=40; continue 2
       fi
     done
@@ -791,35 +1011,59 @@ load_modules() {
   return "$worst"
 }
 
-# plan_one INDEX: run check and, when a change is needed, plan. Returns the
-# module's contract code and keeps it in RUN_RC.
+# plan_one INDEX: run check and, when a change is needed, plan; print the
+# module's status line and its labelled lines. Returns the module's
+# contract code and keeps it in RUN_RC.
 plan_one() {
-  local i="$1" id dir rc
-  id="${RUN_IDS[i]}"; dir="${RUN_DIR[i]}"
+  local i="$1" id dir rc name said risk
+  id="${RUN_IDS[i]}"; dir="${RUN_DIR[i]}"; risk="${RUN_RISK[i]}"
+  name="$(module_name "$id")"
   rc=0
   capture_entry "$dir" check "$id"
   case "$ENTRY_RC" in
-    0)  say OK "[$id] check: nothing to do"; show_output ;;
+    0)  say OK "$name"
+        if [[ -n "${ENTRY_OUT//[[:space:]]/}" ]]; then show_output; else detail Found 'nothing to do'; fi ;;
     10)
+      said="$ENTRY_OUT"
       if [[ ! -f "$dir/plan.sh" ]]; then
-        say ERROR "[$id] error: change needed but plan.sh is missing"; show_output; rc=40
+        say ERROR "$name"; show_output
+        detail Problem 'its check found a change to make, but plan.sh is missing'
+        detail Fix 'report the module to its author; the others were still checked'
+        more "$id"; rc=40
       else
-        if [[ "${RUN_RISK[i]}" == manual-only ]]; then
-          say WARN "[$id] check: manual steps needed; plan follows"
-        else
-          say CHANGE "[$id] check: change needed; plan follows"
-        fi
-        show_output
-        run_entry "$dir" plan "$id"
+        capture_entry "$dir" plan "$id"
         case "$ENTRY_RC" in
-          0 | 10) rc=10 ;;
-          20)     say BLOCKED "[$id] plan: blocked by a safety gate"; rc=20 ;;
-          *)      say ERROR "[$id] plan: error (exit $ENTRY_RC)"; rc=40 ;;
+          0 | 10)
+            if [[ "$risk" == manual-only ]]; then
+              say WARN "$name"
+              detail Found 'this needs a person; Labyrinth will not change it'
+            else
+              say CHANGE "$name"
+            fi
+            show_output "$said"; show_output
+            if [[ "$risk" == manual-only ]]; then
+              more "$id"
+            elif ! has_label risk "$said"$'\n'"$ENTRY_OUT"; then
+              detail Risk "$(risk_words "$risk")"
+            fi
+            rc=10 ;;
+          20)
+            say BLOCKED "$name"; show_output "$said"; explain plan 20 "$dir/plan.sh"
+            detail Fix 'clear what blocked it, then run the same command again'
+            more "$id"; rc=20 ;;
+          *)
+            say ERROR "$name"; show_output "$said"; explain plan "$ENTRY_RC" "$dir/plan.sh"
+            detail Fix 'report the module to its author; the others were still checked'
+            more "$id"; rc=40 ;;
         esac
       fi
       ;;
-    20) say BLOCKED "[$id] check: blocked by a safety gate"; show_output; rc=20 ;;
-    *)  say ERROR "[$id] check: error (exit $ENTRY_RC)"; show_output; rc=40 ;;
+    20) say BLOCKED "$name"; explain check 20 "$dir/check.sh"
+        detail Fix 'clear what blocked it, then run the same command again'
+        more "$id"; rc=20 ;;
+    *)  say ERROR "$name"; explain check "$ENTRY_RC" "$dir/check.sh"
+        detail Fix 'report the module to its author; the others were still checked'
+        more "$id"; rc=40 ;;
   esac
   RUN_RC[i]=$rc
   return "$rc"
@@ -835,7 +1079,10 @@ plan_all() {
     if (( rc > worst )); then worst=$rc; fi
   done
   if (( PHASE_COUNT == 0 )); then
-    say WARN "[$1] no modules for this phase in profile $OPT_PROFILE"
+    say WARN "Phase $1"
+    detail Found "profile $OPT_PROFILE lists no $1 modules: nothing to check"
+    detail Fix "add $1 modules to the profile, or plan another phase"
+    detail More "$SELF help basics"
   fi
   return "$worst"
 }
@@ -865,25 +1112,30 @@ ask() {
   ANSWER=''
   if ! IFS= read -r ANSWER; then
     printf '\n'
+    log_line "$1(no answer)"
     return 1
   fi
   ANSWER="$(lab_trim "$ANSWER")"
+  log_line "$1$ANSWER"
 }
 
+# gate_breakglass: before any change, the operator proves the break-glass
+# account still works (design 01, section 7).
 gate_breakglass() {
   local account=''
   if account="$(lab_breakglass_recorded)"; then
-    printf 'break-glass: confirmed earlier for %s\n' "$account"
+    out "Break-glass account $account: confirmed earlier, so not asked again."
   else
     if [[ -n "$OPT_BREAKGLASS" ]]; then
       account="$OPT_BREAKGLASS"
     else
+      out 'Before any change, prove you can still get in if remote logins break.'
       ask 'Break-glass check: log in at this host'"'"'s console with the break-glass account, then type its name: ' \
         || die 'no answer: break-glass not confirmed; nothing was changed' 20
       account="$ANSWER"
     fi
     lab_breakglass_record "$account" || die 'break-glass not confirmed; nothing was changed' 20
-    printf 'break-glass: %s confirmed and recorded\n' "$account"
+    out "Break-glass account $account: confirmed and recorded."
   fi
   BREAKGLASS="$account"
 }
@@ -907,13 +1159,35 @@ probe_now() {
   fi
 }
 
+# probe_lines RESULTS [NAMES]: lab_probe_all's lines as Found lines; with
+# NAMES, only those services, each of which passed before the change.
+probe_lines() {
+  local name result rest
+  while read -r name result rest; do
+    if [[ -z "$name" ]]; then continue; fi
+    if (( $# > 1 )); then
+      if ! grep -qx -- "$name" <<< "$2"; then continue; fi
+      detail Found "$name: $result${rest:+ ($rest)}; it passed before"
+    else
+      detail Found "$name: $result${rest:+ ($rest)}"
+    fi
+  done <<< "$1"
+}
+
 # record_for ID ACTION [TARGET] [NOTE]: a manifest entry on a module's behalf.
 record_for() { LAB_MODULE_ID="$1" lab_manifest_record "$2" "${3:-}" '' '' "${4:-}"; }
 
-# rollback_module ID: undo one module's changes in the current run.
+# rollback_module ID [inline]: undo one module's changes in the current run.
+# Inline, under the FAIL or ERROR block of a failed apply, success is one
+# Did line; otherwise the module gets its own CHANGE and OK lines.
 rollback_module() {
-  local id="$1" phase="${1%%.*}" dir rc=0
+  local id="$1" mode="${2:-own}" phase="${1%%.*}" dir rc=0 name
   dir="$LAB_ROOT/phases/$phase/modules/${id#*.}"
+  name="$(module_name "$id")"
+  if [[ "$mode" == own ]]; then
+    say CHANGE "$name"
+    detail 'Will do' 'undo what this run changed'
+  fi
   if [[ -f "$dir/rollback.sh" ]]; then
     run_entry "$dir" rollback "$id" 0
     rc="$ENTRY_RC"
@@ -923,17 +1197,24 @@ rollback_module() {
   if (( rc == 0 )); then
     # Checked by hand: this function is called with ||, so errexit is off.
     if ! record_for "$id" rolled_back; then
-      say ERROR "[$id] rolled back, but the manifest cannot be written"
-      note 'It still lists the change; rolling back again is safe.'
+      say ERROR "$name"
+      detail Problem 'rolled back, but the manifest cannot be written'
+      detail Found 'the manifest still lists the change; rolling back again is safe'
+      detail Fix "run '$SELF rollback ${LAB_RUN_ID: -4}' again"
+      log_ref; more "$id"
       return 40
     fi
-    say OK "[$id] rolled back"
-    LAB_MODULE_ID="$id" lab_log_warn rolled_back "rolled back"
+    if [[ "$mode" == own ]]; then say OK "$name"; fi
+    detail Did 'rolled back'
+    LAB_MODULE_ID="$id" lab_log_warn rolled_back "rolled back" 2> /dev/null
     return 0
   fi
-  say ERROR "[$id] rollback FAILED (exit $rc)"
-  note "Restore its files by hand from $LAB_BACKUP_DIR/$LAB_RUN_ID/$id"
-  LAB_MODULE_ID="$id" lab_log_error rollback_failed "rollback failed with exit $rc"
+  say ERROR "$name"
+  detail Problem "its rollback stopped with exit code $rc; the change may still be in place"
+  if [[ -f "$dir/rollback.sh" ]]; then detail Script "$dir/rollback.sh"; fi
+  detail Fix "restore its files by hand from $LAB_BACKUP_DIR/$LAB_RUN_ID/$id"
+  log_ref; more "$id"
+  LAB_MODULE_ID="$id" lab_log_error rollback_failed "rollback failed with exit $rc" 2> /dev/null
   return 40
 }
 
@@ -943,7 +1224,10 @@ requires_met() {
   for req in ${RUN_REQUIRES[i]}; do
     for ((j = 0; j < ${#RUN_IDS[@]}; j++)); do
       if [[ "${RUN_IDS[j]}" == "$req" && "${RUN_STATE[j]}" != 'done' && "${RUN_STATE[j]}" != planned ]]; then
-        say BLOCKED "[${RUN_IDS[i]}] blocked: requires $req, which did not complete"
+        say BLOCKED "$(module_name "${RUN_IDS[i]}")"
+        detail Problem "it needs $(module_name "$req") to finish first, and it did not"
+        detail Fix 'fix that module first, then run the same command again'
+        more "${RUN_IDS[i]}"
         return 1
       fi
     done
@@ -953,12 +1237,15 @@ requires_met() {
 # apply_one INDEX: apply, verify and probe one module. Returns 0 (done or
 # nothing to do), 20 (blocked; continue), or 30/40 (rolled back; stop).
 apply_one() {
-  local i="$1" id dir risk after reg rc tok why
+  local i="$1" id dir risk name after reg rc tok why line
   id="${RUN_IDS[i]}"; dir="${RUN_DIR[i]}"; risk="${RUN_RISK[i]}"
+  name="$(module_name "$id")"
   APPROVED=''
   if [[ "$risk" == manual-only ]]; then
-    say WARN "[$id] manual-only; nothing changed"
-    note 'A person carries out the checklist above.'
+    say WARN "$name"
+    detail Found 'this needs a person; Labyrinth changed nothing'
+    detail Fix 'carry out the steps its plan listed above'
+    more "$id"
     RUN_STATE[i]=manual; return 0
   fi
   if [[ "${RUN_SCORED[i]}" == true ]]; then
@@ -966,41 +1253,62 @@ apply_one() {
     # its reason is printed under the ERROR line.
     rc=0; why="$(lab_addrs_load scoring-allowlist 2>&1)" || rc=$?
     if (( rc == 1 )); then
-      say ERROR "[$id] error: the scoring allowlist is malformed"
-      printf '%s\n' "$why" | indent
+      say ERROR "$name"
+      detail Problem 'the scoring allowlist is malformed'
+      while IFS= read -r line; do
+        if [[ -n "$line" ]]; then detail Found "${line#"$LAB_CONFIG_DIR/"}"; fi
+      done <<< "$why"
+      detail Fix "$FIX_LINE"
+      more "$id"
       RUN_STATE[i]=error; return 40
     fi
     if (( rc == 2 )); then
-      say BLOCKED "[$id] blocked: it touches scored services"
-      note 'The scoring allowlist is missing or empty.'
+      say BLOCKED "$name"
+      detail Problem 'it can affect a scored service, and the scoring allowlist is missing or empty'
+      detail Fix "list the scoring addresses in $LAB_CONFIG_DIR/scoring-allowlist"
+      more "$id"
       RUN_STATE[i]=blocked; return 20
     fi
     if (( ! HAVE_SERVICES )); then
-      say BLOCKED "[$id] blocked: it touches scored services"
-      note 'There is no service list to probe.'
+      say BLOCKED "$name"
+      detail Problem 'it can affect a scored service, and there is no service list to test it with'
+      detail Fix "list the scored services in $LAB_CONFIG_DIR/services"
+      more "$id"
       RUN_STATE[i]=blocked; return 20
     fi
   fi
   requires_met "$i" || { RUN_STATE[i]=blocked; return 20; }
   if [[ "$risk" == approval ]]; then
-    ask "[$id] Type the ids of the items to approve, separated by spaces, or press Enter for none: " || ANSWER=''
+    out "$name changes only the items you approve."
+    ask "Type the ids of the items to approve, separated by spaces, or press Enter for none: " || ANSWER=''
     for tok in $ANSWER; do
-      [[ "$tok" =~ ^[A-Za-z0-9._:@-]+$ ]] || { say BLOCKED "[$id] blocked: not an item id: $tok"; RUN_STATE[i]=blocked; return 20; }
+      if [[ ! "$tok" =~ ^[A-Za-z0-9._:@-]+$ ]]; then
+        say BLOCKED "$name"
+        detail Problem "not an item id: $tok"
+        detail Fix 'type ids from its plan above, separated by spaces'
+        more "$id"
+        RUN_STATE[i]=blocked; return 20
+      fi
     done
     APPROVED="$ANSWER"
     if [[ -z "$APPROVED" ]]; then
-      say OK "[$id] nothing approved; nothing changed"
+      say OK "$name"
+      detail Did 'nothing approved, so nothing changed'
       RUN_STATE[i]='done'; return 0
     fi
   fi
   if [[ ! -f "$dir/apply.sh" ]]; then
-    say OK "[$id] no apply step; nothing changed"
+    say OK "$name"
+    detail Found 'it has no apply step; nothing changed'
     RUN_STATE[i]='done'; return 0
   fi
   if [[ "$risk" != read-only ]]; then
     if ! lab_timer_arm "$((LAB_EVENT[REVERT_MINUTES] * 60))" "$LAB_RUN_ID" \
         "$BASH" "$LAB_ROOT/labyrinth.sh" --root "$DATA_ROOT" --config "$LAB_CONFIG_DIR" rollback "$LAB_RUN_ID"; then
-      say BLOCKED "[$id] blocked: the revert timer could not be armed"
+      say BLOCKED "$name"
+      detail Problem 'the revert timer could not be armed, so nothing was changed'
+      detail Fix 'check that systemd timers work on this host, then run the same command again'
+      more "$id"
       RUN_STATE[i]=blocked; return 20
     fi
   fi
@@ -1008,22 +1316,32 @@ apply_one() {
   # Checked by hand: errexit is off inside a function called with ||, and a
   # change the manifest does not list could never be rolled back.
   if ! record_for "$id" apply_start '' "risk $risk"; then
-    say ERROR "[$id] not applied: the run manifest cannot be written"
+    say ERROR "$name"
+    detail Problem 'not applied: the run manifest cannot be written'
+    detail Fix "check that $LAB_STATE_DIR can be written, then run the same command again"
+    log_ref; more "$id"
     RUN_STATE[i]=error; return 40
   fi
   LAB_MODULE_ID="$id" lab_log_info apply_start "applying"
-  say CHANGE "[$id] applying"
+  say CHANGE "$name"
   run_entry "$dir" apply "$id" 0
   case "$ENTRY_RC" in
     0) ;;
     20)
-      say BLOCKED "[$id] apply: blocked by a safety gate"
+      say BLOCKED "$name"
+      failed apply 20 "$dir/apply.sh"
+      detail Found 'it stopped before changing anything'
+      detail Fix 'clear what blocked it, then run the same command again'
+      more "$id"
       record_for "$id" rolled_back '' 'apply blocked before any change'
       RUN_STATE[i]=blocked; return 20
       ;;
     *)
-      say ERROR "[$id] apply: error (exit $ENTRY_RC); rolling back"
-      RUN_STATE[i]=error; rollback_module "$id" || true; return 40
+      say ERROR "$name"
+      failed apply "$ENTRY_RC" "$dir/apply.sh"
+      RUN_STATE[i]=error; rollback_module "$id" inline || true
+      log_ref; more "$id"
+      return 40
       ;;
   esac
 
@@ -1031,9 +1349,11 @@ apply_one() {
     run_entry "$dir" verify "$id" 0
     rc="$ENTRY_RC"
     if (( rc != 0 )); then
-      say FAIL "[$id] verify failed (exit $rc); rolling back"
-      LAB_MODULE_ID="$id" lab_log_error verify_failed "verify exited $rc"
-      RUN_STATE[i]=failed; rollback_module "$id" || RUN_STATE[i]=error
+      say FAIL "$name"
+      failed verify "$rc" "$dir/verify.sh"
+      LAB_MODULE_ID="$id" lab_log_error verify_failed "verify exited $rc" 2> /dev/null
+      RUN_STATE[i]=failed; rollback_module "$id" inline || RUN_STATE[i]=error
+      log_ref; more "$id"
       if (( rc == 30 )); then return 30; fi
       return 40
     fi
@@ -1043,18 +1363,26 @@ apply_one() {
     after="$(probe_now)"
     reg="$(lab_probe_regressions "$BEFORE" "$after")"
     if [[ -n "$reg" ]]; then
-      say FAIL "[$id] scored service regressed: ${reg//$'\n'/ }; rolling back"
-      LAB_MODULE_ID="$id" lab_log_error regression "scored service regressed: ${reg//$'\n'/ }"
-      RUN_STATE[i]=failed; rollback_module "$id" || RUN_STATE[i]=error
+      say FAIL "$name"
+      detail Problem "a scored service stopped working after the change: ${reg//$'\n'/, }"
+      probe_lines "$after" "$reg"
+      LAB_MODULE_ID="$id" lab_log_error regression "scored service regressed: ${reg//$'\n'/ }" 2> /dev/null
+      RUN_STATE[i]=failed; rollback_module "$id" inline || RUN_STATE[i]=error
+      log_ref; more "$id"
       return 30
     fi
   fi
 
   if [[ -f "$dir/cleanup.sh" ]]; then
     run_entry "$dir" cleanup "$id" 0
-    (( ENTRY_RC == 0 )) || say WARN "[$id] cleanup: exit $ENTRY_RC (the change is kept)"
+    if (( ENTRY_RC != 0 )); then
+      say WARN "$name"
+      detail Problem "its cleanup script stopped with exit code $ENTRY_RC; the change is kept"
+      more "$id"
+    fi
   fi
-  say OK "[$id] applied and verified"
+  say OK "$name"
+  detail Did 'applied and verified'
   LAB_MODULE_ID="$id" lab_log_info applied "applied and verified"
   RUN_STATE[i]='done'
   return 0
@@ -1101,31 +1429,65 @@ cmd_plan() {
   lab_event_load 2>/dev/null || die "event.conf is malformed: $(load_reason lab_event_load)" 40 "$FIX_LINE"
   gate_protected
   flush_warnings
-  printf 'labyrinth %s: plan %s, profile %s\n' "$LAB_VERSION" "$phase" "$OPT_PROFILE"
-  printf 'run %s (plan mode: nothing is recorded)\n' "$LAB_RUN_ID"
+  out "labyrinth $LAB_VERSION: plan $phase, profile $OPT_PROFILE"
+  out "run $LAB_RUN_ID (plan mode: nothing is recorded)"
+  plan_intro plan "$phase"
   plan_all "$phase" || worst=$?
   finish plan "$worst" "$phase"
 }
 
+# plan_intro MODE PHASE: after the two-line header, what happens next and
+# how many modules are checked.
+plan_intro() {
+  local host n=0 id
+  host="$(lab_host)"
+  for id in "${PROFILE_IDS[@]+"${PROFILE_IDS[@]}"}"; do
+    if [[ "${id%%.*}" == "$2" ]]; then n=$((n + 1)); fi
+  done
+  if [[ "$1" == plan ]]; then
+    out "This is a plan: Labyrinth only looks, and nothing on $host changes."
+    if [[ -n "${LAB_HOST_GROUP:-}" ]]; then
+      out "Host $host is in group ${LAB_HOST_GROUP}."
+    else
+      out "Host $host is not in the hosts file; apply needs it there."
+    fi
+  else
+    out 'First Labyrinth plans; nothing changes until you confirm.'
+  fi
+  if (( n == 1 )); then
+    out "Checking 1 module of profile $OPT_PROFILE."
+  else
+    out "Checking $n modules of profile $OPT_PROFILE, most urgent first."
+  fi
+  out ''
+}
+
 # recap HOST GROUP: what apply is about to do, before the group-name prompt.
 recap() {
-  local i what
-  printf 'About to apply on host %s, group %s:\n' "$1" "$2"
+  local i what l remote=0
+  out ''
+  out "About to apply on host $1, group $2:"
   for ((i = 0; i < ${#RUN_IDS[@]}; i++)); do
     case "${RUN_RC[i]}" in
-      10) what='will change'
-          if [[ "${RUN_RISK[i]}" == manual-only ]]; then what='manual'; fi ;;
-      20) what='blocked' ;;
+      10) what='Will change:'
+          if [[ "${RUN_RISK[i]}" == manual-only ]]; then what='Manual:'; fi
+          if [[ "${RUN_RISK[i]}" == service-affecting ]]; then remote=1; fi ;;
+      20) what='Blocked:' ;;
       *) continue ;;
     esac
-    printf '  %-12s %s\n' "$what" "${RUN_IDS[i]}"
+    printf -v l '  %-13s%s' "$what" "$(module_name "${RUN_IDS[i]}")"
+    out "$l"
   done
-  printf 'Each change arms a revert timer that undoes the run in %s minutes\n' "${LAB_EVENT[REVERT_MINUTES]}"
-  printf 'unless you keep it.\n'
+  out "A revert timer undoes this whole run in ${LAB_EVENT[REVERT_MINUTES]} minutes unless you keep it."
+  if (( remote )) && [[ -n "${SSH_CONNECTION:-}${SSH_CLIENT:-}${SSH_TTY:-}" ]]; then
+    out 'You are connected over SSH, and a change may interrupt a service.'
+    out 'Keep a second session open until you have checked you can log in.'
+  fi
+  out 'To go ahead, type the group name. Anything else stops here; nothing changes.'
 }
 
 cmd_apply() {
-  local phase="$1" host group worst=0 rc i todo=0 stopped=0 due
+  local phase="$1" host group worst=0 rc i todo=0 stopped=0 when
   export LAB_DRY_RUN=1
   umask 077
   host="$(lab_host)"
@@ -1147,15 +1509,20 @@ cmd_apply() {
   trap 'lab_lock_release' EXIT
   flush_warnings
 
-  printf 'labyrinth %s: APPLY %s, profile %s\n' "$LAB_VERSION" "$phase" "$OPT_PROFILE"
-  printf 'run %s on host %s, group %s\n' "$LAB_RUN_ID" "$host" "$group"
+  # The run log keeps every line from here; it is written once the run
+  # folder exists, after the group is confirmed.
+  LOG_ON=1
+  out "labyrinth $LAB_VERSION: APPLY $phase, profile $OPT_PROFILE"
+  out "run $LAB_RUN_ID on host $host, group $group"
+  plan_intro apply "$phase"
   plan_all "$phase" || worst=$?
   (( worst < 40 )) || die 'the plan has errors; nothing was changed'
   for ((i = 0; i < ${#RUN_IDS[@]}; i++)); do
     if [[ "${RUN_RC[i]}" == 10 && "${RUN_RISK[i]}" != manual-only ]]; then todo=$((todo + 1)); fi
   done
   if (( todo == 0 )); then
-    printf 'nothing to apply\n'
+    out ''
+    out 'There is nothing to apply: no module needs a change Labyrinth can make.'
     finish apply "$worst" "$phase"
   fi
 
@@ -1172,6 +1539,7 @@ cmd_apply() {
     die 'the run manifest cannot be written; nothing was changed'
   fi
   RUN_OPEN=1 APPLIED=1
+  log_open "apply $phase, run $LAB_RUN_ID, host $host"
   lab_log_info run_start "apply $phase, profile $OPT_PROFILE, group $group"
   rc=0; lab_services_load || rc=$?
   (( rc != 1 )) || die 'the service list is malformed; nothing was changed'
@@ -1179,10 +1547,14 @@ cmd_apply() {
     HAVE_SERVICES=1
     BEFORE="$(probe_now)"
     printf '%s\n' "$BEFORE" > "$LAB_STATE_DIR/runs/$LAB_RUN_ID/probes-before"
-    printf 'probes before the run:\n%s\n' "$BEFORE"
+    out ''
+    out 'Scored services before any change:'
+    probe_lines "$BEFORE"
   else
-    printf 'warning: no service list (%s/services), so no before-and-after probes\n' "$LAB_CONFIG_DIR"
+    out ''
+    out "No scored service is tested: there is no list at $LAB_CONFIG_DIR/services"
   fi
+  out ''
 
   worst=0
   for ((i = 0; i < ${#RUN_IDS[@]}; i++)); do
@@ -1196,20 +1568,21 @@ cmd_apply() {
   lab_lock_release
 
   STOPPED="$stopped"
+  out ''
   if (( stopped )); then
     run_stopped
   elif lab_timer_armed "$LAB_RUN_ID"; then
-    printf 'All changes are applied and verified.\n'
-    printf 'From a NEW session, check that you can still log in.\n'
-    if due="$(lab_timer_due "$LAB_RUN_ID" 2> /dev/null)"; then
-      printf 'The revert timer rolls this run back at %s UTC.\n' "${due:11:5}"
+    out 'All changes are applied and verified.'
+    out 'From a NEW session, check that you can still log in.'
+    if when="$(due_words "$LAB_RUN_ID")"; then
+      out "The revert timer rolls this run back $when."
     fi
     if ask "Type keep to keep the changes; anything else leaves the revert timer to undo them in ${LAB_EVENT[REVERT_MINUTES]} minutes: " \
         && [[ "$ANSWER" == keep ]]; then
       keep_run || worst=$?
     else
-      printf 'Not kept. To keep later: %s keep %s\n' "$SELF" "${LAB_RUN_ID: -4}"
-      printf 'To undo now: %s rollback %s\n' "$SELF" "${LAB_RUN_ID: -4}"
+      out "Not kept. To keep later: $SELF keep ${LAB_RUN_ID: -4}"
+      out "To undo now: $SELF rollback ${LAB_RUN_ID: -4}"
     fi
   fi
   finish apply "$worst" "$phase"
@@ -1225,28 +1598,28 @@ keep_run() {
   lab_lock_acquire 10 || return 20
   if run_rolled_back; then
     lab_lock_release
-    printf 'too late: run %s was already rolled back\n' "$LAB_RUN_ID"
+    out "too late: run $LAB_RUN_ID was already rolled back"
     return 20
   fi
   # Checked by hand: errexit is off inside a function called with ||.
   if ! lab_timer_cancel "$LAB_RUN_ID"; then
     lab_lock_release
-    local when='' due
-    if due="$(lab_timer_due "$LAB_RUN_ID" 2> /dev/null)"; then when=" at ${due:11:5} UTC"; fi
-    printf 'labyrinth: the revert timer for run %s could not be cancelled\n' "$LAB_RUN_ID" >&2
-    printf 'The run is not kept, and the timer still rolls it back%s.\n' "$when" >&2
-    printf 'Retry: %s keep %s\n' "$SELF" "${LAB_RUN_ID: -4}" >&2
+    local when=''
+    if when="$(due_words "$LAB_RUN_ID")"; then when=" $when"; fi
+    err "labyrinth: the revert timer for run $LAB_RUN_ID could not be cancelled"
+    err "The run is not kept, and the timer still rolls it back$when."
+    err "Retry: $SELF keep ${LAB_RUN_ID: -4}"
     return 40
   fi
   if ! record_for '' run_kept; then
     lab_lock_release
-    printf 'labyrinth: the keep of run %s could not be recorded\n' "$LAB_RUN_ID" >&2
-    printf 'Its revert timer is cancelled, so the changes stay.\n' >&2
+    err "labyrinth: the keep of run $LAB_RUN_ID could not be recorded"
+    err 'Its revert timer is cancelled, so the changes stay.'
     return 40
   fi
   lab_log_info run_kept "changes kept; revert timer cancelled"
   lab_lock_release
-  printf 'kept: the revert timer for run %s is cancelled\n' "$LAB_RUN_ID"
+  out "kept: the revert timer for run $LAB_RUN_ID is cancelled"
 }
 
 # list_runs: this host's run IDs, oldest first; only runs with a manifest,
@@ -1318,10 +1691,20 @@ cmd_runs() {
   fi
   print_runs "${runs[@]}"
   # The example names the newest armed run, the one most likely to be kept.
-  local example="${runs[${#runs[@]}-1]}" armed
+  local example="${runs[${#runs[@]}-1]}" armed id
   armed="$(armed_runs)" || armed=''
   if [[ -n "$armed" ]]; then example="${armed##*$'\n'}"; fi
   printf "\nName a run by its last 4 characters, like '%s keep %s'.\n" "$SELF" "${example: -4}"
+  local -a probs=()
+  for id in "${runs[@]}"; do
+    if [[ -f "$LAB_STATE_DIR/runs/$id/problems" ]]; then probs+=("$id"); fi
+  done
+  if (( ${#probs[@]} > 0 )); then
+    printf '\nThese runs had problems; their logs say what happened:\n'
+    for id in "${probs[@]}"; do
+      printf '  %s  %s\n' "${id: -4}" "$LAB_STATE_DIR/runs/$id/output.log"
+    done
+  fi
   exit 0
 }
 
@@ -1378,12 +1761,15 @@ cmd_keep() {
   export LAB_RUN_ID="$RUN_REF"
   [[ -f "$(lab_manifest_file)" ]] || die "no run $LAB_RUN_ID on this host"
   flush_warnings
+  umask 077
+  log_open "keep run $LAB_RUN_ID"
   keep_run || rc=$?
+  if [[ -n "$LOG_FILE" ]]; then out "Log: $LOG_FILE"; fi
   exit "$rc"
 }
 
 cmd_rollback() {
-  local id rc=0 i list
+  local id rc=0 i list ok=0 bad=0 parts
   local -a mods=() runs=()
   export LAB_DRY_RUN=0
   umask 077
@@ -1413,26 +1799,52 @@ cmd_rollback() {
   # Captured, not read from a process substitution, so a failure is seen.
   list="$(lab_manifest_applied "$LAB_RUN_ID")" || die "the manifest of run $LAB_RUN_ID cannot be read" 40 'Nothing was rolled back.'
   if [[ -n "$list" ]]; then mapfile -t mods <<< "$list"; fi
-  printf 'labyrinth %s - rolling back run %s\n' "$LAB_VERSION" "$LAB_RUN_ID"
+  # A rollback started by the revert timer is logged too, though no one watches it.
+  log_open "rollback run $LAB_RUN_ID"
+  out "labyrinth $LAB_VERSION: rollback run $LAB_RUN_ID"
+  case "${#mods[@]}" in
+    0) out 'This run changed nothing that needs undoing.' ;;
+    1) out 'Undoing 1 module.' ;;
+    *) out "Undoing ${#mods[@]} modules, newest change first." ;;
+  esac
+  out ''
   for ((i = ${#mods[@]} - 1; i >= 0; i--)); do
     id="${mods[i]}"
-    [[ "$id" =~ $RE_MODULE_ID ]] || { printf 'skipping a bad module id in the manifest: %s\n' "$id"; rc=40; continue; }
-    rollback_module "$id" || rc=40
+    if [[ ! "$id" =~ $RE_MODULE_ID ]]; then
+      say ERROR 'Run manifest'
+      detail Problem "it lists a bad module ID, which was skipped: $id"
+      bad=$((bad + 1)); rc=40; continue
+    fi
+    load_title "$id"
+    if rollback_module "$id"; then ok=$((ok + 1)); else bad=$((bad + 1)); rc=40; fi
   done
   # A timer left armed runs this rollback again, which is safe.
   if ! lab_timer_cancel "$LAB_RUN_ID"; then
-    printf 'warning: the revert timer for run %s could not be removed\n' "$LAB_RUN_ID" >&2
-    printf 'When it fires, it repeats this rollback, which is safe.\n' >&2
+    err "warning: the revert timer for run $LAB_RUN_ID could not be removed"
+    err 'When it fires, it repeats this rollback, which is safe.'
   fi
   if ! record_for '' run_rolled_back '' "exit $rc"; then
-    printf 'labyrinth: rolled back, but the manifest cannot be written to record it\n' >&2
+    err 'labyrinth: rolled back, but the manifest cannot be written to record it'
     rc=40
   fi
-  lab_log_warn run_rolled_back "run rolled back, exit $rc"
+  lab_log_warn run_rolled_back "run rolled back, exit $rc" 2> /dev/null
+  out ''
+  parts=''
+  if (( ok > 0 )); then parts="$ok OK"; fi
+  if (( bad > 0 )); then parts+="${parts:+, }$bad ERROR"; fi
+  case "$((ok + bad))" in
+    0) out 'Summary: no changes to undo.' ;;
+    1) out "Summary: 1 module: $parts." ;;
+    *) out "Summary: $((ok + bad)) modules: $parts." ;;
+  esac
+  if [[ -n "$LOG_FILE" ]]; then out "Log: $LOG_FILE"; fi
   if (( rc == 0 )); then
-    printf 'rollback finished: exit 0 (rolled back)\n'
+    out 'rollback finished: exit 0 (rolled back)'
   else
-    printf 'rollback finished: exit %d (error)\n' "$rc"
+    mark_problems
+    out 'Next: fix what is listed above, then run the rollback again; it is safe:'
+    out "  $SELF rollback ${LAB_RUN_ID: -4}"
+    out "rollback finished: exit $rc (error)"
   fi
   exit "$rc"
 }
