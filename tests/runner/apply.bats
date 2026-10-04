@@ -17,7 +17,7 @@ setup() {
   apply
   [ "$status" -eq 0 ]
   grep -qx 'setting=on' "$LAB/toggle.conf"
-  [[ "$output" == *"[observe.toggle] applied and verified"* ]]
+  grep -qx '  Did:       applied and verified' <<< "$output"
   [[ "$output" == *"kept: the revert timer"* ]]
   m="$(manifest)"
   for a in run_start breakglass_verified apply_start file_created run_kept; do
@@ -100,7 +100,7 @@ setup() {
   answers ring1 keep
   apply
   [ "$status" -eq 0 ]
-  [[ "$output" == *"break-glass: confirmed earlier for root"* ]]
+  [[ "$output" == *"Break-glass account root: confirmed earlier, so not asked again."* ]]
   grep -qx 'setting=on' "$LAB/toggle.conf"
 }
 
@@ -140,8 +140,8 @@ setup() {
   touch "$LAB/FAIL_VERIFY"
   apply
   [ "$status" -eq 30 ]
-  [[ "$output" == *"verify failed"* ]]
-  [[ "$output" == *"[observe.toggle] rolled back"* ]]
+  [[ "$output" == *"its verify script failed"* ]]
+  grep -qx '  Did:       rolled back' <<< "$output"
   grep -qx 'setting=off' "$LAB/toggle.conf"
   [ "$(stat -c %a "$LAB/toggle.conf")" = 600 ] || [[ "$OSTYPE" == msys* || "$OSTYPE" == cygwin* ]]
   [[ "$(manifest)" == *'"action":"rolled_back"'* ]]
@@ -222,8 +222,9 @@ setup() {
   printf '198.51.100.0/28\n' > "$ETC/scoring-allowlist"
   apply
   [ "$status" -eq 30 ]
-  [[ "$output" == *"scored service regressed: web"* ]]
-  [[ "$output" == *"[observe.breaker] rolled back"* ]]
+  [[ "$output" == *"a scored service stopped working after the change: web"* ]]
+  grep -qx '  Found:     web: fail (fake probe); it passed before' <<< "$output"
+  grep -qx '  Did:       rolled back' <<< "$output"
   [ ! -e "$LAB/probe-state" ]
 }
 
@@ -232,7 +233,7 @@ setup() {
   printf 'web http web.test 80 -\n' > "$ETC/services"
   apply
   [ "$status" -eq 20 ]
-  [[ "$output" == *"[observe.breaker] blocked"* ]]
+  grep -qx 'BLOCKED  Service breaker sample (observe.breaker)' <<< "$output"
   [ ! -e "$LAB/probe-state" ]
   grep -qx 'setting=on' "$LAB/toggle.conf"
 }
@@ -243,9 +244,9 @@ setup() {
   printf 'not-an-address\n' > "$ETC/scoring-allowlist"
   apply
   [ "$status" -eq 40 ]
-  n="$(grep -nxF 'ERROR    [observe.breaker] error: the scoring allowlist is malformed' <<< "$output" | cut -d: -f1)"
-  [ -n "$n" ]
-  [[ "${lines[n]}" =~ ^\ {11}.*not\ an\ address\ or\ CIDR:\ not-an-address$ ]]
+  grep -qx 'ERROR    Service breaker sample (observe.breaker)' <<< "$output"
+  grep -qx '  Problem:   the scoring allowlist is malformed' <<< "$output"
+  grep -qx '  Found:     scoring-allowlist:1: not an address or CIDR: not-an-address' <<< "$output"
   [[ "$output" != *'internal error'* ]]
   [[ "$output" == *'apply finished: exit 40 (error)'* ]]
 }

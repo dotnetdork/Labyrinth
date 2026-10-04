@@ -40,7 +40,7 @@ Describe 'labyrinth.ps1 plan mode' {
         Write-TestProfile $t 'observe.clean'
         $r = Invoke-TestPlan $t
         $r.Code | Should -Be 0
-        $r.Output | Should -Match '\[observe\.clean\] check: nothing to do'
+        (@($r.Output -split "`r?`n") -ccontains 'OK       Nothing-to-do sample (observe.clean)') | Should -BeTrue
     }
 
     It 'a safety-gate block exits 20' {
@@ -52,7 +52,7 @@ Describe 'labyrinth.ps1 plan mode' {
         Write-TestProfile $t 'observe.crash'
         $r = Invoke-TestPlan $t
         $r.Code | Should -Be 40
-        $r.Output | Should -Match 'error \(exit 3\)'
+        $r.Output | Should -Match 'failed with exit code 3'
     }
 
     It 'a change with no plan entry point is an error' {
