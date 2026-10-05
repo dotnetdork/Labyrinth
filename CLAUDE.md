@@ -60,7 +60,7 @@ Each module is a folder `phases/<phase>/modules/<name>/` with `module.yml` and u
 
 | Path | Covers |
 |---|---|
-| `tests/core/` | The core library (`core.bats`, `Core.Tests.ps1`); platform facts (`platform.bats`, `Platform.Tests.ps1`); quarantine (`quarantine.bats`, `Quarantine.Tests.ps1`); real-system timer tests (`realsystem.bats`, `RealSystem.Tests.ps1`, CI only) |
+| `tests/core/` | The core library (`core.bats`, `Core.Tests.ps1`); platform facts (`platform.bats`, `Platform.Tests.ps1`); quarantine (`quarantine.bats`, `Quarantine.Tests.ps1`); approval items (`approval.bats`, `Approval.Tests.ps1`); real-system timer tests (`realsystem.bats`, `RealSystem.Tests.ps1`, CI only) |
 | `tests/runner/` | The runners: `apply`, `labyrinth`, `args`, `help`, `runs`, `failures`, `hostcheck` and `output`, and `compat` (the compatibility suite); `args-cases.txt`, the command-line cases both suites read; helpers `lab_helper.bash` and `LabTestHelper.ps1` |
 | `tests/manual/` | The manual and its splitter |
 | `tests/lint/` | The guard and its fixtures |

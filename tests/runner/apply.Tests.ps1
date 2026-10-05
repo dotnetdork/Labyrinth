@@ -258,6 +258,64 @@ Describe 'labyrinth.ps1 apply' {
         $items | Should -Not -Exist
     }
 
+    It 'approval: the plan lists each item with its fingerprint and category' {
+        Write-TestProfile $t 'observe.ask'
+        $r = Invoke-TestPlan $t
+        $r.Code | Should -Be 10
+        $lines = @($r.Output -split "`r?`n")
+        ($lines -ccontains "  Item:      item-a@2a2c17aaaf66 (sample): first sample item") | Should -BeTrue
+        ($lines -ccontains "  Item:      item-c@5821d4d89f00 (other): an item of another category") | Should -BeTrue
+    }
+
+    It 'approval: category: approves every item of it; an id not in the plan is ignored' {
+        Write-TestProfile $t 'observe.ask'
+        $r = Invoke-TestApply $t @('labadmin', 'ring1', 'category:sample nope item-a', 'keep')
+        $r.Code | Should -Be 0
+        @(Get-Content -LiteralPath (Join-Path $lab 'APPROVED_ITEMS')) | Should -Be @('item-a', 'item-b')
+        $r.Output | Should -Match ([regex]::Escape('Not in its plan, so ignored: nope'))
+        @($r.Output -split "`r?`n") -ccontains '  Approved:  item-a, item-b' | Should -BeTrue
+        $note = "risk approval, approved item-a@2a2c17aaaf66 item-b@f09f429ea5f1"
+        Get-TestManifest $t (Get-TestRunId $r.Output) | Should -Match ([regex]::Escape("`"note`":`"$note`""))
+    }
+
+    It 'approval: an answer that is not ids and categories blocks the module' {
+        Write-TestProfile $t 'observe.ask'
+        $r = Invoke-TestApply $t @('labadmin', 'ring1', 'item-a;reboot', 'keep')
+        $r.Code | Should -Be 20
+        @($r.Output -split "`r?`n") -ccontains '  Problem:   not an item id or a category: item-a;reboot' | Should -BeTrue
+        Join-Path $lab 'APPROVED_ITEMS' | Should -Not -Exist
+    }
+
+    It 'approval: -Approve answers without the prompt; a changed item is refused' {
+        Write-TestProfile $t 'observe.ask'
+        $a = '2a2c17aaaf66'   # the fixture's fingerprint of item-a
+        $list = "observe.ask:item-a@$a,observe.ask:item-b@000000000000,observe.ask:item-z@$a,observe.other:item-a@$a"
+        $r = Invoke-TestApply $t @('no') @('-BreakGlass', 'labadmin', '-ConfirmGroup', 'ring1', '-Approve', $list)
+        $r.Code | Should -Be 0
+        $r.Output | Should -Not -Match 'Type the ids'
+        @(Get-Content -LiteralPath (Join-Path $lab 'APPROVED_ITEMS')) | Should -Be @('item-a')
+        $lines = @($r.Output -split "`r?`n")
+        ($lines -ccontains "Not in this run's plan, so ignored: observe.ask:item-z@$a") | Should -BeTrue
+        ($lines -ccontains "Not in this run's plan, so ignored: observe.other:item-a@$a") | Should -BeTrue
+        ($lines -ccontains '  Found:     item-b changed since the plan, so it is left alone') | Should -BeTrue
+        $id = Get-TestRunId $r.Output
+        Get-TestManifest $t $id | Should -Match '"action":"approval_refused","target":"item-b"'
+        # Approvals are never stored in the revert timer's command line.
+        $timer = [IO.File]::ReadAllText((Join-Path $t.Root "state\runs\$id\timer"))
+        $timer | Should -Match " rollback $id "
+        $timer | Should -Not -Match 'approve'
+    }
+
+    It 'approval: an approval plan with a malformed item line is an ERROR' {
+        Write-TestProfile $t 'observe.ask'
+        [IO.File]::WriteAllText((Join-Path $lab 'phases\observe\modules\ask\plan.ps1'), "Write-Output `"item``tBad Id``tsample``t2a2c17aaaf66``tx`"`nexit 10`n")
+        $r = Invoke-TestPlan $t
+        $r.Code | Should -Be 40
+        $r.Output | Should -Match ([regex]::Escape('  Problem:   its plan listed an item wrongly'))
+        (Invoke-TestApply $t @('labadmin', 'ring1', 'item-a', 'keep')).Code | Should -Be 40
+        Join-Path $lab 'APPROVED_ITEMS' | Should -Not -Exist
+    }
+
     It 'a manual-only module is never applied' {
         Write-TestProfile $t 'observe.manual'
         $r = Invoke-TestApply $t @()

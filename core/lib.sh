@@ -18,6 +18,8 @@ if [[ -z "${LAB_CORE_LOADED:-}" ]]; then
   source "$LAB_ROOT/core/safety/safety.sh"
   # shellcheck source=core/safety/system.sh
   source "$LAB_ROOT/core/safety/system.sh"
+  # shellcheck source=core/approval/approval.sh
+  source "$LAB_ROOT/core/approval/approval.sh"
   # shellcheck source=core/quarantine/quarantine.sh
   source "$LAB_ROOT/core/quarantine/quarantine.sh"
   # shellcheck source=core/platform/platform.sh
