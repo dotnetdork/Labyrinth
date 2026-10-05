@@ -286,6 +286,8 @@ The manifest is `<state>/runs/<run>/manifest.jsonl`, one JSON object per line, e
 | `apply_start` | A module's `apply` is about to run; `rollback <run>` undoes every module with one |
 | `file` | A file is about to change; `backup` holds its copy, `<backup>/<run>/<module>/<seq>-<name>` |
 | `file_created` | A file that did not exist is about to be created |
+| `firewall_snapshot` | The firewall adapter saved the ruleset; `target` is the backend and `backup` the snapshot folder. Rollback restores it (design 19, section 5) |
+| `firewall_allow`, `firewall_default_deny` | The firewall adapter is about to add an allow, or set the inbound default to deny; undone by the snapshot |
 | `rolled_back` | The module was rolled back |
 
 Restoring a `file` entry writes the backup over the file in place, then restores its owner and permissions (and, on Linux, its SELinux label where `restorecon` exists). A created file is never deleted: rollback moves it into the backup folder as `rolled-back-<seq>-<name>`. Restoring is safe to repeat.
@@ -304,7 +306,7 @@ The `delete` rule has exactly one legitimate use: the account module deleting an
 
 ## 9. Tests
 
-- Tests live in `tests/`, mirroring the code layout: `tests/core/`, `tests/phases/<phase>/<module>/`, `tests/lint/`.
+- Tests live in `tests/`, mirroring the code layout: `tests/core/`, `tests/platform/`, `tests/phases/<phase>/<module>/`, `tests/lint/`.
 - **bats** for bash and **Pester 5** for PowerShell. Unit tests mock system commands. Real-system tests (`tests/core/realsystem.bats`, `tests/core/RealSystem.Tests.ps1`) run only where `LAB_REALSYSTEM=1`, which CI sets on its disposable runners, and on lab VMs; never on a developer's own machine.
 - Runner tests build a throwaway Labyrinth tree from the fixture modules in `tests/fixtures/modules/`, so they never touch the repository's own `phases/` or `profiles/`. The tree's core gets test doubles appended (`tests/fixtures/doubles.sh`, `tests/fixtures/Doubles.ps1`) that replace the administrator check, the revert timer and the probes.
 - **CI** (`.github/workflows/ci.yml`) runs on every push and pull request: ShellCheck, the guard and bats on Ubuntu; PSScriptAnalyzer and Pester under Windows PowerShell 5.1 on Windows; and the manual build, whose output is kept as a CI artifact. The test tools are installed on the CI runners only. A contributor may install them locally to run the same commands, but nothing in Labyrinth requires it.
