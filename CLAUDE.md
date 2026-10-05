@@ -64,6 +64,7 @@ Each module is a folder `phases/<phase>/modules/<name>/` with `module.yml` and u
 | `tests/runner/` | The runners: `apply`, `labyrinth`, `args`, `help`, `runs`, `failures`, `hostcheck` and `output`, and `compat` (the compatibility suite); `args-cases.txt`, the command-line cases both suites read; helpers `lab_helper.bash` and `LabTestHelper.ps1` |
 | `tests/manual/` | The manual and its splitter |
 | `tests/lint/` | The guard and its fixtures |
+| `tests/platform/` | The platform adapters: the Linux firewall adapter (`firewall.bats`) and the Windows one (`Firewall.Tests.ps1`) |
 | `tests/fixtures/` | Fixture modules and the test doubles appended to a throwaway core |
 
 ## Lint pitfalls already met
