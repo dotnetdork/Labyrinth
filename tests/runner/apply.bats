@@ -265,6 +265,68 @@ setup() {
   [ ! -e "$LAB/APPROVED_ITEMS" ]
 }
 
+fp() { printf '%s' "$1" | sha256sum | cut -c1-12; }
+
+@test "approval: the plan lists each item with its fingerprint and category" {
+  profile observe.ask
+  plan
+  [ "$status" -eq 10 ]
+  grep -qx "  Item:      item-a@$(fp item-a) (sample): first sample item" <<< "$output"
+  grep -qx "  Item:      item-c@$(fp item-c) (other): an item of another category" <<< "$output"
+}
+
+@test "approval: category: approves every item of it; an id not in the plan is ignored" {
+  profile observe.ask
+  answers root ring1 'category:sample nope item-a' keep
+  apply
+  [ "$status" -eq 0 ]
+  [ "$(cat "$LAB/APPROVED_ITEMS")" = "$(printf 'item-a\nitem-b')" ]
+  [[ "$output" == *'Not in its plan, so ignored: nope'* ]]
+  grep -qx '  Approved:  item-a, item-b' <<< "$output"
+  grep -q "\"note\":\"risk approval, approved item-a@$(fp item-a) item-b@$(fp item-b)\"" <<< "$(manifest)"
+}
+
+@test "approval: an answer that is not ids and categories blocks the module" {
+  profile observe.ask
+  answers root ring1 'item-a;reboot' keep
+  apply
+  [ "$status" -eq 20 ]
+  grep -qx '  Problem:   not an item id or a category: item-a;reboot' <<< "$output"
+  [ ! -e "$LAB/APPROVED_ITEMS" ]
+}
+
+@test "approval: --approve answers without the prompt; a changed item is refused" {
+  profile observe.ask
+  answers no
+  apply --break-glass root --confirm-group ring1 \
+    --approve "observe.ask:item-a@$(fp item-a),observe.ask:item-b@000000000000,observe.ask:item-z@$(fp item-a),observe.other:item-a@$(fp item-a)"
+  [ "$status" -eq 0 ]
+  [[ "$output" != *'Type the ids'* ]]
+  [ "$(cat "$LAB/APPROVED_ITEMS")" = item-a ]
+  grep -qx "Not in this run's plan, so ignored: observe.ask:item-z@$(fp item-a)" <<< "$output"
+  grep -qx "Not in this run's plan, so ignored: observe.other:item-a@$(fp item-a)" <<< "$output"
+  grep -qx '  Found:     item-b changed since the plan, so it is left alone' <<< "$output"
+  grep -q '"action":"approval_refused","target":"item-b"' <<< "$(manifest)"
+  # Approvals are never stored in the revert timer's command line.
+  local timer
+  timer="$(cat "$ROOT/state/runs/$(run_id)/timer")"
+  [[ "$timer" == *" rollback $(run_id)"* ]]
+  [[ "$timer" != *approve* ]]
+}
+
+@test "approval: an approval plan with a malformed item line is an ERROR" {
+  profile observe.ask
+  printf '#!/usr/bin/env bash\nprintf "item\\tBad Id\\tsample\\t%%s\\tx\\n" 2a2c17aaaf66\nexit 10\n' \
+    > "$LAB/phases/observe/modules/ask/plan.sh"
+  plan
+  [ "$status" -eq 40 ]
+  grep -q '  Problem:   its plan listed an item wrongly' <<< "$output"
+  answers root ring1 item-a keep
+  apply
+  [ "$status" -eq 40 ]
+  [ ! -e "$LAB/APPROVED_ITEMS" ]
+}
+
 @test "a manual-only module is never applied" {
   profile observe.manual
   apply

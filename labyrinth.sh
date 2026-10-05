@@ -42,6 +42,10 @@ readonly RISKS='read-only reversible service-affecting approval manual-only'
 readonly PLATFORMS='ubuntu rhel-family windows appliance'
 readonly RE_RUN_ID='^[0-9]{8}T[0-9]{6}Z-[0-9a-f]{4}$'
 readonly RE_MODULE_ID='^(lockout|observe|deceive|sustain)\.[a-z0-9_-]+$'
+# An item line from an approval module's plan, and one --approve entry
+# (docs/Conventions.md section 3.1).
+readonly RE_ITEM=$'^item\t([a-z0-9-]+)\t([a-z0-9-]+)\t([0-9a-f]{12})\t(.*)$'
+readonly RE_APPROVE='^(lockout|observe|deceive|sustain)\.[a-z0-9_-]+:[a-z0-9-]+@[0-9a-f]{12}$'
 
 LAB_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export LAB_ROOT
@@ -68,9 +72,9 @@ readonly COMMANDS='plan apply keep rollback runs probe help version'
 # The options, one row each (docs/Conventions.md section 3.1): the canonical
 # name, the keys it is matched by (lower case, no dashes), and whether it
 # takes a value.
-readonly -a OPT_NAMES=(profile root config break-glass confirm-group apply help version)
-readonly -a OPT_KEYS=('profile profilename' root config breakglass 'confirmgroup confirm' apply help version)
-readonly -a OPT_VALUE=(1 1 1 1 1 0 0 0)
+readonly -a OPT_NAMES=(profile root config break-glass confirm-group approve apply help version)
+readonly -a OPT_KEYS=('profile profilename' root config breakglass 'confirmgroup confirm' approve apply help version)
+readonly -a OPT_VALUE=(1 1 1 1 1 1 0 0 0)
 declare -A GIVEN=()        # canonical option name -> value given
 declare -a WORDS=()        # the words that are not options, in order
 PARSE_ERR=""                # the first option error, reported by main
@@ -85,7 +89,9 @@ LOG_BUF=''                 # log lines from before the run folder existed
 readonly LOG_CAP=500       # most lines logged from one entry point
 
 # The modules of this run, in run order, one array element per module.
-declare -a RUN_IDS=() RUN_DIR=() RUN_RISK=() RUN_SCORED=() RUN_REQUIRES=() RUN_RC=() RUN_STATE=()
+# RUN_ITEMS holds the items an approval module's plan listed, one
+# 'id<TAB>category<TAB>fingerprint<TAB>reason' line each.
+declare -a RUN_IDS=() RUN_DIR=() RUN_RISK=() RUN_SCORED=() RUN_REQUIRES=() RUN_RC=() RUN_STATE=() RUN_ITEMS=()
 
 # cmd_help [COMMAND]: the help for every command, or for one, on stdout.
 # Each topic is at most 15 lines of at most 78 columns, with one Exit line
@@ -136,9 +142,9 @@ Plan, confirm, then change; a revert timer undoes it unless kept.
 
 $where
   --profile NAME         must match this host's line in the hosts file
-Apply only:
   --break-glass NAME     answer the break-glass prompt
   --confirm-group GROUP  answer the group-name prompt
+  --approve LIST         approve without asking: module:item@fingerprint,...
 
 Exit: 0 done, 10 manual steps left, 20 blocked, 30 check failed, 40 error.
 Example: $SELF apply lockout
@@ -471,13 +477,22 @@ load_title() {
   YML_ERR=''
 }
 
-# label_line LINE: one line a module printed, as a labelled line. A line
-# 'key: text', with a key from the label list, keeps that label; any other
-# line is a Note (docs/Conventions.md section 3.2). Blank lines are dropped.
+# item_words ID CATEGORY FINGERPRINT REASON: an item as an Item line shows
+# it: 'id@fingerprint (category): reason'.
+item_words() { printf '%s@%s (%s)%s' "$1" "$3" "$2" "${4:+: $4}"; }
+
+# label_line LINE: one line a module printed, as a labelled line. An item
+# line is an Item; a line 'key: text', with a key from the label list,
+# keeps that label; any other line is a Note (docs/Conventions.md section
+# 3.2). Blank lines are dropped.
 label_line() {
   local line="${1%$'\r'}" key
   if [[ -z "${line//[[:space:]]/}" ]]; then return 0; fi
   line="${line#"${line%%[![:space:]]*}"}"
+  if [[ "$line" =~ $RE_ITEM ]]; then
+    detail Item "$(item_words "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}" "${BASH_REMATCH[3]}" "${BASH_REMATCH[4]}")"
+    return 0
+  fi
   if [[ "$line" =~ ^([A-Za-z][A-Za-z ]*):[[:space:]]+(.*)$ ]]; then
     key="${BASH_REMATCH[1],,}"
     case "$key" in
@@ -764,7 +779,7 @@ parse_args() {
 check_used() {
   local cmd="$1" name used u
   shift
-  for name in profile break-glass confirm-group; do
+  for name in profile break-glass confirm-group approve; do
     used=0
     for u in "$@"; do if [[ "$u" == "$name" ]]; then used=1; fi; done
     if [[ -n "${GIVEN[$name]+set}" ]] && (( ! used )); then
@@ -1000,12 +1015,12 @@ load_modules() {
     ids+=("$id"); dirs+=("$dir"); risks+=("${MOD[risk]}"); scored+=("${MOD[touches_scored]}")
     reqs+=("$(list_items "${MOD[requires]:-[]}")"); prios+=("${MOD[priority]}")
   done
-  RUN_IDS=() RUN_DIR=() RUN_RISK=() RUN_SCORED=() RUN_REQUIRES=() RUN_RC=() RUN_STATE=()
+  RUN_IDS=() RUN_DIR=() RUN_RISK=() RUN_SCORED=() RUN_REQUIRES=() RUN_RC=() RUN_STATE=() RUN_ITEMS=()
   for p in P0 P1 P2 P3; do
     for ((i = 0; i < ${#ids[@]}; i++)); do
       if [[ "${prios[i]}" != "$p" ]]; then continue; fi
       RUN_IDS+=("${ids[i]}"); RUN_DIR+=("${dirs[i]}"); RUN_RISK+=("${risks[i]}")
-      RUN_SCORED+=("${scored[i]}"); RUN_REQUIRES+=("${reqs[i]}"); RUN_RC+=(0); RUN_STATE+=(planned)
+      RUN_SCORED+=("${scored[i]}"); RUN_REQUIRES+=("${reqs[i]}"); RUN_RC+=(0); RUN_STATE+=(planned); RUN_ITEMS+=('')
     done
   done
   return "$worst"
@@ -1032,6 +1047,13 @@ plan_one() {
         more "$id"; rc=40
       else
         capture_entry "$dir" plan "$id"
+        if [[ "$risk" == approval ]] && [[ "$ENTRY_RC" == 0 || "$ENTRY_RC" == 10 ]] && ! read_items "$i"; then
+          say ERROR "$name"; show_output "$said"; show_output
+          detail Problem "its plan listed an item wrongly: $ITEM_ERR"
+          detail Fix 'report the module to its author; the others were still checked'
+          more "$id"; RUN_RC[i]=40
+          return 40
+        fi
         case "$ENTRY_RC" in
           0 | 10)
             if [[ "$risk" == manual-only ]]; then
@@ -1067,6 +1089,42 @@ plan_one() {
   esac
   RUN_RC[i]=$rc
   return "$rc"
+}
+
+# read_items INDEX: keep the items an approval module's plan listed
+# (ENTRY_OUT) in RUN_ITEMS (docs/Conventions.md section 3.1). Returns 1,
+# with the reason in ITEM_ERR, when an item line is malformed or an id is
+# listed twice.
+read_items() {
+  local i="$1" line items='' seen=' '
+  ITEM_ERR=''
+  while IFS= read -r line; do
+    line="${line%$'\r'}"
+    line="${line#"${line%%[![:space:]]*}"}"
+    if [[ "$line" != item$'\t'* ]]; then continue; fi
+    if [[ ! "$line" =~ $RE_ITEM ]]; then
+      ITEM_ERR="not 'item', id, category, fingerprint and reason, separated by tabs: ${line//$'\t'/ }"
+      return 1
+    fi
+    if [[ "$seen" == *" ${BASH_REMATCH[1]} "* ]]; then
+      ITEM_ERR="the id ${BASH_REMATCH[1]} is listed twice"
+      return 1
+    fi
+    seen+="${BASH_REMATCH[1]} "
+    items+="${BASH_REMATCH[1]}"$'\t'"${BASH_REMATCH[2]}"$'\t'"${BASH_REMATCH[3]}"$'\t'"${BASH_REMATCH[4]}"$'\n'
+  done <<< "$ENTRY_OUT"
+  RUN_ITEMS[i]="$items"
+}
+ITEM_ERR=''
+
+# item_fp INDEX ID: the fingerprint the plan of module INDEX gave item ID;
+# returns 1 when its plan did not list it.
+item_fp() {
+  local id fp
+  while IFS=$'\t' read -r id _ fp _; do
+    if [[ -n "$id" && "$id" == "$2" ]]; then printf '%s' "$fp"; return 0; fi
+  done <<< "${RUN_ITEMS[$1]}"
+  return 1
 }
 
 # plan_all PHASE: load and plan the phase's modules; print the worst code.
@@ -1234,10 +1292,126 @@ requires_met() {
   done
 }
 
+# choose_items INDEX: the items of approval module INDEX that a person
+# approved, as 'id@fingerprint' words in APPROVED (docs/Conventions.md
+# section 3.1): the --approve entries that name the module when it was given,
+# otherwise the ids and categories typed at the prompt. An --approve entry
+# whose fingerprint differs from this run's plan is recorded as refused and
+# left out. Returns 0 with something approved; 1, after an OK block, when
+# nothing was; 20, after a BLOCKED block, when the answer is not ids and
+# categories.
+choose_items() {
+  local i="$1" id name tok iid cat fp reason hit list=' '
+  local -a words=()
+  id="${RUN_IDS[i]}"; name="$(module_name "$id")"
+  APPROVED='' REFUSED=''
+  if [[ -z "${RUN_ITEMS[i]}" ]]; then
+    say OK "$name"
+    detail Did 'its plan listed no items to approve, so nothing changed'
+    return 1
+  fi
+  if [[ -n "${GIVEN[approve]+set}" ]]; then
+    IFS=',' read -ra words <<< "${GIVEN[approve]}"
+    for tok in "${words[@]}"; do
+      if [[ "${tok%%:*}" != "$id" ]]; then continue; fi
+      tok="${tok#*:}"
+      fp="$(item_fp "$i" "${tok%@*}")" || continue   # reported after the plan
+      if [[ "$list" == *" ${tok%@*}@"* ]]; then continue; fi
+      if [[ "$fp" != "${tok#*@}" ]]; then
+        record_for "$id" approval_refused "${tok%@*}" "approved ${tok#*@}, changed since the plan; now $fp" || true
+        REFUSED+="${tok%@*}"$'\n'
+        continue
+      fi
+      list+="$tok "
+    done
+  else
+    out "$name changes only the items you approve:"
+    while IFS=$'\t' read -r iid cat fp reason; do
+      if [[ -n "$iid" ]]; then detail Item "$(item_words "$iid" "$cat" "$fp" "$reason")"; fi
+    done <<< "${RUN_ITEMS[i]}"
+    out 'To approve every item of a category, type category: and its name.'
+    ask "Type the ids of the items to approve, separated by spaces, or press Enter for none: " || ANSWER=''
+    read -ra words <<< "$ANSWER"
+    for tok in ${words[@]+"${words[@]}"}; do
+      if [[ ! "$tok" =~ ^(category:)?[a-z0-9-]+$ ]]; then
+        say BLOCKED "$name"
+        detail Problem "not an item id or a category: $tok"
+        detail Fix 'type ids from its plan above, separated by spaces'
+        more "$id"
+        return 20
+      fi
+    done
+    for tok in ${words[@]+"${words[@]}"}; do
+      hit=0
+      while IFS=$'\t' read -r iid cat fp reason; do
+        if [[ -z "$iid" ]]; then continue; fi
+        if [[ "$tok" == "$iid" || "$tok" == "category:$cat" ]]; then
+          hit=1
+          if [[ "$list" != *" $iid@"* ]]; then list+="$iid@$fp "; fi
+        fi
+      done <<< "${RUN_ITEMS[i]}"
+      if (( ! hit )); then out "Not in its plan, so ignored: $tok"; fi
+    done
+  fi
+  APPROVED="$(lab_trim "$list")"
+  if [[ -z "$APPROVED" ]]; then
+    say OK "$name"
+    show_choice
+    detail Did 'nothing approved, so nothing changed'
+    return 1
+  fi
+}
+REFUSED=''
+
+# show_choice: under a module's status line, the items approved and those
+# left alone because they changed since the plan.
+show_choice() {
+  local word ids='' line
+  for word in $APPROVED; do ids+="${ids:+, }${word%@*}"; done
+  if [[ -n "$ids" ]]; then detail Approved "$ids"; fi
+  while IFS= read -r line; do
+    if [[ -n "$line" ]]; then detail Found "$line changed since the plan, so it is left alone"; fi
+  done <<< "$REFUSED"
+}
+
+# approve_unmatched: after the plan, each --approve entry that names no item
+# of an approval module in this run's plan is ignored, with a line saying so.
+approve_unmatched() {
+  local tok item i found said=0
+  local -a words=()
+  IFS=',' read -ra words <<< "${GIVEN[approve]}"
+  for tok in "${words[@]}"; do
+    item="${tok#*:}"; item="${item%@*}"; found=0
+    for ((i = 0; i < ${#RUN_IDS[@]}; i++)); do
+      if [[ "${RUN_IDS[i]}" == "${tok%%:*}" && "${RUN_RISK[i]}" == approval && "${RUN_RC[i]}" == 10 ]] \
+          && item_fp "$i" "$item" > /dev/null; then
+        found=1
+      fi
+    done
+    if (( ! found )); then
+      if (( ! said )); then out ''; said=1; fi
+      out "Not in this run's plan, so ignored: $tok"
+    fi
+  done
+}
+
+# check_approve: each --approve entry must be <module-id>:<item-id>@<fingerprint>.
+check_approve() {
+  local tok fix='Copy each item from a plan: the module ID, a colon, then the item as its Item line shows it.'
+  local -a words=()
+  IFS=',' read -ra words <<< "${GIVEN[approve]},"
+  for tok in "${words[@]}"; do
+    if [[ "$tok" == *:category:* ]]; then
+      usage_error "--approve takes no categories, only items: '$tok'" apply "$fix"
+    fi
+    [[ "$tok" =~ $RE_APPROVE ]] || usage_error "--approve: not <module-id>:<item-id>@<fingerprint>: '$tok'" apply "$fix"
+  done
+}
+
 # apply_one INDEX: apply, verify and probe one module. Returns 0 (done or
 # nothing to do), 20 (blocked; continue), or 30/40 (rolled back; stop).
 apply_one() {
-  local i="$1" id dir risk name after reg rc tok why line
+  local i="$1" id dir risk name after reg rc why line note
   id="${RUN_IDS[i]}"; dir="${RUN_DIR[i]}"; risk="${RUN_RISK[i]}"
   name="$(module_name "$id")"
   APPROVED=''
@@ -1279,23 +1453,9 @@ apply_one() {
   fi
   requires_met "$i" || { RUN_STATE[i]=blocked; return 20; }
   if [[ "$risk" == approval ]]; then
-    out "$name changes only the items you approve."
-    ask "Type the ids of the items to approve, separated by spaces, or press Enter for none: " || ANSWER=''
-    for tok in $ANSWER; do
-      if [[ ! "$tok" =~ ^[A-Za-z0-9._:@-]+$ ]]; then
-        say BLOCKED "$name"
-        detail Problem "not an item id: $tok"
-        detail Fix 'type ids from its plan above, separated by spaces'
-        more "$id"
-        RUN_STATE[i]=blocked; return 20
-      fi
-    done
-    APPROVED="$ANSWER"
-    if [[ -z "$APPROVED" ]]; then
-      say OK "$name"
-      detail Did 'nothing approved, so nothing changed'
-      RUN_STATE[i]='done'; return 0
-    fi
+    rc=0; choose_items "$i" || rc=$?
+    if (( rc == 1 )); then RUN_STATE[i]='done'; return 0; fi
+    if (( rc == 20 )); then RUN_STATE[i]=blocked; return 20; fi
   fi
   if [[ ! -f "$dir/apply.sh" ]]; then
     say OK "$name"
@@ -1315,7 +1475,9 @@ apply_one() {
 
   # Checked by hand: errexit is off inside a function called with ||, and a
   # change the manifest does not list could never be rolled back.
-  if ! record_for "$id" apply_start '' "risk $risk"; then
+  note="risk $risk"
+  if [[ -n "$APPROVED" ]]; then note+=", approved $APPROVED"; fi
+  if ! record_for "$id" apply_start '' "$note"; then
     say ERROR "$name"
     detail Problem 'not applied: the run manifest cannot be written'
     detail Fix "check that $LAB_STATE_DIR can be written, then run the same command again"
@@ -1324,6 +1486,7 @@ apply_one() {
   fi
   LAB_MODULE_ID="$id" lab_log_info apply_start "applying"
   say CHANGE "$name"
+  if [[ -n "$APPROVED" ]]; then show_choice; fi
   run_entry "$dir" apply "$id" 0
   case "$ENTRY_RC" in
     0) ;;
@@ -1517,6 +1680,7 @@ cmd_apply() {
   plan_intro apply "$phase"
   plan_all "$phase" || worst=$?
   (( worst < 40 )) || die 'the plan has errors; nothing was changed'
+  if [[ -n "${GIVEN[approve]+set}" ]]; then approve_unmatched; fi
   for ((i = 0; i < ${#RUN_IDS[@]}; i++)); do
     if [[ "${RUN_RC[i]}" == 10 && "${RUN_RISK[i]}" != manual-only ]]; then todo=$((todo + 1)); fi
   done
@@ -1984,7 +2148,7 @@ main() {
         fi
         (( $# == 1 )) || usage_error "unexpected word '$2' after '$cmd $phase'" "$cmd"
       fi
-      if [[ "$cmd" == plan ]]; then used=(profile); else used=(profile break-glass confirm-group); fi ;;
+      if [[ "$cmd" == plan ]]; then used=(profile); else used=(profile break-glass confirm-group approve); fi ;;
     keep | rollback)
       # Without a run, keep and rollback decide what to do (section 3.1).
       (( $# <= 1 )) || usage_error "unexpected word '$2' after '$cmd $1'" "$cmd"
@@ -2012,6 +2176,7 @@ main() {
   fi
   [[ "$DATA_ROOT" == /* ]] || usage_error "--root must be a full path, not '$DATA_ROOT'" "$cmd"
   [[ -z "${GIVEN[config]:-}" || "${GIVEN[config]}" == /* ]] || usage_error "--config must be a full path, not '${GIVEN[config]}'" "$cmd"
+  if [[ "$cmd" == apply && -n "${GIVEN[approve]+set}" ]]; then check_approve; fi
 
   # Noted now, printed by each command once its own checks pass.
   check_used "$cmd" "${used[@]+"${used[@]}"}"

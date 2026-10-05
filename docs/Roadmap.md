@@ -7,11 +7,12 @@ This is the build order for the rest of Labyrinth. The design specs in `docs/des
 **Built:**
 - the core library in bash and PowerShell: logging, the run manifest with backup and restore, safety gates, the protected set, break-glass, the run lock, revert timers, and the http, dns and banner probes;
 - both runners, with `plan`, `apply`, `keep`, `rollback`, `runs`, `probe`, `help` and `version`;
+- from stage 3: platform facts, the firewall adapter, the quarantine helper, and approval items with `--approve` / `-Approve`;
 - the operator manual, the compatibility suite and CI.
 
 **Not built:**
 - real modules (`phases/*/modules` holds only placeholders);
-- `platform/`, `profiles/`, `report/`, `core/seed/` and `vendor/`;
+- `profiles/`, `report/`, `core/seed/` and `vendor/`;
 - the planned commands: `seal`, `reseal`, `checkpoint`, `backup`, `restore` and `remote`.
 
 ## 2. Rules for every branch
