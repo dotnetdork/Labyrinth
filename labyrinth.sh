@@ -1301,7 +1301,7 @@ requires_met() {
 # nothing was; 20, after a BLOCKED block, when the answer is not ids and
 # categories.
 choose_items() {
-  local i="$1" id name tok iid cat fp reason hit list=' '
+  local i="$1" id name tok iid cat fp reason hit chosen=' '
   local -a words=()
   id="${RUN_IDS[i]}"; name="$(module_name "$id")"
   APPROVED='' REFUSED=''
@@ -1316,13 +1316,13 @@ choose_items() {
       if [[ "${tok%%:*}" != "$id" ]]; then continue; fi
       tok="${tok#*:}"
       fp="$(item_fp "$i" "${tok%@*}")" || continue   # reported after the plan
-      if [[ "$list" == *" ${tok%@*}@"* ]]; then continue; fi
+      if [[ "$chosen" == *" ${tok%@*}@"* ]]; then continue; fi
       if [[ "$fp" != "${tok#*@}" ]]; then
         record_for "$id" approval_refused "${tok%@*}" "approved ${tok#*@}, changed since the plan; now $fp" || true
         REFUSED+="${tok%@*}"$'\n'
         continue
       fi
-      list+="$tok "
+      chosen+="$tok "
     done
   else
     out "$name changes only the items you approve:"
@@ -1347,13 +1347,13 @@ choose_items() {
         if [[ -z "$iid" ]]; then continue; fi
         if [[ "$tok" == "$iid" || "$tok" == "category:$cat" ]]; then
           hit=1
-          if [[ "$list" != *" $iid@"* ]]; then list+="$iid@$fp "; fi
+          if [[ "$chosen" != *" $iid@"* ]]; then chosen+="$iid@$fp "; fi
         fi
       done <<< "${RUN_ITEMS[i]}"
       if (( ! hit )); then out "Not in its plan, so ignored: $tok"; fi
     done
   fi
-  APPROVED="$(lab_trim "$list")"
+  APPROVED="$(lab_trim "$chosen")"
   if [[ -z "$APPROVED" ]]; then
     say OK "$name"
     show_choice
@@ -1366,9 +1366,9 @@ REFUSED=''
 # show_choice: under a module's status line, the items approved and those
 # left alone because they changed since the plan.
 show_choice() {
-  local word ids='' line
-  for word in $APPROVED; do ids+="${ids:+, }${word%@*}"; done
-  if [[ -n "$ids" ]]; then detail Approved "$ids"; fi
+  local word shown='' line
+  for word in $APPROVED; do shown+="${shown:+, }${word%@*}"; done
+  if [[ -n "$shown" ]]; then detail Approved "$shown"; fi
   while IFS= read -r line; do
     if [[ -n "$line" ]]; then detail Found "$line changed since the plan, so it is left alone"; fi
   done <<< "$REFUSED"
