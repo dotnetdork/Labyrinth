@@ -23,20 +23,24 @@ This is the build order for the rest of Labyrinth. The design specs in `docs/des
 - `tests/lint/guard.sh` and CI must be clean. A real-host acceptance test names where it runs: a CI runner or the lab (`docs/lab/README.md`).
 - A new command or option goes into both runners, the manual and both test suites in one commit. The compatibility suite is never edited to make a change pass.
 
-## 3. Milestones
+## 3. Build stages
 
-### 3. Groundwork that modules need
+The build stages are numbered on from the stages already done: 0 (foundations), 1 (the core) and 2 (the command line). Branches are named `phase-<stage>/<name>`. A build stage is not a run phase: the run phases are lockout, observe, deceive and sustain, the word in `labyrinth plan <phase>`, and modules of one run phase are built across several stages.
+
+### Stage 3: groundwork that modules need
+
+Built on one branch, `phase-3/groundwork`, one commit per part. The parts are listed by the branch name each would have had.
 
 | Branch | Spec | Delivers | Done when |
 |---|---|---|---|
-| `phase-3/platform-detect` | 00 | Detects the OS family, firewall backend (UFW, firewalld, nftables, Windows Firewall), init system and package manager, in `platform/`; works without `jq`, `python3` or `curl` | Fixture tests pass for each supported distribution and for Windows |
-| `phase-3/firewall-adapter` | 01 | One interface across the four backends: snapshot, scoring allowlist first, then deny, then restore | The allowlist is in place before any deny rule; restore puts back the exact snapshot |
-| `phase-3/profiles` | 00, Blueprint §6.3 | The shipped profiles: `linux-server`, `linux-web`, `linux-siem`, `windows-member`, `windows-dc`, `appliance` | Every listed module id exists by the time its milestone ends |
+| `phase-3/platform-detect` | 19 | Detects the OS family, firewall backend (UFW, firewalld, nftables, Windows Firewall), init system and package manager, in `platform/`; works without `jq`, `python3` or `curl` | Fixture tests pass for each supported distribution and for Windows |
+| `phase-3/firewall-adapter` | 19, 01 | One interface across the four backends: snapshot, scoring allowlist first, then deny, then restore | The allowlist is in place before any deny rule; restore puts back the exact snapshot |
+| `phase-3/profiles` | 00, Blueprint §6.3 | The shipped profiles: `linux-server`, `linux-web`, `linux-siem`, `windows-member`, `windows-dc`, `appliance` | Every listed module id exists by the time its stage ends |
 | `phase-3/quarantine` | 17 §5 | A core quarantine helper for files, cron lines, units, scheduled tasks, services, registry values and WMI subscriptions | Rollback restores each item byte for byte; nothing is deleted |
 | `phase-3/approval-flow` | Conventions §3.1 | Approval items with fingerprints, `category:` approval at the prompt, and `--approve` / `-Approve` | An unapproved item and an item changed since the plan are left alone |
 | `phase-3/offline-record` | 05 | Hand-over of new passwords without writing them to disk | No secret appears in logs, the manifest or backups |
 
-### 4. P0 lockout
+### Stage 4: P0 lockout
 
 Each module ships its read-only `check` and `plan` first.
 
@@ -53,7 +57,7 @@ Each module ships its read-only `check` and `plan` first.
 | `phase-4/ad-readonly` | 11 §3.1, §3.2 | Domain read-only checks and the printed domain checklist |
 | `phase-4/first-minute` | 01 §6 | The first-minute bundle, ring order and canary hosts |
 
-### 5. Remote mode
+### Stage 5: remote mode
 
 Built right after the P0 lockout works locally, so the lockout reaches every host quickly.
 
@@ -61,7 +65,7 @@ Built right after the P0 lockout works locally, so the lockout reaches every hos
 |---|---|---|
 | `phase-5/remote` | 00 §5, 07 §5 | `remote plan` and `remote apply --group <group>` over SSH and PowerShell remoting: it copies and checks the release, runs the local command, and brings back logs and manifests. It collects approval items from the plan and passes each host its own `--approve` entries. It copes with losing the connection while credentials and SSH settings rotate |
 
-### 6. Observe and checkpoints
+### Stage 6: observe and checkpoints
 
 | Branch | Spec | Delivers |
 |---|---|---|
@@ -71,7 +75,7 @@ Built right after the P0 lockout works locally, so the lockout reaches every hos
 | `phase-6/win-audit` | 10 | Audit policy, script block logging and log sizes |
 | `phase-6/log-forwarding` | 10 §4 | syslog forwarding on Linux; on Windows, the forwarder already present or the HEC script; saved searches |
 
-### 7. Sustain and hardening (P1)
+### Stage 7: sustain and hardening (P1)
 
 | Branch | Spec | Delivers |
 |---|---|---|
@@ -82,14 +86,14 @@ Built right after the P0 lockout works locally, so the lockout reaches every hos
 | `phase-7/backup-restore` | 14 | `backup <service>` and `restore <service>` |
 | `phase-7/win-tier3` | 11 | LDAP signing, lockout settings and the remaining approval items |
 
-### 8. Reporting and cleanup
+### Stage 8: reporting and cleanup
 
 | Branch | Spec | Delivers |
 |---|---|---|
 | `phase-8/report` | 02 | The incident report builder, fed by quarantine evidence and integrity findings |
 | `phase-8/cleanup-integrity` | 07 | Cleanup, and checking the release before a run |
 
-### 9. Deceive and extras (P2)
+### Stage 9: deceive and extras (P2)
 
 | Branch | Spec | Delivers |
 |---|---|---|
@@ -110,7 +114,7 @@ Built right after the P0 lockout works locally, so the lockout reaches every hos
 |---|---|---|
 | How are approvals given? | Typed at the prompt by default. Each item carries a fingerprint from the plan, and `--approve` passes approvals without the prompt for remote mode. An item that changed since the plan is refused. | Conventions §3.1 |
 | How do Windows hosts ship logs? | The Splunk universal forwarder where the host already has one; otherwise a PowerShell script posting to Splunk's HTTP Event Collector. Nothing is installed. | Design 10 §4, design 00 §9 |
-| When is remote mode built? | Right after the P0 lockout works locally (milestone 5). | This page, design 00 §9 |
+| When is remote mode built? | Right after the P0 lockout works locally (stage 5). | This page, design 00 §9 |
 | Where do real-host tests run? | CI runners for Ubuntu, Windows Server and a single domain controller; a local lab for everything else, before each release. | Conventions §9, `docs/lab/README.md` |
 | Are the Windows registry values right? | Checked against Microsoft's documentation. Netlogon enforcement is now report-only, because patched domain controllers enforce it anyway. LSA protection is offered only in a form that rollback can remove. LDAP and SMB signing defaults on Windows Server 2025 are reported. The removal of the PowerShell 2.0 engine is noted. | Design 11 §3–§3.3, design 10 |
 

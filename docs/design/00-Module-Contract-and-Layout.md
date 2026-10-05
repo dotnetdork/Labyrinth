@@ -49,6 +49,7 @@ Labyrinth/
 │   ├── log/                     # structured logging (JSON lines)
 │   ├── manifest/                # run manifest: what was changed, for rollback and cleanup
 │   ├── safety/                  # protected set, gates, dead-man revert timers
+│   ├── platform/                # platform facts: OS, firewall, role (design 19)
 │   ├── seed/                    # event seed derivation (design 03)
 │   └── probe/                   # scoring-style health probes
 ├── phases/
@@ -64,7 +65,7 @@ Labyrinth/
 │   └── sustain/  (same shape)
 ├── report/                      # incident report builder (design 02); cross-phase
 ├── profiles/                    # host profile → ordered module list
-├── platform/                    # per-OS adapters: ubuntu, rhel-family, windows, appliance runbooks
+├── platform/                    # adapters (design 19): linux/firewall, ubuntu, rhel-family, windows, appliance runbooks
 ├── config/                      # templates only: *.example, never values
 ├── vendor/                      # pinned third-party code, each with LICENSE and NOTICE
 ├── tests/                       # lab tests and negative tests

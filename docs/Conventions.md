@@ -135,7 +135,7 @@ The whole line must parse before help or the version is shown. A value option th
 **Host checks** run for `plan`, `apply` and `probe` only:
 
 - A `--config` folder that does not exist is an error (`40`).
-- This host's line in `hosts` must name a platform the runner serves: `ubuntu` or `rhel-family` for `labyrinth.sh`, `windows` for `labyrinth.ps1`. Otherwise the run is blocked (`20`).
+- This host's line in `hosts` must name a platform the runner serves: `ubuntu` (the whole Debian family) or `rhel-family` (Fedora, RHEL, Rocky, Oracle Linux, AlmaLinux) for `labyrinth.sh`, `windows` for `labyrinth.ps1`. Otherwise the run is blocked (`20`).
 - An `appliance` is never changed (design 16).
 
 `keep`, `rollback` and `runs` skip these checks, so a stored revert-timer command still works after the configuration changes.
