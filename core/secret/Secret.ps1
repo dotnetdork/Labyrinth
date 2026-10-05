@@ -46,7 +46,7 @@ public static class LabConsole {
         return ok;
     }
 
-    public static bool Write(string text) {
+    public static bool Put(string text) {
         IntPtr o = Open("CONOUT$");
         if (o == Invalid) { return false; }
         try { uint n; return WriteConsoleW(o, text, (uint)text.Length, out n, IntPtr.Zero); }
@@ -105,7 +105,7 @@ function Test-LabTerminal {
 function Write-LabTerminal {
     param([string] $Text)
     Import-LabConsole
-    [void][LabConsole]::Write($Text)
+    [void][LabConsole]::Put($Text)
 }
 
 # Read-LabTerminal: one line typed at the console, or $null when it is gone.
