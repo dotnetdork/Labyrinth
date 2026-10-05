@@ -1,6 +1,6 @@
 # Labyrinth Coding Conventions
 
-**Status:** Draft · reviewed 2026-10-02
+**Status:** Draft · reviewed 2026-10-05
 
 These conventions turn the design specs into code that every module writes the same way. The specs say *what* a part must do; this page says *how* the code is shaped. If the two disagree, the spec wins and this page is corrected.
 
@@ -51,7 +51,7 @@ Configuration is **data, never code**. It is never `source`d in bash or dot-sour
 | `hosts` | `host group profile platform` per line | Which hosts exist, their ring group, profile and platform |
 | `profiles/<name>.profile` | one module id per line | Optional override of a shipped profile |
 
-Templates live in `config/*.example` and contain placeholders only. At run time, configuration is read from `<root>/etc/` (or the directory passed with `--config`). Anything that may change between events, or with a new rules packet or topology, belongs here, not in code. The rule freezes the submitted tools and repository (NCCDC, 2025, Rule 5.6.2). Our reading is that values supplied at run time are not part of that submission and can change after the freeze. The rule does not say so directly, so the reading must be confirmed with competition officials.
+Templates live in `config/*.example` and contain placeholders only. A run-time profile override may name only modules the release ships; an unknown module id is an error (`40`). At run time, configuration is read from `<root>/etc/` (or the directory passed with `--config`). Anything that may change between events, or with a new rules packet or topology, belongs here, not in code. The rule freezes the submitted tools and repository (NCCDC, 2025, Rule 5.6.2). Our reading is that values supplied at run time are not part of that submission and can change after the freeze. The rule does not say so directly, so the reading must be confirmed with competition officials.
 
 **Parsing rules:** strip comments after `#`, trim whitespace, skip blank lines, and reject a line that does not match the file's format, naming the file and line number. An empty `protected-accounts` file is a safety-gate failure (exit 20).
 
@@ -74,7 +74,7 @@ The runner (`labyrinth.sh` / `labyrinth.ps1`) calls each entry point as a separa
 | `LAB_MODULE_ID` | The module's `id` |
 | `LAB_DRY_RUN` | `1` when the run is in plan mode |
 | `LAB_ENTRY` | The entry point being run (`check`, `plan`, `apply`, ...); the logger records it |
-| `LAB_APPROVED` | For `approval` modules only: the item ids a person approved, separated by spaces. Empty otherwise |
+| `LAB_APPROVED` | For `approval` modules only: the items a person approved, separated by spaces; each is `<id>@<fingerprint>` once approval items are built (section 3.1). Empty otherwise |
 
 Entry points load the core library from `LAB_ROOT/core/` and never from a relative path: `source "$LAB_ROOT/core/lib.sh"` in bash, `. (Join-Path $env:LAB_ROOT 'core\Lab.ps1')` in PowerShell. Loading it only defines functions. Entry points never read standard input: the runner owns the operator's prompts, so in bash an entry point's input is `/dev/null`.
 
@@ -170,6 +170,16 @@ The whole line must parse before help or the version is shown. A value option th
 The time a timer will fire is kept in `<state>/runs/<run>/timer-due` (UTC, `YYYY-MM-DDTHH:MM:SSZ`), for `runs` and the keep prompt. The file is advisory: if it is missing, the time is shown as unknown.
 
 Cancelling a timer checks that it is really gone. If it is still armed, `keep` records nothing, says so, and exits `40`.
+
+#### Approval items (planned)
+
+Decided in the 2026-10-05 review and built in the `approval-flow` branch. Until then the prompt above takes bare ids.
+
+- **Items.** An `approval` module's `plan` lists each item it would change, one per line on standard output: `item`, then the item id, its category, its fingerprint and the reason, separated by tabs. The id is `[a-z0-9-]+`, unique within the module on this host, and derived from what the item is (for example its path), so the same item keeps its id from one run to the next. The category is `[a-z0-9-]+`. The fingerprint is the first 12 hex digits of the SHA-256 of the item's current state: its content, value or settings.
+- **The prompt** accepts item ids, and `category:<name>` for every item of that category in this run's plan, on this host only (design 01). The runner shows the items again and passes each approved one to `apply` as `<id>@<fingerprint>` in `LAB_APPROVED`.
+- **`--approve` / `-Approve`** (`apply` only) approves without the prompt, for remote mode (design 00, section 5). Its value is a comma-separated list of `<module-id>:<item-id>@<fingerprint>`, copied from a plan. It takes no categories, because a category could include items the operator never saw. When `--approve` is given, an `approval` module gets only the entries that name it, and the prompt is not asked.
+- **Changed since the plan.** `apply` recomputes each approved item's fingerprint before changing it. If it differs, the item is left alone and recorded as refused: changed since the plan. An entry that names an item not in this run's plan is ignored with a warning. Neither makes the run fail.
+- **Never stored.** Approvals are not written into a revert timer's command line, and `rollback` never needs them.
 
 ### 3.2 Console output
 
@@ -301,6 +311,10 @@ The `delete` rule has exactly one legitimate use: the account module deleting an
 - **The compatibility suite** (`tests/runner/compat.bats`, `tests/runner/Compat.Tests.ps1`) holds every command form operators and stored revert timers rely on (section 3.1). It is never edited to make a change pass: change the runner instead. A form leaves it only by a design decision recorded in the design review log.
 - **The operator manual** (`docs/manual/labyrinth.md`) is one source for the Linux and Windows PDFs, the man page and the Windows help topic, built in CI by `tools/manual/build.sh`. Text for one platform sits between `<!-- linux -->` or `<!-- windows -->` and `<!-- end -->`. A change to a command, option, exit code or console message updates the manual in the same commit, and `tests/manual/manual.bats` checks that each platform's manual has every command, option and exit code and nothing from the other platform. The manual is written in the plain style of `docs/Overview.md`: short sentences, and every term explained the first time it appears.
 - Each module's tests start from its spec's acceptance-test list and include the negative test from design 00, section 8: protected accounts and scored services are untouched.
+- **Where real-host tests run** (decided in the 2026-10-05 review). Unit tests with test doubles run everywhere CI runs. Acceptance tests that change a real host run in two places:
+  - **CI runners,** with `LAB_REALSYSTEM=1`: Ubuntu, and Windows Server, including a job that promotes a throwaway runner to a single domain controller for the design 11 tests. These run on every pull request that touches the module.
+  - **The lab,** local virtual machines that a person runs before each release: the RHEL family (Fedora, Rocky or Oracle Linux), Debian, a domain with a member server, several hosts for rings and remote mode, a SIEM, and appliance images for the runbooks (design 16). `docs/lab/README.md` lists the machines, how to build them from public install media, and the matrix of module × platform × version. Each result is recorded there with the version tested, which is the record design 18, section 7 asks for.
+  - An acceptance test says which of the two it needs. A module is not released on a platform that neither has tested.
 
 ## 10. Commits
 

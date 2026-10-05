@@ -54,8 +54,9 @@ A short list, sized for a small SIEM. Each ID must be re-checked against Microso
 | 4104 | Microsoft-Windows-PowerShell/Operational | PowerShell script block logging: the text of each script as it runs, after any decoding, so an encoded or downloaded script can be read |
 | 4768, 4769, 4771 | Security, domain controller only | Kerberos ticket requests and failed pre-authentication. Service ticket requests using the older RC4 encryption are a common sign of Kerberoasting; many 4771 events from one source suggest password spraying. |
 | 4776 | Security, domain controller only | NTLM credential validation, including failures; shows password guessing against domain accounts |
+| 5827, 5828, 5830, 5831 | System, domain controller only | Netlogon: a vulnerable secure-channel connection denied (5827 machine account, 5828 trust account) or allowed only because the allow list names it (5830, 5831). Any of them is a ZeroLogon attempt or an allow-list entry to check (design 11, section 3.1) |
 
-Script block logging is turned on by `observe.win_audit` (section 6). The PowerShell log's maximum size is raised, within the disk check in section 8, so its events are not overwritten before they are forwarded. Labyrinth never puts a secret in a script's text (design 05, section 2), so its own logged script blocks hold none. The old PowerShell 2.0 engine does not log script blocks, so an attacker can use it to avoid this log; Tier 0 reports whether it is installed (design 11) (*Background*).
+Script block logging is turned on by `observe.win_audit` (section 6). The PowerShell log's maximum size is raised, within the disk check in section 8, so its events are not overwritten before they are forwarded. Labyrinth never puts a secret in a script's text (design 05, section 2), so its own logged script blocks hold none. The old PowerShell 2.0 engine does not log script blocks, so an attacker can use it to avoid this log. Microsoft removed it from Windows 11 24H2 and Windows Server 2025 in 2025; on older builds Tier 0 reports whether it is installed (design 11, section 3.3).
 
 The domain controller events are the noisiest on this list. They are forwarded only from the domain controller, and the saved searches look for patterns (many failures, unusual encryption) rather than every event.
 
@@ -70,7 +71,15 @@ Routers and firewalls send their logs to the SIEM by syslog. The appliance runbo
 | Platform | Preferred | Fallback |
 |---|---|---|
 | Linux | The host's own syslog daemon (rsyslog or syslog-ng) forwarding to a SIEM input. It is already installed on most distributions, so nothing is added. | A Splunk universal forwarder, only if it is already present in the environment |
-| Windows | **Pinned** (design 00, section 9): the Splunk universal forwarder, a script posting to Splunk's HTTP Event Collector, or Windows Event Forwarding to a collector. | Leave events on the host and collect them with the report collector (design 08, section 4.4) |
+| Windows | The Splunk universal forwarder if it is already installed; otherwise a PowerShell script posting to Splunk's HTTP Event Collector (below) | Leave events on the host and collect them with the report collector (design 08, section 4.4) |
+
+**Windows shipping, decided in the 2026-10-05 review.** `observe.forward_windows` picks the first of these that applies on each host:
+
+1. **The Splunk universal forwarder, if the host already has it.** The module adds an inputs file for the event baseline in its own app folder, beside the forwarder's own settings, and changes nothing else. If the forwarder already sends to the SIEM address in the run-time configuration, that is all. If it sends somewhere else, or nowhere, pointing it at the SIEM is an approval item, because someone else may rely on the current destination.
+2. **Otherwise, a PowerShell script posting to Splunk's HTTP Event Collector (HEC).** It uses only Windows PowerShell 5.1, so nothing is installed. A scheduled task running as SYSTEM every minute reads the baseline channels with `Get-WinEvent` from a bookmark kept in `<root>\state`, so a restart neither loses nor repeats events, and posts them in batches over HTTPS. The HEC address, token and the SIEM certificate's thumbprint come from run-time configuration, never the repository. The token file is readable by Administrators and SYSTEM only. The script trusts only the certificate with that thumbprint, never any certificate. The task and the script are recorded in the run manifest, and rollback removes them.
+3. **Otherwise, the fallback in the table above.**
+
+Windows Event Forwarding is not used: it needs a collector host and a Group Policy change, which is on the person-run list (design 11).
 
 - **Vendoring.** A third-party forwarder or Sysmon may be placed in `vendor/` only after its license is confirmed to allow redistribution in a public repository. Until then, the module uses a copy that is already in the environment or is skipped.
 - **Order.** Forwarding starts before deception is deployed (Blueprint §1), so traps have somewhere to report.
@@ -128,8 +137,8 @@ A few high-value searches beat a hundred noisy dashboards (Blueprint §3.9). The
 | A remote-access or tunnel tool is installed or started, for example AnyDesk, TeamViewer, ScreenConnect, Splashtop, ngrok, chisel, frp, rclone or plink. The list is a data file in the release. | High, unless the profile lists the tool as one the company uses |
 | A change on the SIEM itself: a new user or role, a new app, a scripted input or alert action, or a search deleted (Splunk `_audit` index) | High |
 | A change to a boot-critical file (design 04, section 3) | Near-certain |
-| ZeroLogon signs: repeated Netlogon authentication with the domain controller's own machine account against itself, or the domain controller's machine account password changed by an anonymous logon (event 4742) (*Background*) | High |
-| DCSync signs: directory replication rights used (event 4662 with the replication GUIDs) by an account that is not a domain controller (*Background*). Any hit puts the KRBTGT reset and admin rotation on the domain checklist (design 11, section 5) | Near-certain |
+| ZeroLogon signs: a vulnerable Netlogon connection denied (events 5827, 5828) or allowed by the allow list (5830, 5831), checked against Microsoft's CVE-2020-1472 guidance (Microsoft, n.d.); or the domain controller's machine account password changed by an anonymous logon (event 4742; *Background*) | High |
+| DCSync signs: directory replication rights used (event 4662 with the replication GUIDs) by an account that is not a domain controller (*Background*). Event 4662 is recorded only when directory service access auditing is on, which `observe.win_audit` turns on for the domain controller only. Any hit puts the KRBTGT reset and admin rotation on the domain checklist (design 11, section 5) | Near-certain |
 | Unusual outbound traffic: NTP to a server not in the run-time configuration, DNS to a resolver not in it, or a host's outbound volume far above its own normal, from the outbound log rule below | Medium; high from a scored service's account |
 
 **Outbound logging.** To feed the outbound search, each host gets a log-only firewall rule for new outbound connections, rate-limited so it cannot flood the log (Tier 2). It blocks nothing. Red Teams have hidden command-and-control traffic in NTP and rotated their callback addresses (*Background*), which inbound default-deny does not stop. **Filtering** a host's outbound traffic (default-deny outbound, allowing what the dependency map and run-time configuration list) is offered per host after approval (Tier 3, design 01), because scored services' outbound needs differ and a wrong rule breaks them.
@@ -145,7 +154,7 @@ A few high-value searches beat a hundred noisy dashboards (Blueprint §3.9). The
 | `observe.auditd` | Tier 1 | Installs the Labyrinth audit rule file as a drop-in; the base rules are untouched |
 | `observe.win_audit` | Tier 1 | Sets the audit policy, command-line capture and PowerShell script block logging needed for the event baseline |
 | `observe.forward_linux` | Tier 1 | Adds a syslog forwarding drop-in pointing at the SIEM address from run-time configuration |
-| `observe.forward_windows` | Tier 1 | The pinned Windows shipping method, once chosen |
+| `observe.forward_windows` | Tier 1 | Ships Windows events by the method in section 4: the forwarder already on the host, or the HEC script. Repointing an existing forwarder is an approval item |
 | `observe.sysmon` | Tier 2, optional | Installs Sysmon with the team's configuration, only if a permitted copy exists |
 | `observe.searches` | Tier 1, run against the SIEM | Loads the saved-search templates |
 
@@ -182,6 +191,9 @@ The SIEM host also gets its platform's normal lockout (design 01). Ports, paths 
 ## 10. Acceptance tests
 
 - A marker event from every lab host arrives in the SIEM.
+- On a host with no forwarder, the HEC script ships the marker event; stopping and restarting the task neither loses nor repeats an event; a SIEM certificate whose thumbprint does not match is refused.
+- On a host whose forwarder already sends elsewhere, the module adds its inputs and lists the destination change for approval without making it.
+- A planted Netlogon allow-list entry and a connection it allows raise the ZeroLogon search.
 - A failed SSH login, a new local admin and a canary read each raise the matching saved search.
 - Clearing the Windows Security log raises the 1102 search, and the earlier events are still in the SIEM.
 - With the SIEM stopped, hosts keep running, local logs stay under their size cap, and nothing scored is affected.
@@ -200,5 +212,7 @@ The SIEM host also gets its platform's normal lockout (design 01). Ports, paths 
 
 
 ## References
+
+Microsoft. (n.d.). *How to manage the changes in Netlogon secure channel connections associated with CVE-2020-1472*. Retrieved October 5, 2026, from https://support.microsoft.com/en-us/topic/how-to-manage-the-changes-in-netlogon-secure-channel-connections-associated-with-cve-2020-1472-f7e8cc17-0309-1d6a-304e-5ba73cd1a11e
 
 National Collegiate Cyber Defense Competition. (2025, December 10). *Rules and requirements*. Retrieved October 2, 2026, from https://www.nationalccdc.org/rules.html

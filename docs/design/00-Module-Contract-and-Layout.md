@@ -225,6 +225,8 @@ The released code is frozen for each event (NCCDC, 2025, Rule 5.6.2). Everything
 
 Our reading is that values supplied at run time are not part of the frozen submission, so they can change after the freeze. The rule does not say so directly, so this reading must be confirmed with competition officials before relying on it.
 
+So that the answer cannot change what the tool does, run-time configuration holds only facts about the event: addresses, host names, account names, lists, and timer lengths. It never holds code, commands or detection rules; those live in the frozen release (`phases/`, `profiles/`, the data files). A profile override in configuration (Conventions, section 2.2) may only choose and order modules the release already ships. Configuration says *where* and *who*, and the frozen code decides *what*. The question for officials is in `docs/Roadmap.md`. Until they answer, the reading is *Provisional*.
+
 ## 7. Standard paths on every host
 
 Every host uses the same tree, and everything Labyrinth keeps is under one root. The root is configurable, so the location is not a fixed, publicly known path, and cleanup has one place to look.
@@ -252,7 +254,10 @@ Nothing else changes.
 ## 9. Decisions
 
 - **Ansible or native scripts.** Resolved: native scripts. They work in local mode with nothing installed, and the remote mode (section 5) gives the reach Ansible would have given.
-- **Windows log shipping method.** Pinned between the Splunk forwarder installer, a script posting to Splunk's HTTP Event Collector, or another method. See designs 08 and 10.
+- **Windows log shipping method.** Resolved (2026-10-05): the Splunk universal forwarder where the host already has it, otherwise a PowerShell script posting to Splunk's HTTP Event Collector. Nothing is installed. See design 10, section 4.
+- **Approvals in remote mode.** Resolved (2026-10-05): approvals can be passed with `--approve` (`-Approve`), and each approval is tied to the plan by a fingerprint, so an item that changed after the plan is refused. The prompt stays the default (Conventions, section 3.1).
+- **Build order.** Resolved (2026-10-05): remote mode is built right after the P0 lockout modules work locally (`docs/Roadmap.md`).
+- **Where real-host tests run.** Resolved (2026-10-05): CI runners for what they can host, a local lab of virtual machines for the rest (Conventions, section 9).
 
 ## References
 

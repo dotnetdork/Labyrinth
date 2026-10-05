@@ -61,6 +61,8 @@ Labyrinth/
 │   ├── Overview.md                ← plain-language tour; start here
 │   ├── Blueprint.md               ← doctrine, capability map, trap catalog (rules-aware)
 │   ├── Conventions.md             ← how the code is written: formats, style, logging, tests
+│   ├── Roadmap.md                 ← build order: milestones, branches, settled decisions
+│   ├── lab/README.md              ← the test lab: machines, how to run a pass, results
 │   ├── manual/labyrinth.md        ← operator manual: one source, Linux and Windows editions
 │   └── design/                    ← design specs 00–18 (module contract, panic button,
 │                                    incident reporting, event seed, baseline, credentials,
