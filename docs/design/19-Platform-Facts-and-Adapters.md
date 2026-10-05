@@ -31,7 +31,7 @@ Reading a fact changes nothing, so facts are safe in `check` and `plan`. Each fa
 | `firewall` | `ufw`, `firewalld`, `nftables`, `iptables`, `none`, `conflict` or `unknown` | Section 3.1 |
 | `selinux` | `enforcing`, `permissive`, `disabled` or `absent` | `getenforce`, if present |
 
-**Windows** (`Get-LabFact -Name <name>`; `Get-LabFacts` returns every fact as an ordered table):
+**Windows** (`Get-LabFact -Name <name>`; `Get-LabFact` with no name returns every fact as an ordered table, and `Clear-LabFact` forgets the kept values):
 
 | Fact | Values | Learned from |
 |---|---|---|
@@ -39,7 +39,7 @@ Reading a fact changes nothing, so facts are safe in `check` and `plan`. Each fa
 | `os_build` | The build number, for example `20348` | `Win32_OperatingSystem` |
 | `role` | `workstation`, `member-server`, `standalone-server` or `domain-controller` | `ProductType` and `PartOfDomain` |
 | `firewall` | `on` (every profile on), `partial`, `off` or `unknown` | `Get-NetFirewallProfile` |
-| `secure_boot` | `on`, `off` or `unsupported` (no UEFI) | `Confirm-SecureBootUEFI` |
+| `secure_boot` | `on`, `off`, `unsupported` (no UEFI) or `unknown` (for example, without administrator rights) | `Confirm-SecureBootUEFI` |
 | `ad_module` | `yes` or `no`: whether the ActiveDirectory PowerShell module is present (design 11, section 3.2) | `Get-Module -ListAvailable` |
 | `splunk_forwarder` | `yes` or `no` (design 10, section 4) | Whether the `SplunkForwarder` service exists |
 
@@ -53,13 +53,13 @@ Each backend is checked in this order:
 
 1. **UFW** is active when `ufw status` reports `Status: active`.
 2. **firewalld** is active when `firewall-cmd --state` reports `running`.
-3. **nftables** is active when the nftables service is active, or `nft list ruleset` shows a table that neither UFW nor firewalld made.
-4. **iptables** (legacy, without nftables) is active when `iptables -S` shows a rule or a policy other than `ACCEPT`.
+3. **nftables** is active when the `nftables` service is active, or when `nft list tables` shows a table that `iptables-nft` or firewalld did not make. `iptables-nft`, which UFW and Docker use, makes the `filter`, `nat`, `mangle`, `raw` and `security` tables in the `ip` and `ip6` families; firewalld makes `inet firewalld`.
+4. **iptables** counts only when none of the above is active: `iptables -S` shows anything but the default `ACCEPT` policies. UFW drives iptables itself, so its rules there are not a second firewall.
 
 - One active backend gives its name.
 - None gives `none`.
-- More than one gives `conflict`. UFW and firewalld both work through nftables or iptables underneath, and their own tables do not count as a second backend.
-- A check that fails to run, for example without root rights, gives `unknown`.
+- More than one of UFW, firewalld and nftables gives `conflict`.
+- A check that fails to run, for example `ufw status` or `nft list tables` without root rights, gives `unknown`, whatever the other checks found.
 
 ## 4. Layout
 
