@@ -65,6 +65,7 @@ Each module is a folder `phases/<phase>/modules/<name>/` with `module.yml` and u
 | `tests/manual/` | The manual and its splitter |
 | `tests/lint/` | The guard and its fixtures |
 | `tests/platform/` | The platform adapters: the Linux firewall adapter (`firewall.bats`) and the Windows one (`Firewall.Tests.ps1`) |
+| `tests/profiles/` | The shipped profiles (`profiles.bats`, `Profiles.Tests.ps1`) |
 | `tests/fixtures/` | Fixture modules and the test doubles appended to a throwaway core |
 
 ## Lint pitfalls already met
