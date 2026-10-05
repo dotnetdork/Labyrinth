@@ -1,6 +1,6 @@
 # 00. Module Contract and Repository Layout
 
-**Status:** Draft · reviewed 2026-10-03
+**Status:** Draft · reviewed 2026-10-05
 
 ## 1. Goal
 
@@ -176,7 +176,7 @@ Rules for module authors:
 
 1. `touches_scored: true` modules run only after the scoring allowlist and the protected set are loaded.
 2. An `approval` module lists each item it would change, with the reason, and changes only the items a person approves, per item or per category on one host. Approved items go through the same backup, manifest, verify and rollback as any other change.
-3. A `manual-only` module never changes anything. It prints a checklist for a human. This is kept for actions too broad or too hard to undo for Labyrinth to carry out even with approval: KRBTGT resets, Group Policy and DNS server changes, domain controller restores, rescuing an unbootable host, patching and appliance changes.
+3. A `manual-only` module never changes anything. It prints a checklist for a human. This is kept for actions too broad or too hard to undo for Labyrinth to carry out even with approval: KRBTGT resets, Group Policy changes, DNS changes on a domain controller, domain controller restores, rescuing an unbootable host, patching and appliance changes.
 4. No module downloads anything or calls outside services (National Collegiate Cyber Defense Competition [NCCDC], 2025, Rule 5.6.4).
 5. No module deliberately breaks expected functionality (NCCDC, 2025, Rule 5.6.5).
 6. No module deletes a file. Anything removed is quarantined (design 17, section 5). An account is deleted only by the account module, after approval (design 05, section 6).

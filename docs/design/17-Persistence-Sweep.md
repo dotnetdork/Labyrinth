@@ -1,6 +1,6 @@
 # 17. Persistence Sweep
 
-**Status:** Draft · reviewed 2026-10-02 · Phase: 🟥 Lock out · Priority: P0
+**Status:** Draft · reviewed 2026-10-05 · Phase: 🟥 Lock out · Priority: P0
 
 ## 1. Goal
 
@@ -23,6 +23,7 @@ This spec finds those footholds and removes them as early as is safe, without br
 |---|---|
 | Linux | System and per-user crontabs, `cron.d`, anacron, `at` jobs; systemd units and timers (system and per-user); `rc.local` and init scripts; shell startup files (`/etc/profile.d`, system and user `bashrc` and `profile`); `sudoers` and `sudoers.d`; PAM configuration; `ld.so.preload`; SSH configuration and every key source (design 05, section 4); setuid files and kernel modules not owned by a package; web server and PHP modules or extensions not owned by a package (Apache and nginx modules, `php.ini` `extension=` and `auto_prepend_file` lines) |
 | Windows | Services; scheduled tasks; Run and RunOnce registry keys; startup folders; WMI event subscriptions; Winlogon `Userinit` and `Shell` values; Image File Execution Options debuggers; replaced accessibility programs (`sethc.exe`, `utilman.exe`); members of the local Administrators group; unsigned DLLs in a service's own folder (report only, because DLL hijacking is hard to judge automatically); IIS modules and handlers not in the profile's known-good list |
+| Both | Remote-access and tunnel tools (for example AnyDesk, TeamViewer, ScreenConnect, ngrok, chisel, rclone, plink), found as installed services, running processes or program files and matched against the release's data file (design 10, section 5) |
 | SIEM host | Splunk apps, scripted inputs and alert actions (design 10, section 7) |
 | Scored apps | Files in a web root or application folder that look like web shells, and CMS plugins or themes not in the app's original install (flagged only; section 4) |
 
@@ -51,6 +52,8 @@ Each item found is checked three ways:
 - it is a replaced Windows accessibility program, or an Image File Execution Options debugger on one.
 
 The list lives in a data file in the release, so it is reviewed and tested like code.
+
+A remote-access or tunnel tool is never high confidence on its name alone, because the company may use it for support. It is **unexplained**, and waits for approval, unless the profile lists it as known good or it also shows a strong sign, such as running from a temporary folder.
 
 ```mermaid
 flowchart TD
@@ -118,6 +121,7 @@ Watching tools often abused for persistence, rather than blocking them, is cover
 - A planted web shell in a web root is listed with its reason and is quarantined only after approval.
 - `rollback` restores every quarantined item byte for byte.
 - A replaced `sethc.exe` on a lab Windows host is detected and quarantined.
+- A lab install of a remote-support tool is listed for approval, not quarantined automatically; a tunnel tool running from a temporary folder is quarantined automatically.
 - Each quarantined item appears in the incident record with its hash and original path.
 - No item is ever deleted.
 

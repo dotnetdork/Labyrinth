@@ -1,6 +1,6 @@
 # 18. Service Packs and Config Library
 
-**Status:** Draft · reviewed 2026-10-02 · Phase: 🟥 Lock out · Priority: P1
+**Status:** Draft · reviewed 2026-10-05 · Phase: 🟥 Lock out · Priority: P1
 
 ## 1. Goal
 
@@ -49,7 +49,7 @@ Examples per pack (*Background*; each is confirmed in the lab before release):
 | Postfix | Hide the version banner; refuse to relay for outside senders where the packet confirms it | Authentication and TLS settings | Mailbox and alias changes |
 | Dovecot | Turn off plain-text login without TLS where the probe and packet allow | Authentication mechanisms | Mailbox changes |
 | BIND | Hide the version; refuse zone transfers to anyone but listed secondaries; turn off open recursion for outside clients | Rate limits | Zone contents |
-| Windows DNS | Refuse zone transfers to unlisted servers | Recursion settings | Zone contents (design 11, section 5) |
+| Windows DNS, on a server that is not a domain controller and only for zones stored in files | Refuse zone transfers to unlisted servers | Recursion settings | Zone contents. On a domain controller, or for an Active Directory-integrated zone, nothing is automatic or approved: every setting is on the domain checklist (design 11, section 5), because those settings replicate to every domain controller |
 | MySQL / MariaDB | Bind to the addresses the scored app uses; turn off local file loading | Remove anonymous and test accounts | Application database users and grants |
 | vsftpd (FTP) | Hide the banner version | Turn off anonymous login, and lock each user into their own folder; approval because a scoring check may use either | — |
 | OpenSSH | See design 05, section 4 | — | — |
@@ -90,6 +90,7 @@ Whatever is not automated is written up as a runbook in the release: what to che
 - A setting that fails the app's own syntax test is not applied and leaves the service unchanged.
 - A forced probe failure is reverted by the timer.
 - On a version not listed as tested, the pack applies nothing automatically.
+- On a domain controller, the Windows DNS pack changes nothing and points to the domain checklist.
 
 ## References
 
