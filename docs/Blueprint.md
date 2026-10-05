@@ -446,7 +446,7 @@ The design keeps the speed and adds guard rails:
 - dead-man revert timers;
 - scoring-style probes after each module.
 
-Tier 3 actions wait for a person's approval; Labyrinth then carries them out, except a short person-run list (KRBTGT, Group Policy, DNS server changes, domain controller restores, rescuing an unbootable host, patching and appliances). Nothing is deleted without approval: files are quarantined, and accounts are deleted only after approval once services pass. See designs 01 and 17. After the lockout, seal the baseline and layer `observe → deceive → sustain`.
+Tier 3 actions wait for a person's approval; Labyrinth then carries them out, except a short person-run list (KRBTGT, Group Policy, DNS changes on a domain controller, domain controller restores, rescuing an unbootable host, patching and appliances). Nothing is deleted without approval: files are quarantined, and accounts are deleted only after approval once services pass. See designs 01 and 17. After the lockout, seal the baseline and layer `observe → deceive → sustain`.
 
 
 ### 6.5 Secret handling

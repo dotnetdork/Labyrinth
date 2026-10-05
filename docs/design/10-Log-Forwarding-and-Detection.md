@@ -1,6 +1,6 @@
 # 10. Log Forwarding and Detection
 
-**Status:** Draft · reviewed 2026-10-02 · Phase: 🟦 Observe · Priority: P1
+**Status:** Draft · reviewed 2026-10-05 · Phase: 🟦 Observe · Priority: P1
 
 ## 1. Goal
 
@@ -51,8 +51,11 @@ A short list, sized for a small SIEM. Each ID must be re-checked against Microso
 | 4740 | Security | An account was locked out |
 | 4663 | Security | Object access on an audited file (canaries and critical files, designs 04 and 09) |
 | 1102 | Security | The audit log was cleared: treat as a confirmed intrusion unless the team did it |
+| 4104 | Microsoft-Windows-PowerShell/Operational | PowerShell script block logging: the text of each script as it runs, after any decoding, so an encoded or downloaded script can be read |
 | 4768, 4769, 4771 | Security, domain controller only | Kerberos ticket requests and failed pre-authentication. Service ticket requests using the older RC4 encryption are a common sign of Kerberoasting; many 4771 events from one source suggest password spraying. |
 | 4776 | Security, domain controller only | NTLM credential validation, including failures; shows password guessing against domain accounts |
+
+Script block logging is turned on by `observe.win_audit` (section 6). The PowerShell log's maximum size is raised, within the disk check in section 8, so its events are not overwritten before they are forwarded. Labyrinth never puts a secret in a script's text (design 05, section 2), so its own logged script blocks hold none. The old PowerShell 2.0 engine does not log script blocks, so an attacker can use it to avoid this log; Tier 0 reports whether it is installed (design 11) (*Background*).
 
 The domain controller events are the noisiest on this list. They are forwarded only from the domain controller, and the saved searches look for patterns (many failures, unusual encryption) rather than every event.
 
@@ -121,6 +124,8 @@ A few high-value searches beat a hundred noisy dashboards (Blueprint §3.9). The
 | A locked account re-enabled (4722; auditd rule on `usermod` and `/etc/shadow`) | High |
 | WDigest turned back on, or a protocol setting from design 11 reverted | High |
 | A tool often abused for persistence or download is started: `nc`, `ncat`, `socat`, a compiler (`gcc`, `cc`), `certutil -urlcache`, `bitsadmin /transfer`, `mshta`, `regsvr32` with a URL | Medium; high when run by a web server or database account |
+| A PowerShell script block that decodes or downloads code and runs it (event 4104 with, for example, `FromBase64String`, `DownloadString`, `Invoke-Expression` or `-EncodedCommand`) | Medium; high when run by a web server, database or service account |
+| A remote-access or tunnel tool is installed or started, for example AnyDesk, TeamViewer, ScreenConnect, Splashtop, ngrok, chisel, frp, rclone or plink. The list is a data file in the release. | High, unless the profile lists the tool as one the company uses |
 | A change on the SIEM itself: a new user or role, a new app, a scripted input or alert action, or a search deleted (Splunk `_audit` index) | High |
 | A change to a boot-critical file (design 04, section 3) | Near-certain |
 | ZeroLogon signs: repeated Netlogon authentication with the domain controller's own machine account against itself, or the domain controller's machine account password changed by an anonymous logon (event 4742) (*Background*) | High |
@@ -129,7 +134,7 @@ A few high-value searches beat a hundred noisy dashboards (Blueprint §3.9). The
 
 **Outbound logging.** To feed the outbound search, each host gets a log-only firewall rule for new outbound connections, rate-limited so it cannot flood the log (Tier 2). It blocks nothing. Red Teams have hidden command-and-control traffic in NTP and rotated their callback addresses (*Background*), which inbound default-deny does not stop. **Filtering** a host's outbound traffic (default-deny outbound, allowing what the dependency map and run-time configuration list) is offered per host after approval (Tier 3, design 01), because scored services' outbound needs differ and a wrong rule breaks them.
 
-**Watch, don't block.** The tools in the "abused tool" row have legitimate uses, and blocking them across hosts would be the kind of blanket action Rule 5.6.5 warns about. So they are watched through process-creation logging, not removed or blocked. The one exception is scheduling: `cron.allow` and `at.allow` are limited after the persistence sweep (design 17, section 6).
+**Watch, don't block.** The tools in the "abused tool" row have legitimate uses, and blocking them across hosts would be the kind of blanket action Rule 5.6.5 warns about. So they are watched through process-creation logging, not removed or blocked. The same goes for remote-access tools, which a company may use for support: the persistence sweep lists one for approval rather than removing it (design 17, section 4). The one exception is scheduling: `cron.allow` and `at.allow` are limited after the persistence sweep (design 17, section 6).
 
 **Sigma rules.** More searches can be converted from Sigma, the vendor-neutral rule format, *before* the release, never at the event. Each converted rule keeps its original author, license and rule ID in `vendor/` with a NOTICE file, and is tested against sample logs in the lab (design 08).
 
@@ -138,7 +143,7 @@ A few high-value searches beat a hundred noisy dashboards (Blueprint §3.9). The
 | Module | Tier | What it does |
 |---|---|---|
 | `observe.auditd` | Tier 1 | Installs the Labyrinth audit rule file as a drop-in; the base rules are untouched |
-| `observe.win_audit` | Tier 1 | Sets the audit policy and command-line capture needed for the event baseline |
+| `observe.win_audit` | Tier 1 | Sets the audit policy, command-line capture and PowerShell script block logging needed for the event baseline |
 | `observe.forward_linux` | Tier 1 | Adds a syslog forwarding drop-in pointing at the SIEM address from run-time configuration |
 | `observe.forward_windows` | Tier 1 | The pinned Windows shipping method, once chosen |
 | `observe.sysmon` | Tier 2, optional | Installs Sysmon with the team's configuration, only if a permitted copy exists |
@@ -189,6 +194,8 @@ The SIEM host also gets its platform's normal lockout (design 01). Ports, paths 
 - Starting `socat` as the web server's account raises the abused-tool search at high confidence.
 - In the lab, NTP queries to an unlisted server raise the outbound search; the outbound log rule blocks nothing.
 - A simulated DCSync from a non-domain-controller account raises its search.
+- An encoded PowerShell command that downloads a file raises the script-block search, and the forwarded 4104 event shows the decoded text.
+- Starting a lab copy of a tunnel tool raises the remote-access search; a tool the profile lists as the company's own does not.
 
 
 

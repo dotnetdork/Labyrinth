@@ -1,6 +1,6 @@
 # 05. Credentials and SSH Keys
 
-**Status:** Draft · reviewed 2026-10-02 · Phase: 🟥 Lock out · Priority: P0
+**Status:** Draft · reviewed 2026-10-05 · Phase: 🟥 Lock out · Priority: P0
 
 ## 1. Rules that shape it
 
@@ -35,6 +35,24 @@ Operating system passwords are not the only default credentials. Red Teams repor
 - **Rotate (Tier 3, approve then act).** Each account is shown with what depends on it. Once a person approves, Labyrinth sets a new password, updates every listed configuration file that stores it (backed up first), runs the app's syntax check and probes under a revert timer, and shows the new password once for the offline record.
 - **Never automatic**, because an app password can be stored in places the inventory misses, and the scoring engine may log in to the app. An account the packet names as used by scoring or employees is in the protected set and never offered.
 - **Appliances** (firewall and router admin logins) stay in their runbooks (design 16).
+
+### 2.2 Password and lockout policy
+
+The rules for new passwords and for repeated failed logons are host settings. They carry different risks, so each has its own class (*Background*; the values come from the profile):
+
+| Setting | Linux | Windows, local policy | Class |
+|---|---|---|---|
+| Minimum length and character classes for new passwords | `pwquality.conf`, only where `pam_pwquality` is already in the PAM stack | `MinimumPasswordLength`, `PasswordComplexity` | Automatic (Tier 2) |
+| Password history (no reuse of recent passwords) | The history module's own settings, only where it is already in the PAM stack; otherwise a PAM stack change | `PasswordHistorySize` | Linux: automatic in the module's own file, approval for a stack change. Windows: automatic |
+| Lockout after failed logons | `pam_faillock` (`faillock.conf`) | `LockoutBadCount`, `LockoutDuration`, `ResetLockoutCount` | Approval |
+| Maximum and minimum password age | — | — | Never set |
+
+- **Rules for new passwords** apply only when a password changes, so they cannot stop a login that works now. Labyrinth's own generated passwords always meet the profile's rules (section 2).
+- **The PAM stack.** One wrong line in a PAM file can stop every login on the host, the console included. So Labyrinth never edits PAM files directly. Where a setting needs a module added to the stack, it uses the distribution's own tool (`pam-auth-update` on Debian and Ubuntu, `authselect` on the Red Hat family), in the approval class, and only for a module already installed; it never installs one. Before the change is kept, an operator account logs in from a fresh session while the old session stays open (the order in section 2), and the revert timer restores the files if that login fails.
+- **Lockout.** The Red Team can lock scoring and employee accounts on purpose by guessing their passwords, and a locked scoring account is a scored service down. So lockout is never automatic. The plan names every scoring and employee account it would cover on that host, so the person approving sees the risk. A lockout always ends by itself after a set time; Labyrinth never sets one that only an administrator can clear.
+- **Password age.** On Windows, a new maximum age can expire existing passwords at once, scoring accounts' included. A minimum age stops the team rotating a password again after an incident. An event is shorter than any useful maximum age, so neither is set.
+- **Domain controllers.** A domain controller has no local account policy: the default domain policy applies, and changing it is a Group Policy change on the domain checklist (design 11, section 5).
+- **Record and roll back.** Tier 0 reports the current settings on every host. Every change records the previous values in the run manifest (on Windows, from a `secedit` export), and `rollback` restores them.
 
 ## 3. Username policy
 
@@ -176,6 +194,10 @@ A locked account can be unlocked again by an attacker with admin rights, so a lo
 - A second UID 0 account and an unexpected local Administrators member are found; the account loses its admin rights and is locked.
 - Re-enabling a locked account raises an alert.
 - A lab web app's default admin password is listed in Tier 0; after approval it is rotated, the app's database configuration file is updated, and the probe still passes.
+- After the rules for new passwords are set, a short new password for a test account is refused, and the scoring and operator accounts still log in with their current passwords.
+- On a Linux host without `pam_pwquality` in its PAM stack, the length rule is reported, not applied, and no PAM file changes.
+- A lockout plan names every scoring and employee account it would cover, is applied only after approval, and a locked test account unlocks by itself after the set time.
+- No run changes the maximum or minimum password age.
 
 - An account is deleted only after a person approves and a checkpoint shows every scored service passing, and its evidence is saved first.
 
