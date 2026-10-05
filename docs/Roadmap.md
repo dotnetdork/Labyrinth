@@ -7,7 +7,7 @@ This is the build order for the rest of Labyrinth. The design specs in `docs/des
 **Built:**
 - the core library in bash and PowerShell: logging, the run manifest with backup and restore, safety gates, the protected set, break-glass, the run lock, revert timers, and the http, dns and banner probes;
 - both runners, with `plan`, `apply`, `keep`, `rollback`, `runs`, `probe`, `help` and `version`;
-- from stage 3: platform facts, the firewall adapter, the quarantine helper, approval items with `--approve` / `-Approve`, and the six shipped profiles (empty until their modules are built);
+- from stage 3: platform facts, the firewall adapter, the quarantine helper, approval items with `--approve` / `-Approve`, the six shipped profiles (empty until their modules are built), and new passwords shown once for the offline record;
 - the operator manual, the compatibility suite and CI.
 
 **Not built:**

@@ -6,6 +6,7 @@
 #   - the revert timer is recorded in $LAB_ROOT/timer.log instead of armed;
 #   - a probe fails if its host is listed as "<host> fail" in
 #     $LAB_ROOT/probe-state, and passes otherwise.
+#   - the terminal is two files, $LAB_ROOT/tty.out and tty.in (below).
 
 lab_is_admin() { [[ ! -e "$LAB_ROOT/NOT_ADMIN" ]]; }
 
@@ -30,4 +31,18 @@ lab_probe_service() {
   else
     printf 'pass fake probe\n'
   fi
+}
+
+# The terminal: writes go to $LAB_ROOT/tty.out and each read takes the next
+# line of $LAB_ROOT/tty.in, failing when there is none; there is no terminal
+# at all if $LAB_ROOT/NO_TTY exists.
+lab_tty_ok() { [[ ! -e "$LAB_ROOT/NO_TTY" ]]; }
+lab_tty_write() { printf '%s' "$1" >> "$LAB_ROOT/tty.out"; }
+lab_tty_read() {
+  local pos=0
+  if [[ -f "$LAB_ROOT/tty.pos" ]]; then pos="$(cat "$LAB_ROOT/tty.pos")"; fi
+  pos=$((pos + 1))
+  echo "$pos" > "$LAB_ROOT/tty.pos"
+  if [[ ! -f "$LAB_ROOT/tty.in" ]] || (( $(wc -l < "$LAB_ROOT/tty.in") < pos )); then return 1; fi
+  sed -n "${pos}p" "$LAB_ROOT/tty.in"
 }

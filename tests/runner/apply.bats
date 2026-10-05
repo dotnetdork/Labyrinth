@@ -327,6 +327,42 @@ fp() { printf '%s' "$1" | sha256sum | cut -c1-12; }
   [ ! -e "$LAB/APPROVED_ITEMS" ]
 }
 
+@test "secret: a new password is shown only on the terminal and stored nowhere in the data root" {
+  profile observe.rotate
+  printf 'old\n' > "$LAB/rotate.pw"
+  printf 'recorded\n' > "$LAB/tty.in"
+  apply
+  [ "$status" -eq 0 ]
+  pw="$(sed -n 's/^      //p' "$LAB/tty.out")"
+  [[ "$pw" =~ ^[A-Za-z0-9_.+=-]{20}$ ]]
+  [[ "$output" != *"$pw"* ]]
+  run grep -rqF -- "$pw" "$ROOT"
+  [ "$status" -eq 1 ]
+  grep -qx '[0-9a-f]\{64\}' "$LAB/rotate.pw"
+}
+
+@test "secret: without a terminal, the password is not changed" {
+  profile observe.rotate
+  printf 'old\n' > "$LAB/rotate.pw"
+  touch "$LAB/NO_TTY"
+  apply
+  [ "$status" -eq 20 ]
+  [[ "$output" == *"no terminal to show the new password on"* ]]
+  grep -qx 'old' "$LAB/rotate.pw"
+}
+
+@test "secret: a password nobody recorded is put back" {
+  profile observe.rotate
+  printf 'old\n' > "$LAB/rotate.pw"
+  apply
+  [ "$status" -eq 40 ]
+  [[ "$output" == *"was not recorded"* ]]
+  grep -qx 'old' "$LAB/rotate.pw"
+  pw="$(sed -n 's/^      //p' "$LAB/tty.out")"
+  run grep -rqF -- "$pw" "$ROOT"
+  [ "$status" -eq 1 ]
+}
+
 @test "a manual-only module is never applied" {
   profile observe.manual
   apply
