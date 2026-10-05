@@ -1,0 +1,11 @@
+# Test fixture: sets a new password for a test account, shown once on the terminal (design 05, section 2.3)
+id: observe.rotate
+title: Password rotation sample
+phase: observe
+priority: P2
+platforms: [ubuntu, rhel-family, windows]
+risk: reversible
+touches_scored: false
+requires: []
+outputs: []
+spec: 05

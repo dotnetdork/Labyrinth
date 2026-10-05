@@ -37,6 +37,9 @@
 40|err|full path|--root relative observe
 40|err|full path|--config etc observe
 40|err|invalid profile name|--profile A;B observe
+40|err|not <module-id>:<item-id>@<fingerprint>|apply observe --approve observe.ask:item-a
+40|err|not <module-id>:<item-id>@<fingerprint>|apply observe --approve observe.ask:item-a@2a2c17aaaf66,
+40|err|takes no categories|apply observe --approve observe.ask:category:sample
 #
 # Accepted spellings: each plans the observe phase (10).
 10|out|run |--profile test --root @ROOT@ --config @ETC@ observe
@@ -50,6 +53,7 @@
 #
 # An option the command does not use is a warning, not an error.
 10|err|is not used by plan|plan observe --profile test --root @ROOT@ --config @ETC@ --break-glass root
+10|err|is not used by plan|plan observe --profile test --root @ROOT@ --config @ETC@ --approve observe.ask:item-a@2a2c17aaaf66
 #
 # Help and version: stdout, exit 0.
 0|out|Usage: @SELF@ <command>|help
