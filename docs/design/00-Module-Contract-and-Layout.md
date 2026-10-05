@@ -51,6 +51,7 @@ Labyrinth/
 │   ├── safety/                  # protected set, gates, dead-man revert timers
 │   ├── approval/                # approval items: item lines, fingerprints, approval checks
 │   ├── quarantine/              # quarantine, never delete: move aside and restore (design 17)
+│   ├── secret/                  # new passwords, shown once on the terminal (design 05)
 │   ├── platform/                # platform facts: OS, firewall, role (design 19)
 │   ├── seed/                    # event seed derivation (design 03)
 │   └── probe/                   # scoring-style health probes

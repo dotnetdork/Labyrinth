@@ -282,7 +282,7 @@ Every log line is one JSON object on one line (JSON lines), written through the 
 | `event` | `rule_added` | Short machine-readable name |
 | `msg` | `allowed tcp/443 from scoring allowlist` | Human-readable |
 
-Logs are written to `<logs>/<category>/<YYYYMMDD>.jsonl` (UTC date); warnings and errors are also printed to standard error. Plan mode writes no log files. Extra fields may follow. **Never log a secret:** passwords, keys, the event seed and tokens are never passed to the logger, not even masked. Log categories are those in design 00, section 7.
+Logs are written to `<logs>/<category>/<YYYYMMDD>.jsonl` (UTC date); warnings and errors are also printed to standard error. Plan mode writes no log files. Extra fields may follow. **Never log a secret:** passwords, keys, the event seed and tokens are never passed to the logger, not even masked. A module makes a new password with `lab_secret_new` / `Get-LabRandomSecret` and hands it over only with `lab_secret_show` / `Show-LabSecret`, which write to the terminal, never to standard output (design 05, section 2.3). Log categories are those in design 00, section 7.
 
 ## 7. The run manifest
 

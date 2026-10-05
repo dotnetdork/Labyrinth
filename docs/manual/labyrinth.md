@@ -263,6 +263,18 @@ Each entry is the module ID, a colon, then the item as its `Item:` line shows it
 
 If an item has changed since the plan you copied it from, its fingerprint no longer matches. The item is left alone, and Labyrinth says so and records it. The module checks again just before it changes each item. Approvals are never stored: a rollback does not need them.
 
+**New passwords.** A module that sets a new password shows it once, straight on your screen, and never writes it to a file or a log:
+
+```
+  New password for root, shown once:
+
+      Kq7-hT2xRm9.wPz4bNe8
+
+  Type 'recorded' once it is in the offline record:
+```
+
+Copy it into the team's offline record, check the copy, then type `recorded`. Anything else asks again. Labyrinth then clears the password from the screen. If the window closes before you type `recorded`, the module puts the old password back, because nobody has the new one. A module that sets passwords needs a terminal to show them on; started without one, for example from a script with no window, it changes nothing and is blocked.
+
 # 8. Reading the output
 
 A plan looks like this:

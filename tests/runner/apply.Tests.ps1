@@ -316,6 +316,42 @@ Describe 'labyrinth.ps1 apply' {
         Join-Path $lab 'APPROVED_ITEMS' | Should -Not -Exist
     }
 
+    It 'secret: a new password is shown only on the console and stored nowhere in the data root' {
+        Write-TestProfile $t 'observe.rotate'
+        [IO.File]::WriteAllText((Join-Path $lab 'rotate.pw'), "old`n")
+        [IO.File]::WriteAllText((Join-Path $lab 'tty.in'), "recorded`n")
+        $r = Invoke-TestApply $t $answers
+        $r.Code | Should -Be 0
+        $shown = [IO.File]::ReadAllText((Join-Path $lab 'tty.out'))
+        $shown | Should -Match '(?m)^      ([A-Za-z0-9_.+=-]{20})\r?$'
+        $pw = ([regex]::Match($shown, '(?m)^      ([A-Za-z0-9_.+=-]{20})\r?$')).Groups[1].Value
+        $shown | Should -Match 'cleared from row'
+        $r.Output.Contains($pw) | Should -BeFalse
+        foreach ($f in (Get-ChildItem -LiteralPath $t.Root -Recurse -File)) {
+            [IO.File]::ReadAllText($f.FullName).Contains($pw) | Should -BeFalse -Because $f.FullName
+        }
+        [IO.File]::ReadAllText((Join-Path $lab 'rotate.pw')).Trim() | Should -Match '^[0-9a-f]{64}$'
+    }
+
+    It 'secret: without a console, the password is not changed' {
+        Write-TestProfile $t 'observe.rotate'
+        [IO.File]::WriteAllText((Join-Path $lab 'rotate.pw'), "old`n")
+        New-Item -ItemType File -Path (Join-Path $lab 'NO_TTY') | Out-Null
+        $r = Invoke-TestApply $t $answers
+        $r.Code | Should -Be 20
+        $r.Output | Should -Match 'no terminal to show the new password on'
+        [IO.File]::ReadAllText((Join-Path $lab 'rotate.pw')).Trim() | Should -Be 'old'
+    }
+
+    It 'secret: a password nobody recorded is put back' {
+        Write-TestProfile $t 'observe.rotate'
+        [IO.File]::WriteAllText((Join-Path $lab 'rotate.pw'), "old`n")
+        $r = Invoke-TestApply $t $answers
+        $r.Code | Should -Be 40
+        $r.Output | Should -Match 'was not recorded'
+        [IO.File]::ReadAllText((Join-Path $lab 'rotate.pw')).Trim() | Should -Be 'old'
+    }
+
     It 'a manual-only module is never applied' {
         Write-TestProfile $t 'observe.manual'
         $r = Invoke-TestApply $t @()
