@@ -288,6 +288,7 @@ The manifest is `<state>/runs/<run>/manifest.jsonl`, one JSON object per line, e
 | `file_created` | A file that did not exist is about to be created |
 | `firewall_snapshot` | The firewall adapter saved the ruleset; `target` is the backend and `backup` the snapshot folder. Rollback restores it (design 19, section 5) |
 | `firewall_allow`, `firewall_default_deny` | The firewall adapter is about to add an allow, or set the inbound default to deny; undone by the snapshot |
+| `quarantine_file`, `quarantine_cron`, `quarantine_unit`, `quarantine_task`, `quarantine_service`, `quarantine_registry`, `quarantine_wmi`, `quarantine_process` | An item is about to be quarantined; `lab_quarantine_restore` / `Undo-LabQuarantine` put it back, except an ended process (design 17, section 5.1) |
 | `rolled_back` | The module was rolled back |
 
 Restoring a `file` entry writes the backup over the file in place, then restores its owner and permissions (and, on Linux, its SELinux label where `restorecon` exists). A created file is never deleted: rollback moves it into the backup folder as `rolled-back-<seq>-<name>`. Restoring is safe to repeat.
