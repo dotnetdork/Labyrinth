@@ -54,6 +54,18 @@ The rules for new passwords and for repeated failed logons are host settings. Th
 - **Domain controllers.** A domain controller has no local account policy: the default domain policy applies, and changing it is a Group Policy change on the domain checklist (design 11, section 5).
 - **Record and roll back.** Tier 0 reports the current settings on every host. Every change records the previous values in the run manifest (on Windows, from a `secedit` export), and `rollback` restores them.
 
+### 2.3 Handing over a new password
+
+A module's output goes to the run log, and its standard input is empty (Conventions, section 3), so a new password cannot be shown through either. The core library (`core/secret/`) gives modules three helpers instead:
+
+- **Make one.** `lab_secret_new [LENGTH]` (bash) and `Get-LabRandomSecret -Length` (PowerShell) return a password from the system's cryptographic random source (`/dev/urandom`; `RandomNumberGenerator` on Windows), 20 characters unless the module asks for more (14 to 64). The characters are upper- and lower-case letters, digits and `-_.+=`, with nothing that a person copying by hand can mistake for another character (`0 O 1 l I`) and nothing a shell or login prompt treats specially. Each password has at least one character of each kind and starts with a letter, so it meets Windows complexity and the rules a module sets (section 2.2).
+- **Check first.** `lab_secret_can_show` / `Test-LabSecretTerminal` succeeds only when the run has a terminal (`/dev/tty` on Linux, the console on Windows). A module calls it in `apply` *before* changing anything. Without a terminal, the module changes nothing and exits blocked (`20`), saying that a new password could not be shown. A rotation that nobody can record is never made.
+- **Show it once.** `lab_secret_show LABEL SECRET` / `Show-LabSecret -Label -Secret` write the password to the terminal directly, not to standard output or standard error, so it never reaches the runner, the run log or a pipe. The operator then types `recorded` once it is in the offline record (the order in section 2). Anything else shows the prompt again. If the terminal closes first, the helper fails, and the module rolls back the change: a password nobody recorded is not kept. Once `recorded` is typed, the password is cleared from the screen, including its scrollback where the terminal allows.
+
+A password is held only in a variable of the module's own process. It is never passed on a command line that other users can read (`/proc/<pid>/cmdline`); a module gives it to a tool on standard input (`chpasswd`) or through an API (`Set-LocalUser` with a `SecureString`). The log, the manifest and every backup hold none of it: the manifest records which account changed, not the password, and a backup of a file that stores a password is made before the new one is written. `tests/core/` checks this by running a module that rotates a test password, and searching the whole data root for it afterwards.
+
+Remote mode (design 00, section 5) must give each host a terminal (`ssh -t`, or an interactive remoting session) for rotation modules, or run them locally; otherwise they are blocked, as above.
+
 ## 3. Username policy
 
 Choosing our own names or random ones is a trade-off:
@@ -179,6 +191,7 @@ A locked account can be unlocked again by an attacker with admin rights, so a lo
 ## 7. Acceptance tests
 
 - After rotation, the new credential works from a fresh session and the old fails.
+- A new password appears on the terminal only: not in the module's output, and nowhere under the data root (logs, manifest, backups). Without a terminal, nothing is rotated; if the terminal goes before `recorded` is typed, the old password is put back.
 - A scoring account is unchanged.
 - An unregistered key is removed and backed up; a registered key stays.
 - A key with a wrong source address cannot log in.

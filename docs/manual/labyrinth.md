@@ -31,7 +31,7 @@ Labyrinth makes security changes to a host quickly, safely and reversibly. The w
 | `deceive` | Plant traps that give the attacker away. |
 | `sustain` | Keep everything running and be able to undo mistakes. |
 
-Each phase is made of **modules**: small, single-purpose pieces of automation, such as "change the default administrator password". Which modules run on a host depends on its **profile**, the kind of host it is (for example, a Linux web server).
+Each phase is made of **modules**: small, single-purpose pieces of automation, such as "change the default administrator password". Which modules run on a host depends on its **profile**, the kind of host it is (for example, a Linux web server). Labyrinth ships six profiles: `linux-server`, `linux-web`, `linux-siem`, `windows-member`, `windows-dc` and `appliance`. A profile of the same name in the `profiles` folder of the configuration replaces the shipped one for that run, but it can only list modules Labyrinth ships. The `appliance` profile never changes a router or firewall appliance; its modules only print steps for a person to carry out.
 
 Labyrinth always shows you what it would do before it does anything, and every change it makes can be undone.
 
@@ -197,6 +197,7 @@ all work.
 | `--config DIR` | The configuration folder, if not `<root>/etc`. Must be a full path, and for plan, apply and probe it must exist. | all |
 | `--break-glass NAME` | Answers the break-glass prompt without typing. | apply |
 | `--confirm-group GROUP` | Answers the group-name prompt without typing. | apply |
+| `--approve LIST` | Approves items without the approval prompt; see section 7. | apply |
 | `-h`, `-?`, `--help` | Show help. | all |
 | `-V`, `--version` | Show the version. | all |
 
@@ -210,6 +211,7 @@ Example: `sudo ./labyrinth.sh apply lockout --root /srv/labyrinth`
 | `-Config DIR` | The configuration folder, if not `<root>\etc`. Must be a full path, and for plan, apply and probe it must exist. | all |
 | `-BreakGlass NAME` | Answers the break-glass prompt without typing. | apply |
 | `-ConfirmGroup GROUP` | Answers the group-name prompt without typing. | apply |
+| `-Approve LIST` | Approves items without the approval prompt; see section 7. | apply |
 | `-h`, `-Help` | Show help. | all |
 | `-V`, `-Version` | Show the version. | all |
 
@@ -241,6 +243,37 @@ An apply goes through a fixed series of safety checks. If one fails, the run sto
 7. **Keep or not.** Check that a new login works, then type `keep`. Anything else leaves the timer armed.
 
 Some modules never change anything on their own: they print a checklist for a person to follow, or ask you which items to change.
+
+**Approving items.** A module that asks first lists each item it would change on an `Item:` line, such as `cron-3f1a@2a2c17aaaf66 (cron): runs from /tmp`. The first word is the item's id, then `@` and its fingerprint, a short code for how the item looks now. In brackets is its category, and last is why the module picked it. During the apply, Labyrinth shows the items again and asks which to change:
+
+- Type the ids you approve, separated by spaces, for example `cron-3f1a cron-77b0`.
+- Type `category:cron` to approve every item of that category in this plan.
+- Press Enter to approve nothing. Nothing is then changed.
+
+An id that is not in the plan is ignored, and Labyrinth says so. If anything else is typed, the module is blocked and changes nothing.
+
+To approve without the prompt, for example from a script, list the items when you start the apply:
+<!-- linux -->
+`--approve lockout.persistence:cron-3f1a@2a2c17aaaf66,lockout.persistence:cron-77b0@5821d4d89f00`
+<!-- end -->
+<!-- windows -->
+`-Approve lockout.persistence:task-3f1a@2a2c17aaaf66,lockout.persistence:task-77b0@5821d4d89f00`
+<!-- end -->
+Each entry is the module ID, a colon, then the item as its `Item:` line shows it, id and fingerprint together. Copy them from a plan. Categories are not accepted here, because they could include items you never saw. The prompt is then not asked.
+
+If an item has changed since the plan you copied it from, its fingerprint no longer matches. The item is left alone, and Labyrinth says so and records it. The module checks again just before it changes each item. Approvals are never stored: a rollback does not need them.
+
+**New passwords.** A module that sets a new password shows it once, straight on your screen, and never writes it to a file or a log:
+
+```
+  New password for root, shown once:
+
+      Kq7-hT2xRm9.wPz4bNe8
+
+  Type 'recorded' once it is in the offline record:
+```
+
+Copy it into the team's offline record, check the copy, then type `recorded`. Anything else asks again. Labyrinth then clears the password from the screen. If the window closes before you type `recorded`, the module puts the old password back, because nobody has the new one. A module that sets passwords needs a terminal to show them on; started without one, for example from a script with no window, it changes nothing and is blocked.
 
 # 8. Reading the output
 
@@ -290,6 +323,8 @@ Under the result, each line starts with a label that says what kind of line it i
 | `Problem:`, `Cause:` | What went wrong, and why. |
 | `Fix:` | What to do about it. |
 | `Undo:` | How the change is undone. |
+| `Item:` | Something a module asks you to approve: its id and fingerprint, its category, and why (section 7). |
+| `Approved:` | The items you approved. |
 | `Note:` | Anything else the module printed. |
 | `Script:`, `It said:` | The module's script that failed, and its last lines when it gave no reason. |
 | `Log:` | The run log, which holds everything (section 11). |

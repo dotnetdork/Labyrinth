@@ -7,11 +7,12 @@ This is the build order for the rest of Labyrinth. The design specs in `docs/des
 **Built:**
 - the core library in bash and PowerShell: logging, the run manifest with backup and restore, safety gates, the protected set, break-glass, the run lock, revert timers, and the http, dns and banner probes;
 - both runners, with `plan`, `apply`, `keep`, `rollback`, `runs`, `probe`, `help` and `version`;
+- from stage 3: platform facts, the firewall adapter, the quarantine helper, approval items with `--approve` / `-Approve`, the six shipped profiles (empty until their modules are built), and new passwords shown once for the offline record;
 - the operator manual, the compatibility suite and CI.
 
 **Not built:**
 - real modules (`phases/*/modules` holds only placeholders);
-- `platform/`, `profiles/`, `report/`, `core/seed/` and `vendor/`;
+- `report/`, `core/seed/` and `vendor/`;
 - the planned commands: `seal`, `reseal`, `checkpoint`, `backup`, `restore` and `remote`.
 
 ## 2. Rules for every branch
@@ -35,7 +36,7 @@ Built on one branch, `phase-3/groundwork`, one commit per part. The parts are li
 |---|---|---|---|
 | `phase-3/platform-detect` | 19 | Detects the OS family, firewall backend (UFW, firewalld, nftables, iptables, Windows Firewall), init system and package manager, in `core/platform/`; works without `jq`, `python3` or `curl` | Fixture tests pass for each supported distribution and for Windows |
 | `phase-3/firewall-adapter` | 19, 01 | One interface across the five backends (UFW, firewalld, nftables, iptables, Windows Firewall): snapshot, scoring allowlist first, then deny, then restore | The allowlist is in place before any deny rule; restore puts back the exact snapshot (unit tests in CI; each backend on its lab host) |
-| `phase-3/profiles` | 00, Blueprint §6.3 | The shipped profiles: `linux-server`, `linux-web`, `linux-siem`, `windows-member`, `windows-dc`, `appliance` | Every listed module id exists by the time its stage ends |
+| `phase-3/profiles` | 00, Blueprint §6.3 | The shipped profiles: `linux-server`, `linux-web`, `linux-siem`, `windows-member`, `windows-dc`, `appliance` | A shipped profile lists only modules the release has, fitting its platform; each module is added to its profiles in the commit that builds it (`tests/profiles/`) |
 | `phase-3/quarantine` | 17 §5 | A core quarantine helper for files, cron lines, units, scheduled tasks, services, registry values and WMI subscriptions | Rollback restores each item byte for byte; nothing is deleted |
 | `phase-3/approval-flow` | Conventions §3.1 | Approval items with fingerprints, `category:` approval at the prompt, and `--approve` / `-Approve` | An unapproved item and an item changed since the plan are left alone |
 | `phase-3/offline-record` | 05 | Hand-over of new passwords without writing them to disk | No secret appears in logs, the manifest or backups |

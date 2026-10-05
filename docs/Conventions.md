@@ -59,6 +59,13 @@ Templates live in `config/*.example` and contain placeholders only. A run-time p
 
 `profiles/<name>.profile` ships the default ordered module list for a host type. A file of the same name in the run-time `profiles/` directory replaces it entirely for that run.
 
+The release ships six: `linux-server`, `linux-web`, `linux-siem`, `windows-member`, `windows-dc` and `appliance` (Blueprint, section 6.3). A module id is added to a shipped profile in the same commit as the module (design 00, section 8), so a shipped profile never lists a module the release lacks. `tests/profiles/` checks each shipped profile:
+
+- every line is a module id, listed once, naming a module whose `module.yml` carries that id;
+- a `windows-*` profile lists only modules whose platforms include `windows` and that have `.ps1` entry points;
+- a `linux-*` profile lists only modules with a Linux platform and `.sh` entry points;
+- the `appliance` profile lists only `manual-only` modules (design 16).
+
 ## 3. How a module is run
 
 The runner (`labyrinth.sh` / `labyrinth.ps1`) calls each entry point as a separate process with these environment variables set:
@@ -74,7 +81,7 @@ The runner (`labyrinth.sh` / `labyrinth.ps1`) calls each entry point as a separa
 | `LAB_MODULE_ID` | The module's `id` |
 | `LAB_DRY_RUN` | `1` when the run is in plan mode |
 | `LAB_ENTRY` | The entry point being run (`check`, `plan`, `apply`, ...); the logger records it |
-| `LAB_APPROVED` | For `approval` modules only: the items a person approved, separated by spaces; each is `<id>@<fingerprint>` once approval items are built (section 3.1). Empty otherwise |
+| `LAB_APPROVED` | For `approval` modules only: the items a person approved, separated by spaces, each `<id>@<fingerprint>` (section 3.1). Empty otherwise |
 
 Entry points load the core library from `LAB_ROOT/core/` and never from a relative path: `source "$LAB_ROOT/core/lib.sh"` in bash, `. (Join-Path $env:LAB_ROOT 'core\Lab.ps1')` in PowerShell. Loading it only defines functions. Entry points never read standard input: the runner owns the operator's prompts, so in bash an entry point's input is `/dev/null`.
 
@@ -110,6 +117,7 @@ labyrinth <command> [<phase> | <run>] [options]
 | `--config` | `-Config` | absolute folder: run-time configuration (default `<root>/etc`) | all |
 | `--break-glass` | `-BreakGlass` | NAME: answers the break-glass prompt without typing | `apply` |
 | `--confirm-group` | `-ConfirmGroup` | GROUP: answers the confirmation prompt without typing | `apply` |
+| `--approve` | `-Approve` | LIST: approves items without the approval prompt (Approval items, below) | `apply` |
 | `-h`, `-?`, `--help` | `-h`, `-Help` | none | all |
 | `-V`, `--version` | `-V`, `-Version` | none | all |
 
@@ -156,7 +164,7 @@ The whole line must parse before help or the version is shown. A value option th
    - `manual-only`: never applied; its plan is the checklist.
    - `touches_scored: true`: blocked (`20`) without a non-empty `scoring-allowlist` and a `services` file; the run continues.
    - `requires`: blocked if a required module in this run did not complete.
-   - `approval`: the operator types the ids of the items to approve; none means nothing changes.
+   - `approval`: the runner shows the module's items again, and the operator types the ids or categories to approve, or `--approve` gives them (Approval items, below); none means nothing changes.
    - The revert timer is (re)armed for `REVERT_MINUTES`, unless the module is `read-only`.
    - `apply_start` is recorded. If the manifest cannot be written, the module is not applied and the run stops (`40`).
    - `apply`: `20` is recorded and the run continues; any other failure rolls the module back and stops the run (`40`).
@@ -171,14 +179,16 @@ The time a timer will fire is kept in `<state>/runs/<run>/timer-due` (UTC, `YYYY
 
 Cancelling a timer checks that it is really gone. If it is still armed, `keep` records nothing, says so, and exits `40`.
 
-#### Approval items (planned)
+#### Approval items
 
-Decided in the 2026-10-05 review and built in the `approval-flow` branch. Until then the prompt above takes bare ids.
+Decided in the 2026-10-05 review.
 
-- **Items.** An `approval` module's `plan` lists each item it would change, one per line on standard output: `item`, then the item id, its category, its fingerprint and the reason, separated by tabs. The id is `[a-z0-9-]+`, unique within the module on this host, and derived from what the item is (for example its path), so the same item keeps its id from one run to the next. The category is `[a-z0-9-]+`. The fingerprint is the first 12 hex digits of the SHA-256 of the item's current state: its content, value or settings.
-- **The prompt** accepts item ids, and `category:<name>` for every item of that category in this run's plan, on this host only (design 01). The runner shows the items again and passes each approved one to `apply` as `<id>@<fingerprint>` in `LAB_APPROVED`.
-- **`--approve` / `-Approve`** (`apply` only) approves without the prompt, for remote mode (design 00, section 5). Its value is a comma-separated list of `<module-id>:<item-id>@<fingerprint>`, copied from a plan. It takes no categories, because a category could include items the operator never saw. When `--approve` is given, an `approval` module gets only the entries that name it, and the prompt is not asked.
-- **Changed since the plan.** `apply` recomputes each approved item's fingerprint before changing it. If it differs, the item is left alone and recorded as refused: changed since the plan. An entry that names an item not in this run's plan is ignored with a warning. Neither makes the run fail.
+- **Items.** An `approval` module's `plan` lists each item it would change, one per line on standard output: `item`, then the item id, its category, its fingerprint and the reason, separated by tabs. The core prints the line: `lab_item ID CATEGORY FINGERPRINT REASON` / `Write-LabItem`. The id is `[a-z0-9-]+`, unique within the module on this host, and derived from what the item is (for example its path), so the same item keeps its id from one run to the next. The category is `[a-z0-9-]+`. The fingerprint is the first 12 hex digits of the SHA-256 of the item's current state: its content, value or settings (`lab_item_fingerprint`, which reads the state on standard input, / `Get-LabItemFingerprint -Text`). A line that starts with `item` and a tab but is malformed, or an id listed twice, makes the module an `ERROR` (`40`), in plan and in apply.
+- **Shown** under the module's result line as `Item:` lines, `<id>@<fingerprint> (<category>): <reason>`.
+- **The prompt.** In apply, the runner shows the module's items again, then asks for item ids, and `category:<name>` for every item of that category in this run's plan, on this host only (design 01). A word that is neither is a `BLOCKED` (`20`); an id or category not in the plan is ignored with a line saying so. Each approved item goes to `apply` as `<id>@<fingerprint>` in `LAB_APPROVED`, with the fingerprint of this run's plan. Under the `CHANGE` line, `Approved:` lists them. A module whose plan listed no items, or with nothing approved, changes nothing (`OK`).
+- **`--approve` / `-Approve`** (`apply` only) approves without the prompt, for remote mode (design 00, section 5). Its value is a comma-separated list of `<module-id>:<item-id>@<fingerprint>`, copied from a plan. It takes no categories, because a category could include items the operator never saw; an entry with a category, or any other malformed entry, is a usage error (`40`). When `--approve` is given, an `approval` module gets only the entries that name it, and the prompt is not asked. After the plan, each entry that names no item of an `approval` module in this run's plan is ignored with a line saying so.
+- **Changed since the plan.** An `--approve` entry whose fingerprint differs from this run's plan is left out, recorded as `approval_refused` and shown as a `Found:` line. `apply` then recomputes each approved item's fingerprint before changing it, with `lab_approved ID FINGERPRINT` / `Test-LabApproved`: `0` approved and unchanged, `1` not approved, `2` changed since the plan, which records `approval_refused` and leaves the item alone. None of these makes the run fail.
+- **Recorded.** The module's `apply_start` entry notes the approved items.
 - **Never stored.** Approvals are not written into a revert timer's command line, and `rollback` never needs them.
 
 ### 3.2 Console output
@@ -201,7 +211,7 @@ What the runners print is part of the contract: operators read it under time pre
     - `ERROR`: apply failed, or a rollback failed.
 - **Labelled lines.** Everything under a status line is a labelled line: two spaces, the label and a colon padded to 11 characters, then the text: `  Found:     password logins are on`. The labels are:
   - from modules: `Found` (what it saw), `Will do` (what apply would change), `Did` (what it changed), `Why`, `Risk`, `Problem`, `Cause`, `Fix` and `Undo`;
-  - from the runner: `Note` (any other module line), `Script` (the entry point that failed), `It said` (its last lines), `Log` (the run log), `Before` and `More` (`<SELF> help <module-id>`).
+  - from the runner: `Item` (an approval item, section 3.1), `Approved` (the items approved), `Note` (any other module line), `Script` (the entry point that failed), `It said` (its last lines), `Log` (the run log), `Before` and `More` (`<SELF> help <module-id>`).
 
   Text longer than 65 characters wraps at a space onto another line with the same label, so each line makes sense alone; a word longer than that, such as a path, is never split.
 - **Module output.** A module prints `key: text` lines, with a key from the module labels above, in any case: `found: password logins are on`. The runner shows each such line with its label, any other line as a `Note`, and drops blank lines. `check` and `plan` output is shown after the result line, because the result is known only when they end; the output of later entry points is shown as it comes. A `CHANGE` with no `Risk` line gets the module's risk in plain words.
@@ -272,7 +282,7 @@ Every log line is one JSON object on one line (JSON lines), written through the 
 | `event` | `rule_added` | Short machine-readable name |
 | `msg` | `allowed tcp/443 from scoring allowlist` | Human-readable |
 
-Logs are written to `<logs>/<category>/<YYYYMMDD>.jsonl` (UTC date); warnings and errors are also printed to standard error. Plan mode writes no log files. Extra fields may follow. **Never log a secret:** passwords, keys, the event seed and tokens are never passed to the logger, not even masked. Log categories are those in design 00, section 7.
+Logs are written to `<logs>/<category>/<YYYYMMDD>.jsonl` (UTC date); warnings and errors are also printed to standard error. Plan mode writes no log files. Extra fields may follow. **Never log a secret:** passwords, keys, the event seed and tokens are never passed to the logger, not even masked. A module makes a new password with `lab_secret_new` / `Get-LabRandomSecret` and hands it over only with `lab_secret_show` / `Show-LabSecret`, which write to the terminal, never to standard output (design 05, section 2.3). Log categories are those in design 00, section 7.
 
 ## 7. The run manifest
 
@@ -289,6 +299,7 @@ The manifest is `<state>/runs/<run>/manifest.jsonl`, one JSON object per line, e
 | `firewall_snapshot` | The firewall adapter saved the ruleset; `target` is the backend and `backup` the snapshot folder. Rollback restores it (design 19, section 5) |
 | `firewall_allow`, `firewall_default_deny` | The firewall adapter is about to add an allow, or set the inbound default to deny; undone by the snapshot |
 | `quarantine_file`, `quarantine_cron`, `quarantine_unit`, `quarantine_task`, `quarantine_service`, `quarantine_registry`, `quarantine_wmi`, `quarantine_process` | An item is about to be quarantined; `lab_quarantine_restore` / `Undo-LabQuarantine` put it back, except an ended process (design 17, section 5.1) |
+| `approval_refused` | An approved item was left alone because it changed since the plan; `target` is the item id (section 3.1). Nothing to undo |
 | `rolled_back` | The module was rolled back |
 
 Restoring a `file` entry writes the backup over the file in place, then restores its owner and permissions (and, on Linux, its SELinux label where `restorecon` exists). A created file is never deleted: rollback moves it into the backup folder as `rolled-back-<seq>-<name>`. Restoring is safe to repeat.

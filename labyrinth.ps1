@@ -74,6 +74,10 @@ $Risks = @('read-only', 'reversible', 'service-affecting', 'approval', 'manual-o
 $Platforms = @('ubuntu', 'rhel-family', 'windows', 'appliance')
 $ReRunId = '^[0-9]{8}T[0-9]{6}Z-[0-9a-f]{4}$'
 $ReModuleId = '^(lockout|observe|deceive|sustain)\.[a-z0-9_-]+$'
+# An item line from an approval module's plan, and one -Approve entry
+# (docs/Conventions.md section 3.1).
+$ReItem = "^item`t([a-z0-9-]+)`t([a-z0-9-]+)`t([0-9a-f]{12})`t(.*)$"
+$ReApprove = '^(lockout|observe|deceive|sustain)\.[a-z0-9_-]+:[a-z0-9-]+@[0-9a-f]{12}$'
 $Commands = @('plan', 'apply', 'keep', 'rollback', 'runs', 'probe', 'help', 'version')
 $Self = 'labyrinth.ps1'          # the program's name, for hints
 
@@ -86,6 +90,7 @@ $script:LabOptions = @(
     @{ Name = 'config'; Show = '-Config'; Keys = @('config'); Value = $true }
     @{ Name = 'break-glass'; Show = '-BreakGlass'; Keys = @('breakglass'); Value = $true }
     @{ Name = 'confirm-group'; Show = '-ConfirmGroup'; Keys = @('confirmgroup', 'confirm'); Value = $true }
+    @{ Name = 'approve'; Show = '-Approve'; Keys = @('approve'); Value = $true }
     @{ Name = 'apply'; Show = '-Apply'; Keys = @('apply'); Value = $false }
     @{ Name = 'help'; Show = '-Help'; Keys = @('help'); Value = $false }
     @{ Name = 'version'; Show = '-Version'; Keys = @('version'); Value = $false }
@@ -100,7 +105,8 @@ $script:Mod = @{}
 $script:ProfileIds = @()
 $script:PendingWarnings = @()
 $script:EntryRc = 0
-$script:Approved = ''
+$script:Approved = ''            # items approved for the module being applied
+$script:Refused = @()            # approved items that changed since the plan
 $script:PhaseCount = 0
 $script:LoadErrors = 0           # modules of the phase that could not be loaded
 $script:LoadSkipped = 0          # modules skipped: no entry points for this platform
@@ -181,9 +187,9 @@ Plan, confirm, then change; a revert timer undoes it unless kept.
 
 $where
   -Profile NAME          must match this host's line in the hosts file
-Apply only:
   -BreakGlass NAME       answer the break-glass prompt
   -ConfirmGroup GROUP    answer the group-name prompt
+  -Approve LIST          approve without asking: module:item@fingerprint,...
 
 Exit: 0 done, 10 manual steps left, 20 blocked, 30 check failed, 40 error.
 Example: $Self apply lockout
@@ -484,7 +490,7 @@ function Read-LabArgument {
 # error.
 function Test-LabOptionUse {
     param([string] $Command, [string[]] $Used = @())
-    foreach ($name in @('profile', 'break-glass', 'confirm-group')) {
+    foreach ($name in @('profile', 'break-glass', 'confirm-group', 'approve')) {
         if ($script:Given.ContainsKey($name) -and $Used -notcontains $name) {
             $o = $script:LabOptions | Where-Object { $_.Name -eq $name }
             $script:PendingWarnings += "$($o.Show) is not used by $Command"
@@ -593,14 +599,27 @@ function Import-LabModuleTitle {
     $script:YmlErr = @()
 }
 
-# Write-LabLabelled LINE: one line a module printed, as a labelled line. A
-# line 'key: text', with a key from the label list, keeps that label; any
-# other line is a Note (docs/Conventions.md section 3.2). Blank lines are
-# dropped.
+# Get-LabItemWord ID CATEGORY FINGERPRINT REASON: an item as an Item line
+# shows it: 'id@fingerprint (category): reason'.
+function Get-LabItemWord {
+    param([string] $Id, [string] $Category, [string] $Fingerprint, [AllowEmptyString()] [string] $Reason = '')
+    $text = "$Id@$Fingerprint ($Category)"
+    if ($Reason -ne '') { $text += ": $Reason" }
+    return $text
+}
+
+# Write-LabLabelled LINE: one line a module printed, as a labelled line. An
+# item line is an Item; a line 'key: text', with a key from the label list,
+# keeps that label; any other line is a Note (docs/Conventions.md section
+# 3.2). Blank lines are dropped.
 function Write-LabLabelled {
     param([AllowEmptyString()] [string] $Line)
     $l = $Line.Trim()
     if ($l -eq '') { return }
+    if ($Line.TrimStart() -cmatch $ReItem) {
+        Write-LabDetail 'Item' (Get-LabItemWord $Matches[1] $Matches[2] $Matches[3] $Matches[4].Trim())
+        return
+    }
     if ($l -match '^([A-Za-z][A-Za-z ]*):\s+(.*)$') {
         $key = $Matches[1].ToLowerInvariant()
         if ($Labels -ccontains $key) {
@@ -1070,7 +1089,7 @@ function Import-LabRunModule {
         if ($script:Mod.ContainsKey('requires')) { $requires = Get-LabListItem $script:Mod['requires'] }
         $found += [pscustomobject]@{
             Id = $id; Dir = $dir; Risk = $script:Mod['risk']; Scored = ($script:Mod['touches_scored'] -eq 'true')
-            Requires = $requires; Priority = $script:Mod['priority']; Rc = 0; State = 'planned'
+            Requires = $requires; Priority = $script:Mod['priority']; Rc = 0; State = 'planned'; Items = @()
         }
     }
     $ordered = @()
@@ -1118,6 +1137,15 @@ function Invoke-LabPlanOne {
     }
     Invoke-LabEntry $M.Dir 'plan' $id -Capture
     $rc = $script:EntryRc
+    if ($M.Risk -eq 'approval' -and ($rc -eq 0 -or $rc -eq 10)) {
+        $why = Read-LabItem $M
+        if ($why -ne '') {
+            Write-LabStatus 'ERROR' $name; Show-LabOutput $said; Show-LabOutput
+            Write-LabDetail 'Problem' "its plan listed an item wrongly: $why"
+            Write-LabDetail 'Fix' $fixError; Write-LabMore $id
+            $M.Rc = 40; return
+        }
+    }
     if ($rc -eq 0 -or $rc -eq 10) {
         if ($M.Risk -eq 'manual-only') {
             Write-LabStatus 'WARN' $name
@@ -1143,6 +1171,26 @@ function Invoke-LabPlanOne {
     Write-LabExplain 'plan' $rc (Join-Path $M.Dir 'plan.ps1')
     Write-LabDetail 'Fix' $fixError; Write-LabMore $id
     $M.Rc = 40
+}
+
+# Read-LabItem M: keep the items an approval module's plan listed
+# ($script:EntryOut) in M.Items (docs/Conventions.md section 3.1). Returns
+# '' or, when an item line is malformed or an id is listed twice, why.
+function Read-LabItem {
+    param($M)
+    $items = @()
+    foreach ($raw in @($script:EntryOut)) {
+        $line = "$raw".TrimStart().TrimEnd("`r")
+        if (-not $line.StartsWith("item`t")) { continue }
+        if ($line -cnotmatch $ReItem) {
+            return "not 'item', id, category, fingerprint and reason, separated by tabs: $($line.Replace("`t", ' '))"
+        }
+        $item = [pscustomobject]@{ Id = $Matches[1]; Category = $Matches[2]; Fingerprint = $Matches[3]; Reason = $Matches[4].Trim() }
+        if (@($items | Where-Object { $_.Id -ceq $item.Id }).Count -gt 0) { return "the id $($item.Id) is listed twice" }
+        $items += $item
+    }
+    $M.Items = $items
+    return ''
 }
 
 # Load and plan the phase's modules; return the worst code.
@@ -1339,6 +1387,122 @@ function Get-LabProbeNow {
 
 # Apply, verify and probe one module. Returns 0 (done or nothing to do),
 # 20 (blocked; continue), or 30/40 (rolled back; stop).
+function Get-LabApproveEntry {
+    return @($script:Given['approve'].Split(','))
+}
+
+# Select-LabItem M: the items of approval module M that a person approved,
+# as 'id@fingerprint' words in $script:Approved (docs/Conventions.md
+# section 3.1): the -Approve entries that name the module when it was given,
+# otherwise the ids and categories typed at the prompt. An -Approve entry
+# whose fingerprint differs from this run's plan is recorded as refused and
+# left out. Returns 0 with something approved; 1, after an OK block, when
+# nothing was; 20, after a BLOCKED block, when the answer is not ids and
+# categories.
+function Select-LabItem {
+    param($M)
+    $id = $M.Id
+    $name = Get-LabModuleName $id
+    $script:Approved = ''
+    $script:Refused = @()
+    $list = @()
+    if (@($M.Items).Count -eq 0) {
+        Write-LabStatus 'OK' $name
+        Write-LabDetail 'Did' 'its plan listed no items to approve, so nothing changed'
+        return 1
+    }
+    if ($script:Given.ContainsKey('approve')) {
+        foreach ($tok in (Get-LabApproveEntry)) {
+            $colon = $tok.IndexOf(':')
+            if ($tok.Substring(0, $colon) -cne $id) { continue }
+            $want = $tok.Substring($colon + 1)
+            $at = $want.LastIndexOf('@')
+            $iid = $want.Substring(0, $at)
+            $item = @($M.Items | Where-Object { $_.Id -ceq $iid })
+            if ($item.Count -eq 0) { continue }   # reported after the plan
+            if (@($list | Where-Object { $_.StartsWith("$iid@") }).Count -gt 0) { continue }
+            if ($item[0].Fingerprint -cne $want.Substring($at + 1)) {
+                try {
+                    Add-LabEntryFor $id 'approval_refused' $iid "approved $($want.Substring($at + 1)), changed since the plan; now $($item[0].Fingerprint)"
+                } catch { Write-LabErrorLine $_.Exception.Message }
+                $script:Refused += $iid
+                continue
+            }
+            $list += $want
+        }
+    } else {
+        Write-LabLine "$name changes only the items you approve:"
+        foreach ($i in $M.Items) { Write-LabDetail 'Item' (Get-LabItemWord $i.Id $i.Category $i.Fingerprint $i.Reason) }
+        Write-LabLine 'To approve every item of a category, type category: and its name.'
+        if (-not (Read-LabAnswer 'Type the ids of the items to approve, separated by spaces, or press Enter for none: ')) { $script:Answer = '' }
+        $words = @($script:Answer -split '\s+' | Where-Object { $_ -ne '' })
+        foreach ($tok in $words) {
+            if ($tok -cnotmatch '^(category:)?[a-z0-9-]+$') {
+                Write-LabStatus 'BLOCKED' $name
+                Write-LabDetail 'Problem' "not an item id or a category: $tok"
+                Write-LabDetail 'Fix' 'type ids from its plan above, separated by spaces'
+                Write-LabMore $id
+                return 20
+            }
+        }
+        foreach ($tok in $words) {
+            $hit = $false
+            foreach ($i in $M.Items) {
+                if ($tok -ceq $i.Id -or $tok -ceq "category:$($i.Category)") {
+                    $hit = $true
+                    if (@($list | Where-Object { $_.StartsWith("$($i.Id)@") }).Count -eq 0) { $list += "$($i.Id)@$($i.Fingerprint)" }
+                }
+            }
+            if (-not $hit) { Write-LabLine "Not in its plan, so ignored: $tok" }
+        }
+    }
+    $script:Approved = $list -join ' '
+    if ($script:Approved -eq '') {
+        Write-LabStatus 'OK' $name
+        Write-LabChoice
+        Write-LabDetail 'Did' 'nothing approved, so nothing changed'
+        return 1
+    }
+    return 0
+}
+
+# Write-LabChoice: under a module's status line, the items approved and
+# those left alone because they changed since the plan.
+function Write-LabChoice {
+    $ids = @($script:Approved -split ' ' | Where-Object { $_ -ne '' } | ForEach-Object { $_.Substring(0, $_.LastIndexOf('@')) })
+    if ($ids.Count -gt 0) { Write-LabDetail 'Approved' ($ids -join ', ') }
+    foreach ($r in $script:Refused) { Write-LabDetail 'Found' "$r changed since the plan, so it is left alone" }
+}
+
+# Write-LabApproveUnmatched: after the plan, each -Approve entry that names
+# no item of an approval module in this run's plan is ignored, with a line
+# saying so.
+function Write-LabApproveUnmatched {
+    $said = $false
+    foreach ($tok in (Get-LabApproveEntry)) {
+        $colon = $tok.IndexOf(':')
+        $mod = $tok.Substring(0, $colon)
+        $want = $tok.Substring($colon + 1)
+        $iid = $want.Substring(0, $want.LastIndexOf('@'))
+        $found = @($script:Run | Where-Object {
+                $_.Id -ceq $mod -and $_.Risk -eq 'approval' -and $_.Rc -eq 10 -and @($_.Items | Where-Object { $_.Id -ceq $iid }).Count -gt 0
+            }).Count -gt 0
+        if (-not $found) {
+            if (-not $said) { Write-LabLine ''; $said = $true }
+            Write-LabLine "Not in this run's plan, so ignored: $tok"
+        }
+    }
+}
+
+# Assert-LabApprove: each -Approve entry must be <module-id>:<item-id>@<fingerprint>.
+function Assert-LabApprove {
+    $fix = 'Copy each item from a plan: the module ID, a colon, then the item as its Item line shows it.'
+    foreach ($tok in (Get-LabApproveEntry)) {
+        if ($tok -like '*:category:*') { Exit-LabUsage "-Approve takes no categories, only items: '$tok'" 'apply' $fix }
+        if ($tok -cnotmatch $ReApprove) { Exit-LabUsage "-Approve: not <module-id>:<item-id>@<fingerprint>: '$tok'" 'apply' $fix }
+    }
+}
+
 function Invoke-LabApplyOne {
     param($M)
     $id = $M.Id
@@ -1381,23 +1545,9 @@ function Invoke-LabApplyOne {
     }
     if (-not (Test-LabRequire $M)) { $M.State = 'blocked'; return 20 }
     if ($M.Risk -eq 'approval') {
-        Write-LabLine "$name changes only the items you approve."
-        if (-not (Read-LabAnswer 'Type the ids of the items to approve, separated by spaces, or press Enter for none: ')) { $script:Answer = '' }
-        foreach ($tok in @($script:Answer -split '\s+' | Where-Object { $_ -ne '' })) {
-            if ($tok -cnotmatch '^[A-Za-z0-9._:@-]+$') {
-                Write-LabStatus 'BLOCKED' $name
-                Write-LabDetail 'Problem' "not an item id: $tok"
-                Write-LabDetail 'Fix' 'type ids from its plan above, separated by spaces'
-                Write-LabMore $id
-                $M.State = 'blocked'; return 20
-            }
-        }
-        $script:Approved = (@($script:Answer -split '\s+' | Where-Object { $_ -ne '' })) -join ' '
-        if ($script:Approved -eq '') {
-            Write-LabStatus 'OK' $name
-            Write-LabDetail 'Did' 'nothing approved, so nothing changed'
-            $M.State = 'done'; return 0
-        }
+        $rc = Select-LabItem $M
+        if ($rc -eq 1) { $M.State = 'done'; return 0 }
+        if ($rc -eq 20) { $M.State = 'blocked'; return 20 }
     }
     if (-not (Test-Path -LiteralPath (Join-Path $M.Dir 'apply.ps1') -PathType Leaf)) {
         Write-LabStatus 'OK' $name
@@ -1423,7 +1573,9 @@ function Invoke-LabApplyOne {
 
     # A change the manifest does not list could never be rolled back.
     try {
-        Add-LabEntryFor $id 'apply_start' '' "risk $($M.Risk)"
+        $note = "risk $($M.Risk)"
+        if ($script:Approved -ne '') { $note += ", approved $($script:Approved)" }
+        Add-LabEntryFor $id 'apply_start' '' $note
     } catch {
         Write-LabErrorLine $_.Exception.Message
         Write-LabStatus 'ERROR' $name
@@ -1434,6 +1586,7 @@ function Invoke-LabApplyOne {
     }
     Write-LabLogFor $id 'info' 'apply_start' 'applying'
     Write-LabStatus 'CHANGE' $name
+    if ($script:Approved -ne '') { Write-LabChoice }
     $applyScript = Join-Path $M.Dir 'apply.ps1'
     Invoke-LabEntry $M.Dir 'apply' $id '0'
     $rc = $script:EntryRc
@@ -1631,6 +1784,7 @@ function Invoke-LabApplyCommand {
         Write-LabPlanIntro 'apply' $Phase $entry
         $worst = Invoke-LabPlanAll $Phase
         if ($worst -ge 40) { Exit-Lab 'the plan has errors; nothing was changed' }
+        if ($script:Given.ContainsKey('approve')) { Write-LabApproveUnmatched }
         $todo = @($script:Run | Where-Object { $_.Rc -eq 10 -and $_.Risk -ne 'manual-only' }).Count
         if ($todo -eq 0) {
             Write-LabLine ''
@@ -2098,7 +2252,7 @@ try {
                 }
                 if ($rest.Count -gt 1) { Exit-LabUsage "unexpected word '$($rest[1])' after '$cmd $phase'" $cmd }
             }
-            if ($cmd -ceq 'plan') { $used = @('profile') } else { $used = @('profile', 'break-glass', 'confirm-group') }
+            if ($cmd -ceq 'plan') { $used = @('profile') } else { $used = @('profile', 'break-glass', 'confirm-group', 'approve') }
         }
         { $_ -ceq 'keep' -or $_ -ceq 'rollback' } {
             # Without a run, keep and rollback decide what to do (section 3.1).
@@ -2136,6 +2290,7 @@ try {
     $config = $config.Replace('/', '\')
     if ($script:DataRoot -notmatch '^([A-Za-z]:\\|\\\\)') { Exit-LabUsage "-Root must be a full path, not '$($script:DataRoot)'" $cmd }
     if ($config -ne '' -and $config -notmatch '^([A-Za-z]:\\|\\\\)') { Exit-LabUsage "-Config must be a full path, not '$config'" $cmd }
+    if ($cmd -ceq 'apply' -and $script:Given.ContainsKey('approve')) { Assert-LabApprove }
     # Noted now, printed by each command once its own checks pass.
     Test-LabOptionUse $cmd $used
     $script:ProfileName = $profileName
