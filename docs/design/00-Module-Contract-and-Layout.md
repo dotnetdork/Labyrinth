@@ -49,6 +49,7 @@ Labyrinth/
 │   ├── log/                     # structured logging (JSON lines)
 │   ├── manifest/                # run manifest: what was changed, for rollback and cleanup
 │   ├── safety/                  # protected set, gates, dead-man revert timers
+│   ├── quarantine/              # quarantine, never delete: move aside and restore (design 17)
 │   ├── platform/                # platform facts: OS, firewall, role (design 19)
 │   ├── seed/                    # event seed derivation (design 03)
 │   └── probe/                   # scoring-style health probes
