@@ -31,7 +31,7 @@ Labyrinth makes security changes to a host quickly, safely and reversibly. The w
 | `deceive` | Plant traps that give the attacker away. |
 | `sustain` | Keep everything running and be able to undo mistakes. |
 
-Each phase is made of **modules**: small, single-purpose pieces of automation, such as "change the default administrator password". Which modules run on a host depends on its **profile**, the kind of host it is (for example, a Linux web server).
+Each phase is made of **modules**: small, single-purpose pieces of automation, such as "change the default administrator password". Which modules run on a host depends on its **profile**, the kind of host it is (for example, a Linux web server). Labyrinth ships six profiles: `linux-server`, `linux-web`, `linux-siem`, `windows-member`, `windows-dc` and `appliance`. A profile of the same name in the `profiles` folder of the configuration replaces the shipped one for that run, but it can only list modules Labyrinth ships. The `appliance` profile never changes a router or firewall appliance; its modules only print steps for a person to carry out.
 
 Labyrinth always shows you what it would do before it does anything, and every change it makes can be undone.
 

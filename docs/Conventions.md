@@ -59,6 +59,13 @@ Templates live in `config/*.example` and contain placeholders only. A run-time p
 
 `profiles/<name>.profile` ships the default ordered module list for a host type. A file of the same name in the run-time `profiles/` directory replaces it entirely for that run.
 
+The release ships six: `linux-server`, `linux-web`, `linux-siem`, `windows-member`, `windows-dc` and `appliance` (Blueprint, section 6.3). A module id is added to a shipped profile in the same commit as the module (design 00, section 8), so a shipped profile never lists a module the release lacks. `tests/profiles/` checks each shipped profile:
+
+- every line is a module id, listed once, naming a module whose `module.yml` carries that id;
+- a `windows-*` profile lists only modules whose platforms include `windows` and that have `.ps1` entry points;
+- a `linux-*` profile lists only modules with a Linux platform and `.sh` entry points;
+- the `appliance` profile lists only `manual-only` modules (design 16).
+
 ## 3. How a module is run
 
 The runner (`labyrinth.sh` / `labyrinth.ps1`) calls each entry point as a separate process with these environment variables set:
