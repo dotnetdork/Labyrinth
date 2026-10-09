@@ -140,7 +140,7 @@ Describe 'labyrinth.ps1 recovery hints' {
         $r.Code | Should -Be 40
         $lines = @($r.Err.TrimEnd() -split "`r?`n")
         $lines[0] | Should -Be 'labyrinth: the module.yml of observe.clean is not valid: not a key: value line'
-        $lines[1] | Should -Match '^Report the module to its author, or correct .*[\/]module\.yml:[0-9]+$'
+        $lines[1] | Should -Match '^Report the module to its author, or correct .*[\\/]module\.yml:[0-9]+$'
     }
 
     It 'a profile that differs from the hosts file says to leave it out' {
