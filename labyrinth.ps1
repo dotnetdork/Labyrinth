@@ -124,6 +124,7 @@ $script:Protected = @{}
 $script:Settings = @{}
 $script:Before = @()
 $script:HaveServices = $false
+$script:HostEntry = $null        # this host's line in hosts, for plan's Next line
 $script:BreakGlassAccount = ''
 $script:BreakGlassNote = 'confirmed earlier'   # what the console check found
 $script:GivenBreakGlass = ''     # -BreakGlass, read inside functions
@@ -210,7 +211,7 @@ ID or its last 4 characters; '$Self runs' lists them.
 
 $where
 
-Exit: 0 kept, 20 not an Administrator or too late (rolled back), 40 error.
+Exit: 0 kept or none armed, 20 not an Administrator or too late, 40 error.
 Example: $Self keep 4f2a
 "@ }
         'rollback' { @"
@@ -337,10 +338,15 @@ function Show-LabModuleHelp {
     $file = Join-Path $dir 'module.yml'
     $script:YmlErr = @()
     if (-not (Read-LabModuleYml $file) -or -not (Test-LabModule $file $Id $phase)) {
+        # Each error is "FILE: message" or "FILE:LINE: message", and the
+        # message may hold ': ' itself, so the known file name comes off first.
         $err = $script:YmlErr[0]
-        $at = $err.LastIndexOf(': ')
-        [Console]::Error.WriteLine("labyrinth: the module.yml of $Id is not valid: $($err.Substring($at + 2))")
-        [Console]::Error.WriteLine("Report the module to its author, or correct $($err.Substring(0, $at))")
+        $where = $file
+        if ($err.StartsWith($file)) { $err = $err.Substring($file.Length) }
+        if ($err -match '^:([0-9]+):') { $where = "${file}:$($Matches[1])"; $err = $err.Substring($Matches[1].Length + 1) }
+        if ($err.StartsWith(': ')) { $err = $err.Substring(2) }
+        [Console]::Error.WriteLine("labyrinth: the module.yml of $Id is not valid: $err")
+        [Console]::Error.WriteLine("Report the module to its author, or correct $where")
         exit 40
     }
     $m = $script:Mod
@@ -449,7 +455,9 @@ function Read-LabArgument {
         $a = $Arguments[$i]; $i++
         if ($a -isnot [string]) {
             # In a PowerShell session, 0123 arrives as the number 123.
-            Exit-LabUsage "'$a' was read as a number: put it in quotes, like '0123'"
+            # Reported with the rest, so the Try line names the command.
+            Add-LabParseError "'$a' was read as a number: put it in quotes, like '0123'"
+            continue
         }
         $w = [string] $a
         if ($ended -or $w -notlike '-?*') { $words.Add($w); continue }
@@ -483,7 +491,10 @@ function Read-LabArgument {
                 if ($i -ge $Arguments.Count) { Add-LabParseError "$($o.Show) needs a value"; continue }
                 $next = $Arguments[$i]
                 if ($next -is [string] -and $next -like '-?*') { Add-LabParseError "$($o.Show) needs a value, but got '$next'"; continue }
-                $val = [string] $next; $i++
+                # In a PowerShell session, a,b arrives as an array: it
+                # means the comma-separated list it was typed as.
+                if ($next -is [Collections.IList]) { $val = (@($next) | ForEach-Object { [string] $_ }) -join ',' } else { $val = [string] $next }
+                $i++
             }
             if ($val -eq '') { Add-LabParseError "$($o.Show) needs a value"; continue }
         } elseif ($sep -ne '') {
@@ -541,6 +552,7 @@ function Exit-Lab {
 # How to get the rights a command needs, and how to mend a bad line.
 $FixAdmin = "Run it again in PowerShell opened with 'Run as administrator'."
 $FixLine = 'Correct that line, then run the same command again.'
+$FixServices = 'List the scored services there, one "name proto host port expect" per line.'
 
 # Get-LabProfileName: the profiles this host can use, comma-separated.
 function Get-LabProfileName {
@@ -806,8 +818,15 @@ function Write-LabNextStep {
         Write-LabLine 'Next: clear what blocked it above, then run the same command again.'
     } elseif ($Code -eq 10) {
         $other = @($script:Run | Where-Object { $_.Rc -eq 10 -and $_.Risk -ne 'manual-only' }).Count
+        $hostsFile = Join-Path $env:LAB_CONFIG_DIR 'hosts'
         if ($other -eq 0) {
             Write-LabLine 'Next: a person carries out the manual steps above; apply changes nothing.'
+        } elseif ($null -eq $script:HostEntry) {
+            Write-LabLine 'Next: list this host in the hosts file, with its group and profile;'
+            Write-LabLine "  apply needs it there: $hostsFile"
+        } elseif ($script:Given.ContainsKey('profile') -and $script:Given['profile'] -cne $script:HostEntry.Profile) {
+            Write-LabLine "Next: apply uses this host's profile in the hosts file, $($script:HostEntry.Profile)."
+            Write-LabLine "  To apply $($script:Given['profile']), change that line first: $hostsFile"
         } else {
             $opts = ''
             if ($script:Given.ContainsKey('profile')) { $opts += " -Profile $($script:Given['profile'])" }
@@ -1003,7 +1022,7 @@ function Read-LabProfile {
         $n++
         $line = ($raw -replace '#.*$', '').Trim()
         if ($line -eq '') { continue }
-        if ($line -cnotmatch $ReModuleId) { Exit-Lab "${file}:${n}: not a module id: $line" }
+        if ($line -cnotmatch $ReModuleId) { Exit-Lab "${file}:${n}: not a module id: $line" 40 'Each line is one module ID, such as lockout.ssh-config. Correct it, then run the same command again.' }
         $ids += $line
     }
     $script:ProfileIds = $ids
@@ -1368,12 +1387,15 @@ function Assert-LabBreakGlass {
         } else {
             Write-LabLine 'Before any change, check you can still get in if remote logins break.'
             if (-not (Read-LabAnswer "Break-glass check: log in at this host's console with the break-glass account, then type its name: ")) {
-                Exit-Lab 'no answer: break-glass not confirmed; nothing was changed' 20
+                Exit-Lab 'no answer: break-glass not confirmed; nothing was changed' 20 'Run apply again and answer the prompt, or name the account with -BreakGlass NAME.'
             }
             $account = $script:Answer
         }
+        if (-not $script:Protected.ContainsKey($account) -or $script:Protected[$account] -cne 'breakglass') {
+            Exit-Lab "break-glass not confirmed: '$(Get-LabSafeText $account)' is not listed with class breakglass in $(Join-Path $env:LAB_CONFIG_DIR 'protected-accounts'); nothing was changed" 20 'Name the account you logged in with at the console; that file lists it as "NAME breakglass".'
+        }
         try { Save-LabBreakGlass -Protected $script:Protected -Account $account }
-        catch { Write-LabErrorLine $_.Exception.Message; Exit-Lab 'break-glass not confirmed; nothing was changed' 20 }
+        catch { Write-LabErrorLine $_.Exception.Message; Exit-Lab 'break-glass not confirmed: the answer could not be recorded; nothing was changed' 40 }
         Write-LabLine "Break-glass account ${account}: confirmed and recorded."
         # The answer is the operator's word. A session for the account at
         # the console backs it up; without one, the run goes on with a
@@ -1399,7 +1421,10 @@ function Assert-LabPlanConfirmed {
         [void](Read-LabAnswer "Type the group name ($Group) to apply this plan: ")
         $typed = $script:Answer
     }
-    if ($typed -cne $Group) { Exit-Lab 'the plan was not confirmed; nothing was changed' 20 }
+    if ($typed -cne $Group) {
+        if ($typed -eq '') { $what = 'no group name was typed' } else { $what = "'$(Get-LabSafeText $typed)' was typed, not $Group" }
+        Exit-Lab "the plan was not confirmed: $what; nothing was changed" 20 "Run apply again and type $Group at the prompt, or give it with -ConfirmGroup $Group."
+    }
 }
 
 # A manifest entry on a module's behalf.
@@ -1700,11 +1725,11 @@ function Invoke-LabApplyOne {
         $M.State = 'done'; return 0
     }
     if ($M.Risk -ne 'read-only') {
-        $exe = (Get-Process -Id $PID).Path
-        $arg = '-NoProfile -NonInteractive -ExecutionPolicy Bypass -File {0} rollback {1} -Root {2} -Config {3}' -f `
-            (ConvertTo-LabCommandLineArgument (Join-Path $env:LAB_ROOT 'labyrinth.ps1')), $env:LAB_RUN_ID,
-            (ConvertTo-LabCommandLineArgument $script:DataRoot), (ConvertTo-LabCommandLineArgument $env:LAB_CONFIG_DIR)
         try {
+            $exe = (Get-Process -Id $PID).Path
+            $arg = '-NoProfile -NonInteractive -ExecutionPolicy Bypass -File {0} rollback {1} -Root {2} -Config {3}' -f `
+                (ConvertTo-LabCommandLineArgument (Join-Path $env:LAB_ROOT 'labyrinth.ps1')), $env:LAB_RUN_ID,
+                (ConvertTo-LabCommandLineArgument $script:DataRoot), (ConvertTo-LabCommandLineArgument $env:LAB_CONFIG_DIR)
             Register-LabRevertTimer -Seconds ($script:Settings['REVERT_MINUTES'] * 60) -RunId $env:LAB_RUN_ID -Execute $exe -Argument $arg
         } catch {
             Write-LabErrorLine $_.Exception.Message
@@ -1845,6 +1870,7 @@ function Assert-LabThisHost {
     if ($Config -ne '' -and -not (Test-Path -LiteralPath $Config -PathType Container)) {
         Exit-Lab "the -Config folder does not exist: $Config" 40 $fix
     }
+    Assert-LabConfigReadable
     $entry = Find-LabThisHost
     if ($null -eq $entry) { return }    # not listed: plan may still run
     $hostName = Get-LabHostName
@@ -1856,8 +1882,45 @@ function Assert-LabThisHost {
     }
 }
 
+# Assert-LabConfigReadable: the configuration folder must exist, and it and
+# every file in it must be readable. Without rights, Test-Path calls a file
+# missing, which would make a gate look unset instead of unread.
+function Assert-LabConfigReadable {
+    $dir = $env:LAB_CONFIG_DIR
+    $entries = $null
+    try { $entries = [IO.Directory]::GetFileSystemEntries($dir) }
+    catch [IO.DirectoryNotFoundException] {
+        Exit-Lab "the configuration folder does not exist: $dir" 40 'Check -Root, or give the folder with the hosts file with -Config.'
+    } catch {
+        Exit-Lab "needs an elevated Administrator session to read $dir" 20 $FixAdmin
+    }
+    $profiles = Join-Path $dir 'profiles'
+    if ([IO.Directory]::Exists($profiles)) {
+        try { $entries = @($entries) + @([IO.Directory]::GetFileSystemEntries($profiles)) }
+        catch { Exit-Lab "needs an elevated Administrator session to read $profiles" 20 $FixAdmin }
+    }
+    foreach ($f in @($entries)) {
+        if ([IO.Directory]::Exists($f)) { continue }
+        try { [IO.File]::OpenRead($f).Dispose() }
+        catch { Exit-Lab "needs an elevated Administrator session to read $f" 20 $FixAdmin }
+    }
+}
+
 function Find-LabThisHost {
-    try { return Find-LabHost -Name (Get-LabHostName) } catch { Exit-Lab "the hosts file is malformed: $($_.Exception.Message)" 40 'Each line is: host group profile platform. Correct it, then retry.' }
+    try { return Find-LabHost -Name (Get-LabHostName) } catch { Exit-Lab "the hosts file is malformed: $($_.Exception.Message)" 40 'Each line is: host group profile platform. Correct it, then run the same command again.' }
+}
+
+# Get-LabServiceMissing: why there is no service list, for a message.
+function Get-LabServiceMissing {
+    $file = Join-Path $env:LAB_CONFIG_DIR 'services'
+    if (Test-Path -LiteralPath $file -PathType Leaf) { return "$file lists no service" }
+    return "no service list at $file"
+}
+
+# Assert-LabServiceList: a malformed service list is an error before
+# anything is asked, in plan and apply alike; a missing or empty one is not.
+function Assert-LabServiceList {
+    try { [void](Read-LabServiceList) } catch { Exit-Lab "the service list is malformed: $($_.Exception.Message)" 40 $FixLine }
 }
 
 function Invoke-LabPlanCommand {
@@ -1868,9 +1931,11 @@ function Invoke-LabPlanCommand {
         if ($null -eq $entry) { Exit-Lab "no profile: give -Profile, or list this host ($(Get-LabHostName)) in $(Join-Path $env:LAB_CONFIG_DIR 'hosts')" }
         $script:ProfileName = $entry.Profile
     }
+    $script:HostEntry = $entry
     Read-LabProfile $script:ProfileName
     Read-LabSetting
     Read-LabPreRule
+    Assert-LabServiceList
     Assert-LabProtectedSet
     Write-LabPendingWarning
     Write-LabLine ('labyrinth {0}: plan {1}, profile {2}' -f $LabVersion, $Phase, $script:ProfileName)
@@ -1953,12 +2018,14 @@ function Invoke-LabApplyCommand {
     $group = $entry.Group
     if ($group -eq 'manual') { Exit-Lab 'this host is in the manual group: Labyrinth never changes it' 20 'Configure it by hand, from its runbook.' }
     if ($script:ProfileName -ne '' -and $script:ProfileName -cne $entry.Profile) {
-        Exit-Lab "the hosts file gives this host profile $($entry.Profile), not $($script:ProfileName)"
+        Exit-Lab "the hosts file gives this host profile $($entry.Profile), not $($script:ProfileName)" 40 "Leave out -Profile, or change this host's line in $(Join-Path $env:LAB_CONFIG_DIR 'hosts')."
     }
+    $script:HostEntry = $entry
     $script:ProfileName = $entry.Profile
     Read-LabProfile $script:ProfileName
     Read-LabSetting
     Read-LabPreRule
+    Assert-LabServiceList
     Assert-LabProtectedSet
     if (-not (Enter-LabLock -WaitSeconds 0)) { exit 20 }
     try {
@@ -1987,7 +2054,7 @@ function Invoke-LabApplyCommand {
         $script:DryRun = '0'; $env:LAB_DRY_RUN = '0'
         try {
             New-Item -ItemType Directory -Force -Path (Get-LabRunDir $env:LAB_RUN_ID), (Join-Path $env:LAB_BACKUP_DIR $env:LAB_RUN_ID) | Out-Null
-        } catch { Exit-Lab 'the run and backup folders cannot be created; nothing was changed' 20 }
+        } catch { Exit-Lab 'the run and backup folders cannot be created; nothing was changed' 40 }
         try {
             Add-LabEntryFor '' 'run_start' $hostName "phase $Phase, profile $($script:ProfileName), group $group"
             Add-LabEntryFor '' 'breakglass_verified' $script:BreakGlassAccount $script:BreakGlassNote
@@ -2000,7 +2067,7 @@ function Invoke-LabApplyCommand {
         Open-LabRunLog "apply $Phase, run $env:LAB_RUN_ID, host $hostName"
         Write-LabLog -Level info -EventName run_start -Message "apply $Phase, profile $($script:ProfileName), group $group"
         $services = $null
-        try { $services = Read-LabServiceList } catch { Exit-Lab "the service list is malformed; nothing was changed: $($_.Exception.Message)" }
+        try { $services = Read-LabServiceList } catch { Exit-Lab "the service list is malformed; nothing was changed: $($_.Exception.Message)" 40 $FixLine }
         Write-LabLine ''
         if ($null -ne $services) {
             $script:HaveServices = $true
@@ -2009,7 +2076,7 @@ function Invoke-LabApplyCommand {
             Write-LabLine 'Scored services before any change:'
             Write-LabProbeLine $script:Before
         } else {
-            Write-LabLine "No scored service is tested: there is no list at $(Join-Path $env:LAB_CONFIG_DIR 'services')"
+            Write-LabLine "No scored service is tested: $(Get-LabServiceMissing)"
         }
         Write-LabLine ''
 
@@ -2202,7 +2269,10 @@ function Invoke-LabKeepCommand {
     if ($Ref -eq '') {
         # Without a run, keep the one run whose timer is armed (section 3.1).
         $armed = @(Get-LabArmedRun)
-        if ($armed.Count -eq 0) { Exit-LabUsage 'no run on this host has an armed revert timer' 'keep' 'There is nothing to keep.' }
+        if ($armed.Count -eq 0) {
+            Write-LabLine 'There is nothing to keep: no run on this host has an armed revert timer.'
+            exit 0
+        }
         if ($armed.Count -gt 1) {
             foreach ($l in (Get-LabRunTable $armed)) { [Console]::Error.WriteLine($l) }
             Exit-LabUsage 'more than one run has an armed revert timer' 'keep' "Name one, like '$Self keep $($armed[0].Substring($armed[0].Length - 4))'."
@@ -2332,8 +2402,9 @@ function Invoke-LabProbeCommand {
     $script:DryRun = '1'; $env:LAB_DRY_RUN = '1'
     Read-LabSetting
     $out = $null
-    try { $out = Get-LabProbeResult -Timeout $script:Settings['PROBE_TIMEOUT'] } catch { Exit-Lab "the service list is malformed: $($_.Exception.Message)" 40 $FixLine }
-    if ($null -eq $out) { Exit-Lab "no service list at $(Join-Path $env:LAB_CONFIG_DIR 'services')" 20 'List the scored services there, one "name proto host port expect" per line.' }
+    Assert-LabServiceList
+    if ($null -eq (Read-LabServiceList)) { Exit-Lab (Get-LabServiceMissing) 20 $FixServices }
+    $out = Get-LabProbeResult -Timeout $script:Settings['PROBE_TIMEOUT']
     Write-LabPendingWarning
     Write-LabProbeReport @($out)
 }
@@ -2539,7 +2610,11 @@ try {
 } catch {
     # An unexpected failure (docs/Conventions.md section 4): say what is
     # known about the run instead of only the exception.
-    [Console]::Error.WriteLine("labyrinth: internal error at line $($_.InvocationInfo.ScriptLineNumber): $($_.Exception.Message)")
+    $what = $_.Exception.Message
+    if ($what.Length -gt 60) { $what = $what.Substring(0, 57) + '...' }
+    $at = Split-Path -Leaf ([string] $_.InvocationInfo.ScriptName)
+    if ($at -eq '') { $at = 'labyrinth.ps1' }
+    [Console]::Error.WriteLine("labyrinth: internal error at ${at}:$($_.InvocationInfo.ScriptLineNumber) ($what), exit 40")
     try {
         foreach ($l in (Get-LabRecovery)) { [Console]::Error.WriteLine($l) }
     } catch {

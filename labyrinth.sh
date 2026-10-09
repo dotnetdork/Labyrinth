@@ -165,7 +165,7 @@ ID or its last 4 characters; '$SELF runs' lists them.
 
 $where
 
-Exit: 0 kept, 20 not root or too late (rolled back), 40 error.
+Exit: 0 kept or none armed, 20 not root or too late (rolled back), 40 error.
 Example: $SELF keep 4f2a
 EOF
     ;;
@@ -294,9 +294,14 @@ cmd_help_module() {
   fi
   YML_ERR=''
   if ! read_module_yml "$dir/module.yml" || ! validate_module "$dir/module.yml" "$id" "$phase"; then
+    # Each error is "FILE: message" or "FILE:LINE: message", and the message
+    # may hold ": " itself, so the known file name is taken off the front.
     items="${YML_ERR%%$'\n'*}"
-    die "the module.yml of $id is not valid: ${items##*: }" 40 \
-      "Report the module to its author, or correct ${items%: *}"
+    items="${items#"$dir/module.yml"}"
+    hint=''
+    if [[ "$items" =~ ^:([0-9]+): ]]; then hint=":${BASH_REMATCH[1]}"; items="${items#:"${BASH_REMATCH[1]}"}"; fi
+    die "the module.yml of $id is not valid: ${items#: }" 40 \
+      "Report the module to its author, or correct $dir/module.yml$hint"
   fi
   items="$(list_items "${MOD[platforms]}")"
   printf '%s (%s)\n\n' "${MOD[title]}" "$id"
@@ -331,6 +336,7 @@ die() {
 # How to get the rights a command needs.
 FIX_ADMIN='Run it again as root, for example with sudo.'
 FIX_LINE='Correct that line, then run the same command again.'
+FIX_SERVICES='List the scored services there, one "name proto host port expect" per line.'
 
 # load_reason LOADER [ARG...]: the first error line a configuration loader
 # prints, run in a subshell so that nothing it sets is kept.
@@ -657,8 +663,13 @@ next_step() {
     done
     if (( other == 0 )); then
       out 'Next: a person carries out the manual steps above; apply changes nothing.'
+    elif [[ -z "${LAB_HOST_GROUP:-}" ]]; then
+      out 'Next: list this host in the hosts file, with its group and profile;'
+      out "  apply needs it there: $LAB_CONFIG_DIR/hosts"
+    elif [[ -n "${GIVEN[profile]:-}" && "${GIVEN[profile]}" != "$LAB_HOST_PROFILE" ]]; then
+      out "Next: apply uses this host's profile in the hosts file, $LAB_HOST_PROFILE."
+      out "  To apply ${GIVEN[profile]}, change that line first: $LAB_CONFIG_DIR/hosts"
     else
-      if [[ -n "${GIVEN[profile]:-}" ]]; then opts+=" --profile ${GIVEN[profile]}"; fi
       if [[ -n "${GIVEN[root]:-}" ]]; then opts+=" --root $(shell_word "${GIVEN[root]}")"; fi
       if [[ -n "${GIVEN[config]:-}" ]]; then opts+=" --config $(shell_word "${GIVEN[config]}")"; fi
       # A command too long for one line goes on a line of its own.
@@ -928,7 +939,8 @@ read_profile() {
     n=$((n + 1))
     line="$(lab_trim "${raw%%#*}")"
     if [[ -z "$line" ]]; then continue; fi
-    [[ "$line" =~ $RE_MODULE_ID ]] || die "$file:$n: not a module id: $line"
+    [[ "$line" =~ $RE_MODULE_ID ]] || die "$file:$n: not a module id: $line" 40 \
+      'Each line is one module ID, such as lockout.ssh-config. Correct it, then run the same command again.'
     PROFILE_IDS+=("$line")
   done < "$file"
 }
@@ -1310,10 +1322,15 @@ gate_breakglass() {
     else
       out 'Before any change, check you can still get in if remote logins break.'
       ask 'Break-glass check: log in at this host'"'"'s console with the break-glass account, then type its name: ' \
-        || die 'no answer: break-glass not confirmed; nothing was changed' 20
+        || die 'no answer: break-glass not confirmed; nothing was changed' 20 \
+          'Run apply again and answer the prompt, or name the account with --break-glass NAME.'
       account="$ANSWER"
     fi
-    lab_breakglass_record "$account" || die 'break-glass not confirmed; nothing was changed' 20
+    if [[ "$(lab_protected_class "$account" || true)" != breakglass ]]; then
+      die "break-glass not confirmed: '$(safe_text "$account")' is not listed with class breakglass in $LAB_CONFIG_DIR/protected-accounts; nothing was changed" 20 \
+        'Name the account you logged in with at the console; that file lists it as "NAME breakglass".'
+    fi
+    lab_breakglass_record "$account" || die 'break-glass not confirmed: the answer could not be recorded; nothing was changed' 40
     # The answer is the operator's word. A session for the account at the
     # console backs it up; without one, the run goes on with a warning, and
     # the manifest says which it was.
@@ -1342,7 +1359,31 @@ gate_confirm() {
     ask "Type the group name ($group) to apply this plan: " || typed=''
     typed="$ANSWER"
   fi
-  [[ "$typed" == "$group" ]] || die 'the plan was not confirmed; nothing was changed' 20
+  if [[ "$typed" != "$group" ]]; then
+    if [[ -z "$typed" ]]; then typed='no group name was typed'; else typed="'$(safe_text "$typed")' was typed, not $group"; fi
+    die "the plan was not confirmed: $typed; nothing was changed" 20 \
+      "Run apply again and type $group at the prompt, or give it with --confirm-group $group."
+  fi
+}
+
+# services_missing: why there is no service list, for a message.
+services_missing() {
+  if [[ -f "$LAB_CONFIG_DIR/services" ]]; then
+    printf '%s lists no service' "$LAB_CONFIG_DIR/services"
+  else
+    printf 'no service list at %s' "$LAB_CONFIG_DIR/services"
+  fi
+}
+
+# check_services: a malformed service list is an error before anything is
+# asked, in plan and apply alike; a missing or empty one is not.
+check_services() {
+  local rc=0
+  lab_services_load 2> /dev/null || rc=$?
+  if (( rc == 1 )); then
+    die "the service list is malformed: $(load_reason lab_services_load)" 40 "$FIX_LINE"
+  fi
+  return 0
 }
 
 # probe_now: probe every scored service; print the results.
@@ -1744,6 +1785,11 @@ check_host() {
   if [[ -n "${GIVEN[config]:-}" && ! -d "${GIVEN[config]}" ]]; then
     die "the --config folder does not exist: ${GIVEN[config]}" 40 "$fix"
   fi
+  if [[ ! -d "$LAB_CONFIG_DIR" ]]; then
+    die "the configuration folder does not exist: $LAB_CONFIG_DIR" 40 \
+      'Check --root, or give the folder with the hosts file with --config.'
+  fi
+  check_readable
   host="$(lab_host)" || host=''
   host_lookup "$host" || rc=$?
   (( rc == 0 )) || return 0           # not listed: plan may still run
@@ -1754,6 +1800,21 @@ check_host() {
     *) die "this runner does not serve this host's platform, $LAB_HOST_PLATFORM" 20 \
          "Use the runner for $LAB_HOST_PLATFORM, or correct this host's line in $LAB_CONFIG_DIR/hosts" ;;
   esac
+}
+
+# check_readable: every configuration file must be readable. One that is
+# not would otherwise look missing or empty, which can quietly weaken a gate.
+check_readable() {
+  local f
+  if [[ ! -r "$LAB_CONFIG_DIR" || ! -x "$LAB_CONFIG_DIR" ]]; then
+    die "needs root to read $LAB_CONFIG_DIR" 20 "$FIX_ADMIN"
+  fi
+  for f in "$LAB_CONFIG_DIR"/* "$LAB_CONFIG_DIR"/profiles "$LAB_CONFIG_DIR"/profiles/*; do
+    [[ -e "$f" ]] || continue
+    if [[ ! -r "$f" ]] || [[ -d "$f" && ! -x "$f" ]]; then
+      die "needs root to read $f" 20 "$FIX_ADMIN"
+    fi
+  done
 }
 
 # resolve_profile: --profile, or this host's line in the hosts file.
@@ -1772,6 +1833,7 @@ cmd_plan() {
   read_profile "$OPT_PROFILE"
   lab_event_load 2>/dev/null || die "event.conf is malformed: $(load_reason lab_event_load)" 40 "$FIX_LINE"
   load_preapproved
+  check_services
   gate_protected
   flush_warnings
   out "labyrinth $LAB_VERSION: plan $phase, profile $OPT_PROFILE"
@@ -1850,12 +1912,14 @@ cmd_apply() {
   [[ "$group" != manual ]] || die "this host is in the manual group: Labyrinth never changes it" 20 \
     'Configure it by hand, from its runbook.'
   if [[ -n "$OPT_PROFILE" && "$OPT_PROFILE" != "$LAB_HOST_PROFILE" ]]; then
-    die "the hosts file gives this host profile $LAB_HOST_PROFILE, not $OPT_PROFILE"
+    die "the hosts file gives this host profile $LAB_HOST_PROFILE, not $OPT_PROFILE" 40 \
+      "Leave out --profile, or change this host's line in $LAB_CONFIG_DIR/hosts."
   fi
   OPT_PROFILE="$LAB_HOST_PROFILE"
   read_profile "$OPT_PROFILE"
   lab_event_load 2>/dev/null || die "event.conf is malformed: $(load_reason lab_event_load)" 40 "$FIX_LINE"
   load_preapproved
+  check_services
   gate_protected
   lab_lock_acquire 0 || exit 20
   trap 'lab_lock_release' EXIT
@@ -1886,7 +1950,7 @@ cmd_apply() {
   # From here on, changes are made: everything is recorded first.
   export LAB_DRY_RUN=0
   mkdir -p "$LAB_STATE_DIR/runs/$LAB_RUN_ID" "$LAB_BACKUP_DIR/$LAB_RUN_ID" \
-    || die 'the run and backup folders cannot be created; nothing was changed' 20
+    || die 'the run and backup folders cannot be created; nothing was changed' 40
   if ! record_for '' run_start "$host" "phase $phase, profile $OPT_PROFILE, group $group" \
       || ! record_for '' breakglass_verified "$BREAKGLASS" "$BREAKGLASS_NOTE"; then
     die 'the run manifest cannot be written; nothing was changed'
@@ -1894,8 +1958,8 @@ cmd_apply() {
   RUN_OPEN=1 APPLIED=1
   log_open "apply $phase, run $LAB_RUN_ID, host $host"
   lab_log_info run_start "apply $phase, profile $OPT_PROFILE, group $group"
-  rc=0; lab_services_load || rc=$?
-  (( rc != 1 )) || die 'the service list is malformed; nothing was changed'
+  rc=0; lab_services_load 2> /dev/null || rc=$?
+  (( rc != 1 )) || die "the service list is malformed; nothing was changed: $(load_reason lab_services_load)" 40 "$FIX_LINE"
   if (( rc == 0 )); then
     HAVE_SERVICES=1
     BEFORE="$(probe_now)"
@@ -1905,7 +1969,7 @@ cmd_apply() {
     probe_lines "$BEFORE"
   else
     out ''
-    out "No scored service is tested: there is no list at $LAB_CONFIG_DIR/services"
+    out "No scored service is tested: $(services_missing)"
   fi
   out ''
 
@@ -2113,7 +2177,8 @@ cmd_keep() {
     list="$(armed_runs)" || die "the runs in $LAB_STATE_DIR/runs cannot be read"
     if [[ -n "$list" ]]; then mapfile -t armed <<< "$list"; fi
     case "${#armed[@]}" in
-      0) usage_error 'no run on this host has an armed revert timer' keep 'There is nothing to keep.' ;;
+      0) out 'There is nothing to keep: no run on this host has an armed revert timer.'
+         exit 0 ;;
       1) RUN_REF="${armed[0]}"
          printf 'using run %s\n' "$RUN_REF" ;;
       *) print_runs "${armed[@]}" >&2
@@ -2250,8 +2315,7 @@ cmd_probe() {
   if (( rc == 0 )); then out="$(lab_probe_all)" || rc=$?; fi
   case "$rc" in
     0) ;;
-    2) die "no service list at $LAB_CONFIG_DIR/services" 20 \
-         'List the scored services there, one "name proto host port expect" per line.' ;;
+    2) die "$(services_missing)" 20 "$FIX_SERVICES" ;;
     *) die "the service list is malformed: $(load_reason lab_services_load)" 40 \
          "$FIX_LINE" ;;
   esac

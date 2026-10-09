@@ -154,6 +154,7 @@ LABELS='Found|Will do|Did|Why|Risk|Problem|Cause|Fix|Undo|Note|Log|Script|It sai
 }
 
 @test "plan ends with Summary, Next and the exit code with its meaning" {
+  hosts ring1
   profile observe.clean observe.sample
   plan
   [ "$status" -eq 10 ]
@@ -180,6 +181,20 @@ LABELS='Found|Will do|Did|Why|Risk|Problem|Cause|Fix|Undo|Note|Log|Script|It sai
   plan
   [ "$status" -eq 10 ]
   [[ "$output" == *'Next: a person carries out the manual steps above; apply changes nothing.'* ]]
+}
+
+@test "plan's Next line never names an apply that would be refused" {
+  profile observe.sample
+  plan
+  [ "$status" -eq 10 ]
+  [[ "$output" == *'Next: list this host in the hosts file, with its group and profile;'* ]]
+  [[ "$output" != *'labyrinth.sh apply observe'* ]]
+  printf '%s ring1 other ubuntu\n' "$HOST" > "$ETC/hosts"
+  printf 'observe.sample\n' > "$LAB/profiles/other.profile"
+  plan
+  [ "$status" -eq 10 ]
+  [[ "$output" == *"Next: apply uses this host's profile in the hosts file, other."* ]]
+  [[ "$output" != *'labyrinth.sh apply observe'* ]]
 }
 
 @test "plan shows a manual-only module as WARN and counts it as WARN" {

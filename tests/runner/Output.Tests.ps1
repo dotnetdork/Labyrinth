@@ -181,6 +181,7 @@ Describe 'labyrinth.ps1 console output' {
     }
 
     It 'plan ends with Summary, Next and the exit code with its meaning' {
+        Write-TestHost $t 'ring1'
         Write-TestProfile $t @('observe.clean', 'observe.sample')
         $r = Invoke-TestPlan $t
         $r.Code | Should -Be 10
@@ -192,6 +193,21 @@ Describe 'labyrinth.ps1 console output' {
         $lines[$last - 2] | Should -BeExactly 'Next:'
         $lines[$last - 1] | Should -BeExactly "  labyrinth.ps1 apply observe -Profile test -Root $($t.Root) -Config $($t.Etc)"
         $lines[$last] | Should -BeExactly 'plan finished: exit 10 (change needed)'
+    }
+
+    It "plan's Next line never names an apply that would be refused" {
+        Write-TestProfile $t @('observe.sample')
+        $r = Invoke-TestPlan $t
+        $r.Code | Should -Be 10
+        $r.Output | Should -Match ([regex]::Escape('Next: list this host in the hosts file, with its group and profile;'))
+        $r.Output | Should -Not -Match 'labyrinth\.ps1 apply observe'
+        Write-TestHost $t 'ring1'
+        $hostsFile = Join-Path $t.Etc 'hosts'
+        [IO.File]::WriteAllText($hostsFile, [IO.File]::ReadAllText($hostsFile).Replace(' test windows', ' other windows'))
+        $r = Invoke-TestPlan $t
+        $r.Code | Should -Be 10
+        $r.Output | Should -Match ([regex]::Escape("Next: apply uses this host's profile in the hosts file, other."))
+        $r.Output | Should -Not -Match 'labyrinth\.ps1 apply observe'
     }
 
     It 'the Next line fits what plan found' {
