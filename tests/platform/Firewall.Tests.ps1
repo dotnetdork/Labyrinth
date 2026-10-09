@@ -122,6 +122,22 @@ Describe 'Windows Firewall adapter' {
         Should -Invoke Set-NetFirewallProfile -Times 1 -Exactly
     }
 
+    It 'default deny is refused when Group Policy turns off local firewall rules' {
+        Save-LabFirewallSnapshot | Should -Be 0
+        Add-LabFirewallAllow -Protocol tcp -Port 22 -Source any | Should -Be 0
+        Mock Get-NetFirewallProfile {
+            @([pscustomobject]@{ Name = 'Domain'; AllowLocalFirewallRules = 'True' },
+                [pscustomobject]@{ Name = 'Public'; AllowLocalFirewallRules = 'False' })
+        } -ParameterFilter { $PolicyStore -eq 'ActiveStore' }
+        Mock Write-LabFirewallError { }
+        Enable-LabFirewallDefaultDeny | Should -Be 20
+        Should -Invoke Write-LabFirewallError -Times 1 -Exactly -ParameterFilter { $Message -match 'Group Policy' -and $Message -match 'Public' }
+        Should -Invoke Set-NetFirewallProfile -Times 0 -Exactly
+        Mock Get-NetFirewallProfile { throw 'access denied' } -ParameterFilter { $PolicyStore -eq 'ActiveStore' }
+        Enable-LabFirewallDefaultDeny | Should -Be 40
+        Should -Invoke Set-NetFirewallProfile -Times 0 -Exactly
+    }
+
     It 'with no scored service here, an allow from any covers every scoring address' {
         Save-LabFirewallSnapshot | Should -Be 0
         Add-LabFirewallAllow -Protocol tcp -Port 80 -Source any | Should -Be 0

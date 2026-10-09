@@ -15,7 +15,7 @@ BeforeAll {
     # Write-TestPlatform T PLATFORM: list this host, in group ring1, for PLATFORM.
     function Write-TestPlatform {
         param($T, [string] $Platform)
-        Write-TestConfig $T 'hosts' @("$((($env:COMPUTERNAME -split '\.')[0])) ring1 test $Platform")
+        Write-TestConfig $T 'hosts' @("$((([Environment]::MachineName -split '\.')[0])) ring1 test $Platform")
     }
 
     # Invoke-TestLabRun T ARGS: labyrinth.ps1 with the test data root.

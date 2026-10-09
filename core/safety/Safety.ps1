@@ -46,7 +46,7 @@ function Enter-LabLock {
             $holder = ''
             if (Test-Path -LiteralPath $pidFile) { $holder = ([IO.File]::ReadAllText($pidFile)).Trim() }
             if ($holder -match '^\d+$' -and -not (Get-Process -Id ([int]$holder) -ErrorAction SilentlyContinue)) {
-                Remove-Item -LiteralPath $lock -Recurse -Force
+                Clear-LabLockFolder -Path $lock
                 continue
             }
             if ($waited -ge $WaitSeconds) {
@@ -97,37 +97,16 @@ function Exit-LabLock {
     $pidFile = Join-Path $lock 'pid'
     if (-not (Test-Path -LiteralPath $pidFile)) { return }
     if (([IO.File]::ReadAllText($pidFile)).Trim() -ne "$PID") { return }
-    Remove-Item -LiteralPath $lock -Recurse -Force
+    Clear-LabLockFolder -Path $lock
 }
 
-# Get-LabRandomPassword [-Length N]: a random password from
-# RandomNumberGenerator, with at least one upper-case letter, lower-case
-# letter and digit, without characters that are easy to misread. Show it
-# once to the operator; never write it to a file or a log (design 01, section 8).
-function Get-LabRandomPassword {
-    param([ValidateRange(12, 128)] [int] $Length = 20)
-    $alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789'
-    $n = $alphabet.Length
-    # The largest multiple of the alphabet size up to 256: bytes from it up
-    # are rejected, so every character is equally likely.
-    $limit = 256 - (256 % $n)
-    $buf = New-Object byte[] 64
-    $rng = [Security.Cryptography.RandomNumberGenerator]::Create()
-    try {
-        while ($true) {
-            $sb = New-Object Text.StringBuilder
-            while ($sb.Length -lt $Length) {
-                $rng.GetBytes($buf)
-                foreach ($b in $buf) {
-                    if ($b -ge $limit) { continue }
-                    [void]$sb.Append($alphabet[$b % $n])
-                    if ($sb.Length -ge $Length) { break }
-                }
-            }
-            $pw = $sb.ToString()
-            if ($pw -cmatch '[A-Z]' -and $pw -cmatch '[a-z]' -and $pw -match '[0-9]') { return $pw }
-        }
-    } finally {
-        $rng.Dispose()
-    }
+# Clear-LabLockFolder -Path LOCK: delete the lock folder: its pid file, then
+# the folder, which must then be empty. Never recursive: in PowerShell 5.1,
+# Remove-Item -Recurse follows a junction planted in the folder and deletes
+# what it points to.
+function Clear-LabLockFolder {
+    param([Parameter(Mandatory)] [string] $Path)
+    $pidFile = Join-Path $Path 'pid'
+    if (Test-Path -LiteralPath $pidFile -PathType Leaf) { [IO.File]::Delete($pidFile) }
+    [IO.Directory]::Delete($Path, $false)
 }

@@ -103,13 +103,14 @@ Every backend's adapter offers the same functions, so the firewall, ban and egre
 | firewalld | A copy of `/etc/firewalld`, written back in place, then `firewall-cmd --reload`. A file added since the snapshot is moved into the snapshot folder, never deleted. | A port, or a rich rule when the source is not `any`, in every active zone, both at run time and in the permanent configuration | ICMP rich rules, then the zone target `DROP`, in every active zone; then a reload. firewalld itself keeps loopback and established connections. |
 | nftables | `nft list ruleset`, loaded back with `nft -f` in one transaction that first clears the ruleset | A rule in Labyrinth's own table, `inet labyrinth`, whose `input` chain runs before the other tables' chains | Loopback, established-connection and ICMP rules, then the `input` chain's policy `drop` |
 | iptables | `iptables-save` and `ip6tables-save`, loaded back with `iptables-restore` and `ip6tables-restore` | A rule in Labyrinth's own chain, `LAB-INPUT`, jumped to from the top of `INPUT`, for IPv4, IPv6 or both | Loopback, established-connection and ICMP rules in `LAB-INPUT`, then the `INPUT` policy `DROP` |
-| Windows Firewall | `netsh advfirewall export`, loaded back with `netsh advfirewall import` | An inbound allow rule in the rule group `Labyrinth` | ICMPv4 and ICMPv6 allow rules, then every profile on, with inbound default `Block` and local allow rules honored |
+| Windows Firewall | `netsh advfirewall export`, loaded back with `netsh advfirewall import` | An inbound allow rule in the rule group `Labyrinth` | ICMPv4 and ICMPv6 allow rules, then every profile on, with inbound default `Block` and local allow rules honored. Refused (`20`) when Group Policy turns off local firewall rules (`AllowLocalFirewallRules`) for any profile in the effective policy, because Labyrinth's allow rules would then do nothing; `40` when the effective policy cannot be read. |
 
 **Known limits.** Each one is a reason for the acceptance tests on a real host (section 7):
 
 - **firewalld:** the snapshot is of the permanent configuration. A rule that exists only at run time when the snapshot is taken is lost at the next reload. The snapshot warns when the run-time and permanent rules differ, and the restore then reports `30`.
 - **nftables:** an accept in Labyrinth's table does not override a drop in another table's chain on the same hook. The firewall module's plan lists such drops for a person to review.
 - **Windows Firewall:** a block rule always wins over an allow rule, and Group Policy settings win over local ones. The firewall module's plan lists enabled inbound block rules and policy-set profiles.
+- **iptables without `ip6tables`:** only IPv4 is filtered, so IPv6 stays open after `default_deny_in`, which warns. The firewall module's plan says so.
 - **nftables and iptables:** the changes last until the ruleset is next reloaded or the host restarts. The health monitor re-applies the sealed rules when they drift (design 13, section 4.1).
 
 ## 6. What it will never do
@@ -131,6 +132,8 @@ Every backend's adapter offers the same functions, so the firewall, ban and egre
 - For each adapter on its lab host: `snapshot`, then changes, then `restore` gives the same `state` as before.
 - `default_deny_in` with no scoring allowlist added is refused, and the ruleset is unchanged. The same holds when one scoring-allowlist address has no allow, and when a scored service on this host has no allow on its port from a scoring address: an allow on another port, such as SSH, is not enough. An allow from `any` on the service's port is enough.
 - `allow` and `default_deny_in` before a snapshot, or in plan mode, are refused and change nothing.
+- On Windows, `default_deny_in` is refused (`20`) when Group Policy turns off local firewall rules for a profile, and is `40` when the effective policy cannot be read; neither changes a profile.
+- With iptables and no `ip6tables`, `default_deny_in` warns that IPv6 stays open.
 - Each change is in the run manifest before it is made, and `lab_fw_rollback` (`Undo-LabFirewallChange`) restores the snapshot.
 - After `default_deny_in` on each lab host, the host still answers ping, an allowed port from an allowed source still connects, and an established session survives.
 - With the firewall fact `conflict` or `unknown`, every function but `restore` is refused (`20`) and calls no firewall command. With the fact `none`, the adapter uses an installed `nft`, then `iptables`, and refuses (`20`) when neither is installed.

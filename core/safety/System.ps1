@@ -89,7 +89,8 @@ function Get-LabConsoleSession {
 # timer runs as SYSTEM, so it must also trust the administrator who ran
 # the apply.
 function Get-LabAdminSid {
-    $sids = @(Get-LabTrustedSid) + @('S-1-5-80-956008885-3418522649-1831038044-1851280137-2263893036')
+    # NT SERVICE\TrustedInstaller, which owns C:\ and the system folders.
+    $sids = @(Get-LabTrustedSid) + @('S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464')
     try {
         # The group's name depends on the language of Windows; its SID does not.
         $name = (New-Object Security.Principal.SecurityIdentifier 'S-1-5-32-544').Translate([Security.Principal.NTAccount]).Value.Split('\')[-1]

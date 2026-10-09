@@ -1864,6 +1864,12 @@ run_state() {
   fi
   if grep -q '"action":"run_kept"' "$f" 2> /dev/null; then printf 'kept\n'; return 0; fi
   if lab_timer_armed "$1"; then
+    # A reboot drops the transient timer; the run stays armed so keep and
+    # rollback still find it, but nothing will roll it back by itself.
+    if lab_timer_live "$1"; then :; elif [[ $? -eq 1 ]]; then
+      printf 'armed: timer lost (reboot?)\n'
+      return 0
+    fi
     if ! due="$(lab_timer_due "$1")"; then printf 'armed: rollback time unknown\n'; return 0; fi
     now="$(lab_now)"
     # The times are UTC in one fixed format, so they compare as strings.
@@ -2014,10 +2020,12 @@ cmd_rollback() {
   # The revert timer must work even if a run still holds the lock, hung or
   # waiting at a prompt. That run is stopped first: rolling back beside it
   # would undo changes while it goes on making them and reports success.
+  local locked=1
   if ! lab_lock_acquire 10; then
     lab_lock_stop_holder 30 || true
+    lab_lock_acquire 10 || locked=0
   fi
-  if lab_lock_acquire 10; then
+  if (( locked )); then
     trap 'lab_lock_release' EXIT
   else
     printf 'warning: rolling back without the run lock\n' >&2
