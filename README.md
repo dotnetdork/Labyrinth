@@ -1,8 +1,8 @@
 # Labyrinth
 
-**A fast, idempotent deployment system that drives any box it can reach into a known-good hardened, deceptive posture — fast enough to matter in the first minutes of an engagement.**
+**Labyrinth hardens the hosts a defending team is given, plants traps for attackers, and keeps the scored services working. It is fast enough to use in the first minutes of an event, and every change it makes can be undone.**
 
-> Built for CCDC-style defense (the Collegiate Cyber Defense Competition): the flag drops, the network is already contested, and you have to lock attackers out *now* while keeping scored services alive. Labyrinth is the muscle memory — one repo, one core strategy, applied host by host in small rings, in priority order, with a check and a way back at every step.
+> Labyrinth is built for the Collegiate Cyber Defense Competition (CCDC). When the event starts, attackers may already be inside the network, and the team must lock them out while keeping the scored services up. Labyrinth applies one strategy to every host, one group of hosts at a time, in priority order. It checks the services after each step and keeps a way back.
 
 ---
 
@@ -11,19 +11,19 @@
 In a live competition (or a real incident) you do not have time to remember 200 hardening steps per host across a mix of Ubuntu, Fedora, Oracle Linux, Windows Server, AD (Active Directory), and network appliances. You need:
 
 1. **A strategy that is the same everywhere** — the same handful of invariants applied to every OS, so you reason once and execute many.
-2. **A tool that applies it fast and reversibly** — idempotent (safe to run twice), re-runnable, check-before-change, timestamped backups, so you can hit *go* under pressure without breaking a scored service.
+2. **A tool that applies it fast and can undo it** — safe to run twice, checks before it changes anything, and backs up first, so you can run it under pressure without breaking a scored service.
 3. **Deception baked in** — because you cannot patch fast enough to out-run a pre-seeded foothold, so you make the attacker's every move expensive, noisy, and logged.
 
-Labyrinth is that strategy plus that tool. The **Linux profile** is modeled on a hardened server the author runs; this documentation generalizes it into a portable system.
+Labyrinth is that strategy plus that tool.
 
 ## The core strategy — *Lock out → Observe → Deceive → Sustain*
 
 | Phase | Goal | In one line |
 |---|---|---|
-| 🟥 **Lock out** | Take back trust | Assume the attacker is already in: reset default and known admin credentials, end intruder sessions, sweep for footholds, default-deny the firewall. |
-| 🟦 **Observe** | See everything | High-signal logging to a central SIEM (Security Information and Event Management system); watch logins, files, and process starts. |
-| 🟪 **Deceive** | Tax the attacker | Traps, canaries, honey-accounts, tarpits — every non-service touch is a tripwire. |
-| 🟩 **Sustain** | Stay scored-green | Keep the graded services healthy; patch and roll back cleanly; hold the line. |
+| **Lock out** (`lockout`) | Take back trust | Assume the attacker is already in: reset default and known admin credentials, end intruder sessions, sweep for footholds, default-deny the firewall. |
+| **Observe** (`observe`) | See everything | High-signal logging to a central SIEM (Security Information and Event Management system); watch logins, files, and process starts. |
+| **Deceive** (`deceive`) | Tax the attacker | Traps, canaries, honey-accounts, tarpits — every non-service touch is a tripwire. |
+| **Sustain** (`sustain`) | Keep services scoring | Keep the scored services healthy; patch and roll back cleanly; hold the line. |
 
 **New to this?** Start with [`docs/Overview.md`](docs/Overview.md), a plain-language tour of how each part of Labyrinth works, written for readers who are not security or networking experts.
 
@@ -74,11 +74,11 @@ Labyrinth/
 └── .github/workflows/ci.yml       ← lint, guard and tests on Linux and Windows
 ```
 
-Strategy, rules baseline, topology notes and the vulnerability assessment live in the private CCDC-2027 repository, not here.
+Strategy, the team's reading of the rules, topology notes and the vulnerability assessment live in the team's private repository, not here.
 
 ## Status
 
-Groundwork stage (reviewed 2026-10-09). The design specs are the blueprint the code is built against, and [`docs/Roadmap.md`](docs/Roadmap.md) gives the order they are built in. The core is built for Linux and Windows: logging, the run manifest, the safety gates, the dead-man revert timer, scoring-style probes, and the main program's plan, apply, keep, rollback, runs and probe commands (docs/Conventions.md, section 3.1). The groundwork modules need is built too: platform facts, the firewall adapter, quarantine, approval items and the shipped profiles. It is tested on CI, but not yet in a lab. The guard checks every script for outside calls and blanket actions. No hardening module exists yet, and remote mode (driving many hosts from one control node) is not built.
+Groundwork stage (reviewed 2026-10-09). The design specs are the blueprint the code is built against, and [`docs/Roadmap.md`](docs/Roadmap.md) gives the order they are built in. The core is built for Linux and Windows: logging, the run manifest, the safety gates, the revert timer (which undoes a run unless someone keeps it), scoring-style probes, and the main program's plan, apply, keep, rollback, runs and probe commands (docs/Conventions.md, section 3.1). The groundwork modules need is built too: platform facts, the firewall adapter, quarantine, approval items and the shipped profiles. It is tested on CI, but not yet in a lab. The guard checks every script for outside calls and blanket actions. No hardening module exists yet, and remote mode (driving many hosts from one control node) is not built.
 
 
 > [!IMPORTANT]
