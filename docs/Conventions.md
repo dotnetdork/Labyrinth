@@ -97,6 +97,8 @@ Both runners share one vocabulary. In this section `labyrinth` stands for the in
 labyrinth <command> [<phase> | <run>] [options]
 ```
 
+#### Commands
+
 | Command | Does |
 |---|---|
 | `plan <phase>` | Every module of the phase reports what it would change. Nothing is written, not even logs |
@@ -109,6 +111,8 @@ labyrinth <command> [<phase> | <run>] [options]
 | `version` | Print the version, the runner, and the release hash (`Release: <sha256>`, or `not checked`); also `-V` and `--version` (`-Version`) |
 
 `<phase>` is `lockout`, `observe`, `deceive` or `sustain`. `<run>` is a run ID (`20261002T140301Z-4f2a`) or its last four characters (`4f2a`). A run that does not exist, or four characters that match more than one run, is an error (`40`) that points to `runs`. Commands, phases, option names and run IDs ignore case; other values do not.
+
+#### Options
 
 **Options** may come before or after the command and its word. A value is given as `--name value`, `--name=value`, `-Name value` or `-Name:value`, and `--` ends the options. Each option has one name in both runners: bash help writes it `--break-glass`, PowerShell help writes it `-BreakGlass`, and both runners accept both spellings, because long names ignore case and dashes. The short flags `-h`, `-?` and `-V` are matched exactly, so `-v` is an error. PowerShell takes an unquoted `-?` for itself before the script runs, so the Windows help and manual offer `-h` instead.
 
@@ -126,6 +130,8 @@ labyrinth <command> [<phase> | <run>] [options]
 
 PowerShell avoids the name `-Confirm`, which it reserves.
 
+#### Usage errors
+
 **Usage errors** exit `40`. They print one line, `labyrinth: <what is wrong>`, an optional line saying how to fix it, then `Try 'labyrinth help[ <command>]' for more information.`, all to standard error. The line names the word at fault and, for a near miss, suggests the right one (`did you mean 'observe'?`; `/?` gets `did you mean 'help'?`). A near miss is the only word it begins, or else the nearest within 2 edits, or 1 edit for a word of 3 letters or fewer, so `--foo` gets no suggestion. Everyday words get the command they mean: `undo` and `revert` get `rollback`, `status` and `list` get `runs`, `check` and `test` get `probe`, and `dry-run` gets `plan`, as a command or as an option. `--yes` and `--force` get `--confirm-group`. The `Try` line names the command the line gives, even when the error is in an option, so `keep 4f2a --bogus` points to `help keep`. A line with no command prints `labyrinth: no command given`, three numbered steps to start with (`help basics`, `plan lockout`, `help`), then the short usage. These are errors too:
 
 - an option given twice;
@@ -133,6 +139,8 @@ PowerShell avoids the name `-Confirm`, which it reserves.
 - a command that conflicts with its options, such as `apply probe`, `--apply` with `keep`, or `--all` with anything but `rollback`.
 
 The whole line must parse before help or the version is shown. A value option that the command does not use, such as `--profile` with `probe`, gives a warning, not an error. The warning is printed once the command has passed its own checks, so it never comes before an error.
+
+#### Compatibility forms
 
 **Compatibility forms** stay accepted for good. Operators have learned them, and an armed revert timer runs its stored command line even after the runner that armed it has been replaced. They are:
 
@@ -142,6 +150,8 @@ The whole line must parse before help or the version is shown. A value option th
 - the run before or after the options.
 
 `tests/runner/compat.bats` and `tests/runner/Compat.Tests.ps1` hold every such form (section 9).
+
+#### Host checks
 
 **Host checks** run for `plan`, `apply` and `probe` only:
 
@@ -153,9 +163,13 @@ The whole line must parse before help or the version is shown. A value option th
 
 `keep`, `rollback` and `runs` skip these checks, so a stored revert-timer command still works after the configuration changes.
 
+#### Profile and module order
+
 **Profile.** `--profile` names it; otherwise it is this host's line in the `hosts` file. On apply the host must be listed (else `20`), a given `--profile` must match its line (else `40`), and a host in the `manual` group is refused (`20`). So the `Next:` line of a plan suggests `apply` only when that apply would get past these checks; otherwise it says what to change in `hosts` first.
 
 **Modules run by priority** (`P0` first), and in profile order within a priority. A `reversible`, `service-affecting` or `approval` module must have `check`, `apply`, `verify` and `rollback`, or it is invalid (`40`).
+
+#### The order of an apply
 
 **Apply order.** A failed step stops the run before anything changes, unless the step says otherwise:
 
@@ -179,15 +193,19 @@ The whole line must parse before help or the version is shown. A value option th
    - `keep_on_verify: true` (design 00, section 4, rule 9): when a `services` file was probed, the module is kept, `module_kept` is recorded and a `Did:` line says so; the revert timer and `rollback <run>` then leave it alone. With no `services` file, or if the manifest cannot be written, it is not kept early, a `Note:` line says why, and the timer still covers it.
 8. The lock is released. If every module the run changed was kept once verified, the run is kept at once, as `keep` would, and no prompt is asked. Otherwise the operator checks that a new login still works, then types `keep`. Anything else leaves the timer armed, and when it fires it runs `rollback <run>`. Until then, `keep <run>` keeps the run, or `keep` alone when only one timer is armed. Keeping after a rollback is refused as too late (`20`).
 
+#### The revert timer
+
 **The revert timer** is a transient systemd timer `lab-revert-<run>-<n>` on Linux and a one-time scheduled task `\Labyrinth\lab-revert-<run>-<n>` running as SYSTEM on Windows. Re-arming creates the new timer first and only then removes the earlier one, so a failed re-arm leaves the run covered. A transient systemd timer does not survive a restart; `runs` then shows the run as `armed: timer lost (restart?)`. A scheduled task does survive one, and runs as soon as it can if its time passed while the host was off. `rollback` waits ten seconds for the run lock. If a live run still holds it, hung or waiting at a prompt, `rollback` stops that run and the entry points it started (TERM, then KILL after 30 seconds) and then rolls back, so the timer never undoes a run that is still changing the host and about to report success. Only if that run cannot be stopped does `rollback` go on without the lock, with a warning.
-
-**Who can change the code.** `apply`, `keep` and `rollback` first check that only root (Linux) or administrators (Windows) can change the program folder, the configuration folder, the data root, anything in them and every folder above them (`lab_tree_trusted`, `Find-LabUntrustedItem`; design 07, section 5). If another account could, the command refuses with `20` and changes nothing, because the revert timer would later run that code as root or SYSTEM. The check only reads. On Linux the timer's command line uses real paths, with links resolved.
-
-**What the code is.** Before it loads the rest of the core, each runner checks every file of its folder against `release.sha256` (`lab_release_check`, `Test-LabRelease`; design 07, section 5.1), for every command. A file that is changed, missing or not in the list refuses the command with `20`, the revert timer's `rollback` included, which also sends a notice. With no list, `apply`, `keep` and `rollback` warn, and the release hash reads `not checked`.
 
 The time a timer will fire is kept in `<state>/runs/<run>/timer-due` (UTC, `YYYY-MM-DDTHH:MM:SSZ`), for `runs` and the keep prompt. The file is advisory: if it is missing, the time is shown as unknown.
 
 Cancelling a timer checks that it is really gone. If it is still armed, `keep` records nothing, says so, and exits `40`.
+
+#### Trusted code
+
+**Who can change the code.** `apply`, `keep` and `rollback` first check that only root (Linux) or administrators (Windows) can change the program folder, the configuration folder, the data root, anything in them and every folder above them (`lab_tree_trusted`, `Find-LabUntrustedItem`; design 07, section 5). If another account could, the command refuses with `20` and changes nothing, because the revert timer would later run that code as root or SYSTEM. The check only reads. On Linux the timer's command line uses real paths, with links resolved.
+
+**What the code is.** Before it loads the rest of the core, each runner checks every file of its folder against `release.sha256` (`lab_release_check`, `Test-LabRelease`; design 07, section 5.1), for every command. A file that is changed, missing or not in the list refuses the command with `20`, the revert timer's `rollback` included, which also sends a notice. With no list, `apply`, `keep` and `rollback` warn, and the release hash reads `not checked`.
 
 #### Approval items
 
@@ -201,6 +219,8 @@ Decided in the 2026-10-05 review.
 - **Changed since the plan.** An `--approve` entry whose fingerprint differs from this run's plan is left out, recorded as `approval_refused` and shown as a `Found:` line. `apply` then recomputes each approved item's fingerprint before changing it, with `lab_approved ID FINGERPRINT` / `Test-LabApproved`: `0` approved and unchanged, `1` not approved, `2` changed since the plan, which records `approval_refused` and leaves the item alone. None of these makes the run fail.
 - **Recorded.** The module's `apply_start` entry notes the approved items, then `pre-approved` and those a rule approved.
 - **Never stored.** Approvals are not written into a revert timer's command line, and `rollback` never needs them.
+
+#### Kept once verified
 
 **Why some changes are kept once verified.** The revert timer is there for a change that locks the team out or cuts off scoring. A change that only takes access away from an intruder, such as a rotated admin password or a removed planted key, cannot do either; undoing it would give the intruder their access back and leave the team's offline record wrong. Such a module sets `keep_on_verify: true`, and is kept as soon as it verifies with no scored service worse than before. A person who must undo it anyway runs `rollback <run> --all`. After a rollback that undid a password rotation, the old password is back: rotate it again and correct the offline record.
 
