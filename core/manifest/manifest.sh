@@ -183,3 +183,32 @@ lab_manifest_applied() {
     printf '%s\n' "$m"
   done
 }
+
+# lab_manifest_kept RUN: print, oldest first, the modules of the run that
+# were kept once verified (module_kept) and not applied again or rolled back
+# since. rollback leaves them alone unless given --all (Conventions 3.1).
+lab_manifest_kept() {
+  local f line module action m
+  local -a mods=() rest
+  f="$(lab_manifest_file "$1")"
+  [[ -f "$f" ]] || return 0
+  while IFS= read -r line; do
+    action="$(lab_json_get "$line" action)" || continue
+    module="$(lab_json_get "$line" module)"
+    case "$action" in
+      module_kept)
+        lab_in_list "$module" "${mods[*]-}" || mods+=("$module")
+        ;;
+      apply_start | rolled_back)
+        rest=()
+        for m in "${mods[@]+"${mods[@]}"}"; do
+          [[ "$m" == "$module" ]] || rest+=("$m")
+        done
+        mods=("${rest[@]+"${rest[@]}"}")
+        ;;
+    esac
+  done < "$f"
+  for m in "${mods[@]+"${mods[@]}"}"; do
+    printf '%s\n' "$m"
+  done
+}

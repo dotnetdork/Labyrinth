@@ -8,7 +8,8 @@
 #   - the revert timer is recorded in $env:LAB_ROOT\timer.log instead of registered;
 #   - a probe fails if its host is listed as "<host> fail" in
 #     $env:LAB_ROOT\probe-state, and passes otherwise;
-#   - the console is two files, $env:LAB_ROOT\tty.out and tty.in (below).
+#   - the console is two files, $env:LAB_ROOT\tty.out and tty.in (below);
+#   - a notice to every session is appended to $env:LAB_ROOT\notice.log.
 
 function Test-LabAdmin { return -not (Test-Path -LiteralPath (Join-Path $env:LAB_ROOT 'NOT_ADMIN')) }
 
@@ -42,6 +43,12 @@ function Unregister-LabRevertTimer {
     Remove-Item -LiteralPath $f -Force
     Remove-Item -LiteralPath (Join-Path (Get-LabRunDir $RunId) 'timer-due') -Force -ErrorAction SilentlyContinue
     Add-Content -LiteralPath (Join-Path $env:LAB_ROOT 'timer.log') -Value "cancel $RunId" -Encoding Ascii
+}
+
+function Send-LabNotice {
+    param([string] $Message)
+    Add-Content -LiteralPath (Join-Path $env:LAB_ROOT 'notice.log') -Value $Message -Encoding Ascii
+    return $true
 }
 
 function Invoke-LabProbe {
