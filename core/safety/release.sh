@@ -1,4 +1,5 @@
 # shellcheck shell=bash
+# shellcheck disable=SC2034 # LAB_RELEASE_HASH and LAB_RELEASE_PROBLEM are read by the runner
 # core/safety/release.sh: the release check (design 07, section 5).
 #
 # release.sha256, in Labyrinth's folder, lists the SHA-256 of every file
