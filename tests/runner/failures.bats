@@ -31,7 +31,7 @@ read_only_after_cancel() {
   [[ "$output" =~ The\ revert\ timer\ rolls\ this\ run\ back\ at\ [0-9]{2}:[0-9]{2}\ UTC ]]
   id="$(run_id)"
   # Undo comes first, and the safe choice is named.
-  [[ "$output" == *"To undo them now: labyrinth.sh rollback ${id: -4}"$'\n'"To keep them now: labyrinth.sh keep ${id: -4}"$'\n''If in doubt, undo them.'* ]]
+  [[ "$output" == *"To undo them now: $SELF rollback ${id: -4}"$'\n'"To keep them now: $SELF keep ${id: -4}"$'\n''If in doubt, undo them.'* ]]
   [ -f "$ROOT/state/runs/$(run_id)/timer" ]
   grep -qx 'setting=on' "$LAB/toggle.conf"
 }
@@ -86,7 +86,7 @@ read_only_after_cancel() {
   run bash "$LAB/labyrinth.sh" --root "$ROOT" --config "$ETC" keep "$id"
   [ "$status" -eq 40 ]
   [[ "$output" =~ still\ rolls\ it\ back\ at\ [0-9]{2}:[0-9]{2}\ UTC ]]
-  [[ "$output" == *"Retry: labyrinth.sh keep ${id: -4}"* ]]
+  [[ "$output" == *"Retry: $SELF keep ${id: -4}"* ]]
 }
 
 @test "keep that cancels the timer but cannot record it says so and exits 40" {

@@ -52,7 +52,7 @@ Describe 'labyrinth.ps1 hidden failures' {
         $r.Output | Should -Match 'The revert timer rolls this run back at \d\d:\d\d UTC'
         $short = $id.Substring($id.Length - 4)
         # Undo comes first, and the safe choice is named.
-        $r.Output | Should -Match ([regex]::Escape("To undo them now: labyrinth.ps1 rollback $short`nTo keep them now: labyrinth.ps1 keep $short`nIf in doubt, undo them."))
+        $r.Output | Should -Match ([regex]::Escape("To undo them now: $($t.Self) rollback $short`nTo keep them now: $($t.Self) keep $short`nIf in doubt, undo them."))
         Join-Path $t.Root "state\runs\$id\timer" | Should -Exist
         (Get-Content -LiteralPath $toggle) | Should -Be 'setting=on'
     }
@@ -122,7 +122,7 @@ function Register-LabRevertTimer {
         $k = Invoke-TestRunCommand $t 'keep' $id
         $k.Code | Should -Be 40
         $k.Output | Should -Match 'still rolls it back at \d\d:\d\d UTC'
-        $k.Output | Should -Match ([regex]::Escape("Retry: labyrinth.ps1 keep $($id.Substring($id.Length - 4))"))
+        $k.Output | Should -Match ([regex]::Escape("Retry: $($t.Self) keep $($id.Substring($id.Length - 4))"))
     }
 
     It 'keep that cancels the timer but cannot record it says so and exits 40' {

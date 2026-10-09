@@ -26,7 +26,7 @@ streams() {
     [[ -n "$line" && "$line" != '#'* ]] || continue
     IFS='|' read -r code stream text args <<< "$line"
     args="${args//@ROOT@/$ROOT}"; args="${args//@ETC@/$ETC}"
-    text="${text//@SELF@/labyrinth.sh}"
+    text="${text//@SELF@/$SELF}"
     read -ra words <<< "$args"
     streams "${words[@]+"${words[@]}"}"
     local got="$OUT"
@@ -74,7 +74,7 @@ streams() {
   touch "$LAB/NOT_ADMIN"
   streams rollback --root "$ROOT" --config "$ETC"
   [ "$CODE" -eq 40 ]
-  [[ "$ERR" == *"As root, 'labyrinth.sh runs' lists them."* ]]
+  [[ "$ERR" == *"As root, '$SELF runs' lists them."* ]]
 }
 
 @test "/? is pointed to help" {

@@ -223,7 +223,7 @@ The steps above are the outline; `docs/Conventions.md` section 3.1 gives the exa
 | `plan <phase>`, `apply <phase>` | Plan a phase, or apply it behind the gates | Conventions 3.1 |
 | `keep [<run>]`, `rollback <run>`, `runs` | Keep or undo a run, or list the runs and their revert timers | Conventions 3.1 |
 | `probe` | Probe every scored service once | Conventions 3.1 |
-| `help [<command>]`, `version` | Help and the version | Conventions 3.1 |
+| `help [<topic>]`, `version` | Help on a command, `basics` or a module, and the version | Conventions 3.1 |
 | `remote plan <phase> --group <group>`, `remote apply <phase> --group <group>` | Run the local command on every host of a group from a control node | This section |
 | `seal`, `reseal --reason <text>` | Seal the baseline, or reseal it after an approved change | Design 04 |
 | `checkpoint` | Print the read-only health summary | Design 13 |

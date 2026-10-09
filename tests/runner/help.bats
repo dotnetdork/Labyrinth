@@ -17,14 +17,16 @@ help() { run bash "$LAB/labyrinth.sh" "$@" < /dev/null; }
   for t in '' $TOPICS basics; do
     help help $t
     [ "$status" -eq 0 ] || { echo "help $t: exit $status"; return 1; }
-    # The general page also names the manual; basics is one screen.
-    case "$t" in '') max=16 ;; basics) max=24 ;; *) max=15 ;; esac
+    # Basics is one screen. The command in hints and the manual's path do
+    # not count toward the width (docs/Conventions.md section 3.2).
+    case "$t" in basics) max=24 ;; *) max=18 ;; esac
     [ "$(wc -l <<< "$output")" -le "$max" ] || { echo "help $t: over $max lines"; return 1; }
-    [ "$(awk '{ if (length > w) w = length } END { print w + 0 }' <<< "$output")" -le 78 ] \
+    [ "$(sed -e "s|$SELF|labyrinth.sh|g" -e "s|$LAB|/opt/labyrinth|g" <<< "$output" \
+        | awk '{ if (length > w) w = length } END { print w + 0 }')" -le 78 ] \
       || { echo "help $t: a line is over 78 columns"; return 1; }
     [ "$(grep -c '^Exit: ' <<< "$output")" -eq 1 ] || { echo "help $t: Exit lines"; return 1; }
     [ "$(grep -c '^Example: ' <<< "$output")" -eq 1 ] || { echo "help $t: Example lines"; return 1; }
-    [[ "$(head -n 1 <<< "$output")" == 'Usage: labyrinth.sh '* ]] || { echo "help $t: no Usage line"; return 1; }
+    [[ "$(head -n 1 <<< "$output")" == "Usage: $SELF "* ]] || { echo "help $t: no Usage line"; return 1; }
   done
 }
 
@@ -61,6 +63,86 @@ help() { run bash "$LAB/labyrinth.sh" "$@" < /dev/null; }
   done
 }
 
+@test "hints print the command the way it was started, with sudo under sudo" {
+  run bash "$LAB/labyrinth.sh" help < /dev/null
+  [[ "$(head -n 1 <<< "$output")" == "Usage: $LAB/labyrinth.sh "* ]]
+  run env SUDO_USER=someone bash "$LAB/labyrinth.sh" help < /dev/null
+  [[ "$(head -n 1 <<< "$output")" == "Usage: sudo $LAB/labyrinth.sh "* ]]
+  cd "$LAB"
+  run bash labyrinth.sh help < /dev/null
+  [[ "$(head -n 1 <<< "$output")" == 'Usage: ./labyrinth.sh '* ]]
+  run bash ./labyrinth.sh bogus < /dev/null
+  [[ "$output" == *"Try './labyrinth.sh help' for more information."* ]]
+}
+
+@test "the general help says where the options are and names a manual that exists" {
+  help help
+  grep -qF "Options: '$SELF help <command>' lists them; so does <command> -h." <<< "$output"
+  [ "$(grep '^Manual: ' <<< "$output")" = "Manual: the Linux parts of $LAB/docs/manual/labyrinth.md" ]
+  [[ "$output" != *'once installed'* ]]
+}
+
+@test "help runs names every state, and the commands say who must run them" {
+  help help runs
+  for s in armed kept 'rolled back' 'rolled back with errors' 'not kept, no timer' 'armed: timer lost'; do
+    [[ "$output" == *"$s"* ]] || { echo "help runs: no '$s'"; return 1; }
+  done
+  for t in plan apply keep rollback runs probe; do
+    help help "$t"
+    grep -q 'needs root\|Needs root' <<< "$output" || { echo "help $t: no root note"; return 1; }
+  done
+}
+
+@test "help apply and help basics mention the break-glass prompt; exits name the 20 causes" {
+  help help apply
+  [[ "$output" == *break-glass* ]]
+  grep -q '^Blocked: not root, another run, host not in hosts, or a safety gate\.$' <<< "$output"
+  help help basics
+  [[ "$output" == *break-glass* ]]
+  help help keep
+  grep -q '^Blocked: not root, a file another account can change, or too late$' <<< "$output"
+  help help rollback
+  grep -q '^Blocked: not root, or a file another account can change\.$' <<< "$output"
+}
+
+@test "the option heading says Options, and the version names the runner" {
+  local t
+  for t in plan apply keep rollback runs probe; do
+    help help "$t"
+    grep -qx 'Options:' <<< "$output" || { echo "help $t: no Options heading"; return 1; }
+    [[ "$output" != *'Where:'* ]] || { echo "help $t: Where heading"; return 1; }
+  done
+  run bash "$LAB/labyrinth.sh" version < /dev/null
+  [[ "$output" == "labyrinth "*" (labyrinth.sh, for Linux)" ]]
+}
+
+@test "everyday words and flags point to the command or option meant" {
+  local w want
+  for w in undo:rollback revert:rollback status:runs list:runs check:probe test:probe; do
+    run bash "$LAB/labyrinth.sh" "${w%%:*}" < /dev/null
+    [ "$status" -eq 40 ]
+    [[ "$output" == *"unknown command '${w%%:*}' (did you mean '${w#*:}'?)"* ]] || { echo "$w"; return 1; }
+  done
+  run bash "$LAB/labyrinth.sh" help undo < /dev/null
+  [[ "$output" == *"no help for 'undo' (did you mean 'rollback'?)"* ]]
+  run bash "$LAB/labyrinth.sh" apply observe --dry-run < /dev/null
+  [ "$status" -eq 40 ]
+  [[ "$output" == *"unknown option '--dry-run' (did you mean the command 'plan'?)"* ]]
+  for w in --yes --force; do
+    run bash "$LAB/labyrinth.sh" apply observe "$w" < /dev/null
+    [[ "$output" == *"unknown option '$w' (did you mean '--confirm-group'?)"* ]] || { echo "$w"; return 1; }
+  done
+}
+
+@test "a short word gets a suggestion only when it is one letter off" {
+  run bash "$LAB/labyrinth.sh" plan observe --foo < /dev/null
+  [ "$status" -eq 40 ]
+  [[ "$output" == *"unknown option '--foo'"* ]]
+  [[ "$output" != *'did you mean'* ]]
+  run bash "$LAB/labyrinth.sh" plan observe --ROT < /dev/null
+  [[ "$output" == *"did you mean '--root'"* ]]
+}
+
 @test "help for an unknown command is a usage error with a suggestion" {
   run bash "$LAB/labyrinth.sh" help aply < /dev/null
   [ "$status" -eq 40 ]
@@ -72,7 +154,7 @@ help() { run bash "$LAB/labyrinth.sh" "$@" < /dev/null; }
 
 @test "the general help points a beginner to help basics and names the manual" {
   help help
-  [[ "$(sed -n 2p <<< "$output")" == *"labyrinth.sh help basics"* ]]
+  [[ "$(sed -n 2p <<< "$output")" == *"$SELF help basics"* ]]
   grep -q '^Manual: ' <<< "$output"
 }
 
@@ -108,6 +190,6 @@ help() { run bash "$LAB/labyrinth.sh" "$@" < /dev/null; }
   run bash "$LAB/labyrinth.sh" < /dev/null
   [ "$status" -eq 40 ]
   grep -qx 'Start here:' <<< "$output"
-  grep -q '^  1\. labyrinth.sh help basics ' <<< "$output"
-  grep -q '^  2\. labyrinth.sh plan lockout ' <<< "$output"
+  grep -qF "  1. $SELF help basics " <<< "$output"
+  grep -qF "  2. $SELF plan lockout " <<< "$output"
 }

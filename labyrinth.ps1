@@ -5,15 +5,15 @@
 
 .DESCRIPTION
     Commands:
-      labyrinth.ps1 plan <phase>       show what would change; changes nothing
-      labyrinth.ps1 apply <phase>      plan, confirm, then make the changes
-      labyrinth.ps1 keep [<run>]       keep a run: cancel its revert timer
-      labyrinth.ps1 rollback <run>     undo a run, newest change first
-      labyrinth.ps1 runs               list this host's runs and their state
-      labyrinth.ps1 probe              test every scored service once
-      labyrinth.ps1 help [<topic>]     help on a command, 'basics' or a
+      .\labyrinth.ps1 plan <phase>     show what would change; changes nothing
+      .\labyrinth.ps1 apply <phase>    plan, confirm, then make the changes
+      .\labyrinth.ps1 keep [<run>]     keep a run: cancel its revert timer
+      .\labyrinth.ps1 rollback <run>   undo a run, newest change first
+      .\labyrinth.ps1 runs             list this host's runs and their state
+      .\labyrinth.ps1 probe            test every scored service once
+      .\labyrinth.ps1 help [<topic>]   help on a command, 'basics' or a
                                        module; also -Help or -h
-      labyrinth.ps1 version            the version; also -Version or -V
+      .\labyrinth.ps1 version          the version; also -Version or -V
 
     A phase is lockout, observe, deceive or sustain. A run is a run ID, or
     its last 4 characters.
@@ -26,14 +26,18 @@
       -ConfirmGroup GROUP  answer the group-name prompt (apply only)
       -Approve LIST        approve items without the prompt (apply only)
       -All                 also undo changes kept once verified (rollback)
+      -Apply               the older form of apply: a phase with -Apply
+      -Help, -h            show help
+      -Version, -V         show the version
 
-    Exit codes: 0 done or nothing to do, 10 change needed, 20 blocked,
-    30 a check failed (probe: a service failed), 40 error.
+    Exit codes: 0 done or nothing to do, 10 change needed, 20 blocked
+    (not an Administrator, another run, or a safety check), 30 a check
+    after a change failed (probe: a service failed), 40 error.
 
-    New to Labyrinth? 'labyrinth.ps1 help basics' explains the ideas in
-    plain words. 'labyrinth.ps1 help <command>' explains one command, and
-    'labyrinth.ps1 help <module-id>' one module. The operator manual is
-    the Windows edition of the Labyrinth manual.
+    New to Labyrinth? '.\labyrinth.ps1 help basics' explains the ideas in
+    plain words. '.\labyrinth.ps1 help <command>' explains one command, and
+    '.\labyrinth.ps1 help <module-id>' one module. The operator manual is
+    the Windows parts of docs\manual\labyrinth.md in Labyrinth's folder.
 
 .EXAMPLE
     .\labyrinth.ps1 plan lockout
@@ -81,7 +85,14 @@ $ReModuleId = '^(lockout|observe|deceive|sustain)\.[a-z0-9_-]+$'
 $ReItem = "^item`t([a-z0-9-]+)`t([a-z0-9-]+)`t([0-9a-f]{12})`t(.*)$"
 $ReApprove = '^(lockout|observe|deceive|sustain)\.[a-z0-9_-]+:[a-z0-9-]+@[0-9a-f]{12}$'
 $Commands = @('plan', 'apply', 'keep', 'rollback', 'runs', 'probe', 'help', 'version')
-$Self = 'labyrinth.ps1'          # the program's name, for hints
+# How the operator started this program, so a hint can be pasted and run
+# (docs/Conventions.md section 3.2): .\labyrinth.ps1 from its own folder,
+# else its full path, after & and in quotes when the path needs them.
+$Self = '.\labyrinth.ps1'
+if ((Get-Location).ProviderPath.TrimEnd('\') -ne $PSScriptRoot.TrimEnd('\')) {
+    $Self = $PSCommandPath
+    if ($Self -notmatch '^[A-Za-z0-9_.:\\/~-]+$') { $Self = "& '" + $Self.Replace("'", "''") + "'" }
+}
 
 # The options, one row each (docs/Conventions.md section 3.1): the canonical
 # name, how it is shown, the keys it is matched by (lower case, no dashes),
@@ -145,12 +156,13 @@ $LogCap = 500                    # the most lines of one entry point in the log
 $Labels = @('found', 'will do', 'did', 'why', 'risk', 'problem', 'cause', 'fix', 'undo')
 
 # Show-LabHelp [COMMAND]: the help for every command, or for one, on stdout.
-# Each topic is at most 15 lines of at most 78 columns, with one Exit line
-# and one Example line (docs/Conventions.md section 3.2).
+# Each topic is at most 18 lines (basics 24) of at most 78 columns, not
+# counting the command in hints, with one Exit line and one Example line
+# (docs/Conventions.md section 3.2).
 function Show-LabHelp {
     param([string] $Topic = '')
     $where = @"
-Where:
+Options:
   -Root DIR              data root (default C:\ProgramData\Labyrinth)
   -Config DIR            configuration folder (default <root>\etc)
 "@
@@ -169,16 +181,18 @@ New to Labyrinth? Start with '$Self help basics'.
   version           print the version
 
 Phases: lockout, observe, deceive, sustain. <run>: an ID or its last 4.
+Options: '$Self help <command>' lists them; so does <command> -h.
 Exit: 0 ok, 10 change needed, 20 blocked, 30 check failed, 40 error.
 Example: $Self plan lockout
-Manual: Get-Help about_Labyrinth once installed; docs\manual in the release.
+Manual: the Windows parts of $(Join-Path $PSScriptRoot 'docs\manual\labyrinth.md')
 "@ }
         'plan' { @"
 Usage: $Self plan <phase> [options]
 
 Show what every module of the phase would change on this host.
 Nothing is changed and nothing is written. <phase> is lockout,
-observe, deceive or sustain.
+observe, deceive or sustain. Needs an Administrator to read the
+configuration.
 
 $where
   -Profile NAME          use this profile, not the one in the hosts file
@@ -190,7 +204,9 @@ Compatibility: '$Self <phase>' also plans.
         'apply' { @"
 Usage: $Self apply <phase> [options]
 
-Plan, confirm, then change; a revert timer undoes it unless kept.
+Plan, then ask you to name the break-glass account (first apply only)
+and to type this host's group name. Then change, checking each change;
+a revert timer undoes the run unless you keep it. Needs an Administrator.
 
 $where
   -Profile NAME          must match this host's line in the hosts file
@@ -199,6 +215,7 @@ $where
   -Approve LIST          approve without asking: module:item@fingerprint,...
 
 Exit: 0 done, 10 manual steps left, 20 blocked, 30 check failed, 40 error.
+Blocked: not an Administrator, another run, host not in hosts, or a gate.
 Example: $Self apply lockout
 Compatibility: '$Self <phase> -Apply' also applies.
 "@ }
@@ -207,11 +224,14 @@ Usage: $Self keep [<run>] [options]
 
 Keep a run's changes: cancel its revert timer, then record the keep.
 Without <run>, keep the one run whose timer is armed. <run> is a run
-ID or its last 4 characters; '$Self runs' lists them.
+ID or its last 4 characters; '$Self runs' lists them. Needs an
+Administrator.
 
 $where
 
-Exit: 0 kept or none armed, 20 not an Administrator or too late, 40 error.
+Exit: 0 kept or none armed, 20 blocked, 40 error.
+Blocked: not an Administrator, a file another account can change, or too
+late (the run was already rolled back).
 Example: $Self keep 4f2a
 "@ }
         'rollback' { @"
@@ -219,20 +239,22 @@ Usage: $Self rollback <run> [options]
 
 Undo what the run changed, newest change first. This is what the
 revert timer runs. Safe to run twice. <run> is a run ID or its last
-4 characters; '$Self runs' lists them.
+4 characters; '$Self runs' lists them. Needs an Administrator.
 
 $where
   -All                   also undo changes kept once they verified
 
-Exit: 0 rolled back, 20 not an Administrator, 40 error.
+Exit: 0 rolled back, 20 blocked, 40 error.
+Blocked: not an Administrator, or a file another account can change.
 Example: $Self rollback 4f2a
 "@ }
         'runs' { @"
 Usage: $Self runs [options]
 
 List this host's runs, oldest first: run ID, phase, start time (UTC)
-and state (armed, kept, rolled back, or not kept, no timer).
-Changes nothing; needs an Administrator.
+and state: armed (and when it rolls back), kept, rolled back,
+rolled back with errors, or not kept, no timer. Changes nothing;
+needs an Administrator.
 
 $where
 
@@ -243,7 +265,8 @@ Example: $Self runs
 Usage: $Self probe [options]
 
 Test every scored service once, the way the scoring engine would,
-and print one line per service. Changes nothing.
+and print one line per service. Changes nothing. Needs an
+Administrator to read the configuration.
 
 $where
 
@@ -271,8 +294,9 @@ modules. A module does one small job, such as turning off SMB version 1.
 
 1. Plan: '$Self plan lockout' shows what each module would change.
    It changes nothing, so run it as often as you like.
-2. Apply: '$Self apply lockout' plans again, asks you to type this
-   host's group name, then makes the changes and checks each one.
+2. Apply: '$Self apply lockout' plans again, has you name the
+   break-glass account the first time, asks you to type this host's
+   group name, then makes the changes and checks each one.
 3. Keep: an apply is a run, named by an ID; its last 4 characters are
    enough. A revert timer undoes the run after a few minutes unless you
    keep it, so a change that locks you out undoes itself. Log in from
@@ -289,7 +313,8 @@ Example: $Self help basics
         'version' { @"
 Usage: $Self version
 
-Print the version of Labyrinth. '-V' and '-Version' do the same.
+Print the version of Labyrinth and which program printed it.
+'-V' and '-Version' do the same.
 
 Exit: 0 printed.
 Example: $Self version
@@ -412,7 +437,8 @@ function Measure-LabEditDistance {
 
 # Get-LabSuggestion WORD CANDIDATES: the candidate WORD most likely meant:
 # the only one it is a prefix of, else the nearest within an edit distance
-# of 2. Returns '' when there is none.
+# of 2, or of 1 for a word of 3 letters or fewer. Returns '' when there is
+# none.
 function Get-LabSuggestion {
     param([string] $Word, [string[]] $Candidates)
     if ($Word -eq '') { return '' }
@@ -420,11 +446,22 @@ function Get-LabSuggestion {
     if ($prefix.Count -eq 1) { return $prefix[0] }
     $best = ''
     $bestd = 3
+    if ($Word.Length -lt 4) { $bestd = 2 }
     foreach ($c in $Candidates) {
         $d = Measure-LabEditDistance $Word $c
         if ($d -lt $bestd) { $bestd = $d; $best = $c }
     }
     return $best
+}
+
+# Get-LabSynonym WORD: the command an everyday word for it means, or ''.
+function Get-LabSynonym {
+    param([string] $Word)
+    if ($Word -ceq 'undo' -or $Word -ceq 'revert') { return 'rollback' }
+    if ($Word -ceq 'status' -or $Word -ceq 'list') { return 'runs' }
+    if ($Word -ceq 'check' -or $Word -ceq 'test') { return 'probe' }
+    if ($Word -ceq 'dry-run' -or $Word -ceq 'dryrun') { return 'plan' }
+    return ''
 }
 
 # Find-LabOption KEY: the row of the option matched by KEY (lower case, no
@@ -475,6 +512,9 @@ function Read-LabArgument {
         $shown = ($w -split '[=:]', 2)[0]
         $o = Find-LabOption ($key.ToLowerInvariant().Replace('-', ''))
         if ($null -eq $o) {
+            $lk = $key.ToLowerInvariant().Replace('-', '')
+            if ($lk -ceq 'dryrun') { Add-LabParseError "unknown option '$shown' (did you mean the command 'plan'?)"; continue }
+            if ($lk -ceq 'yes' -or $lk -ceq 'force') { Add-LabParseError "unknown option '$shown' (did you mean '-ConfirmGroup'?)"; continue }
             # One candidate per option, its first key, so a prefix of two
             # keys of the same option still counts as one.
             $hint = Get-LabSuggestion ($key.ToLowerInvariant().Replace('-', '')) @($script:LabOptions | ForEach-Object { $_.Keys[0] })
@@ -2479,7 +2519,8 @@ try {
             $cmd = 'plan'                     # compatibility: a phase alone
             $rest = @($words)
         } else {
-            $hint = Get-LabSuggestion $first ($Commands + $Phases)
+            $hint = Get-LabSynonym $first
+            if ($hint -eq '') { $hint = Get-LabSuggestion $first ($Commands + $Phases) }
             if ($words[0] -ceq '/?') { $hint = 'help' }
             if ($hint -ne '') { Exit-LabUsage "unknown command '$($words[0])' (did you mean '$hint'?)" }
             Exit-LabUsage "unknown command '$($words[0])'"
@@ -2507,7 +2548,7 @@ try {
     switch ($cmd) {
         '' {
             if ($script:Given.ContainsKey('help')) { Show-LabHelp ''; exit 0 }
-            if ($script:Given.ContainsKey('version')) { Write-LabLine "labyrinth $LabVersion"; exit 0 }
+            if ($script:Given.ContainsKey('version')) { Write-LabLine "labyrinth $LabVersion (labyrinth.ps1, for Windows)"; exit 0 }
             [Console]::Error.WriteLine('labyrinth: no command given')
             [Console]::Error.WriteLine('Start here:')
             [Console]::Error.WriteLine("  1. $Self help basics    what Labyrinth does, in plain words")
@@ -2527,7 +2568,8 @@ try {
             if ($topic -ceq 'basics') { Show-LabHelp 'basics'; exit 0 }
             if ($topic.Contains('.')) { Show-LabModuleHelp $topic; exit 0 }
             if ($topic -ne '' -and $Commands -cnotcontains $topic) {
-                $hint = Get-LabSuggestion $topic (@('basics') + $Commands)
+                $hint = Get-LabSynonym $topic
+                if ($hint -eq '') { $hint = Get-LabSuggestion $topic (@('basics') + $Commands) }
                 if ($hint -ne '') { Exit-LabUsage "no help for '$($rest[0])' (did you mean '$hint'?)" }
                 Exit-LabUsage "no help for '$($rest[0])'"
             }
@@ -2572,7 +2614,7 @@ try {
         }
     }
     if ($script:Given.ContainsKey('help')) { Show-LabHelp $cmd; exit 0 }
-    if ($script:Given.ContainsKey('version') -or $cmd -ceq 'version') { Write-LabLine "labyrinth $LabVersion"; exit 0 }
+    if ($script:Given.ContainsKey('version') -or $cmd -ceq 'version') { Write-LabLine "labyrinth $LabVersion (labyrinth.ps1, for Windows)"; exit 0 }
 
     $profileName = ''
     if ($script:Given.ContainsKey('profile')) { $profileName = $script:Given['profile'] }

@@ -8,6 +8,8 @@ lab_setup() {
   LAB="$BATS_TEST_TMPDIR/lab"
   ROOT="$BATS_TEST_TMPDIR/root"
   ETC="$BATS_TEST_TMPDIR/etc"
+  SELF="$LAB/labyrinth.sh"   # how hints name the runner, as the tests start it
+  unset SUDO_USER
   HOST="$(uname -n)"; HOST="${HOST%%.*}"
   mkdir -p "$LAB/phases/observe/modules" "$LAB/profiles" "$ETC"
   cp "$REPO/labyrinth.sh" "$LAB/"

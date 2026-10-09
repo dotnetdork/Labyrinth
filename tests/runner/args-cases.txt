@@ -11,6 +11,11 @@
 40|err|unknown command 'obsrve' (did you mean 'observe'?)|obsrve
 40|err|Try '@SELF@ help' for more information.|obsrve
 40|err|unknown command 'rolback' (did you mean 'rollback'?)|rolback 4f2a
+40|err|unknown command 'undo' (did you mean 'rollback'?)|undo 4f2a
+40|err|unknown command 'status' (did you mean 'runs'?)|status
+40|err|unknown command 'check' (did you mean 'probe'?)|check
+40|err|no help for 'revert' (did you mean 'rollback'?)|help revert
+40|err|(did you mean the command 'plan'?)|apply observe --dry-run
 40|err|needs a phase|plan
 40|err|needs a phase|apply --root @ROOT@
 40|err|unknown phase 'lockot' (did you mean 'lockout'?)|plan lockot
