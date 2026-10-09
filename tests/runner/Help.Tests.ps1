@@ -97,7 +97,9 @@ Describe 'labyrinth.ps1 help' {
             $lines -ccontains 'Options:' | Should -BeTrue -Because "help $topic"
             ($lines -join ' ') | Should -Not -Match 'Where:' -Because "help $topic"
         }
-        (Invoke-TestLabCapture $t @('version')).Out | Should -Match '^labyrinth \S+ \(labyrinth\.ps1, for Windows\)$'
+        $v = @((Invoke-TestLabCapture $t @('version')).Out -split "`r?`n")
+        $v[0] | Should -Match '^labyrinth \S+ \(labyrinth\.ps1, for Windows\)$'
+        $v[1] | Should -BeLike 'Release: *'
     }
 
     It 'everyday words and flags point to the command or option meant' {

@@ -590,6 +590,29 @@ function Exit-Lab {
     exit $Code
 }
 
+# Write-LabVersion: the version, the runner, and the release hash to
+# compare with the team's offline record (design 07, section 5).
+function Write-LabVersion {
+    Write-LabLine "labyrinth $LabVersion (labyrinth.ps1, for Windows)"
+    $release = 'not checked (no release.sha256)'
+    if ($script:Release.Status -eq 'ok') { $release = $script:Release.Hash }
+    Write-LabLine "Release: $release"
+}
+
+# Exit-LabRelease: a file differs from the release list. A refused
+# rollback leaves the changes in place, so whoever is logged in learns
+# that, as from the revert timer (best effort); the core, which has
+# Send-LabNotice, is not loaded, because it may be the file that differs.
+function Exit-LabRelease {
+    if ($script:Arguments -contains 'rollback') {
+        $exe = Join-Path $env:SystemRoot 'System32\msg.exe'
+        if (Test-Path -LiteralPath $exe -PathType Leaf) {
+            try { $null = & $exe '*' '/TIME:900' "Labyrinth did not roll back on ${env:COMPUTERNAME}: its files differ from the release, so the changes are still in place." 2>$null } catch { $null = $_ }
+        }
+    }
+    Exit-Lab "$($script:Release.Problem), so Labyrinth will not run" 20 "Copy Labyrinth here again from the team's copy, as manual section 11 says."
+}
+
 # How to get the rights a command needs, and how to mend a bad line.
 $FixAdmin = "Run it again in PowerShell opened with 'Run as administrator'."
 $FixLine = 'Correct that line, then run the same command again.'
@@ -1381,6 +1404,9 @@ function Invoke-LabPlanAll {
 # configuration and its data root, because they run as SYSTEM, later too,
 # by the revert timer (design 07, section 5).
 function Assert-LabTrustedTree {
+    if ($script:Release.Status -eq 'missing') {
+        $script:PendingWarnings += "no release.sha256, so Labyrinth's files were not checked"
+    }
     $bad = Find-LabUntrustedItem -Path @($env:LAB_ROOT, $env:LAB_CONFIG_DIR, $script:DataRoot)
     if ($null -ne $bad) {
         Exit-Lab "$bad can be changed by an account that is not an administrator, so Labyrinth will not run as SYSTEM from it" 20 `
@@ -2028,6 +2054,9 @@ function Write-LabRecap {
     $kept = $false
     Write-LabLine ''
     Write-LabLine "About to apply on host $HostName, group ${Group}:"
+    $release = 'not checked (no release.sha256)'
+    if ($script:Release.Status -eq 'ok') { $release = $script:Release.Hash }
+    Write-LabLine "Release: $release"
     foreach ($m in $script:Run) {
         $what = ''
         if ($m.Rc -eq 10 -and $m.Risk -eq 'manual-only') { $what = 'Manual:' }
@@ -2501,6 +2530,14 @@ function Write-LabProbeReport {
 }
 
 try {
+    # The release check (design 07, section 5) comes before any of the
+    # core is loaded, so a changed core file never runs. A file that
+    # differs from release.sha256 stops every command, the revert timer's
+    # rollback included; with no release.sha256, apply, keep and rollback
+    # warn.
+    . (Join-Path $PSScriptRoot 'core\safety\Release.ps1')
+    $script:Release = Test-LabRelease -Root $PSScriptRoot
+    if ($script:Release.Status -eq 'problem') { Exit-LabRelease }
     Read-LabArgument $script:Arguments
     $words = $script:Words
     if ($script:ParseError -ne '') {
@@ -2557,7 +2594,7 @@ try {
     switch ($cmd) {
         '' {
             if ($script:Given.ContainsKey('help')) { Show-LabHelp ''; exit 0 }
-            if ($script:Given.ContainsKey('version')) { Write-LabLine "labyrinth $LabVersion (labyrinth.ps1, for Windows)"; exit 0 }
+            if ($script:Given.ContainsKey('version')) { Write-LabVersion; exit 0 }
             [Console]::Error.WriteLine('labyrinth: no command given')
             [Console]::Error.WriteLine('Start here:')
             [Console]::Error.WriteLine("  1. $Self help basics    what Labyrinth does, in plain words")
@@ -2623,7 +2660,7 @@ try {
         }
     }
     if ($script:Given.ContainsKey('help')) { Show-LabHelp $cmd; exit 0 }
-    if ($script:Given.ContainsKey('version') -or $cmd -ceq 'version') { Write-LabLine "labyrinth $LabVersion (labyrinth.ps1, for Windows)"; exit 0 }
+    if ($script:Given.ContainsKey('version') -or $cmd -ceq 'version') { Write-LabVersion; exit 0 }
 
     $profileName = ''
     if ($script:Given.ContainsKey('profile')) { $profileName = $script:Given['profile'] }

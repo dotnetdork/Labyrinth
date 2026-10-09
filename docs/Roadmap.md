@@ -97,7 +97,7 @@ Built right after the P0 lockout works locally, so the lockout reaches every hos
 | Branch | Spec | Delivers |
 |---|---|---|
 | `phase-8/report` | 02 | The incident report builder, fed by quarantine evidence, integrity findings and the tracker's closed flaws |
-| `phase-8/cleanup-integrity` | 07 | Cleanup, and checking the release before a run |
+| `phase-8/cleanup-integrity` | 07 | Cleanup, and the signature check on the control node. Each host's own release check (07 §5.1) is part of the framework hardening |
 
 ### Stage 9: deceive and extras (P2)
 

@@ -51,6 +51,28 @@ readonly RE_APPROVE='^(lockout|observe|deceive|sustain)\.[a-z0-9_-]+:[a-z0-9-]+@
 # as root, so it must name the folder lab_tree_trusted checks.
 LAB_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 export LAB_ROOT
+# The release check (design 07, section 5) comes before the rest of the
+# core is loaded, so a changed core file never runs. A file that differs
+# from release.sha256 stops every command, the revert timer's rollback
+# included; with no release.sha256, apply, keep and rollback warn.
+# shellcheck source=core/safety/release.sh
+source "$LAB_ROOT/core/safety/release.sh"
+LAB_RELEASE=0              # 0 checked, 1 no release list, 2 a file differs
+lab_release_check "$LAB_ROOT" || LAB_RELEASE=$?
+if (( LAB_RELEASE == 2 )); then
+  printf 'labyrinth: %s, so Labyrinth will not run\n' "$LAB_RELEASE_PROBLEM" >&2
+  printf '%s\n' "Copy Labyrinth here again from the team's copy, as manual section 11 says." >&2
+  for a in "$@"; do
+    # A refused rollback leaves the changes in place: whoever is logged
+    # in must learn that, as from the revert timer. Best effort.
+    if [[ "$a" == rollback ]] && command -v wall > /dev/null 2>&1; then
+      printf '%s\n' "Labyrinth did not roll back on $(uname -n): its files differ from the release, so the changes are still in place." \
+        | wall > /dev/null 2>&1 || true
+      break
+    fi
+  done
+  exit 20
+fi
 # shellcheck source=core/lib.sh
 source "$LAB_ROOT/core/lib.sh"
 
@@ -278,7 +300,13 @@ EOF
   esac
 }
 
-cmd_version() { printf 'labyrinth %s (labyrinth.sh, for Linux)\n' "$LAB_VERSION"; }
+# cmd_version: the version, the runner, and the release hash to compare
+# with the team's offline record (design 07, section 5).
+cmd_version() {
+  printf 'labyrinth %s (labyrinth.sh, for Linux)\n' "$LAB_VERSION"
+  if (( LAB_RELEASE == 0 )); then printf 'Release: %s\n' "$LAB_RELEASE_HASH"
+  else printf 'Release: not checked (no release.sha256)\n'; fi
+}
 
 # risk_words RISK: what a module's risk means, in plain words.
 risk_words() {
@@ -1310,6 +1338,9 @@ plan_all() {
 # the revert timer (design 07, section 5).
 gate_trusted() {
   local bad
+  if (( LAB_RELEASE == 1 )); then
+    PENDING_WARNINGS+=("no release.sha256, so Labyrinth's files were not checked")
+  fi
   bad="$(lab_tree_trusted "$LAB_ROOT" "$LAB_CONFIG_DIR" "$DATA_ROOT")" && return 0
   die "$bad can be changed by an account other than root, so Labyrinth will not run as root from it" 20 \
     "Keep Labyrinth's folders owned by root and not writable by others ('chown -R root:' and 'chmod -R go-w'), in folders only root can change."
@@ -1921,6 +1952,8 @@ recap() {
   local i what l remote=0 kept=0
   out ''
   out "About to apply on host $1, group $2:"
+  if (( LAB_RELEASE == 0 )); then out "Release: $LAB_RELEASE_HASH"
+  else out 'Release: not checked (no release.sha256)'; fi
   for ((i = 0; i < ${#RUN_IDS[@]}; i++)); do
     case "${RUN_RC[i]}" in
       10) what='Will change:'
