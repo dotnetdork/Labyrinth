@@ -1,0 +1,16 @@
+# Approval items the team approved before the event (docs/Conventions.md,
+# sections 2.2 and 3.1). Optional: without this file, every approval item
+# waits for a person or an --approve entry.
+#
+# One rule per line: module-id category item
+#   item is an item id from a plan, or * for every item of the category.
+# A rule counts only for a category the module's module.yml lists in
+# pre_approvable; any other rule is ignored, with a line saying so.
+# Each approved item is still checked against this run's plan, the
+# module's own checks, the probes and the revert timer.
+#
+# Placeholders only. Replace them with the module ids, categories and item
+# ids your team reviewed.
+
+# lockout.example-patching security-update example-package
+# lockout.example-app-credentials default-app-password example-app-admin

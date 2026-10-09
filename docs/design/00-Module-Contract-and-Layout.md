@@ -79,7 +79,7 @@ Notes:
 
 - **Profiles** map hosts to modules, for example `linux-web`, `linux-siem`, `windows-dc`, `windows-member`, `appliance`. A profile is a list, not code.
 - **Appliances** (VyOS, Palo Alto, Cisco FTD (Firepower Threat Defense)) are handled by templated configuration and a manual runbook, not remote-execution modules.
-- **Language:** bash on Linux, Windows PowerShell 5.1 on Windows. No interpreter or package has to be installed at run time (section 9).
+- **Language:** bash on Linux, Windows PowerShell 5.1 on Windows. No interpreter or package has to be installed for Labyrinth itself to run (section 9); the tools it adds to a host come from design 20.
 
 ```mermaid
 flowchart TD
@@ -127,6 +127,7 @@ Every module is a folder containing a metadata file, a help page and up to six e
 | `touches_scored` | `true` if it can affect a scored service or account |
 | `requires` | Other modules or facts that must exist first |
 | `outputs` | Files and state it creates, so cleanup can find them |
+| `pre_approvable` | Optional, for an `approval` module only: the item categories a pre-approval rule may approve (Conventions, section 3.1). A category belongs here only if an item of it is safe to change without a person seeing it: the module checks the item fully, and the change can be undone or breaks nothing. Examples are a security update for a named package (design 15, section 4), a known default application password (design 05, section 2.1) and a setting that is approval-class only because the installed version was not tested in the lab (design 18, section 4) |
 
 `about.txt` is the module's help page, printed by `labyrinth help <module-id>` under a summary of `module.yml` in plain words. It is plain text, at most 78 columns, and fits one screen. It answers, in this order and in short sentences: what the module checks, what it changes, why, what can go wrong and what Labyrinth does about it, how to undo it, and what to do when it fails. Every module in a release has one; a module without it still runs, and its help page says the page is missing.
 
@@ -181,9 +182,9 @@ flowchart TD
 Rules for module authors:
 
 1. `touches_scored: true` modules run only after the scoring allowlist and the protected set are loaded.
-2. An `approval` module lists each item it would change, with the reason, and changes only the items a person approves, per item or per category on one host. Approved items go through the same backup, manifest, verify and rollback as any other change.
-3. A `manual-only` module never changes anything. It prints a checklist for a human. This is kept for actions too broad or too hard to undo for Labyrinth to carry out even with approval: KRBTGT resets, Group Policy changes, DNS changes on a domain controller, domain controller restores, rescuing an unbootable host, patching and appliance changes.
-4. No module downloads anything or calls outside services (National Collegiate Cyber Defense Competition [NCCDC], 2025, Rule 5.6.4).
+2. An `approval` module lists each item it would change, with the reason, and changes only the items a person approves, per item or per category on one host, or that the team approved before the event with a pre-approval rule (Conventions, section 3.1). Approved items go through the same backup, manifest, verify and rollback as any other change.
+3. A `manual-only` module never changes anything. It prints a checklist for a human. This is kept for actions too broad or too hard to undo for Labyrinth to carry out even with approval: Group Policy changes, DNS changes on a domain controller, domain controller restores, rescuing an unbootable host, Windows patching and appliance changes.
+4. No module calls an outside service or sends data out of the competition environment (National Collegiate Cyber Defense Competition [NCCDC], 2025, Rule 5.6.4). Only the `packages` module and the core download helper install or download software, from the public sources of design 20.
 5. No module deliberately breaks expected functionality (NCCDC, 2025, Rule 5.6.5).
 6. No module deletes a file. Anything removed is quarantined (design 17, section 5). An account is deleted only by the account module, after approval (design 05, section 6).
 7. A module writes its output for a beginner, as `key: text` lines with a key from `found`, `will do`, `did`, `why`, `risk`, `problem`, `cause`, `fix` and `undo`: `found: password logins are on`, `will do: turn them off`. Any other line is shown as a note. An entry point that exits `20`, `30` or `40` prints a `problem:` line last, saying what stopped it; without one, the operator sees only that the script gave no reason. The runner adds the module's title, its status and a pointer to its help page (docs/Conventions.md, section 3.2).
@@ -195,6 +196,7 @@ Labyrinth runs in two modes that share the same modules:
 
 - **Local mode.** `labyrinth.sh` or `labyrinth.ps1` runs on the host it changes. This is the base: it needs nothing but the host itself, and it is the fallback when remote access is lost.
 - **Remote mode.** `labyrinth remote plan <phase> --group <group>` or `labyrinth remote apply <phase> --group <group>` runs on a control node. For each target it copies the release, checks it (design 07, section 5), runs the *same* local command over SSH (Linux) or PowerShell remoting or OpenSSH (Windows), and brings back the logs and the run manifest. It must cope with being cut off, because the lockout rotates the very credentials and SSH settings it connects with.
+- **Keeping a run in remote mode.** A local apply ends by asking the operator to type `keep`. In remote mode the control node answers for each host, from what it can check itself: it keeps the host's run (`keep <run>`) only when, after the run, it can still log in to the host over the admin path with a new connection, and every scored service on that host passes its probe from the control node. Otherwise it keeps nothing, and the revert timer rolls the host back. Either way the control node prints and records which hosts it kept and why. The break-glass check at the console still follows the run (design 01, section 6.3); an operator who cannot log in there runs `rollback` for that host.
 
 Either way, one run does this:
 
@@ -204,7 +206,8 @@ labyrinth plan|apply <phase> [--profile <name>]        # local; remote adds --gr
    2. safety gates (protected set loaded, break-glass confirmed; the scoring allowlist
       for modules that touch scored services)
    3. plan all modules and print the combined plan
-   4. human confirms (typed confirmation) → apply in rings (design 01)
+   4. human confirms (typed, or given on the command line in a first-minute run)
+      → apply in rings, or on every host at once in a first-minute run (design 01)
    5. verify each module with scoring-style probes; auto-rollback a module on regression
    6. write run manifest; run cleanup
 ```
@@ -232,7 +235,7 @@ The released code is frozen for each event (NCCDC, 2025, Rule 5.6.2). Everything
 
 Our reading is that values supplied at run time are not part of the frozen submission, so they can change after the freeze. The rule does not say so directly, so this reading must be confirmed with competition officials before relying on it.
 
-So that the answer cannot change what the tool does, run-time configuration holds only facts about the event: addresses, host names, account names, lists, and timer lengths. It never holds code, commands or detection rules; those live in the frozen release (`phases/`, `profiles/`, the data files). A profile override in configuration (Conventions, section 2.2) may only choose and order modules the release already ships. Configuration says *where* and *who*, and the frozen code decides *what*. The question for officials is in `docs/Roadmap.md`. Until they answer, the reading is *Provisional*.
+So that the answer cannot change what the tool does, run-time configuration holds only facts about the event: addresses, host names, account names, lists, and timer lengths. It never holds code, commands or detection rules; those live in the frozen release (`phases/`, `profiles/`, the data files). A profile override in configuration (Conventions, section 2.2) may only choose and order modules the release already ships. The `pre-approved` file holds the team's decisions made before the event, not facts, but it is bounded the same way: it can approve only items a shipped module already lists, in categories that module allows, and each one still passes the module's own checks, the probes and the revert timer. Configuration says *where* and *who*, and the frozen code decides *what*. The question for officials is in `docs/Roadmap.md`. Until they answer, the reading is *Provisional*.
 
 ## 7. Standard paths on every host
 
@@ -263,6 +266,7 @@ Nothing else changes.
 - **Ansible or native scripts.** Resolved: native scripts. They work in local mode with nothing installed, and the remote mode (section 5) gives the reach Ansible would have given.
 - **Windows log shipping method.** Resolved (2026-10-05): the Splunk universal forwarder where the host already has it, otherwise a PowerShell script posting to Splunk's HTTP Event Collector. Nothing is installed. See design 10, section 4.
 - **Approvals in remote mode.** Resolved (2026-10-05): approvals can be passed with `--approve` (`-Approve`), and each approval is tied to the plan by a fingerprint, so an item that changed after the plan is refused. The prompt stays the default (Conventions, section 3.1).
+- **Pre-approval.** Resolved (2026-10-09): a first-minute run needs some items approved before anyone has seen the plan, such as a security update for a named scored package. `--approve` cannot carry them, because its entries need the fingerprint from a plan. So a module declares the categories that may be pre-approved (`pre_approvable`), and the run-time `pre-approved` file names the items or categories the team approved before the event (Conventions, section 3.1).
 - **Build order.** Resolved (2026-10-05): remote mode is built right after the P0 lockout modules work locally (`docs/Roadmap.md`).
 - **Where real-host tests run.** Resolved (2026-10-05): CI runners for what they can host, a local lab of virtual machines for the rest (Conventions, section 9).
 

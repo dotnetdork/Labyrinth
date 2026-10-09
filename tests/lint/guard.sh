@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # guard.sh: static check that Labyrinth code makes no outside calls and takes
 # no blanket actions (Rules 5.6.4 and 5.6.5; design 08, section 4.5). The
-# 'install' rules enforce a design choice stricter than Rule 5.6.4: Labyrinth
-# never installs packages, even from inside the event network (designs 00, 15).
+# 'install' rules keep installs in one place: only the packages module and the
+# core download helper may install, with an allow comment naming design 20.
 #
 # Usage: tests/lint/guard.sh [path ...]
 #   With no paths, scans the code directories of the repository.
