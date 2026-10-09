@@ -1012,6 +1012,18 @@ load_modules() {
         LOAD_ERRORS=$((LOAD_ERRORS + 1)); worst=40; continue 2
       fi
     done
+    # A module that never changes anything ships no entry point that does.
+    if [[ "${MOD[risk]}" == read-only || "${MOD[risk]}" == manual-only ]]; then
+      for entry in apply rollback cleanup; do
+        if [[ -f "$dir/$entry.sh" ]]; then
+          say ERROR "$(module_name "$id")"
+          detail Problem "$entry.sh is not allowed: a ${MOD[risk]} module changes nothing"
+          detail Fix 'report the module to its author'
+          more "$id"
+          LOAD_ERRORS=$((LOAD_ERRORS + 1)); worst=40; continue 2
+        fi
+      done
+    fi
     ids+=("$id"); dirs+=("$dir"); risks+=("${MOD[risk]}"); scored+=("${MOD[touches_scored]}")
     reqs+=("$(list_items "${MOD[requires]:-[]}")"); prios+=("${MOD[priority]}")
   done

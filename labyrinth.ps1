@@ -1085,6 +1085,17 @@ function Import-LabRunModule {
             Write-LabMore $id
             $script:LoadErrors++; $worst = 40; continue
         }
+        # A module that never changes anything ships no entry point that does.
+        if (@('read-only', 'manual-only') -ccontains $script:Mod['risk']) {
+            $extra = @('apply', 'rollback', 'cleanup' | Where-Object { Test-Path -LiteralPath (Join-Path $dir "$_.ps1") -PathType Leaf })
+            if ($extra.Count -gt 0) {
+                Write-LabStatus 'ERROR' (Get-LabModuleName $id)
+                Write-LabDetail 'Problem' "$($extra[0]).ps1 is not allowed: a $($script:Mod['risk']) module changes nothing"
+                Write-LabDetail 'Fix' 'report the module to its author'
+                Write-LabMore $id
+                $script:LoadErrors++; $worst = 40; continue
+            }
+        }
         $requires = @()
         if ($script:Mod.ContainsKey('requires')) { $requires = Get-LabListItem $script:Mod['requires'] }
         $found += [pscustomobject]@{
