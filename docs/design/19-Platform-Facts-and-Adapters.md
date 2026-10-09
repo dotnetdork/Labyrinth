@@ -75,7 +75,7 @@ The `hosts` file's platform `ubuntu` covers the whole Debian family, and `rhel-f
 
 ## 5. The firewall adapter
 
-Every backend's adapter offers the same functions, so the firewall, ban and egress modules never call a backend directly. On Linux they are called through one dispatcher, `lab_fw FUNCTION ARGS` (in `platform/linux/firewall/firewall.sh`, which a module sources). The dispatcher picks the backend from the `firewall` fact and refuses (`20`) when the fact is `none`, `conflict` or `unknown`; `restore` instead uses the backend named in the snapshot, so a rollback still works after the fact changes. A host with no active firewall is reported for a person, because the adapter never turns one on (section 6). On Windows the functions are in `platform/windows/Firewall.ps1`, and they refuse (`20`) when the `firewall` fact is `unknown`.
+Every backend's adapter offers the same functions, so the firewall, ban and egress modules never call a backend directly. On Linux they are called through one dispatcher, `lab_fw FUNCTION ARGS` (in `platform/linux/firewall/firewall.sh`, which a module sources). The dispatcher picks the backend from the `firewall` fact and refuses (`20`) when the fact is `conflict` or `unknown`; `restore` instead uses the backend named in the snapshot, so a rollback still works after the fact changes. When the fact is `none`, the usual state of a fresh Ubuntu or Debian install, the dispatcher uses nftables if `nft` is installed, otherwise iptables if `iptables` is installed, under the same snapshot, allowlist and revert-timer rules; the snapshot of the empty ruleset puts the host back exactly as it was. UFW is not turned on: it is built on iptables or nftables, which are therefore present, and its restore could not turn it back off. A host with neither is refused (`20`) and reported for a person. On Windows the functions are in `platform/windows/Firewall.ps1`, and they refuse (`20`) when the `firewall` fact is `unknown`.
 
 | Function (Linux) | Windows | Does |
 |---|---|---|
@@ -114,7 +114,7 @@ Every backend's adapter offers the same functions, so the firewall, ban and egre
 
 ## 6. What it will never do
 
-- Install, enable or switch to a firewall backend that the host is not already using. Windows Firewall is always present on Windows, so `default_deny_in` there turns its profiles on, as part of the deny the caller asked for.
+- Install a firewall, or switch from the firewall a host is using to another. A host with no active firewall gets the nftables or iptables it already has (section 5). Windows Firewall is always present on Windows, so `default_deny_in` there turns its profiles on, as part of the deny the caller asked for.
 - Delete a file to restore a snapshot. A file the snapshot did not hold is moved into the snapshot folder.
 - Change the firewall without a snapshot taken by the same module in the same run.
 - Guess a fact. An unknown fact blocks the module that needs it.
@@ -133,7 +133,7 @@ Every backend's adapter offers the same functions, so the firewall, ban and egre
 - `allow` and `default_deny_in` before a snapshot, or in plan mode, are refused and change nothing.
 - Each change is in the run manifest before it is made, and `lab_fw_rollback` (`Undo-LabFirewallChange`) restores the snapshot.
 - After `default_deny_in` on each lab host, the host still answers ping, an allowed port from an allowed source still connects, and an established session survives.
-- With the firewall fact `conflict`, `none` or `unknown`, every function but `restore` is refused (`20`) and calls no firewall command.
+- With the firewall fact `conflict` or `unknown`, every function but `restore` is refused (`20`) and calls no firewall command. With the fact `none`, the adapter uses an installed `nft`, then `iptables`, and refuses (`20`) when neither is installed.
 
 ## References
 

@@ -36,6 +36,19 @@ lab_fw() {
     *) _lab_fw_err "unknown function: ${fn:-(none)}"; return 40 ;;
   esac
   backend="$(lab_fact firewall)"
+  if [[ "$backend" == none ]]; then
+    # No firewall is active, the default on many fresh installs. Use one the
+    # host already has, never install one (design 19, section 6). The
+    # snapshot of the empty ruleset puts the host back exactly as it was.
+    if lab_have nft; then
+      backend=nftables
+    elif lab_have iptables; then
+      backend=iptables
+    else
+      _lab_fw_err "no firewall is active and neither nft nor iptables is installed; nothing was changed"
+      return 20
+    fi
+  fi
   case "$backend" in
     ufw | firewalld | nftables | iptables) ;;
     *)
