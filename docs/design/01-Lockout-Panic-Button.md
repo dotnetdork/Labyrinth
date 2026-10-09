@@ -154,7 +154,7 @@ The opening seconds decide whether the Red Team keeps its foothold, and a person
 labyrinth apply lockout --profile <name> --confirm-group <group> --break-glass <account> --approve <list>
 ```
 
-The options already exist (Conventions, section 3.1). `--approve` carries the profile's pre-approved items, such as known default application passwords (design 05, section 2.1); anything not on the list waits for a person, as usual.
+The options already exist (Conventions, section 3.1). `--approve` carries the profile's pre-approved items, such as known default application passwords (design 05, section 2.1) and security updates for named scored packages (design 15, section 4); anything not on the list waits for a person, as usual.
 
 | Left out of a first-minute run | Kept in every run |
 |---|---|
