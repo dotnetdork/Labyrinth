@@ -11,9 +11,12 @@
 readonly LAB_LOG_CATEGORIES='run auth integrity network deception report health'
 readonly LAB_LOG_LEVELS='debug info warn error'
 
-# lab_host: the short host name used in logs and the manifest.
+# lab_host: the short host name used in logs and the manifest. It picks
+# the host's profile and group, so it comes from the system, not from
+# $HOSTNAME, which the caller can set.
 lab_host() {
-  local h="${HOSTNAME:-$(uname -n)}"
+  local h
+  h="$(uname -n)"
   printf '%s' "${h%%.*}"
 }
 

@@ -204,7 +204,9 @@ function Test-LabFirewallScoringCovered {
         return 20
     }
     try {
-        $services = @(Read-LabServiceList)
+        # Not wrapped in @(): the list comes back as one array, and @() would
+        # make it the only item of another.
+        $services = Read-LabServiceList
     } catch {
         Write-LabFirewallError 'default deny is refused: the services file does not load'
         return 40
@@ -250,10 +252,35 @@ function Test-LabFirewallScoringCovered {
 # Windows Firewall keeps established connections and loopback itself. ICMP is
 # allowed in both families (design 01, section 2), then every profile is
 # turned on with inbound default Block and local allow rules honored.
+# Test-LabFirewallLocalRuleHonored: 0 if the rules Labyrinth adds on this
+# host take effect; 20 if Group Policy turns off local rule merging
+# (AllowLocalFirewallRules) for a profile, so those allow rules would do
+# nothing and a default deny would block the scoring engine; 40 if the
+# effective policy cannot be read.
+function Test-LabFirewallLocalRuleHonored {
+    try {
+        $profiles = @(Get-NetFirewallProfile -PolicyStore ActiveStore -ErrorAction Stop)
+    } catch {
+        Write-LabFirewallError "the effective firewall policy cannot be read: $($_.Exception.Message)"
+        return 40
+    }
+    $off = @($profiles | Where-Object {
+            $_.PSObject.Properties['AllowLocalFirewallRules'] -and "$($_.AllowLocalFirewallRules)" -eq 'False'
+        } | ForEach-Object { $_.Name })
+    if ($off.Count -gt 0) {
+        Write-LabFirewallError ("Group Policy turns off local firewall rules for the $($off -join ', ') profile(s), " +
+            'so the allow rules would do nothing and the default deny would block the scoring engine; nothing was changed')
+        return 20
+    }
+    return 0
+}
+
 function Enable-LabFirewallDefaultDeny {
     $rc = Test-LabFirewallChange -Action 'default_deny_in'
     if ($rc -ne 0) { return $rc }
     if (-not (Test-LabFirewallSnapshotTaken -Action 'default_deny_in')) { return 20 }
+    $rc = Test-LabFirewallLocalRuleHonored
+    if ($rc -ne 0) { return $rc }
     $rc = Test-LabFirewallScoringCovered
     if ($rc -ne 0) { return $rc }
     try {

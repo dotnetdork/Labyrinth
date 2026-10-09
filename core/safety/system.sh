@@ -143,3 +143,17 @@ lab_timer_due() {
 
 # lab_timer_armed RUN: is a revert timer armed for the run?
 lab_timer_armed() { [[ -f "$LAB_STATE_DIR/runs/$1/timer" ]]; }
+
+# lab_timer_live RUN: is the armed timer still waiting in systemd? The timer
+# is transient, so a reboot drops it while its state file stays. Returns 1
+# when systemd no longer has it, and 2 when this cannot be told.
+lab_timer_live() {
+  local f="$LAB_STATE_DIR/runs/$1/timer" unit=''
+  [[ -f "$f" ]] || return 1
+  IFS= read -r unit < "$f" || [[ -n "$unit" ]] || return 2
+  command -v systemctl > /dev/null 2>&1 || return 2
+  systemctl is-active --quiet "$unit.timer" 2> /dev/null && return 0
+  # Firing makes the timer inactive while its rollback runs.
+  systemctl is-active --quiet "$unit.service" 2> /dev/null && return 0
+  return 1
+}

@@ -63,6 +63,9 @@ _lab_fw_iptables_deny_ready() { return 0; }
 
 _lab_fw_iptables_default_deny_in() {
   local cmd icmp
+  if ! lab_have ip6tables; then
+    _lab_fw_err 'warning: ip6tables is not installed, so IPv6 stays open: the default deny covers IPv4 only'
+  fi
   while IFS= read -r cmd; do
     icmp=icmp
     [[ "$cmd" == ip6tables ]] && icmp=ipv6-icmp

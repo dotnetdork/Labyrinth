@@ -140,6 +140,9 @@ Ends with 0 when the run is rolled back, 20 when not run as @ADMIN@, and 40 on a
 Lists this host's runs, oldest first, with the run ID, phase, start time (UTC) and state:
 
 - `armed`: the revert timer is set, with the time it will undo the run. If that time has passed, it says when the timer was due; if Labyrinth cannot tell, it says the time is unknown;
+<!-- linux -->
+- `armed: timer lost (reboot?)`: the run is still armed, but systemd no longer has its revert timer, usually because the host restarted. Nothing will undo the run by itself. Keep it or roll it back now;
+<!-- end -->
 - `kept`: someone kept the run;
 - `rolled back`: the run was undone;
 - `rolled back with errors`: the run was undone, but some of it could not be; section 11 explains what to do;
@@ -273,7 +276,7 @@ If an item has changed since the plan you copied it from, its fingerprint no lon
   Type 'recorded' once it is in the offline record:
 ```
 
-Copy it into the team's offline record, check the copy, then type `recorded`. Anything else asks again. Labyrinth then clears the password from the screen. If the window closes before you type `recorded`, the module puts the old password back, because nobody has the new one. Answer within the revert time: when the revert timer fires, it stops the run, even at this prompt, and undoes it, the new password included. A module that sets passwords needs a terminal to show them on; started without one, for example from a script with no window, it changes nothing and is blocked.
+Copy it into the team's offline record, check the copy, then type `recorded`. Anything else asks again. Labyrinth then clears the password from the screen. It cannot clear copies kept elsewhere: the scrollback of tmux or screen, a terminal's own log, or a transcript (`Start-Transcript`) still holds the password. Do not run password modules inside them, or clear and close them once the password is recorded. If the window closes before you type `recorded`, the module puts the old password back, because nobody has the new one. Answer within the revert time: when the revert timer fires, it stops the run, even at this prompt, and undoes it, the new password included. A module that sets passwords needs a terminal to show them on; started without one, for example from a script with no window, it changes nothing and is blocked.
 
 # 8. Reading the output
 
@@ -397,15 +400,15 @@ Only Administrators, SYSTEM and the account that runs Labyrinth can use the data
 The revert timer's length is `REVERT_MINUTES` in `event.conf` (5 minutes in the example file).
 
 <!-- linux -->
-Each revert timer is a systemd timer named `lab-revert-<run>-<n>`. You do not need to manage it by hand: use `keep` or `rollback`.
+Each revert timer is a systemd timer named `lab-revert-<run>-<n>`. You do not need to manage it by hand: use `keep` or `rollback`. The timer lives only in memory, so a restart drops it: an armed run is then not undone by itself, and `runs` shows it as `armed: timer lost (reboot?)`. After a restart, check `runs` and keep or roll back each armed run.
 <!-- end -->
 <!-- windows -->
-Each revert timer is a scheduled task named `\Labyrinth\lab-revert-<run>-<n>`, run as SYSTEM. You do not need to manage it by hand: use `keep` or `rollback`.
+Each revert timer is a scheduled task named `\Labyrinth\lab-revert-<run>-<n>`, run as SYSTEM. You do not need to manage it by hand: use `keep` or `rollback`. The task survives a restart; if its time passed while the host was off, it runs as soon as it can.
 <!-- end -->
 
 # 11. When something goes wrong
 
-**"another Labyrinth run (pid N) holds ... lock".** A run is already in progress on this host. Wait for it to finish. If that process has ended, run the command again: a lock left by a process that is gone is taken over.
+**"another Labyrinth run (pid N) holds ... lock".** A run is already in progress on this host. Wait for it to finish. If that process has ended, run the command again: a lock left by a process that is gone is taken over. Rarely, after a crash, another program gets the same process number and the lock stays held. If no Labyrinth run is going, delete the `lock` folder in the data root's `state` folder, then run the command again.
 
 Most errors that stop Labyrinth are two lines: what failed and why, then how to recover. Do what the second line says, then run the same command again.
 

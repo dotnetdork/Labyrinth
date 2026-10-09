@@ -8,8 +8,10 @@
 # trace on the host. Warnings and errors are also printed to stderr.
 # Never pass a secret to these functions, not even masked.
 
-# Get-LabHostName: the short host name used in logs and the manifest.
-function Get-LabHostName { return ($env:COMPUTERNAME -split '\.')[0] }
+# Get-LabHostName: the short host name used in logs and the manifest. It
+# picks the host's profile and group, so it comes from the system, not from
+# $env:COMPUTERNAME, which the caller can set.
+function Get-LabHostName { return ([Environment]::MachineName -split '\.')[0] }
 
 # Get-LabUtcNow: the current UTC time in ISO 8601.
 function Get-LabUtcNow { return [DateTime]::UtcNow.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'") }

@@ -70,6 +70,26 @@ Describe 'labyrinth.ps1 apply' {
         Join-Path $t.Root "state\runs\$id\timer" | Should -Exist
     }
 
+    It 'an entry point gets no standard input, so it cannot take the operator''s answers' {
+        $seen = Join-Path $lab 'STDIN_SEEN'
+        [IO.File]::WriteAllText((Join-Path $lab 'phases\observe\modules\toggle\plan.ps1'),
+            "`$l = [Console]::In.ReadLine()`nif (`$null -ne `$l) { [IO.File]::WriteAllText('$seen', `$l) }`n'toggle: would set setting=on in toggle.conf'`nexit 10`n")
+        (Invoke-TestApply $t $answers).Code | Should -Be 0
+        $seen | Should -Not -Exist
+        (Get-Content -LiteralPath $toggle) | Should -Be 'setting=on'
+    }
+
+    It 'the host comes from the system, not from COMPUTERNAME' {
+        $saved = $env:COMPUTERNAME
+        try {
+            $env:COMPUTERNAME = 'not-this-host'
+            (Invoke-TestApply $t $answers).Code | Should -Be 0
+        } finally {
+            $env:COMPUTERNAME = $saved
+        }
+        (Get-Content -LiteralPath $toggle) | Should -Be 'setting=on'
+    }
+
     It 'apply needs this host in the hosts file, and never touches the manual group' {
         Remove-Item -LiteralPath (Join-Path $t.Etc 'hosts')
         (Invoke-TestApply $t $answers).Code | Should -Be 20
@@ -117,6 +137,7 @@ Describe 'labyrinth.ps1 apply' {
         Get-TestManifest $t (Get-TestRunId $r.Output) | Should -Match '"action":"breakglass_verified","target":"labadmin".*"note":"console session 1"'
         Remove-Item -LiteralPath (Join-Path $t.Root 'state\breakglass')
         New-Item -ItemType File -Path (Join-Path $lab 'NO_CONSOLE') | Out-Null
+        [IO.File]::WriteAllText($toggle, "setting=off`n")
         $r = Invoke-TestApply $t $answers
         $r.Code | Should -Be 0
         $r.Output | Should -Match ([regex]::Escape("warning: no session for labadmin was found at this host's console"))

@@ -187,6 +187,7 @@ Rules for module authors:
 5. No module deliberately breaks expected functionality (NCCDC, 2025, Rule 5.6.5).
 6. No module deletes a file. Anything removed is quarantined (design 17, section 5). An account is deleted only by the account module, after approval (design 05, section 6).
 7. A module writes its output for a beginner, as `key: text` lines with a key from `found`, `will do`, `did`, `why`, `risk`, `problem`, `cause`, `fix` and `undo`: `found: password logins are on`, `will do: turn them off`. Any other line is shown as a note. An entry point that exits `20`, `30` or `40` prints a `problem:` line last, saying what stopped it; without one, the operator sees only that the script gave no reason. The runner adds the module's title, its status and a pointer to its help page (docs/Conventions.md, section 3.2).
+8. An entry point never reads standard input. The runner gives it none (`/dev/null` on Linux, an empty, closed input on Windows), so a module can never take an answer the operator typed for Labyrinth.
 
 ## 5. Execution model
 

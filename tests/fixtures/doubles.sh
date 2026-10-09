@@ -32,6 +32,10 @@ lab_timer_arm() {
   printf 'arm %s %s\n' "$run" "$secs" >> "$LAB_ROOT/timer.log"
 }
 
+lab_timer_live() {
+  [[ -f "$LAB_STATE_DIR/runs/$1/timer" && ! -e "$LAB_ROOT/TIMER_LOST" ]]
+}
+
 lab_timer_cancel() {
   [[ -f "$LAB_STATE_DIR/runs/$1/timer" ]] || return 0
   rm -f -- "$LAB_STATE_DIR/runs/$1/timer" "$LAB_STATE_DIR/runs/$1/timer-due"

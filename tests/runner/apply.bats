@@ -75,6 +75,22 @@ setup() {
   [ -f "$ROOT/state/runs/$id/timer" ]
 }
 
+@test "an entry point gets no standard input, so it cannot take the operator's answers" {
+  printf '%s\n' '#!/usr/bin/env bash' \
+    'if IFS= read -r l; then printf "%s\n" "$l" > "$LAB_ROOT/STDIN_SEEN"; fi' \
+    'echo "toggle: would set setting=on in toggle.conf"' 'exit 10' > "$LAB/phases/observe/modules/toggle/plan.sh"
+  apply
+  [ "$status" -eq 0 ]
+  [ ! -e "$LAB/STDIN_SEEN" ]
+  grep -qx 'setting=on' "$LAB/toggle.conf"
+}
+
+@test "the host comes from the system, not from HOSTNAME" {
+  HOSTNAME=not-this-host apply
+  [ "$status" -eq 0 ]
+  grep -qx 'setting=on' "$LAB/toggle.conf"
+}
+
 @test "apply needs this host in the hosts file, and never touches the manual group" {
   rm "$ETC/hosts"
   apply
@@ -131,6 +147,7 @@ setup() {
   [[ "$(manifest)" == *'"action":"breakglass_verified","target":"root"'*'"note":"console session 1"'* ]]
   rm "$ROOT/state/breakglass"
   touch "$LAB/NO_CONSOLE"
+  printf 'setting=off\n' > "$LAB/toggle.conf"
   apply
   [ "$status" -eq 0 ]
   [[ "$output" == *"warning: no session for root was found at this host's console"* ]]

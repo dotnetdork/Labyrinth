@@ -1013,17 +1013,19 @@ function Invoke-LabEntry {
     $script:EntryLast = ''
     try {
         # Piped, so the output never becomes the return value of the
-        # function that called this one.
+        # function that called this one. Nothing is piped in: an entry point
+        # never reads standard input (design 00), so it cannot take the
+        # operator's answers.
         $file = Join-Path $Dir "$Entry.ps1"
         if ($Capture) {
-            $script:EntryOut = @(& $hostExe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $file 2>&1 |
+            $script:EntryOut = @($null | & $hostExe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $file 2>&1 |
                     ForEach-Object { (ConvertTo-LabOutputText $_) -split "`r?`n" })
             $script:EntryRc = $LASTEXITCODE
             foreach ($l in $script:EntryOut) { if ($l.Trim() -ne '') { $script:EntryLast = $l } }
         } else {
             Add-LabLogLine "$([DateTime]::UtcNow.ToString('HH:mm:ss')) $Id $Entry started"
             $n = 0
-            & $hostExe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $file 2>&1 | ForEach-Object {
+            $null | & $hostExe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $file 2>&1 | ForEach-Object {
                 foreach ($l in ((ConvertTo-LabOutputText $_) -split "`r?`n")) {
                     Show-LabOutput $l
                     $n++

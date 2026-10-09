@@ -3,10 +3,6 @@
 # sections 7 and 8). Sourced through core/lib.sh. The parts that differ by
 # operating system (administrator check, revert timer) are in system.sh.
 
-# Characters for generated passwords: letters and digits without the ones
-# that are easy to misread (0 O 1 l I), so the offline record is copied right.
-readonly LAB_PW_ALPHABET='ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789'
-
 # lab_breakglass_file: where the break-glass confirmation is kept. It is
 # asked once per host and kept until end-of-event cleanup.
 lab_breakglass_file() { printf '%s/breakglass' "$LAB_STATE_DIR"; }
@@ -103,31 +99,4 @@ lab_lock_release() {
   [[ "$(cat "$lock/pid" 2> /dev/null || true)" == "$$" ]] || return 0
   rm -f -- "$lock/pid"
   rmdir -- "$lock" 2> /dev/null || true
-}
-
-# lab_random_password [LENGTH]: print a random password from /dev/urandom
-# with at least one upper-case letter, lower-case letter and digit. Show it
-# once to the operator; never write it to a file or a log (design 01, section 8).
-lab_random_password() {
-  local len="${1:-20}" n="${#LAB_PW_ALPHABET}" limit pw b
-  local -a bytes
-  # The largest multiple of the alphabet size up to 256: bytes from it up
-  # are rejected, so every character is equally likely.
-  limit=$((256 - 256 % n))
-  (( len >= 12 && len <= 128 )) || { printf 'password length must be 12 to 128\n' >&2; return 1; }
-  while :; do
-    pw=''
-    while (( ${#pw} < len )); do
-      IFS=' ' read -r -a bytes <<< "$(od -An -v -w64 -N64 -tu1 /dev/urandom)"
-      for b in "${bytes[@]}"; do
-        (( b < limit )) || continue
-        pw+="${LAB_PW_ALPHABET:b % n:1}"
-        (( ${#pw} < len )) || break
-      done
-    done
-    if [[ "$pw" =~ [[:upper:]] && "$pw" =~ [[:lower:]] && "$pw" =~ [[:digit:]] ]]; then
-      break
-    fi
-  done
-  printf '%s' "$pw"
 }

@@ -85,7 +85,11 @@ ufw_host() {
   [ "$(cat "$(lab_json_get "$(grep firewall_snapshot "$(lab_manifest_file)")" backup)/backend")" = iptables ]
   stub nft 'exit 0'
   lab_fw snapshot
-  [ "$(lab_json_get "$(grep firewall_snapshot "$(lab_manifest_file)" | tail -n 1)" target)" = nftables ]
+  # The stubbed PATH has no tail, so take the last line in bash.
+  local last
+  last="$(grep firewall_snapshot "$(lab_manifest_file)")"
+  last="${last##*$'\n'}"
+  [ "$(lab_json_get "$last" target)" = nftables ]
 }
 
 @test "firewall: allow and default deny need a snapshot first" {
@@ -301,6 +305,18 @@ exit 0'
   lab_fw_rollback
   called 'iptables-restore '
   called 'ip6tables-restore '
+}
+
+@test "iptables: without ip6tables, the default deny says IPv6 stays open" {
+  LAB_FACT_firewall=iptables
+  stub iptables 'case "$1" in -C | -S) exit 1 ;; esac; exit 0'
+  stub iptables-save 'echo "*filter"'
+  lab_fw snapshot
+  lab_fw allow tcp 22 any
+  run lab_fw default_deny_in
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"ip6tables is not installed, so IPv6 stays open"* ]]
+  called 'iptables -P INPUT DROP'
 }
 
 @test "firewalld: every active zone, at run time and permanently; added files moved aside" {

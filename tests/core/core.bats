@@ -50,10 +50,10 @@ stub() {
 }
 
 @test "config: addresses and CIDRs are checked" {
-  for a in 192.0.2.1 198.51.100.0/28 0.0.0.0/0 2001:db8::1 2001:db8::/32 ::1; do
+  for a in 192.0.2.1 198.51.100.0/28 0.0.0.0/0 2001:db8::1 2001:db8::/32 ::1 :: 1:2:3:4:5:6:7:8 1:2:3:4:5:6:7:: ::ffff:192.0.2.1; do
     lab_addr_valid "$a" || { echo "rejected $a"; return 1; }
   done
-  for a in 256.1.1.1 1.2.3 1.2.3.4/33 example.test 2001:db8::/129 '1.2.3.4 ' ''; do
+  for a in 256.1.1.1 1.2.3 1.2.3.4/33 example.test 2001:db8::/129 '1.2.3.4 ' '' ::: 1::2::3 :1:2:3:4:5:6:7 1:2:3:4:5:6:7:8:9 1:2:3:4:5:6:7 12345::1 ::ffff:1.2.3.256 -1::1; do
     ! lab_addr_valid "$a" || { echo "accepted $a"; return 1; }
   done
   printf '198.51.100.0/28\nnot-an-address\n' > "$LAB_CONFIG_DIR/scoring-allowlist"
@@ -67,7 +67,7 @@ stub() {
   lab_services_load
   [ "${#LAB_SVC_NAME[@]}" -eq 2 ]
   [ "${LAB_SVC_EXPECT[1]}" = 'www.example.test=192.0.2.20' ]
-  for bad in 'web gopher h 70 -' 'web http h 70000 -' 'web http h 80' 'd dns h 53 -' 'web http h 80 -\nweb http h 81 -'; do
+  for bad in 'web gopher h 70 -' 'web http h 70000 -' 'web http h 80' 'd dns h 53 -' 'web http h 80 -\nweb http h 81 -' 'web http -h 80 -' '-web http h 80 -' 'web http h 80 -x'; do
     printf '%b\n' "$bad" >"$LAB_CONFIG_DIR/services"
     run lab_services_load
     [ "$status" -eq 1 ] || { echo "accepted: $bad"; return 1; }
@@ -187,28 +187,6 @@ stub() {
   [ "$status" -ne 0 ]
 }
 
-@test "safety: generated passwords" {
-  a="$(lab_random_password)"
-  b="$(lab_random_password 32)"
-  [ "${#a}" -eq 20 ]
-  [ "${#b}" -eq 32 ]
-  [ "$a" != "$(lab_random_password)" ]
-  [[ "$a" =~ ^[A-HJ-NP-Za-km-z2-9]+$ ]]
-  [[ "$a" =~ [[:upper:]] && "$a" =~ [[:lower:]] && "$a" =~ [[:digit:]] ]]
-  run lab_random_password 8
-  [ "$status" -eq 1 ]
-}
-
-@test "safety: every character of the alphabet can appear in a password" {
-  local all='' c i
-  # 5120 characters: the chance that one of 57 never appears is about 1e-37.
-  for i in $(seq 1 40); do all+="$(lab_random_password 128)"; done
-  for ((i = 0; i < ${#LAB_PW_ALPHABET}; i++)); do
-    c="${LAB_PW_ALPHABET:i:1}"
-    [[ "$all" == *"$c"* ]] || { printf 'never generated: %s\n' "$c"; return 1; }
-  done
-}
-
 @test "safety: the run lock" {
   lab_lock_acquire
   [ "$(cat "$LAB_STATE_DIR/lock/pid")" = "$$" ]
@@ -323,6 +301,22 @@ esac'
   [[ "$output" == *"still active"* ]]
   lab_timer_armed "$LAB_RUN_ID"
   lab_timer_due "$LAB_RUN_ID"
+}
+
+@test "timer: a timer systemd no longer has, as after a reboot, is not live" {
+  mkdir -p "$LAB_STATE_DIR/runs/$LAB_RUN_ID"
+  run lab_timer_live "$LAB_RUN_ID"
+  [ "$status" -eq 1 ]
+  printf 'lab-revert-%s-1\n' "$LAB_RUN_ID" > "$LAB_STATE_DIR/runs/$LAB_RUN_ID/timer"
+  stub systemctl 'printf "%s\n" "$*" >> "$LAB_STATE_DIR/calls"; [[ "$*" == *".timer" ]]'
+  lab_timer_live "$LAB_RUN_ID"
+  [[ "$(cat "$LAB_STATE_DIR/calls")" == *"is-active --quiet lab-revert-$LAB_RUN_ID-1.timer"* ]]
+  # Fired: the timer is gone while its rollback still runs.
+  stub systemctl '[[ "$*" == *".service" ]]'
+  lab_timer_live "$LAB_RUN_ID"
+  stub systemctl 'exit 3'
+  run lab_timer_live "$LAB_RUN_ID"
+  [ "$status" -eq 1 ]
 }
 
 @test "timer: a missing or malformed timer-due means the time is unknown" {
