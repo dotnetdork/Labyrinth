@@ -1,6 +1,8 @@
 # Addresses dynamic bans must never touch (design 12, section 4).
 # One address or CIDR per line. Include the scoring engine, officials,
-# the control node, operators' admin sources, the SIEM and the host's gateway.
+# the control node, operators' admin sources, the SIEM, the host's gateway,
+# and the host's outbound dependencies (DNS resolvers, NTP servers, any proxy
+# or package mirror, and anything a scored service connects out to).
 # Placeholder (documentation) ranges only.
 
 198.51.100.0/28
