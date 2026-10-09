@@ -158,4 +158,12 @@ Describe 'labyrinth.ps1 recovery hints' {
         $r.Lines[0] | Should -Be "labyrinth: this runner does not serve this host's platform, ubuntu"
         $r.Lines[1] | Should -Be "Use the runner for ubuntu, or correct this host's line in $(Join-Path $t.Etc 'hosts')"
     }
+
+    It 'a host missing from the hosts file says which line to add' {
+        Write-TestConfig $t 'hosts' @('elsewhere ring1 test windows')
+        $r = Invoke-TestHint $t @('apply', 'observe', '-Profile', 'test')
+        $r.Code | Should -Be 20
+        $r.Lines[0] | Should -Be 'labyrinth: this host is not in the hosts file, so its group is unknown'
+        $r.Lines[1] | Should -Be "Add the line '$script:ThisHost <group> <profile> <platform>' to $(Join-Path $t.Etc 'hosts')"
+    }
 }

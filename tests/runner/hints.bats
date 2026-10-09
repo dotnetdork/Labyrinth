@@ -131,3 +131,11 @@ lab() { run bash "$LAB/labyrinth.sh" --root "$ROOT" --config "$ETC" "$@" < /dev/
   [ "${lines[0]}" = "labyrinth: this runner does not serve this host's platform, windows" ]
   [ "${lines[1]}" = "Use the runner for windows, or correct this host's line in $ETC/hosts" ]
 }
+
+@test "a host missing from the hosts file says which line to add" {
+  printf 'elsewhere ring1 test linux\n' > "$ETC/hosts"
+  lab apply observe --profile test
+  [ "$status" -eq 20 ]
+  [ "${lines[0]}" = 'labyrinth: this host is not in the hosts file, so its group is unknown' ]
+  [ "${lines[1]}" = "Add the line '$HOST <group> <profile> <platform>' to $ETC/hosts" ]
+}
