@@ -16,7 +16,7 @@ Today the scoring-style probes (design 01, section 9) run only when a module fin
 | Rule | Effect |
 |---|---|
 | Anything that interferes with the scoring engine is the team's responsibility (National Collegiate Cyber Defense Competition [NCCDC], 2025, Rule 4.11). | Probes are light: one per service per interval, with short timeouts. |
-| Do not mislead the scoring engine (NCCDC, 2025, Rule 9.3). | The monitor never fakes a response or changes what a service returns. |
+| Do not mislead the scoring engine (NCCDC, 2025, Rule 11.3). | The monitor never fakes a response or changes what a service returns. |
 | Tools must not deliberately break expected functionality (NCCDC, 2025, Rule 5.6.5). | The monitor changes nothing except re-applying sealed firewall rules, a verified state, under a revert timer (section 4.1). Rollback is a person's decision (section 4). |
 
 

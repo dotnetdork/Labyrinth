@@ -469,7 +469,7 @@ Other rules also shape the design:
 |---|---|
 | Officials must be able to get in when they ask (NCCDC, 2025, Rule 4.1). | A tested emergency way in is required before any change. |
 | Anything that interferes with the scoring engine is the team's responsibility (NCCDC, 2025, Rule 4.11). | The scoring engine is allowed through firewalls first, and every change is tested like the scoring engine would test it. |
-| Do not mislead the scoring engine (NCCDC, 2025, Rule 9.3). | No trap or fake service on anything scored. |
+| Do not mislead the scoring engine (NCCDC, 2025, Rule 11.3). | No trap or fake service on anything scored. |
 | Scored services may not be moved or put into containers (NCCDC, 2025, Rule 4.14). | No container tricks for scored services. |
 | No new devices (NCCDC, 2025, Rule 4.2). | Everything runs on the machines already there. |
 | No attacks on systems outside your own network (NCCDC, 2025, Rule 4.10). | Traps observe and record; they never strike back. |

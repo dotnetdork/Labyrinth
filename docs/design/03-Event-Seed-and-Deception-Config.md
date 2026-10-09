@@ -50,7 +50,7 @@ flowchart LR
 
 ## 4. Constraints
 
-- **Never on a scored port.** Derived ports are checked against the scored-service list (`services`) and the host's current listeners, and skipped if they collide (NCCDC, 2025, Rule 9.3). The scoring allowlist holds the scoring engine's addresses, not ports, so it is not used for this check.
+- **Never on a scored port.** Derived ports are checked against the scored-service list (`services`) and the host's current listeners, and skipped if they collide (NCCDC, 2025, Rule 11.3). The scoring allowlist holds the scoring engine's addresses, not ports, so it is not used for this check.
 - **Never a real account name.** Derived names are checked against the protected set and existing users.
 - **Seed strength.** At least 128 bits from a cryptographic random source, written as a short readable string with a checksum group so a typo is detected.
 - **Seed handling.** The seed is never committed and never appears in shell history or logs. It is supplied by prompt at run time, held in memory and cleared after use. The offline record holds the only copy.
