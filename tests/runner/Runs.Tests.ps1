@@ -69,7 +69,8 @@ Describe 'labyrinth.ps1 runs' {
         ($lines[1..3] -join ',') | Should -BeExactly ((@($lines[1..3]) | Sort-Object -CaseSensitive) -join ',')
         $lineA | Should -BeLike ('* {0}-{1}-{2} {3}:{4} *' -f $a.Substring(0, 4), $a.Substring(4, 2), $a.Substring(6, 2), $a.Substring(9, 2), $a.Substring(11, 2))
         $r.Out | Should -Match ([regex]::Escape("like '$($t.Self) keep $(Get-TestSuffix $a)'"))
-        ($lines | Measure-Object -Property Length -Maximum).Maximum | Should -BeLessOrEqual 78
+        # A hint may be longer by the length of the command in it.
+        ($lines | ForEach-Object { $_.Replace($t.Self, 'labyrinth.ps1') } | Measure-Object -Property Length -Maximum).Maximum | Should -BeLessOrEqual 78
     }
 
     It 'an armed run shows when its timer was due, or that the time is unknown' {

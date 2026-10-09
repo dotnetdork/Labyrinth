@@ -271,7 +271,7 @@ Describe 'labyrinth.ps1 console output' {
         ($lines -ccontains "  More:      $($t.Self) help observe.toggle") | Should -BeTrue
         $r.Output | Should -Match ([regex]::Escape('Summary: 1 module: 1 FAIL.'))
         $r.Output | Should -Match ([regex]::Escape('Next: undo the earlier changes, or keep them, with the commands above.'))
-        $r.Output | Should -Match ([regex]::Escape('apply finished: exit 30 (a check failed and that change was undone; earlier ones stay)'))
+        $r.Output | Should -Match ([regex]::Escape('apply finished: exit 30 (a check failed; that change was undone)'))
     }
 
     It 'every prompt fits 78 columns, with what it asks for on the lines above' {
@@ -350,12 +350,14 @@ Describe 'labyrinth.ps1 console output' {
     It 'output lines are at most 78 columns, unless they end with a path' {
         Write-TestProfile $t @('observe.clean', 'observe.sample', 'observe.manual', 'observe.blocked', 'observe.crash', 'observe.toggle')
         foreach ($l in (Get-TestLine (Invoke-TestPlan $t))) {
+            $l = $l.Replace($t.Self, 'labyrinth.ps1')
             if ($l.Length -gt 78) { ($l -split ' ')[-1] | Should -Match '^[A-Za-z]:\\' -Because $l }
         }
         New-Item -ItemType File -Path (Join-Path $t.Lab 'FAIL_VERIFY') | Out-Null
         Write-TestProfile $t @('observe.toggle', 'observe.manual', 'observe.blocked')
         # The prompts end without a newline, so they are answered by options here.
         foreach ($l in (Get-TestLine (Invoke-TestApply $t @() @('-BreakGlass', 'labadmin', '-ConfirmGroup', 'ring1')))) {
+            $l = $l.Replace($t.Self, 'labyrinth.ps1')
             if ($l.Length -gt 78) { ($l -split ' ')[-1] | Should -Match '^[A-Za-z]:\\' -Because $l }
         }
     }

@@ -666,9 +666,11 @@ function Write-LabDetail {
 }
 
 # Write-LabMore ID: the last line of a WARN, BLOCKED, FAIL or ERROR block.
+# It is a command to paste, so it is never wrapped, however long the path
+# to the runner (docs/Conventions.md section 3.2).
 function Write-LabMore {
     param([string] $Id)
-    Write-LabDetail 'More' "$Self help $Id"
+    Write-LabLine ('  ' + 'More:'.PadRight(11) + "$Self help $Id")
 }
 
 # Write-LabLogPath: the run log's path, under a FAIL or ERROR line.
@@ -919,7 +921,7 @@ function Exit-LabRun {
     elseif ($Mode -ceq 'apply' -and $Code -eq 0) { $what = 'done' }
     elseif ($Mode -ceq 'apply' -and $Code -eq 10) { $what = 'manual steps needed' }
     elseif ($Code -eq 20) { $what = 'blocked' }
-    elseif ($Code -eq 30) { $what = 'a check failed and that change was undone; earlier ones stay' }
+    elseif ($Code -eq 30) { $what = 'a check failed; that change was undone' }
     Write-LabLine ''
     if ($Mode -ceq 'plan' -or -not $script:Applied) {
         Write-LabSummary 'plan'
