@@ -270,8 +270,8 @@ Describe 'labyrinth.ps1 console output' {
         ($lines -ccontains "  Log:       $(Join-Path $t.Root "state\runs\$id\output.log")") | Should -BeTrue
         ($lines -ccontains '  More:      labyrinth.ps1 help observe.toggle') | Should -BeTrue
         $r.Output | Should -Match ([regex]::Escape('Summary: 1 module: 1 FAIL.'))
-        $r.Output | Should -Match 'Next: keep the earlier changes or undo them'
-        $r.Output | Should -Match ([regex]::Escape('apply finished: exit 30 (a check failed, and that change was undone)'))
+        $r.Output | Should -Match ([regex]::Escape('Next: undo the earlier changes, or keep them, with the commands above.'))
+        $r.Output | Should -Match ([regex]::Escape('apply finished: exit 30 (a check failed and that change was undone; earlier ones stay)'))
     }
 
     It 'apply: the recap comes after break-glass and before the group prompt' {

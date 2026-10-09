@@ -239,8 +239,8 @@ LABELS='Found|Will do|Did|Why|Risk|Problem|Cause|Fix|Undo|Note|Log|Script|It sai
   grep -qx "  Log:       $ROOT/state/runs/$(run_id)/output.log" <<< "$output"
   grep -qx '  More:      labyrinth.sh help observe.toggle' <<< "$output"
   [[ "$output" == *'Summary: 1 module: 1 FAIL.'* ]]
-  [[ "$output" == *'Next: keep the earlier changes or undo them'* ]]
-  [[ "$output" == *'apply finished: exit 30 (a check failed, and that change was undone)'* ]]
+  [[ "$output" == *'Next: undo the earlier changes, or keep them, with the commands above.'* ]]
+  [[ "$output" == *'apply finished: exit 30 (a check failed and that change was undone; earlier ones stay)'* ]]
 }
 
 @test "apply: the recap comes after break-glass and before the group prompt" {

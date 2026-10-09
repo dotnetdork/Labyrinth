@@ -552,6 +552,7 @@ function Exit-Lab {
 # How to get the rights a command needs, and how to mend a bad line.
 $FixAdmin = "Run it again in PowerShell opened with 'Run as administrator'."
 $FixLine = 'Correct that line, then run the same command again.'
+$FixData = 'Check that the data folder is not full or read-only, then run the same command again.'
 $FixServices = 'List the scored services there, one "name proto host port expect" per line.'
 
 # Get-LabProfileName: the profiles this host can use, comma-separated.
@@ -805,7 +806,7 @@ function Write-LabNextStep {
     param([string] $Mode, [int] $Code, [string] $Phase)
     $short = $env:LAB_RUN_ID.Substring($env:LAB_RUN_ID.Length - 4)
     if ($Mode -ceq 'apply' -and $script:Stopped) {
-        Write-LabLine 'Next: keep the earlier changes or undo them, with the commands above.'
+        Write-LabLine 'Next: undo the earlier changes, or keep them, with the commands above.'
     } elseif ($Mode -ceq 'apply' -and $script:Applied -and (Test-LabRevertTimer -RunId $env:LAB_RUN_ID)) {
         Write-LabLine "Next: check you can log in from a NEW session, then '$Self keep $short'."
     } elseif ($Code -eq 40) {
@@ -854,7 +855,7 @@ function Exit-LabRun {
     elseif ($Mode -ceq 'apply' -and $Code -eq 0) { $what = 'done' }
     elseif ($Mode -ceq 'apply' -and $Code -eq 10) { $what = 'manual steps needed' }
     elseif ($Code -eq 20) { $what = 'blocked' }
-    elseif ($Code -eq 30) { $what = 'a check failed, and that change was undone' }
+    elseif ($Code -eq 30) { $what = 'a check failed and that change was undone; earlier ones stay' }
     Write-LabLine ''
     if ($Mode -ceq 'plan' -or -not $script:Applied) {
         Write-LabSummary 'plan'
@@ -882,8 +883,9 @@ function Get-LabRunStopped {
     $when = Get-LabDueWord $env:LAB_RUN_ID
     if ($when -ne '') { "The revert timer rolls this run back $when." }
     $short = $env:LAB_RUN_ID.Substring($env:LAB_RUN_ID.Length - 4)
-    "To keep them now: $Self keep $short"
     "To undo them now: $Self rollback $short"
+    "To keep them now: $Self keep $short"
+    'If in doubt, undo them.'
 }
 
 # Get-LabDueWord RUN: when the run's revert timer fires, as 'at HH:MM UTC,
@@ -2037,7 +2039,11 @@ function Invoke-LabApplyCommand {
         Write-LabLine "run $env:LAB_RUN_ID on host $hostName, group $group"
         Write-LabPlanIntro 'apply' $Phase $entry
         $worst = Invoke-LabPlanAll $Phase
-        if ($worst -ge 40) { Exit-Lab 'the plan has errors; nothing was changed' }
+        if ($worst -ge 40) {
+            Write-LabLine ''
+            Write-LabLine 'The plan has errors, so apply stops here.'
+            Exit-LabRun 'apply' $worst $Phase
+        }
         if ($script:Given.ContainsKey('approve')) { Write-LabApproveUnmatched }
         $todo = @($script:Run | Where-Object { $_.Rc -eq 10 -and $_.Risk -ne 'manual-only' }).Count
         if ($todo -eq 0) {
@@ -2060,7 +2066,7 @@ function Invoke-LabApplyCommand {
             Add-LabEntryFor '' 'breakglass_verified' $script:BreakGlassAccount $script:BreakGlassNote
         } catch {
             Write-LabErrorLine $_.Exception.Message
-            Exit-Lab 'the run manifest cannot be written; nothing was changed'
+            Exit-Lab 'the run manifest cannot be written; nothing was changed' 40 $FixData
         }
         $script:RunOpen = $true
         $script:Applied = $true
@@ -2130,7 +2136,8 @@ function Invoke-LabKeep {
     if (-not (Enter-LabLock -WaitSeconds 10)) { return 20 }
     try {
         if (Test-LabRunRolledBack) {
-            Write-LabLine "too late: run $env:LAB_RUN_ID was already rolled back"
+            Write-LabErrorLine "labyrinth: too late: run $env:LAB_RUN_ID was already rolled back"
+            Write-LabErrorLine 'Its changes are gone. Plan and apply again if you still want them.'
             return 20
         }
         try {
@@ -2283,7 +2290,7 @@ function Invoke-LabKeepCommand {
         $env:LAB_RUN_ID = Resolve-LabRunId 'keep' $Ref
     }
     $script:RunRef = $env:LAB_RUN_ID
-    if (-not (Test-Path -LiteralPath (Get-LabManifestPath) -PathType Leaf)) { Exit-Lab "no run $env:LAB_RUN_ID on this host" }
+    if (-not (Test-Path -LiteralPath (Get-LabManifestPath) -PathType Leaf)) { Exit-Lab "no run $env:LAB_RUN_ID on this host" 40 "'$Self runs' lists them." }
     Write-LabPendingWarning
     Open-LabRunLog "keep run $env:LAB_RUN_ID"
     $rc = Invoke-LabKeep
@@ -2307,7 +2314,7 @@ function Invoke-LabRollbackCommand {
     Assert-LabTrustedTree
     $env:LAB_RUN_ID = Resolve-LabRunId 'rollback' $Ref
     $script:RunRef = $env:LAB_RUN_ID
-    if (-not (Test-Path -LiteralPath (Get-LabManifestPath) -PathType Leaf)) { Exit-Lab "no run $env:LAB_RUN_ID on this host" }
+    if (-not (Test-Path -LiteralPath (Get-LabManifestPath) -PathType Leaf)) { Exit-Lab "no run $env:LAB_RUN_ID on this host" 40 "'$Self runs' lists them." }
     Write-LabPendingWarning
     # The revert timer must work even if a run still holds the lock, hung or
     # waiting at a prompt. That run is stopped first: rolling back beside it
@@ -2317,7 +2324,7 @@ function Invoke-LabRollbackCommand {
         [void](Close-LabLockHolder -WaitSeconds 30)
         $locked = Enter-LabLock -WaitSeconds 10
     }
-    if (-not $locked) { [Console]::Error.WriteLine('warning: rolling back without the run lock') }
+    if (-not $locked) { [Console]::Error.WriteLine('labyrinth: warning: rolling back without the run lock') }
     try {
         $rc = 0
         $ok = 0
@@ -2361,7 +2368,7 @@ function Invoke-LabRollbackCommand {
             Unregister-LabRevertTimer -RunId $env:LAB_RUN_ID
         } catch {
             Write-LabErrorLine $_.Exception.Message
-            Write-LabErrorLine "warning: the revert timer for run $env:LAB_RUN_ID could not be removed"
+            Write-LabErrorLine "labyrinth: warning: the revert timer for run $env:LAB_RUN_ID could not be removed"
             Write-LabErrorLine 'When it fires, it repeats this rollback, which is safe.'
         }
         try {
