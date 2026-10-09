@@ -111,6 +111,18 @@ Describe 'labyrinth.ps1 apply' {
         (Get-Content -LiteralPath $toggle) | Should -Be 'setting=on'
     }
 
+    It 'break-glass: the console session found is recorded; with none, a warning and the run goes on' {
+        $r = Invoke-TestApply $t $answers
+        $r.Code | Should -Be 0
+        Get-TestManifest $t (Get-TestRunId $r.Output) | Should -Match '"action":"breakglass_verified","target":"labadmin".*"note":"console session 1"'
+        Remove-Item -LiteralPath (Join-Path $t.Root 'state\breakglass')
+        New-Item -ItemType File -Path (Join-Path $lab 'NO_CONSOLE') | Out-Null
+        $r = Invoke-TestApply $t $answers
+        $r.Code | Should -Be 0
+        $r.Output | Should -Match ([regex]::Escape("warning: no session for labadmin was found at this host's console"))
+        Get-TestManifest $t (Get-TestRunId $r.Output) | Should -Match '"note":"no console session found"'
+    }
+
     It 'a wrong group name: the plan is not confirmed and nothing is changed' {
         (Invoke-TestApply $t @('labadmin', 'ring2')).Code | Should -Be 20
         $toggle | Should -Not -Exist

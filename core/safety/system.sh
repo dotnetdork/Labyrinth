@@ -44,6 +44,44 @@ lab_tree_trusted() {
   return 0
 }
 
+# lab_console_session ACCOUNT: print the ID of a session ACCOUNT has at
+# this host's own console (a seat or a local terminal, not a remote
+# login). Returns 1 if there is none, and 2 if this host cannot tell. This
+# supports the operator's break-glass answer; it does not prove the
+# password works.
+lab_console_session() {
+  local account="$1" sessions id user props k v remote seat tty
+  if lab_have loginctl && sessions="$(loginctl list-sessions --no-legend 2> /dev/null)"; then
+    while read -r id _ user _; do
+      [[ -n "$id" && "$user" == "$account" ]] || continue
+      props="$(loginctl show-session "$id" -p Remote -p Seat -p TTY 2> /dev/null)" || continue
+      remote='' seat='' tty=''
+      while IFS='=' read -r k v; do
+        case "$k" in
+          Remote) remote="$v" ;;
+          Seat) seat="$v" ;;
+          TTY) tty="$v" ;;
+        esac
+      done <<< "$props"
+      if [[ "$remote" == no ]] && [[ -n "$seat" || "$tty" == tty* ]]; then
+        printf '%s\n' "$id"
+        return 0
+      fi
+    done <<< "$sessions"
+    return 1
+  fi
+  if lab_have who; then
+    while read -r user tty _; do
+      if [[ "$user" == "$account" ]] && [[ "$tty" == tty* || "$tty" == console || "$tty" == :* ]]; then
+        printf '%s\n' "$tty"
+        return 0
+      fi
+    done < <(who 2> /dev/null)
+    return 1
+  fi
+  return 2
+}
+
 # lab_timer_arm SECONDS RUN COMMAND [ARG...]: (re)arm the run's revert timer
 # to run COMMAND (an absolute path) after SECONDS, unless cancelled.
 lab_timer_arm() {

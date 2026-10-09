@@ -233,6 +233,36 @@ stub() {
   [ "$output" = "$d" ]
 }
 
+@test "safety: a console session is told apart from a remote login" {
+  stub loginctl '
+case "$1" in
+  list-sessions) printf "  4 0 root      \n  7 1000 ops seat0 tty2\n  9 1000 ops      \n" ;;
+  show-session)
+    case "$2" in
+      4) printf "Remote=yes\nSeat=\nTTY=pts/0\n" ;;
+      7) printf "Remote=no\nSeat=seat0\nTTY=tty2\n" ;;
+      9) printf "Remote=yes\nSeat=\nTTY=pts/1\n" ;;
+    esac ;;
+esac'
+  run lab_console_session ops
+  [ "$status" -eq 0 ]
+  [ "$output" = 7 ]
+  run lab_console_session root
+  [ "$status" -eq 1 ]
+  run lab_console_session nobody
+  [ "$status" -eq 1 ]
+}
+
+@test "safety: without loginctl, who tells a console session apart" {
+  stub loginctl 'exit 1'
+  stub who 'printf "ops      pts/0        2026-10-08 10:00 (198.51.100.7)\nroot     tty1         2026-10-08 09:00\n"'
+  run lab_console_session root
+  [ "$status" -eq 0 ]
+  [ "$output" = tty1 ]
+  run lab_console_session ops
+  [ "$status" -eq 1 ]
+}
+
 @test "timer: arm and cancel call systemd with a fresh unit each time" {
   [ -d /run/systemd/system ] || skip 'no systemd on this machine'
   stub systemd-run 'printf "%s\n" "$*" >> "$LAB_STATE_DIR/calls"'

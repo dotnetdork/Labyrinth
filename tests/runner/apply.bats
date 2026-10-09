@@ -125,6 +125,18 @@ setup() {
   grep -qx 'setting=on' "$LAB/toggle.conf"
 }
 
+@test "break-glass: the console session found is recorded; with none, a warning and the run goes on" {
+  apply
+  [ "$status" -eq 0 ]
+  [[ "$(manifest)" == *'"action":"breakglass_verified","target":"root"'*'"note":"console session 1"'* ]]
+  rm "$ROOT/state/breakglass"
+  touch "$LAB/NO_CONSOLE"
+  apply
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"warning: no session for root was found at this host's console"* ]]
+  [[ "$(manifest)" == *'"note":"no console session found"'* ]]
+}
+
 @test "a wrong group name: the plan is not confirmed and nothing is changed" {
   answers root ring2
   apply

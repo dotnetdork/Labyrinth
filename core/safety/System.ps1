@@ -57,6 +57,32 @@ function Protect-LabDataRoot {
     $root.SetAccessControl($acl)
 }
 
+# Get-LabConsoleSession -Account NAME: the ID of NAME's session at this
+# host's console (not a remote desktop session), $null if there is none,
+# or 'unknown' if this host cannot tell (no query user). This supports the
+# operator's break-glass answer; it does not prove the password works.
+function Get-LabConsoleSession {
+    param([Parameter(Mandatory)] [string] $Account)
+    $quser = Join-Path $env:SystemRoot 'System32\quser.exe'
+    if (-not (Test-Path -LiteralPath $quser)) { return 'unknown' }
+    $short = ($Account -split '\\')[-1]
+    $saved = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        # It exits non-zero, saying so on standard error, when no one is logged in.
+        $lines = @(& $quser 2> $null | ForEach-Object { "$_" })
+    } catch {
+        return 'unknown'
+    } finally {
+        $ErrorActionPreference = $saved
+    }
+    foreach ($l in @($lines | Select-Object -Skip 1)) {
+        $f = @($l.TrimStart(' ', '>') -split '\s+')
+        if ($f.Count -ge 3 -and $f[0] -ieq $short -and $f[1] -ieq 'console') { return $f[2] }
+    }
+    return $null
+}
+
 # Get-LabAdminSid: the accounts that may change Labyrinth's code and data:
 # those of Get-LabTrustedSid, TrustedInstaller (which owns C:\ and much of
 # Windows) and each account in the local Administrators group. The revert

@@ -13,7 +13,7 @@ The original idea ran against every reachable host in one pass, resetting creden
 | Rule | Effect on the design |
 |---|---|
 | Tools must not deliberately break expected functionality. The examples are setting all user shells on Linux to `/bin/false` and indiscriminately terminating all outbound connections after 30 seconds (National Collegiate Cyber Defense Competition [NCCDC], 2025, Rule 5.6.5). | No blanket actions. Every destructive action works from an explicit allowlist and skips the protected set. |
-| Operations and White Team must be given access immediately on request (NCCDC, 2025, Rule 4.1). | A verified break-glass path is a precondition. Nothing removes it. |
+| Operations and White Team must be given access immediately on request (NCCDC, 2025, Rule 4.1). | A confirmed break-glass path is a precondition. Nothing removes it. |
 | Anything that interferes with the scoring engine is the team's responsibility (NCCDC, 2025, Rule 4.11). | The scoring engine allowlist is applied first. Verification uses scoring-style probes. |
 | Do not mislead the scoring engine (NCCDC, 2025, Rule 9.3). | The panic button never fakes a service state. |
 | Administrator-class passwords are not used for scoring and may be changed freely. Other user passwords follow the notification process (Midwest Collegiate Cyber Defense Competition [MWCCDC], 2025, Rule 13). | Only admin-class credentials are rotated automatically. User-level rotation is manual-only. |
@@ -144,7 +144,7 @@ flowchart TD
 |---|---|
 | Protected set loaded | Non-empty and parsed |
 | Scoring allowlist present | In the firewall plan for every host that filters traffic. The runner blocks any module with `touches_scored: true` while the run-time `scoring-allowlist` is missing or empty |
-| Break-glass verified | The operator has confirmed, by typing, that the break-glass credential worked at this host's console. A script cannot reach the console, so this is asked once per host: the account must be in the protected set with class `breakglass`, the answer is kept in Labyrinth's state for later runs on that host, and every run records it in its manifest. |
+| Break-glass confirmed | The operator has confirmed, by typing, that the break-glass credential worked at this host's console. This is the operator's word, not proof: a script cannot reach the console, so it is asked once per host. The account must be in the protected set with class `breakglass`, the answer is kept in Labyrinth's state for later runs on that host, and every run records it in its manifest. When the answer is given, Labyrinth looks for a session of that account at the console (`loginctl` or `who` on Linux, `query user` on Windows) and records the session it found. If it finds none, or cannot look, it warns and goes on: the gate stays a confirmation, and the manifest says what backed it. |
 | Backup taken | Every file is copied before it changes, and the copy is recorded in the run manifest (`docs/Conventions.md`, section 7) |
 | Plan reviewed | Operator confirmed the plan by typing the group name |
 | Revert timer armed | Before every change that is not `read-only`, re-armed before each module (section 8) |

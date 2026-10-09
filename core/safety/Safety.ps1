@@ -70,11 +70,11 @@ function Get-LabDescendantId {
     }
 }
 
-# Stop-LabLockHolder [-WaitSeconds N]: stop the live run that holds the lock
+# Close-LabLockHolder [-WaitSeconds N]: stop the live run that holds the lock
 # and the entry points it started, waiting up to N seconds for it to end.
 # The revert timer's rollback uses it, so it never undoes a run while that
 # run is still changing the host. Returns $false if the holder still lives.
-function Stop-LabLockHolder {
+function Close-LabLockHolder {
     param([int] $WaitSeconds = 30)
     $pidFile = Join-Path (Join-Path $env:LAB_STATE_DIR 'lock') 'pid'
     if (-not (Test-Path -LiteralPath $pidFile)) { return $true }

@@ -1216,27 +1216,41 @@ ask() {
   log_line "$1$ANSWER"
 }
 
-# gate_breakglass: before any change, the operator proves the break-glass
+# gate_breakglass: before any change, the operator confirms the break-glass
 # account still works (design 01, section 7).
 gate_breakglass() {
-  local account=''
+  local account='' sid='' rc
   if account="$(lab_breakglass_recorded)"; then
     out "Break-glass account $account: confirmed earlier, so not asked again."
   else
     if [[ -n "$OPT_BREAKGLASS" ]]; then
       account="$OPT_BREAKGLASS"
     else
-      out 'Before any change, prove you can still get in if remote logins break.'
+      out 'Before any change, check you can still get in if remote logins break.'
       ask 'Break-glass check: log in at this host'"'"'s console with the break-glass account, then type its name: ' \
         || die 'no answer: break-glass not confirmed; nothing was changed' 20
       account="$ANSWER"
     fi
     lab_breakglass_record "$account" || die 'break-glass not confirmed; nothing was changed' 20
-    out "Break-glass account $account: confirmed and recorded."
+    # The answer is the operator's word. A session for the account at the
+    # console backs it up; without one, the run goes on with a warning, and
+    # the manifest says which it was.
+    rc=0; sid="$(lab_console_session "$account")" || rc=$?
+    case "$rc" in
+      0) BREAKGLASS_NOTE="console session $sid"
+         out "Break-glass account $account: confirmed and recorded." ;;
+      1) BREAKGLASS_NOTE='no console session found'
+         out "Break-glass account $account: confirmed and recorded."
+         warn "no session for $account was found at this host's console; check that the break-glass login works before relying on it" ;;
+      *) BREAKGLASS_NOTE='console sessions could not be listed'
+         out "Break-glass account $account: confirmed and recorded."
+         warn "this host cannot list console sessions, so the break-glass answer was not checked against one" ;;
+    esac
   fi
   BREAKGLASS="$account"
 }
 BREAKGLASS=''
+BREAKGLASS_NOTE='confirmed earlier'
 
 gate_confirm() {
   local group="$1" typed
@@ -1740,7 +1754,7 @@ cmd_apply() {
   mkdir -p "$LAB_STATE_DIR/runs/$LAB_RUN_ID" "$LAB_BACKUP_DIR/$LAB_RUN_ID" \
     || die 'the run and backup folders cannot be created; nothing was changed' 20
   if ! record_for '' run_start "$host" "phase $phase, profile $OPT_PROFILE, group $group" \
-      || ! record_for '' breakglass_verified "$BREAKGLASS"; then
+      || ! record_for '' breakglass_verified "$BREAKGLASS" "$BREAKGLASS_NOTE"; then
     die 'the run manifest cannot be written; nothing was changed'
   fi
   RUN_OPEN=1 APPLIED=1

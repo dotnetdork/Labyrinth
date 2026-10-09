@@ -4,6 +4,7 @@
 # root, no systemd and no network:
 #   - the administrator check passes unless $LAB_ROOT/NOT_ADMIN exists;
 #   - the ownership check passes unless $LAB_ROOT/UNTRUSTED exists;
+#   - every account has console session 1 unless $LAB_ROOT/NO_CONSOLE exists;
 #   - the revert timer is recorded in $LAB_ROOT/timer.log instead of armed;
 #   - a probe fails if its host is listed as "<host> fail" in
 #     $LAB_ROOT/probe-state, and passes otherwise.
@@ -15,6 +16,11 @@ lab_tree_trusted() {
   [[ -e "$LAB_ROOT/UNTRUSTED" ]] || return 0
   printf '%s\n' "$LAB_ROOT"
   return 1
+}
+
+lab_console_session() {
+  [[ ! -e "$LAB_ROOT/NO_CONSOLE" ]] || return 1
+  printf '1\n'
 }
 
 lab_timer_arm() {
