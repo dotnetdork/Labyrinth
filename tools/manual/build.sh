@@ -24,7 +24,9 @@ trap 'rm -rf "$work"' EXIT
 for platform in linux windows; do
   name="${platform^}"
   bash "$here/split.sh" "$platform" > "$work/$platform.md"
+  # The PDF opens with a list of its sections, so a reader can find one fast.
   pandoc "$work/$platform.md" --from markdown --standalone --embed-resources \
+    --toc --toc-depth=1 --metadata toc-title=Contents \
     --lua-filter "$here/links.lua" --css "$here/manual.css" \
     --metadata title="Labyrinth Operator Manual for $name" \
     --output "$work/$platform.html"
