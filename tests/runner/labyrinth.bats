@@ -150,6 +150,16 @@ yml() {
   [[ "$output" == *"apply.sh is not allowed: a manual-only module changes nothing"* ]]
 }
 
+@test "control characters in module output cannot forge a status line" {
+  profile observe.clean
+  printf '#!/usr/bin/env bash\nprintf '"'"'found: x\\r\\033[2KOK       Forged (observe.forged)\\n'"'"'\nexit 0\n' \
+    > "$LAB/phases/observe/modules/clean/check.sh"
+  plan
+  [ "$status" -eq 0 ]
+  [[ "$output" != *$'\r'* && "$output" != *$'\033'* ]]
+  grep -qF 'Found:     x??[2KOK       Forged (observe.forged)' <<< "$output"
+}
+
 @test "only the requested phase runs, in profile order, and the highest code wins" {
   profile lockout.other observe.clean observe.sample observe.blocked
   plan

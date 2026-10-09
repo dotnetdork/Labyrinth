@@ -550,12 +550,23 @@ function Write-LabStatus {
     Write-LabLine ($Word.PadRight(9) + $Text)
 }
 
+# Get-LabSafeText TEXT: TEXT with a tab as a space and every other control
+# character as '?', so the output of a module or of a probed service cannot
+# move the cursor, clear a line or hide text, on the operator's screen or in
+# the run log. A forged 'OK' line must never pass for the runner's own.
+function Get-LabSafeText {
+    param([AllowEmptyString()] [AllowNull()] [string] $Text)
+    if ($null -eq $Text) { return '' }
+    return (($Text -replace "`t", ' ') -replace '[\x00-\x1f\x7f]', '?')
+}
+
 # Write-LabDetail LABEL TEXT: a labelled line under a status line (section
 # 3.2). Long text wraps onto more lines with the same label, so that each
 # line makes sense alone; a word longer than a line, such as a path, is not
 # split.
 function Write-LabDetail {
     param([string] $Label, [AllowEmptyString()] [string] $Text)
+    $Text = Get-LabSafeText $Text
     $head = '  ' + "${Label}:".PadRight(11)
     while ($Text.Length -gt 65) {
         $cut = $Text.Substring(0, 66).LastIndexOf(' ')
@@ -678,7 +689,7 @@ function Write-LabEntryLog {
     $n = 0
     foreach ($l in $script:EntryOut) {
         $n++
-        if ($n -le $LogCap) { Add-LabLogLine "$Id $Entry| $l" }
+        if ($n -le $LogCap) { Add-LabLogLine "$Id $Entry| $(Get-LabSafeText $l)" }
     }
     if ($n -gt $LogCap) { Add-LabLogLine "${Id} ${Entry}: $($n - $LogCap) more lines not logged" }
     Add-LabLogLine "$([DateTime]::UtcNow.ToString('HH:mm:ss')) $Id $Entry exited $($script:EntryRc)"
@@ -1015,7 +1026,7 @@ function Invoke-LabEntry {
                 foreach ($l in ((ConvertTo-LabOutputText $_) -split "`r?`n")) {
                     Show-LabOutput $l
                     $n++
-                    if ($n -le $LogCap) { Add-LabLogLine "$Id $Entry| $l" }
+                    if ($n -le $LogCap) { Add-LabLogLine "$Id $Entry| $(Get-LabSafeText $l)" }
                     if ($l.Trim() -ne '') { $script:EntryLast = $l }
                 }
             }

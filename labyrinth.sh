@@ -442,11 +442,26 @@ out() {
 # err TEXT: one line on stderr, and to the run log.
 err() { printf '%s\n' "$1" >&2; log_line "$1"; }
 
+# safe_text TEXT: TEXT with a tab as a space and every other control
+# character as '?', so the
+# output of a module or of a probed service cannot move the cursor, clear
+# a line or hide text, on the operator's screen or in the run log. A
+# forged 'OK' line must never pass for the runner's own (section 3.2).
+safe_text() {
+  local s="$1"
+  if [[ "$s" =~ [[:cntrl:]] ]]; then
+    s="${s//$'\t'/ }"
+    s="${s//[[:cntrl:]]/?}"
+  fi
+  printf '%s' "$s"
+}
+
 # detail LABEL TEXT: a labelled line under a status line (section 3.2).
 # Long text wraps onto more lines with the same label, so that each line
 # makes sense alone; a word longer than a line, such as a path, is not split.
 detail() {
-  local label="$1:" text="$2" head l
+  local label="$1:" text head l
+  text="$(safe_text "$2")"
   while (( ${#text} > 65 )); do
     head="${text:0:66}"; head="${head% *}"
     if [[ "$head" == "${text:0:66}" || -z "$head" ]]; then break; fi
@@ -539,7 +554,7 @@ log_entry() {
   if [[ -n "$ENTRY_OUT" ]]; then
     while IFS= read -r line; do
       n=$((n + 1))
-      if (( n <= LOG_CAP )); then log_line "$1 $2| ${line%$'\r'}"; fi
+      if (( n <= LOG_CAP )); then log_line "$1 $2| $(safe_text "${line%$'\r'}")"; fi
     done <<< "$ENTRY_OUT"
   fi
   if (( n > LOG_CAP )); then log_line "$1 $2: $((n - LOG_CAP)) more lines not logged"; fi
@@ -554,7 +569,7 @@ stream() {
   while IFS= read -r line || [[ -n "$line" ]]; do
     label_line "$line"
     n=$((n + 1))
-    if (( n <= LOG_CAP )); then log_line "$1 $2| ${line%$'\r'}"; fi
+    if (( n <= LOG_CAP )); then log_line "$1 $2| $(safe_text "${line%$'\r'}")"; fi
     if [[ -n "${line//[[:space:]]/}" ]]; then last="$line"; fi
   done
   if (( n > LOG_CAP )); then log_line "$1 $2: $((n - LOG_CAP)) more lines not logged"; fi
