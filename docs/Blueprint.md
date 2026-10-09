@@ -204,7 +204,7 @@ Linux specifics link back to the §5 table and appendix A.
 ### 3.5 Dynamic banning / auto-response — **P2**
 
 - **Principle:** turn repeated hostile touches into automatic, expiring blocks, and make the blocking scale.
-- **Linux (reference §5.3):** `fail2ban` backed by an **ipset** (one kernel hash-set and one match rule per chain) instead of one iptables rule per IP, so thousands of bans stay flat. Jails cover SSH, the trap-port honeypot, the planted-key canary, and repeat offenders. Bans apply on **both** `INPUT` and `DOCKER-USER`.
+- **Linux (reference §5.3):** `fail2ban` backed by an **ipset** (one kernel hash-set and one match rule per chain) instead of one iptables rule per IP, so thousands of bans stay flat. Jails cover SSH where it is not scored, the trap-port honeypot, the planted-key canary, and repeat offenders. Failed logins on a scored service only alert: manual scoring checks and simulated users come from addresses that are not the scoring engine's (design 12). Bans apply on **both** `INPUT` and `DOCKER-USER`.
 - **Labyrinth:** a small native watcher in bash feeds the same kernel set. fail2ban is installed after the lockdown where the host's repositories offer it (on RHEL-family hosts it needs EPEL, which Labyrinth does not add), and starts only once the never-ban list is in its `ignoreip` (designs 12, 20).
 - **Windows:** there is no fail2ban. Approximate it with a scheduled task or a WinLogbeat → SIEM alert that drives a firewall block, or with an IDS (intrusion detection system) at the edge. This is usually better handled at the perimeter.
 - **CCDC note:** ipset matters when a tarpit is feeding you thousands of IPs; a per-IP ruleset will bloat and slow the box.
