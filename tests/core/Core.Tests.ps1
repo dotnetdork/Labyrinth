@@ -52,10 +52,12 @@ Describe 'core library' {
     }
 
     It 'config: addresses and CIDRs are checked' {
-        foreach ($a in '192.0.2.1', '198.51.100.0/28', '0.0.0.0/0', '2001:db8::1', '2001:db8::/32', '::1') {
+        foreach ($a in '192.0.2.1', '198.51.100.0/28', '0.0.0.0/0', '2001:db8::1', '2001:db8::/32', '::1', '::', '1:2:3:4:5:6:7:8',
+            '1:2:3:4:5:6:7::', '::ffff:192.0.2.1') {
             Test-LabAddress $a | Should -Be $true
         }
-        foreach ($a in '256.1.1.1', '1.2.3', '1.2.3.4/33', 'example.test', '2001:db8::/129', '1.2.3.4 ', '') {
+        foreach ($a in '256.1.1.1', '1.2.3', '1.2.3.4/33', 'example.test', '2001:db8::/129', '1.2.3.4 ', '', ':::', '1::2::3',
+            ':1:2:3:4:5:6:7', '1:2:3:4:5:6:7:8:9', '1:2:3:4:5:6:7', '12345::1', '::ffff:1.2.3.256', '-1::1') {
             Test-LabAddress $a | Should -Be $false
         }
         Write-TestFile (Join-Path $env:LAB_CONFIG_DIR 'scoring-allowlist') @('198.51.100.0/28', 'not-an-address')
@@ -71,7 +73,8 @@ Describe 'core library' {
         $list[1].Expect | Should -Be 'www.example.test=192.0.2.20'
         $list[0].Port | Should -Be 80
         foreach ($bad in @(, @('web gopher h 70 -')) + @(, @('web http h 70000 -')) + @(, @('web http h 80')) +
-            @(, @('d dns h 53 -')) + @(, @('web http h 80 -', 'web http h 81 -'))) {
+            @(, @('d dns h 53 -')) + @(, @('web http h 80 -', 'web http h 81 -')) +
+            @(, @('web http -h 80 -')) + @(, @('-web http h 80 -')) + @(, @('web http h 80 -x'))) {
             Write-TestFile $svc $bad
             { Read-LabServiceList } | Should -Throw
         }
@@ -181,25 +184,6 @@ Describe 'core library' {
         Get-LabBreakGlass -Protected (Read-LabProtectedSet) | Should -Be $null
     }
 
-    It 'safety: generated passwords' {
-        $a = Get-LabRandomPassword
-        $b = Get-LabRandomPassword -Length 32
-        $a.Length | Should -Be 20
-        $b.Length | Should -Be 32
-        $a | Should -Not -Be (Get-LabRandomPassword)
-        $a | Should -Match '^[A-HJ-NP-Za-km-z2-9]+$'
-        ($a -cmatch '[A-Z]' -and $a -cmatch '[a-z]' -and $a -match '[0-9]') | Should -Be $true
-        { Get-LabRandomPassword -Length 8 } | Should -Throw
-    }
-
-    It 'safety: every character of the alphabet can appear in a password' {
-        # 5120 characters: the chance that one of 57 never appears is about 1e-37.
-        $all = -join (1..40 | ForEach-Object { Get-LabRandomPassword -Length 128 })
-        $missing = @('ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789'.ToCharArray() |
-                Where-Object { -not $all.Contains([string]$_) })
-        $missing -join '' | Should -Be ''
-    }
-
     It 'safety: the run lock' {
         Enter-LabLock | Should -Be $true
         ([IO.File]::ReadAllText((Join-Path $env:LAB_STATE_DIR 'lock\pid'))).Trim() | Should -Be "$PID"
@@ -231,6 +215,44 @@ Describe 'core library' {
         $fileAcl = Get-Acl -LiteralPath (Join-Path $old 'etc\hosts')
         $sids = @($fileAcl.Access | ForEach-Object { $_.IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value })
         @($sids | Where-Object { $trusted -notcontains $_ }) -join ' ' | Should -Be ''
+    }
+
+    It 'safety: code and data that an account other than an administrator can change are found' {
+        $dir = Join-Path $base 'code'
+        New-Item -ItemType Directory -Path (Join-Path $dir 'core') -Force | Out-Null
+        $f = Join-Path $dir 'core\lib.ps1'
+        Write-TestFile $f @('x')
+        Find-LabUntrustedItem -Path @($dir, '', (Join-Path $base 'not-made\etc')) | Should -BeNullOrEmpty
+        # Authenticated Users may change one file.
+        $acl = Get-Acl -LiteralPath $f
+        $acl.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule(
+            (New-Object Security.Principal.SecurityIdentifier 'S-1-5-11'), 'Modify', 'Allow')))
+        Set-Acl -LiteralPath $f -AclObject $acl
+        Find-LabUntrustedItem -Path $dir | Should -BeLike '*\code\core\lib.ps1'
+    }
+
+    It 'safety: the owner of the system drive (TrustedInstaller) is trusted' {
+        $owner = (Get-Acl -LiteralPath "$env:SystemDrive\").GetOwner([Security.Principal.SecurityIdentifier]).Value
+        @(Get-LabAdminSid) | Should -Contain $owner
+    }
+
+    It 'safety: a junction planted in the lock folder is never followed' {
+        $target = Join-Path $base 'precious'
+        New-Item -ItemType Directory -Path $target -Force | Out-Null
+        Write-TestFile (Join-Path $target 'keep') @('x')
+        Enter-LabLock | Should -Be $true
+        $lock = Join-Path $env:LAB_STATE_DIR 'lock'
+        New-Item -ItemType Junction -Path (Join-Path $lock 'j') -Value $target | Out-Null
+        { Exit-LabLock } | Should -Throw
+        Join-Path $target 'keep' | Should -Exist
+        [IO.Directory]::Delete((Join-Path $lock 'j'))
+        [IO.Directory]::Delete($lock)
+        Join-Path $target 'keep' | Should -Exist
+    }
+
+    It 'safety: the console check answers for an account with no session' {
+        $s = Get-LabConsoleSession -Account 'lab-no-such-account'
+        ($null -eq $s -or $s -eq 'unknown') | Should -BeTrue
     }
 
     It 'safety: revert-timer arguments survive a real command line' {

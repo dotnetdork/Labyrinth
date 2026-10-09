@@ -47,7 +47,9 @@ readonly RE_MODULE_ID='^(lockout|observe|deceive|sustain)\.[a-z0-9_-]+$'
 readonly RE_ITEM=$'^item\t([a-z0-9-]+)\t([a-z0-9-]+)\t([0-9a-f]{12})\t(.*)$'
 readonly RE_APPROVE='^(lockout|observe|deceive|sustain)\.[a-z0-9_-]+:[a-z0-9-]+@[0-9a-f]{12}$'
 
-LAB_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# The real path, links resolved: the revert timer runs labyrinth.sh from it
+# as root, so it must name the folder lab_tree_trusted checks.
+LAB_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 export LAB_ROOT
 # shellcheck source=core/lib.sh
 source "$LAB_ROOT/core/lib.sh"
@@ -442,11 +444,26 @@ out() {
 # err TEXT: one line on stderr, and to the run log.
 err() { printf '%s\n' "$1" >&2; log_line "$1"; }
 
+# safe_text TEXT: TEXT with a tab as a space and every other control
+# character as '?', so the
+# output of a module or of a probed service cannot move the cursor, clear
+# a line or hide text, on the operator's screen or in the run log. A
+# forged 'OK' line must never pass for the runner's own (section 3.2).
+safe_text() {
+  local s="$1"
+  if [[ "$s" =~ [[:cntrl:]] ]]; then
+    s="${s//$'\t'/ }"
+    s="${s//[[:cntrl:]]/?}"
+  fi
+  printf '%s' "$s"
+}
+
 # detail LABEL TEXT: a labelled line under a status line (section 3.2).
 # Long text wraps onto more lines with the same label, so that each line
 # makes sense alone; a word longer than a line, such as a path, is not split.
 detail() {
-  local label="$1:" text="$2" head l
+  local label="$1:" text head l
+  text="$(safe_text "$2")"
   while (( ${#text} > 65 )); do
     head="${text:0:66}"; head="${head% *}"
     if [[ "$head" == "${text:0:66}" || -z "$head" ]]; then break; fi
@@ -539,7 +556,7 @@ log_entry() {
   if [[ -n "$ENTRY_OUT" ]]; then
     while IFS= read -r line; do
       n=$((n + 1))
-      if (( n <= LOG_CAP )); then log_line "$1 $2| ${line%$'\r'}"; fi
+      if (( n <= LOG_CAP )); then log_line "$1 $2| $(safe_text "${line%$'\r'}")"; fi
     done <<< "$ENTRY_OUT"
   fi
   if (( n > LOG_CAP )); then log_line "$1 $2: $((n - LOG_CAP)) more lines not logged"; fi
@@ -554,7 +571,7 @@ stream() {
   while IFS= read -r line || [[ -n "$line" ]]; do
     label_line "$line"
     n=$((n + 1))
-    if (( n <= LOG_CAP )); then log_line "$1 $2| ${line%$'\r'}"; fi
+    if (( n <= LOG_CAP )); then log_line "$1 $2| $(safe_text "${line%$'\r'}")"; fi
     if [[ -n "${line//[[:space:]]/}" ]]; then last="$line"; fi
   done
   if (( n > LOG_CAP )); then log_line "$1 $2: $((n - LOG_CAP)) more lines not logged"; fi
@@ -1012,6 +1029,18 @@ load_modules() {
         LOAD_ERRORS=$((LOAD_ERRORS + 1)); worst=40; continue 2
       fi
     done
+    # A module that never changes anything ships no entry point that does.
+    if [[ "${MOD[risk]}" == read-only || "${MOD[risk]}" == manual-only ]]; then
+      for entry in apply rollback cleanup; do
+        if [[ -f "$dir/$entry.sh" ]]; then
+          say ERROR "$(module_name "$id")"
+          detail Problem "$entry.sh is not allowed: a ${MOD[risk]} module changes nothing"
+          detail Fix 'report the module to its author'
+          more "$id"
+          LOAD_ERRORS=$((LOAD_ERRORS + 1)); worst=40; continue 2
+        fi
+      done
+    fi
     ids+=("$id"); dirs+=("$dir"); risks+=("${MOD[risk]}"); scored+=("${MOD[touches_scored]}")
     reqs+=("$(list_items "${MOD[requires]:-[]}")"); prios+=("${MOD[priority]}")
   done
@@ -1145,6 +1174,16 @@ plan_all() {
   return "$worst"
 }
 
+# gate_trusted: only root may be able to change Labyrinth's code, its
+# configuration and its data root, because they run as root, later too, by
+# the revert timer (design 07, section 5).
+gate_trusted() {
+  local bad
+  bad="$(lab_tree_trusted "$LAB_ROOT" "$LAB_CONFIG_DIR" "$DATA_ROOT")" && return 0
+  die "$bad can be changed by an account other than root, so Labyrinth will not run as root from it" 20 \
+    "Keep Labyrinth's folders owned by root and not writable by others ('chown -R root:' and 'chmod -R go-w'), in folders only root can change."
+}
+
 # gate_protected: the protected set must load and hold at least one account
 # (design 01, section 7). Plan mode needs it too, because plans that touch
 # accounts depend on it.
@@ -1177,27 +1216,41 @@ ask() {
   log_line "$1$ANSWER"
 }
 
-# gate_breakglass: before any change, the operator proves the break-glass
+# gate_breakglass: before any change, the operator confirms the break-glass
 # account still works (design 01, section 7).
 gate_breakglass() {
-  local account=''
+  local account='' sid='' rc
   if account="$(lab_breakglass_recorded)"; then
     out "Break-glass account $account: confirmed earlier, so not asked again."
   else
     if [[ -n "$OPT_BREAKGLASS" ]]; then
       account="$OPT_BREAKGLASS"
     else
-      out 'Before any change, prove you can still get in if remote logins break.'
+      out 'Before any change, check you can still get in if remote logins break.'
       ask 'Break-glass check: log in at this host'"'"'s console with the break-glass account, then type its name: ' \
         || die 'no answer: break-glass not confirmed; nothing was changed' 20
       account="$ANSWER"
     fi
     lab_breakglass_record "$account" || die 'break-glass not confirmed; nothing was changed' 20
-    out "Break-glass account $account: confirmed and recorded."
+    # The answer is the operator's word. A session for the account at the
+    # console backs it up; without one, the run goes on with a warning, and
+    # the manifest says which it was.
+    rc=0; sid="$(lab_console_session "$account")" || rc=$?
+    case "$rc" in
+      0) BREAKGLASS_NOTE="console session $sid"
+         out "Break-glass account $account: confirmed and recorded." ;;
+      1) BREAKGLASS_NOTE='no console session found'
+         out "Break-glass account $account: confirmed and recorded."
+         warn "no session for $account was found at this host's console; check that the break-glass login works before relying on it" ;;
+      *) BREAKGLASS_NOTE='console sessions could not be listed'
+         out "Break-glass account $account: confirmed and recorded."
+         warn "this host cannot list console sessions, so the break-glass answer was not checked against one" ;;
+    esac
   fi
   BREAKGLASS="$account"
 }
 BREAKGLASS=''
+BREAKGLASS_NOTE='confirmed earlier'
 
 gate_confirm() {
   local group="$1" typed
@@ -1464,7 +1517,8 @@ apply_one() {
   fi
   if [[ "$risk" != read-only ]]; then
     if ! lab_timer_arm "$((LAB_EVENT[REVERT_MINUTES] * 60))" "$LAB_RUN_ID" \
-        "$BASH" "$LAB_ROOT/labyrinth.sh" --root "$DATA_ROOT" --config "$LAB_CONFIG_DIR" rollback "$LAB_RUN_ID"; then
+        "$BASH" "$LAB_ROOT/labyrinth.sh" --root "$(readlink -m -- "$DATA_ROOT")" \
+        --config "$(readlink -m -- "$LAB_CONFIG_DIR")" rollback "$LAB_RUN_ID"; then
       say BLOCKED "$name"
       detail Problem 'the revert timer could not be armed, so nothing was changed'
       detail Fix 'check that systemd timers work on this host, then run the same command again'
@@ -1655,6 +1709,7 @@ cmd_apply() {
   umask 077
   host="$(lab_host)"
   lab_is_admin || die 'apply needs root' 20 "$FIX_ADMIN"
+  gate_trusted
   rc=0; host_lookup "$host" || rc=$?
   (( rc == 0 )) || die "this host is not in the hosts file, so its ring group is unknown" 20 \
     "Add the line '$host <group> <profile> <platform>' to $LAB_CONFIG_DIR/hosts"
@@ -1699,7 +1754,7 @@ cmd_apply() {
   mkdir -p "$LAB_STATE_DIR/runs/$LAB_RUN_ID" "$LAB_BACKUP_DIR/$LAB_RUN_ID" \
     || die 'the run and backup folders cannot be created; nothing was changed' 20
   if ! record_for '' run_start "$host" "phase $phase, profile $OPT_PROFILE, group $group" \
-      || ! record_for '' breakglass_verified "$BREAKGLASS"; then
+      || ! record_for '' breakglass_verified "$BREAKGLASS" "$BREAKGLASS_NOTE"; then
     die 'the run manifest cannot be written; nothing was changed'
   fi
   RUN_OPEN=1 APPLIED=1
@@ -1809,6 +1864,12 @@ run_state() {
   fi
   if grep -q '"action":"run_kept"' "$f" 2> /dev/null; then printf 'kept\n'; return 0; fi
   if lab_timer_armed "$1"; then
+    # A reboot drops the transient timer; the run stays armed so keep and
+    # rollback still find it, but nothing will roll it back by itself.
+    if lab_timer_live "$1"; then :; elif [[ $? -eq 1 ]]; then
+      printf 'armed: timer lost (restart?)\n'
+      return 0
+    fi
     if ! due="$(lab_timer_due "$1")"; then printf 'armed: rollback time unknown\n'; return 0; fi
     now="$(lab_now)"
     # The times are UTC in one fixed format, so they compare as strings.
@@ -1908,6 +1969,7 @@ cmd_keep() {
   local -a armed=()
   export LAB_DRY_RUN=0
   lab_is_admin || die 'keep needs root' 20 "$FIX_ADMIN"
+  gate_trusted
   if [[ -z "$1" ]]; then
     # Without a run, keep the one run whose timer is armed (section 3.1).
     list="$(armed_runs)" || die "the runs in $LAB_STATE_DIR/runs cannot be read"
@@ -1950,12 +2012,20 @@ cmd_rollback() {
     usage_error 'rollback needs a run ID, or its last 4 characters' rollback 'Pick one from the list above.'
   fi
   lab_is_admin || die 'rollback needs root' 20 "$FIX_ADMIN"
+  gate_trusted
   resolve_run rollback "$1"
   export LAB_RUN_ID="$RUN_REF"
   [[ -f "$(lab_manifest_file)" ]] || die "no run $LAB_RUN_ID on this host"
   flush_warnings
-  # The revert timer must work even if a hung run still holds the lock.
-  if lab_lock_acquire 120; then
+  # The revert timer must work even if a run still holds the lock, hung or
+  # waiting at a prompt. That run is stopped first: rolling back beside it
+  # would undo changes while it goes on making them and reports success.
+  local locked=1
+  if ! lab_lock_acquire 10; then
+    lab_lock_stop_holder 30 || true
+    lab_lock_acquire 10 || locked=0
+  fi
+  if (( locked )); then
     trap 'lab_lock_release' EXIT
   else
     printf 'warning: rolling back without the run lock\n' >&2

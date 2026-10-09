@@ -7,7 +7,7 @@
 
 $script:Repo = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $script:HostExe = (Get-Process -Id $PID).Path
-$script:ThisHost = ($env:COMPUTERNAME -split '\.')[0]
+$script:ThisHost = ([Environment]::MachineName -split '\.')[0]
 
 # Initialize-TestLab: a new tree; returns an object with Lab, Root and Etc.
 function Initialize-TestLab {

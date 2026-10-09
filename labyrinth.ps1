@@ -120,6 +120,7 @@ $script:Settings = @{}
 $script:Before = @()
 $script:HaveServices = $false
 $script:BreakGlassAccount = ''
+$script:BreakGlassNote = 'confirmed earlier'   # what the console check found
 $script:GivenBreakGlass = ''     # -BreakGlass, read inside functions
 $script:GivenGroup = ''          # -ConfirmGroup, read inside functions
 $script:DataRoot = ''            # the data root (-Root)
@@ -550,12 +551,23 @@ function Write-LabStatus {
     Write-LabLine ($Word.PadRight(9) + $Text)
 }
 
+# Get-LabSafeText TEXT: TEXT with a tab as a space and every other control
+# character as '?', so the output of a module or of a probed service cannot
+# move the cursor, clear a line or hide text, on the operator's screen or in
+# the run log. A forged 'OK' line must never pass for the runner's own.
+function Get-LabSafeText {
+    param([AllowEmptyString()] [AllowNull()] [string] $Text)
+    if ($null -eq $Text) { return '' }
+    return (($Text -replace "`t", ' ') -replace '[\x00-\x1f\x7f]', '?')
+}
+
 # Write-LabDetail LABEL TEXT: a labelled line under a status line (section
 # 3.2). Long text wraps onto more lines with the same label, so that each
 # line makes sense alone; a word longer than a line, such as a path, is not
 # split.
 function Write-LabDetail {
     param([string] $Label, [AllowEmptyString()] [string] $Text)
+    $Text = Get-LabSafeText $Text
     $head = '  ' + "${Label}:".PadRight(11)
     while ($Text.Length -gt 65) {
         $cut = $Text.Substring(0, 66).LastIndexOf(' ')
@@ -678,7 +690,7 @@ function Write-LabEntryLog {
     $n = 0
     foreach ($l in $script:EntryOut) {
         $n++
-        if ($n -le $LogCap) { Add-LabLogLine "$Id $Entry| $l" }
+        if ($n -le $LogCap) { Add-LabLogLine "$Id $Entry| $(Get-LabSafeText $l)" }
     }
     if ($n -gt $LogCap) { Add-LabLogLine "${Id} ${Entry}: $($n - $LogCap) more lines not logged" }
     Add-LabLogLine "$([DateTime]::UtcNow.ToString('HH:mm:ss')) $Id $Entry exited $($script:EntryRc)"
@@ -1001,21 +1013,23 @@ function Invoke-LabEntry {
     $script:EntryLast = ''
     try {
         # Piped, so the output never becomes the return value of the
-        # function that called this one.
+        # function that called this one. Nothing is piped in: an entry point
+        # never reads standard input (design 00), so it cannot take the
+        # operator's answers.
         $file = Join-Path $Dir "$Entry.ps1"
         if ($Capture) {
-            $script:EntryOut = @(& $hostExe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $file 2>&1 |
+            $script:EntryOut = @($null | & $hostExe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $file 2>&1 |
                     ForEach-Object { (ConvertTo-LabOutputText $_) -split "`r?`n" })
             $script:EntryRc = $LASTEXITCODE
             foreach ($l in $script:EntryOut) { if ($l.Trim() -ne '') { $script:EntryLast = $l } }
         } else {
             Add-LabLogLine "$([DateTime]::UtcNow.ToString('HH:mm:ss')) $Id $Entry started"
             $n = 0
-            & $hostExe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $file 2>&1 | ForEach-Object {
+            $null | & $hostExe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $file 2>&1 | ForEach-Object {
                 foreach ($l in ((ConvertTo-LabOutputText $_) -split "`r?`n")) {
                     Show-LabOutput $l
                     $n++
-                    if ($n -le $LogCap) { Add-LabLogLine "$Id $Entry| $l" }
+                    if ($n -le $LogCap) { Add-LabLogLine "$Id $Entry| $(Get-LabSafeText $l)" }
                     if ($l.Trim() -ne '') { $script:EntryLast = $l }
                 }
             }
@@ -1084,6 +1098,17 @@ function Import-LabRunModule {
             Write-LabDetail 'Fix' 'report the module to its author'
             Write-LabMore $id
             $script:LoadErrors++; $worst = 40; continue
+        }
+        # A module that never changes anything ships no entry point that does.
+        if (@('read-only', 'manual-only') -ccontains $script:Mod['risk']) {
+            $extra = @('apply', 'rollback', 'cleanup' | Where-Object { Test-Path -LiteralPath (Join-Path $dir "$_.ps1") -PathType Leaf })
+            if ($extra.Count -gt 0) {
+                Write-LabStatus 'ERROR' (Get-LabModuleName $id)
+                Write-LabDetail 'Problem' "$($extra[0]).ps1 is not allowed: a $($script:Mod['risk']) module changes nothing"
+                Write-LabDetail 'Fix' 'report the module to its author'
+                Write-LabMore $id
+                $script:LoadErrors++; $worst = 40; continue
+            }
         }
         $requires = @()
         if ($script:Mod.ContainsKey('requires')) { $requires = Get-LabListItem $script:Mod['requires'] }
@@ -1210,6 +1235,17 @@ function Invoke-LabPlanAll {
     return $worst
 }
 
+# Only administrators may be able to change Labyrinth's code, its
+# configuration and its data root, because they run as SYSTEM, later too,
+# by the revert timer (design 07, section 5).
+function Assert-LabTrustedTree {
+    $bad = Find-LabUntrustedItem -Path @($env:LAB_ROOT, $env:LAB_CONFIG_DIR, $script:DataRoot)
+    if ($null -ne $bad) {
+        Exit-Lab "$bad can be changed by an account that is not an administrator, so Labyrinth will not run as SYSTEM from it" 20 `
+            "Keep Labyrinth's folders owned by Administrators, with no other account allowed to change them, as under C:\ProgramData\Labyrinth."
+    }
+}
+
 # The protected set must load and hold at least one account (design 01,
 # section 7). Plan mode needs it too, because plans that touch accounts depend on it.
 function Assert-LabProtectedSet {
@@ -1250,7 +1286,7 @@ function Assert-LabBreakGlass {
         if ($script:GivenBreakGlass -ne '') {
             $account = $script:GivenBreakGlass
         } else {
-            Write-LabLine 'Before any change, prove you can still get in if remote logins break.'
+            Write-LabLine 'Before any change, check you can still get in if remote logins break.'
             if (-not (Read-LabAnswer "Break-glass check: log in at this host's console with the break-glass account, then type its name: ")) {
                 Exit-Lab 'no answer: break-glass not confirmed; nothing was changed' 20
             }
@@ -1259,6 +1295,19 @@ function Assert-LabBreakGlass {
         try { Save-LabBreakGlass -Protected $script:Protected -Account $account }
         catch { Write-LabErrorLine $_.Exception.Message; Exit-Lab 'break-glass not confirmed; nothing was changed' 20 }
         Write-LabLine "Break-glass account ${account}: confirmed and recorded."
+        # The answer is the operator's word. A session for the account at
+        # the console backs it up; without one, the run goes on with a
+        # warning, and the manifest says which it was.
+        $session = Get-LabConsoleSession -Account $account
+        if ($null -eq $session) {
+            $script:BreakGlassNote = 'no console session found'
+            Write-LabWarning "no session for $account was found at this host's console; check that the break-glass login works before relying on it"
+        } elseif ($session -eq 'unknown') {
+            $script:BreakGlassNote = 'console sessions could not be listed'
+            Write-LabWarning 'this host cannot list console sessions, so the break-glass answer was not checked against one'
+        } else {
+            $script:BreakGlassNote = "console session $session"
+        }
     }
     $script:BreakGlassAccount = $account
 }
@@ -1762,6 +1811,7 @@ function Invoke-LabApplyCommand {
     if (-not (Test-LabAdmin)) { Exit-Lab 'apply needs an elevated Administrator session' 20 $FixAdmin }
     # Before any configuration under the root is trusted.
     try { Protect-LabDataRoot -Path $script:DataRoot } catch { Exit-Lab "$($_.Exception.Message); nothing was changed" 20 }
+    Assert-LabTrustedTree
     $entry = Find-LabThisHost
     if ($null -eq $entry) { Exit-Lab 'this host is not in the hosts file, so its ring group is unknown' 20 "Add the line '$hostName <group> <profile> <platform>' to $(Join-Path $env:LAB_CONFIG_DIR 'hosts')" }
     $group = $entry.Group
@@ -1803,7 +1853,7 @@ function Invoke-LabApplyCommand {
         } catch { Exit-Lab 'the run and backup folders cannot be created; nothing was changed' 20 }
         try {
             Add-LabEntryFor '' 'run_start' $hostName "phase $Phase, profile $($script:ProfileName), group $group"
-            Add-LabEntryFor '' 'breakglass_verified' $script:BreakGlassAccount
+            Add-LabEntryFor '' 'breakglass_verified' $script:BreakGlassAccount $script:BreakGlassNote
         } catch {
             Write-LabErrorLine $_.Exception.Message
             Exit-Lab 'the run manifest cannot be written; nothing was changed'
@@ -2006,6 +2056,7 @@ function Invoke-LabKeepCommand {
     param([string] $Ref)
     $script:DryRun = '0'; $env:LAB_DRY_RUN = '0'
     if (-not (Test-LabAdmin)) { Exit-Lab 'keep needs an elevated Administrator session' 20 $FixAdmin }
+    Assert-LabTrustedTree
     if ($Ref -eq '') {
         # Without a run, keep the one run whose timer is armed (section 3.1).
         $armed = @(Get-LabArmedRun)
@@ -2041,12 +2092,19 @@ function Invoke-LabRollbackCommand {
         Exit-LabUsage $need 'rollback' 'Pick one from the list above.'
     }
     if (-not (Test-LabAdmin)) { Exit-Lab 'rollback needs an elevated Administrator session' 20 $FixAdmin }
+    Assert-LabTrustedTree
     $env:LAB_RUN_ID = Resolve-LabRunId 'rollback' $Ref
     $script:RunRef = $env:LAB_RUN_ID
     if (-not (Test-Path -LiteralPath (Get-LabManifestPath) -PathType Leaf)) { Exit-Lab "no run $env:LAB_RUN_ID on this host" }
     Write-LabPendingWarning
-    # The revert timer must work even if a hung run still holds the lock.
-    $locked = Enter-LabLock -WaitSeconds 120
+    # The revert timer must work even if a run still holds the lock, hung or
+    # waiting at a prompt. That run is stopped first: rolling back beside it
+    # would undo changes while it goes on making them and reports success.
+    $locked = Enter-LabLock -WaitSeconds 10
+    if (-not $locked) {
+        [void](Close-LabLockHolder -WaitSeconds 30)
+        $locked = Enter-LabLock -WaitSeconds 10
+    }
     if (-not $locked) { [Console]::Error.WriteLine('warning: rolling back without the run lock') }
     try {
         $rc = 0

@@ -51,6 +51,45 @@ Describe 'labyrinth.ps1 apply' {
         $toggle | Should -Not -Exist
     }
 
+    It 'apply, keep and rollback refuse code or data another account can change' {
+        $r = Invoke-TestApply $t @('labadmin', 'ring1', 'no')
+        $r.Code | Should -Be 0
+        $id = Get-TestRunId $r.Output
+        New-Item -ItemType File -Path (Join-Path $lab 'UNTRUSTED') | Out-Null
+        Remove-Item -LiteralPath $toggle
+        $r = Invoke-TestApply $t @('labadmin', 'ring1', 'no')
+        $r.Code | Should -Be 20
+        $r.Output | Should -Match ([regex]::Escape("$lab can be changed by an account that is not an administrator"))
+        $toggle | Should -Not -Exist
+        [IO.File]::WriteAllText($toggle, "setting=on`n")
+        foreach ($cmd in 'keep', 'rollback') {
+            (Invoke-TestRunCommand $t $cmd $id).Code | Should -Be 20 -Because $cmd
+        }
+        # Nothing was rolled back, and the timer is still armed.
+        (Get-Content -LiteralPath $toggle) | Should -Be 'setting=on'
+        Join-Path $t.Root "state\runs\$id\timer" | Should -Exist
+    }
+
+    It 'an entry point gets no standard input, so it cannot take the operator''s answers' {
+        $seen = Join-Path $lab 'STDIN_SEEN'
+        [IO.File]::WriteAllText((Join-Path $lab 'phases\observe\modules\toggle\plan.ps1'),
+            "`$l = [Console]::In.ReadLine()`nif (`$null -ne `$l) { [IO.File]::WriteAllText('$seen', `$l) }`n'toggle: would set setting=on in toggle.conf'`nexit 10`n")
+        (Invoke-TestApply $t $answers).Code | Should -Be 0
+        $seen | Should -Not -Exist
+        (Get-Content -LiteralPath $toggle) | Should -Be 'setting=on'
+    }
+
+    It 'the host comes from the system, not from COMPUTERNAME' {
+        $saved = $env:COMPUTERNAME
+        try {
+            $env:COMPUTERNAME = 'not-this-host'
+            (Invoke-TestApply $t $answers).Code | Should -Be 0
+        } finally {
+            $env:COMPUTERNAME = $saved
+        }
+        (Get-Content -LiteralPath $toggle) | Should -Be 'setting=on'
+    }
+
     It 'apply needs this host in the hosts file, and never touches the manual group' {
         Remove-Item -LiteralPath (Join-Path $t.Etc 'hosts')
         (Invoke-TestApply $t $answers).Code | Should -Be 20
@@ -90,6 +129,19 @@ Describe 'labyrinth.ps1 apply' {
         $r.Code | Should -Be 0
         $r.Output | Should -Match ([regex]::Escape('Break-glass account labadmin: confirmed earlier, so not asked again.'))
         (Get-Content -LiteralPath $toggle) | Should -Be 'setting=on'
+    }
+
+    It 'break-glass: the console session found is recorded; with none, a warning and the run goes on' {
+        $r = Invoke-TestApply $t $answers
+        $r.Code | Should -Be 0
+        Get-TestManifest $t (Get-TestRunId $r.Output) | Should -Match '"action":"breakglass_verified","target":"labadmin".*"note":"console session 1"'
+        Remove-Item -LiteralPath (Join-Path $t.Root 'state\breakglass')
+        New-Item -ItemType File -Path (Join-Path $lab 'NO_CONSOLE') | Out-Null
+        [IO.File]::WriteAllText($toggle, "setting=off`n")
+        $r = Invoke-TestApply $t $answers
+        $r.Code | Should -Be 0
+        $r.Output | Should -Match ([regex]::Escape("warning: no session for labadmin was found at this host's console"))
+        Get-TestManifest $t (Get-TestRunId $r.Output) | Should -Match '"note":"no console session found"'
     }
 
     It 'a wrong group name: the plan is not confirmed and nothing is changed' {
@@ -365,6 +417,25 @@ Describe 'labyrinth.ps1 apply' {
         [IO.File]::WriteAllText((Join-Path $lock 'pid'), "$PID`n")
         (Invoke-TestApply $t $answers).Code | Should -Be 20
         $toggle | Should -Not -Exist
+    }
+
+    It 'rollback stops a live run that holds the lock before undoing it' {
+        [IO.File]::WriteAllText($toggle, "setting=off`n")
+        $id = Get-TestRunId (Invoke-TestApply $t @('labadmin', 'ring1', 'no')).Output
+        $holder = Start-Process -FilePath 'powershell.exe' -ArgumentList '-NoProfile', '-Command', 'Start-Sleep -Seconds 300' -PassThru -WindowStyle Hidden
+        try {
+            $lock = Join-Path $t.Root 'state\lock'
+            New-Item -ItemType Directory -Path $lock -Force | Out-Null
+            [IO.File]::WriteAllText((Join-Path $lock 'pid'), "$($holder.Id)`n")
+            $r = Invoke-TestRunCommand $t 'rollback' $id
+            $r.Code | Should -Be 0
+            $r.Output | Should -Match "stopping the Labyrinth run \(pid $($holder.Id)\)"
+            $r.Output | Should -Not -Match 'without the run lock'
+            $holder.WaitForExit(5000) | Should -BeTrue
+            (Get-Content -LiteralPath $toggle) | Should -Be 'setting=off'
+        } finally {
+            if (-not $holder.HasExited) { $holder.Kill() }
+        }
     }
 
     It 'a stale run lock is taken over' {

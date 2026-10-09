@@ -53,7 +53,7 @@ Describe 'real system (Windows)' {
         Copy-Item -LiteralPath (Join-Path $script:Repo 'tests\fixtures\modules\toggle') -Destination (Join-Path $lab 'phases\observe\modules') -Recurse
         Set-Content -LiteralPath (Join-Path $lab 'profiles\test.profile') -Value 'observe.toggle' -Encoding Ascii
         Set-Content -LiteralPath (Join-Path $etc 'protected-accounts') -Value 'labadmin breakglass' -Encoding Ascii
-        Set-Content -LiteralPath (Join-Path $etc 'hosts') -Value "$(($env:COMPUTERNAME -split '\.')[0]) ring0 test windows" -Encoding Ascii
+        Set-Content -LiteralPath (Join-Path $etc 'hosts') -Value "$(([Environment]::MachineName -split '\.')[0]) ring0 test windows" -Encoding Ascii
         Set-Content -LiteralPath (Join-Path $etc 'event.conf') -Value 'REVERT_MINUTES=1' -Encoding Ascii
         $toggle = Join-Path $lab 'toggle.conf'
         [IO.File]::WriteAllText($toggle, "setting=off`n")
@@ -66,8 +66,9 @@ Describe 'real system (Windows)' {
         } finally {
             $ErrorActionPreference = $saved
         }
-        ($out | ForEach-Object { "$_" }) -join "`n" | Write-Verbose
-        $code | Should -Be 0
+        $text = ($out | ForEach-Object { "$_" }) -join "`n"
+        $text | Write-Verbose
+        $code | Should -Be 0 -Because $text
         (Get-Content -LiteralPath $toggle) | Should -Be 'setting=on'
         # The run is rolled back once its last manifest entry is written.
         $rolledBack = {

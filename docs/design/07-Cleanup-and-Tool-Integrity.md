@@ -36,7 +36,7 @@ The earlier idea was an encrypted folder, decrypted with a shared team password.
 | Release identity | A tagged release with a commit hash. The hash is kept in the team's offline record (design 05, section 2) and matches the declared release (NCCDC, 2025, Rule 5.6.2). |
 | Manifest | A list of every file with its SHA-256, generated at release time. The manifest's own SHA-256 is kept in the offline record. |
 | Signature | The manifest is signed with a team key, using `ssh-keygen -Y sign`. The public key is kept in the offline record and stored on the control node. |
-| Immutable location | Code sits in a root-owned, read-only directory on each host (`<root>/bin`). |
+| Immutable location | Code sits in a root-owned, read-only directory on each host (`<root>/bin`). The core checks this before every `apply`, `keep` and `rollback`, the revert timer's included: the code folder, the configuration folder and the data root, everything in them, and every folder above them must be changeable only by root (Linux) or by administrators, SYSTEM and TrustedInstaller (Windows). On Linux that means owned by root and not writable by group or others; a folder above may be writable if it is sticky, like `/tmp`. Otherwise the command refuses with 20 and changes nothing. The check only reads: Labyrinth never changes the owner or permissions of its own code. The revert timer runs `labyrinth.sh` from the real path, with links resolved. |
 | Verify before run | The control node checks the manifest signature before every run. Each host then checks the manifest's SHA-256 against the value from the offline record, and every file against the manifest, using tools every host already has (`sha256sum` on Linux, `Get-FileHash` on Windows). A mismatch at either step refuses the run. |
 
 **Why the signature is checked only on the control node.** `ssh-keygen -Y verify` needs OpenSSH 8.1 or later. RHEL 8 ships 8.0, and the OpenSSH bundled with Windows Server 2019 is older still (*Background*), so a host may not be able to check a signature at all. The control node can be chosen to have a recent OpenSSH; hosts only need SHA-256, which they all have. In local mode with no control node, the operator checks the manifest hash by eye against the offline record.
@@ -67,6 +67,7 @@ flowchart TD
 ## 6. Acceptance tests
 
 - A tampered module file makes the pre-run check fail and the run refuse to start.
+- Code, configuration or a data root that an account other than root (Linux) or an administrator (Windows) can change makes `apply`, `keep` and `rollback` refuse with 20, and nothing changes.
 - A wrong signature is rejected.
 - A manifest whose SHA-256 differs from the offline record's value is rejected on a host with no `ssh-keygen -Y`.
 - Cleanup deletes a honey-account the manifest lists and leaves every account that existed before the run.

@@ -141,6 +141,8 @@ Entry points:
 | `rollback` | Undo `apply` from the manifest | Safe to run repeatedly |
 | `cleanup` | Remove temporary files this module created | Safe to run repeatedly |
 
+A module of risk `reversible`, `service-affecting` or `approval` must have `check`, `apply`, `verify` and `rollback`. A module of risk `read-only` or `manual-only` never changes anything, so it must not have `apply`, `rollback` or `cleanup`. The runner refuses to load a module that breaks either rule (`40`), in plan mode too, so its risk can be trusted.
+
 Exit codes:
 
 | Code | Meaning |
@@ -185,6 +187,7 @@ Rules for module authors:
 5. No module deliberately breaks expected functionality (NCCDC, 2025, Rule 5.6.5).
 6. No module deletes a file. Anything removed is quarantined (design 17, section 5). An account is deleted only by the account module, after approval (design 05, section 6).
 7. A module writes its output for a beginner, as `key: text` lines with a key from `found`, `will do`, `did`, `why`, `risk`, `problem`, `cause`, `fix` and `undo`: `found: password logins are on`, `will do: turn them off`. Any other line is shown as a note. An entry point that exits `20`, `30` or `40` prints a `problem:` line last, saying what stopped it; without one, the operator sees only that the script gave no reason. The runner adds the module's title, its status and a pointer to its help page (docs/Conventions.md, section 3.2).
+8. An entry point never reads standard input. The runner gives it none (`/dev/null` on Linux, an empty, closed input on Windows), so a module can never take an answer the operator typed for Labyrinth.
 
 ## 5. Execution model
 
@@ -198,7 +201,7 @@ Either way, one run does this:
 ```
 labyrinth plan|apply <phase> [--profile <name>]        # local; remote adds --group <group>
    1. load profile → ordered module list
-   2. safety gates (protected set loaded, break-glass verified; the scoring allowlist
+   2. safety gates (protected set loaded, break-glass confirmed; the scoring allowlist
       for modules that touch scored services)
    3. plan all modules and print the combined plan
    4. human confirms (typed confirmation) → apply in rings (design 01)

@@ -78,6 +78,26 @@ Describe 'quarantine' {
         Test-Path -LiteralPath $g | Should -BeFalse
     }
 
+    It 'file: one that cannot be moved is left for a person (20), not an error' {
+        $f = Join-Path $items 'locked.exe'
+        [IO.File]::WriteAllText($f, 'x')
+        $lock = [IO.File]::Open($f, 'Open', 'Read', 'None')
+        try {
+            Move-LabQuarantineFile -Path $f -Reason test 2> $null | Should -Be 20
+        } finally {
+            $lock.Dispose()
+        }
+        Test-Path -LiteralPath $f | Should -BeTrue
+        Undo-LabQuarantine | Should -Be 0
+        Test-Path -LiteralPath $f | Should -BeTrue
+    }
+
+    It 'manifest: control characters in an item are kept, escaped' {
+        $line = "*`t*`t*`t*`t*`troot`t/tmp/.x"
+        Add-LabManifestEntry -Action quarantine_cron -Target 'C:\x' -Prev $line
+        @(Get-TestEntry 'quarantine_cron')[0].prev | Should -BeExactly $line
+    }
+
     It 'registry: a value is exported, removed and put back with its kind' {
         $key = 'TestRegistry:\Run'
         New-Item -Path $key -Force | Out-Null

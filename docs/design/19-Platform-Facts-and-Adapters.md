@@ -75,7 +75,7 @@ The `hosts` file's platform `ubuntu` covers the whole Debian family, and `rhel-f
 
 ## 5. The firewall adapter
 
-Every backend's adapter offers the same functions, so the firewall, ban and egress modules never call a backend directly. On Linux they are called through one dispatcher, `lab_fw FUNCTION ARGS` (in `platform/linux/firewall/firewall.sh`, which a module sources). The dispatcher picks the backend from the `firewall` fact and refuses (`20`) when the fact is `none`, `conflict` or `unknown`; `restore` instead uses the backend named in the snapshot, so a rollback still works after the fact changes. A host with no active firewall is reported for a person, because the adapter never turns one on (section 6). On Windows the functions are in `platform/windows/Firewall.ps1`, and they refuse (`20`) when the `firewall` fact is `unknown`.
+Every backend's adapter offers the same functions, so the firewall, ban and egress modules never call a backend directly. On Linux they are called through one dispatcher, `lab_fw FUNCTION ARGS` (in `platform/linux/firewall/firewall.sh`, which a module sources). The dispatcher picks the backend from the `firewall` fact and refuses (`20`) when the fact is `conflict` or `unknown`; `restore` instead uses the backend named in the snapshot, so a rollback still works after the fact changes. When the fact is `none`, the usual state of a fresh Ubuntu or Debian install, the dispatcher uses nftables if `nft` is installed, otherwise iptables if `iptables` is installed, under the same snapshot, allowlist and revert-timer rules; the snapshot of the empty ruleset puts the host back exactly as it was. UFW is not turned on: it is built on iptables or nftables, which are therefore present, and its restore could not turn it back off. A host with neither is refused (`20`) and reported for a person. On Windows the functions are in `platform/windows/Firewall.ps1`, and they refuse (`20`) when the `firewall` fact is `unknown`.
 
 | Function (Linux) | Windows | Does |
 |---|---|---|
@@ -91,7 +91,7 @@ Every backend's adapter offers the same functions, so the firewall, ban and egre
 **Order and records.** The order is fixed. The caller takes a snapshot, adds the scoring allowlist and the admin source, then the rest of the allows, then calls `default_deny_in` (design 01). The adapter enforces it:
 
 - `allow` and `default_deny_in` are refused (`20`) until the current module has taken a snapshot in the current run, and in plan mode.
-- `default_deny_in` is refused (`20`) unless every address in the run-time `scoring-allowlist` has been the source of an `allow` in the current run. The adapter keeps the run's allows in `<state>/runs/<run>/firewall-allows`.
+- `default_deny_in` is refused (`20`) until the scoring engine can still reach every scored service on this host. A service in the run-time `services` file is on this host when its host field is this host's short name or one of its addresses, or resolves to one (a simple DNS lookup). For each such service, every `scoring-allowlist` address needs an `allow` on the service's port: TCP, plus UDP for `dns`. An allow from `any` covers every address. When no scored service is on this host, every scoring address still needs some allow, or one from `any`. The refusal lists the missing pairs. The adapter keeps the run's allows in `<state>/runs/<run>/firewall-allows`. No probe can test this, because probes run from the host itself, where an inbound deny does not apply; the firewall module's `verify` therefore reads the live rules for the same pairs.
 - Each change is recorded in the run manifest before it is made (Conventions, section 7): `firewall_snapshot` (target: the backend; backup: DIR) once the snapshot is saved, then `firewall_allow` and `firewall_default_deny`. Rollback restores from the `firewall_snapshot` entries; the other two are the record of what was done.
 - Repeating `allow` with the same arguments in the same run changes nothing.
 
@@ -103,18 +103,19 @@ Every backend's adapter offers the same functions, so the firewall, ban and egre
 | firewalld | A copy of `/etc/firewalld`, written back in place, then `firewall-cmd --reload`. A file added since the snapshot is moved into the snapshot folder, never deleted. | A port, or a rich rule when the source is not `any`, in every active zone, both at run time and in the permanent configuration | ICMP rich rules, then the zone target `DROP`, in every active zone; then a reload. firewalld itself keeps loopback and established connections. |
 | nftables | `nft list ruleset`, loaded back with `nft -f` in one transaction that first clears the ruleset | A rule in Labyrinth's own table, `inet labyrinth`, whose `input` chain runs before the other tables' chains | Loopback, established-connection and ICMP rules, then the `input` chain's policy `drop` |
 | iptables | `iptables-save` and `ip6tables-save`, loaded back with `iptables-restore` and `ip6tables-restore` | A rule in Labyrinth's own chain, `LAB-INPUT`, jumped to from the top of `INPUT`, for IPv4, IPv6 or both | Loopback, established-connection and ICMP rules in `LAB-INPUT`, then the `INPUT` policy `DROP` |
-| Windows Firewall | `netsh advfirewall export`, loaded back with `netsh advfirewall import` | An inbound allow rule in the rule group `Labyrinth` | ICMPv4 and ICMPv6 allow rules, then every profile on, with inbound default `Block` and local allow rules honored |
+| Windows Firewall | `netsh advfirewall export`, loaded back with `netsh advfirewall import` | An inbound allow rule in the rule group `Labyrinth` | ICMPv4 and ICMPv6 allow rules, then every profile on, with inbound default `Block` and local allow rules honored. Refused (`20`) when Group Policy turns off local firewall rules (`AllowLocalFirewallRules`) for any profile in the effective policy, because Labyrinth's allow rules would then do nothing; `40` when the effective policy cannot be read. |
 
 **Known limits.** Each one is a reason for the acceptance tests on a real host (section 7):
 
 - **firewalld:** the snapshot is of the permanent configuration. A rule that exists only at run time when the snapshot is taken is lost at the next reload. The snapshot warns when the run-time and permanent rules differ, and the restore then reports `30`.
 - **nftables:** an accept in Labyrinth's table does not override a drop in another table's chain on the same hook. The firewall module's plan lists such drops for a person to review.
 - **Windows Firewall:** a block rule always wins over an allow rule, and Group Policy settings win over local ones. The firewall module's plan lists enabled inbound block rules and policy-set profiles.
+- **iptables without `ip6tables`:** only IPv4 is filtered, so IPv6 stays open after `default_deny_in`, which warns. The firewall module's plan says so.
 - **nftables and iptables:** the changes last until the ruleset is next reloaded or the host restarts. The health monitor re-applies the sealed rules when they drift (design 13, section 4.1).
 
 ## 6. What it will never do
 
-- Install, enable or switch to a firewall backend that the host is not already using. Windows Firewall is always present on Windows, so `default_deny_in` there turns its profiles on, as part of the deny the caller asked for.
+- Install a firewall, or switch from the firewall a host is using to another. A host with no active firewall gets the nftables or iptables it already has (section 5). Windows Firewall is always present on Windows, so `default_deny_in` there turns its profiles on, as part of the deny the caller asked for.
 - Delete a file to restore a snapshot. A file the snapshot did not hold is moved into the snapshot folder.
 - Change the firewall without a snapshot taken by the same module in the same run.
 - Guess a fact. An unknown fact blocks the module that needs it.
@@ -129,11 +130,13 @@ Every backend's adapter offers the same functions, so the firewall, ban and egre
 - A Windows domain controller, member server and workstation each report the right `role`, and a host without UEFI reports `secure_boot` as `unsupported`.
 - Reading every fact leaves the host unchanged: on Linux, no file under `/etc` changes; on Windows, no registry value changes.
 - For each adapter on its lab host: `snapshot`, then changes, then `restore` gives the same `state` as before.
-- `default_deny_in` with no scoring allowlist added is refused, and the ruleset is unchanged. The same holds when one scoring-allowlist address has no allow.
+- `default_deny_in` with no scoring allowlist added is refused, and the ruleset is unchanged. The same holds when one scoring-allowlist address has no allow, and when a scored service on this host has no allow on its port from a scoring address: an allow on another port, such as SSH, is not enough. An allow from `any` on the service's port is enough.
 - `allow` and `default_deny_in` before a snapshot, or in plan mode, are refused and change nothing.
+- On Windows, `default_deny_in` is refused (`20`) when Group Policy turns off local firewall rules for a profile, and is `40` when the effective policy cannot be read; neither changes a profile.
+- With iptables and no `ip6tables`, `default_deny_in` warns that IPv6 stays open.
 - Each change is in the run manifest before it is made, and `lab_fw_rollback` (`Undo-LabFirewallChange`) restores the snapshot.
 - After `default_deny_in` on each lab host, the host still answers ping, an allowed port from an allowed source still connects, and an established session survives.
-- With the firewall fact `conflict`, `none` or `unknown`, every function but `restore` is refused (`20`) and calls no firewall command.
+- With the firewall fact `conflict` or `unknown`, every function but `restore` is refused (`20`) and calls no firewall command. With the fact `none`, the adapter uses an installed `nft`, then `iptables`, and refuses (`20`) when neither is installed.
 
 ## References
 
