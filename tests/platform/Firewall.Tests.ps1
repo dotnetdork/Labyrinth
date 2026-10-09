@@ -99,6 +99,35 @@ Describe 'Windows Firewall adapter' {
         (Get-TestManifestAction) -join ' ' | Should -Be 'firewall_snapshot firewall_allow firewall_allow firewall_default_deny'
     }
 
+    It 'default deny needs each scored service''s port allowed from every scoring address' {
+        $me = Get-LabHostName
+        [IO.File]::WriteAllText((Join-Path $env:LAB_CONFIG_DIR 'services'),
+            "web-main http $me 80 Welcome`ndns-main dns $me 53 www.example.test=192.0.2.20`nmail-smtp smtp other.example.test 25 -`n")
+        Mock Get-LabLocalAddress { @('192.0.2.250') }
+        Save-LabFirewallSnapshot | Should -Be 0
+        Add-LabFirewallAllow -Protocol tcp -Port 22 -Source '198.51.100.7' | Should -Be 0
+        Add-LabFirewallAllow -Protocol tcp -Port 22 -Source '2001:db8::7' | Should -Be 0
+        Mock Write-LabFirewallError { }
+        Enable-LabFirewallDefaultDeny | Should -Be 20
+        Should -Invoke Write-LabFirewallError -Times 1 -Exactly -ParameterFilter {
+            $Message -match 'web-main tcp/80 from 198\.51\.100\.7' -and $Message -match 'dns-main udp/53 from 2001:db8::7' -and
+            $Message -notmatch 'mail-smtp'
+        }
+        Should -Invoke Set-NetFirewallProfile -Times 0 -Exactly
+        Add-LabFirewallAllow -Protocol tcp -Port 80 -Source any | Should -Be 0
+        Add-LabFirewallAllow -Protocol tcp -Port 53 -Source any | Should -Be 0
+        Enable-LabFirewallDefaultDeny | Should -Be 20
+        Add-LabFirewallAllow -Protocol udp -Port 53 -Source any | Should -Be 0
+        Enable-LabFirewallDefaultDeny | Should -Be 0
+        Should -Invoke Set-NetFirewallProfile -Times 1 -Exactly
+    }
+
+    It 'with no scored service here, an allow from any covers every scoring address' {
+        Save-LabFirewallSnapshot | Should -Be 0
+        Add-LabFirewallAllow -Protocol tcp -Port 80 -Source any | Should -Be 0
+        Enable-LabFirewallDefaultDeny | Should -Be 0
+    }
+
     It 'default deny is refused without a scoring allowlist' {
         Remove-Item -LiteralPath (Join-Path $env:LAB_CONFIG_DIR 'scoring-allowlist')
         Save-LabFirewallSnapshot | Should -Be 0
