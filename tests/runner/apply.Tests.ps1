@@ -51,6 +51,25 @@ Describe 'labyrinth.ps1 apply' {
         $toggle | Should -Not -Exist
     }
 
+    It 'apply, keep and rollback refuse code or data another account can change' {
+        $r = Invoke-TestApply $t @('labadmin', 'ring1', 'no')
+        $r.Code | Should -Be 0
+        $id = Get-TestRunId $r.Output
+        New-Item -ItemType File -Path (Join-Path $lab 'UNTRUSTED') | Out-Null
+        Remove-Item -LiteralPath $toggle
+        $r = Invoke-TestApply $t @('labadmin', 'ring1', 'no')
+        $r.Code | Should -Be 20
+        $r.Output | Should -Match ([regex]::Escape("$lab can be changed by an account that is not an administrator"))
+        $toggle | Should -Not -Exist
+        [IO.File]::WriteAllText($toggle, "setting=on`n")
+        foreach ($cmd in 'keep', 'rollback') {
+            (Invoke-TestRunCommand $t $cmd $id).Code | Should -Be 20 -Because $cmd
+        }
+        # Nothing was rolled back, and the timer is still armed.
+        (Get-Content -LiteralPath $toggle) | Should -Be 'setting=on'
+        Join-Path $t.Root "state\runs\$id\timer" | Should -Exist
+    }
+
     It 'apply needs this host in the hosts file, and never touches the manual group' {
         Remove-Item -LiteralPath (Join-Path $t.Etc 'hosts')
         (Invoke-TestApply $t $answers).Code | Should -Be 20

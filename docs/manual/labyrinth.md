@@ -380,7 +380,7 @@ Everything Labyrinth keeps is under one folder, the **data root**: `@ROOT@` unle
 | `<root>/logs` | Logs, one folder per kind. |
 | `<root>/backup` | Copies of every file taken before it was changed. |
 
-Only root can read `etc`, `state` and `backup`.
+Only root can read `etc`, `state` and `backup`. Only root may be able to change any of it, or `apply`, `keep` and `rollback` refuse (section 11).
 <!-- end -->
 <!-- windows -->
 | Folder | Holds |
@@ -391,7 +391,7 @@ Only root can read `etc`, `state` and `backup`.
 | `<root>\logs` | Logs, one folder per kind. |
 | `<root>\backup` | Copies of every file taken before it was changed. |
 
-Only Administrators, SYSTEM and the account that runs Labyrinth can use the data root. If a file under it belongs to another account, Labyrinth refuses to run until a person checks the file and removes it.
+Only Administrators, SYSTEM and the account that runs Labyrinth can use the data root. If a file under it belongs to another account, Labyrinth refuses to run until a person checks the file and removes it. If an account that is not an administrator could change the program, the configuration or the data root, `apply`, `keep` and `rollback` refuse too (section 11).
 <!-- end -->
 
 The revert timer's length is `REVERT_MINUTES` in `event.conf` (5 minutes in the example file).
@@ -418,6 +418,13 @@ Most errors that stop Labyrinth are two lines: what failed and why, then how to 
 <!-- end -->
 <!-- windows -->
 **"needs an elevated Administrator session".** `apply`, `runs`, `keep` and `rollback` need full rights. Open PowerShell with **Run as administrator** and run the command again.
+<!-- end -->
+
+<!-- linux -->
+**"... can be changed by an account other than root".** Labyrinth runs its program, its configuration and its run records as root, and the revert timer runs them again later. So `apply`, `keep` and `rollback` refuse if any other account could change them: the program folder, the configuration folder, the data root, anything in them, or any folder above them. The line names the first one found. Keep Labyrinth in `/opt/labyrinth`, owned by root and not writable by group or others: `sudo chown -R root: /opt/labyrinth` and `sudo chmod -R go-w /opt/labyrinth`. A copy unpacked in a home folder or under `/tmp` is refused.
+<!-- end -->
+<!-- windows -->
+**"... can be changed by an account that is not an administrator".** Labyrinth runs its program, its configuration and its run records as an administrator, and the revert timer runs them again later as SYSTEM. So `apply`, `keep` and `rollback` refuse if any other account could change them: the program folder, the configuration folder, the data root, anything in them, or any folder above them. The line names the first one found. Keep Labyrinth in `C:\ProgramData\Labyrinth`, where `apply` makes the data root private to administrators. A copy unpacked in a user's own folder, or one that gives Users or Authenticated Users the right to change it, is refused.
 <!-- end -->
 
 **"the protected set is not loaded".** The line ends with the reason: there is no `protected-accounts` file in the configuration folder, or it lists no accounts. Labyrinth will not change anything without it. Copy in the team's prepared file.

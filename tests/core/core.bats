@@ -218,6 +218,21 @@ stub() {
   [ ! -e "$LAB_STATE_DIR/lock" ]
 }
 
+@test "safety: only what root alone can change is trusted to run as root" {
+  [ "$(id -u)" -ne 0 ] || skip "as root, the test folder is root's too"
+  sh="$(readlink -f "$(command -v sh)")"
+  # Root's own files, an empty path and a path not made yet under /.
+  lab_tree_trusted "$sh" '' /lab-not-made/etc
+  d="$(readlink -m "$BATS_TEST_TMPDIR/files")"
+  run lab_tree_trusted "$sh" "$d"
+  [ "$status" -eq 1 ]
+  [ "$output" = "$d" ]
+  # A path not made yet is checked from its nearest folder.
+  run lab_tree_trusted "$d/new/etc"
+  [ "$status" -eq 1 ]
+  [ "$output" = "$d" ]
+}
+
 @test "timer: arm and cancel call systemd with a fresh unit each time" {
   [ -d /run/systemd/system ] || skip 'no systemd on this machine'
   stub systemd-run 'printf "%s\n" "$*" >> "$LAB_STATE_DIR/calls"'

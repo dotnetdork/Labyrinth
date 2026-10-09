@@ -47,7 +47,9 @@ readonly RE_MODULE_ID='^(lockout|observe|deceive|sustain)\.[a-z0-9_-]+$'
 readonly RE_ITEM=$'^item\t([a-z0-9-]+)\t([a-z0-9-]+)\t([0-9a-f]{12})\t(.*)$'
 readonly RE_APPROVE='^(lockout|observe|deceive|sustain)\.[a-z0-9_-]+:[a-z0-9-]+@[0-9a-f]{12}$'
 
-LAB_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# The real path, links resolved: the revert timer runs labyrinth.sh from it
+# as root, so it must name the folder lab_tree_trusted checks.
+LAB_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 export LAB_ROOT
 # shellcheck source=core/lib.sh
 source "$LAB_ROOT/core/lib.sh"
@@ -1172,6 +1174,16 @@ plan_all() {
   return "$worst"
 }
 
+# gate_trusted: only root may be able to change Labyrinth's code, its
+# configuration and its data root, because they run as root, later too, by
+# the revert timer (design 07, section 5).
+gate_trusted() {
+  local bad
+  bad="$(lab_tree_trusted "$LAB_ROOT" "$LAB_CONFIG_DIR" "$DATA_ROOT")" && return 0
+  die "$bad can be changed by an account other than root, so Labyrinth will not run as root from it" 20 \
+    "Keep Labyrinth's folders owned by root and not writable by others ('chown -R root:' and 'chmod -R go-w'), in folders only root can change."
+}
+
 # gate_protected: the protected set must load and hold at least one account
 # (design 01, section 7). Plan mode needs it too, because plans that touch
 # accounts depend on it.
@@ -1491,7 +1503,8 @@ apply_one() {
   fi
   if [[ "$risk" != read-only ]]; then
     if ! lab_timer_arm "$((LAB_EVENT[REVERT_MINUTES] * 60))" "$LAB_RUN_ID" \
-        "$BASH" "$LAB_ROOT/labyrinth.sh" --root "$DATA_ROOT" --config "$LAB_CONFIG_DIR" rollback "$LAB_RUN_ID"; then
+        "$BASH" "$LAB_ROOT/labyrinth.sh" --root "$(readlink -m -- "$DATA_ROOT")" \
+        --config "$(readlink -m -- "$LAB_CONFIG_DIR")" rollback "$LAB_RUN_ID"; then
       say BLOCKED "$name"
       detail Problem 'the revert timer could not be armed, so nothing was changed'
       detail Fix 'check that systemd timers work on this host, then run the same command again'
@@ -1682,6 +1695,7 @@ cmd_apply() {
   umask 077
   host="$(lab_host)"
   lab_is_admin || die 'apply needs root' 20 "$FIX_ADMIN"
+  gate_trusted
   rc=0; host_lookup "$host" || rc=$?
   (( rc == 0 )) || die "this host is not in the hosts file, so its ring group is unknown" 20 \
     "Add the line '$host <group> <profile> <platform>' to $LAB_CONFIG_DIR/hosts"
@@ -1935,6 +1949,7 @@ cmd_keep() {
   local -a armed=()
   export LAB_DRY_RUN=0
   lab_is_admin || die 'keep needs root' 20 "$FIX_ADMIN"
+  gate_trusted
   if [[ -z "$1" ]]; then
     # Without a run, keep the one run whose timer is armed (section 3.1).
     list="$(armed_runs)" || die "the runs in $LAB_STATE_DIR/runs cannot be read"
@@ -1977,6 +1992,7 @@ cmd_rollback() {
     usage_error 'rollback needs a run ID, or its last 4 characters' rollback 'Pick one from the list above.'
   fi
   lab_is_admin || die 'rollback needs root' 20 "$FIX_ADMIN"
+  gate_trusted
   resolve_run rollback "$1"
   export LAB_RUN_ID="$RUN_REF"
   [[ -f "$(lab_manifest_file)" ]] || die "no run $LAB_RUN_ID on this host"
