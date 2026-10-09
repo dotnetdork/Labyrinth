@@ -200,7 +200,7 @@ Either way, one run does this:
 ```
 labyrinth plan|apply <phase> [--profile <name>]        # local; remote adds --group <group>
    1. load profile → ordered module list
-   2. safety gates (protected set loaded, break-glass verified; the scoring allowlist
+   2. safety gates (protected set loaded, break-glass confirmed; the scoring allowlist
       for modules that touch scored services)
    3. plan all modules and print the combined plan
    4. human confirms (typed confirmation) → apply in rings (design 01)

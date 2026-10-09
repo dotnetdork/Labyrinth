@@ -294,7 +294,7 @@ The manifest is `<state>/runs/<run>/manifest.jsonl`, one JSON object per line, e
 
 | Action | Meaning |
 |---|---|
-| `run_start`, `breakglass_verified`, `run_kept`, `run_rolled_back` | The run itself (empty `module`) |
+| `run_start`, `breakglass_verified`, `run_kept`, `run_rolled_back` | The run itself (empty `module`). `breakglass_verified` records the operator's confirmation, not a proof; its `note` is the console session found for the account (`console session <id>`), `no console session found`, `console sessions could not be listed`, or `confirmed earlier`. The name stays as it is so older manifests read the same |
 | `apply_start` | A module's `apply` is about to run; `rollback <run>` undoes every module with one |
 | `file` | A file is about to change; `backup` holds its copy, `<backup>/<run>/<module>/<seq>-<name>` |
 | `file_created` | A file that did not exist is about to be created |

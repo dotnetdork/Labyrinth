@@ -65,7 +65,7 @@ You need:
 | Revert timer | A timer started before a risky change. If nobody **keeps** the run in time, the timer undoes the whole run by itself. It protects you if a change locks you out. |
 | Keep | Telling Labyrinth that a run's changes are good: the revert timer is cancelled and the changes stay. |
 | Rollback | Undoing what a run changed, newest first. The revert timer starts one automatically; you can start one too. |
-| Break-glass account | The emergency login, kept in the team's offline record, used only when normal access fails. Labyrinth asks you to prove it works before changing anything. |
+| Break-glass account | The emergency login, kept in the team's offline record, used only when normal access fails. Labyrinth asks you to confirm it works before changing anything. |
 | Scored service | A service the scoring engine checks, such as a website, email or DNS. Labyrinth tests them before and after each change. |
 | Exit code | The number Labyrinth ends with, which says how it went (section 9). |
 
@@ -233,7 +233,7 @@ An apply goes through a fixed series of safety checks. If one fails, the run sto
 1. **You are @ADMIN@,** the host is listed in `hosts`, and the protected set is loaded.
 2. **No other run is in progress** on this host. Only one run at a time may change a host.
 3. **Every module is planned.** If any plan has an error, nothing is applied. If nothing needs changing, the run ends here without asking you anything.
-4. **Break-glass check.** Log in at the host's own console with the break-glass account and type its name. Labyrinth asks this once per host.
+4. **Break-glass check.** Log in at the host's own console with the break-glass account and type its name. Labyrinth asks this once per host. It takes your word for it, then looks for that account's session at the console and records what it found in the run's manifest. If it finds none, it warns `no session for NAME was found at this host's console` and goes on: stop there and check the login yourself if you did not just use it.
 5. **Confirmation.** Labyrinth shows what each module will do, then asks you to type the host's group name. Anything else stops the run.
 6. **Changes start.** For each module that needs a change, in order:
    - the revert timer is armed (or moved later), unless the module only reads;

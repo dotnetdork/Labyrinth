@@ -247,6 +247,11 @@ Describe 'core library' {
         Find-LabUntrustedItem -Path $dir | Should -BeLike '*\code\core\lib.ps1'
     }
 
+    It 'safety: the console check answers for an account with no session' {
+        $s = Get-LabConsoleSession -Account 'lab-no-such-account'
+        ($null -eq $s -or $s -eq 'unknown') | Should -BeTrue
+    }
+
     It 'safety: revert-timer arguments survive a real command line' {
         $script = Join-Path $base 'args.ps1'
         [IO.File]::WriteAllText($script, '$args | ForEach-Object { "<$_>" }')

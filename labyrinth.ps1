@@ -120,6 +120,7 @@ $script:Settings = @{}
 $script:Before = @()
 $script:HaveServices = $false
 $script:BreakGlassAccount = ''
+$script:BreakGlassNote = 'confirmed earlier'   # what the console check found
 $script:GivenBreakGlass = ''     # -BreakGlass, read inside functions
 $script:GivenGroup = ''          # -ConfirmGroup, read inside functions
 $script:DataRoot = ''            # the data root (-Root)
@@ -1283,7 +1284,7 @@ function Assert-LabBreakGlass {
         if ($script:GivenBreakGlass -ne '') {
             $account = $script:GivenBreakGlass
         } else {
-            Write-LabLine 'Before any change, prove you can still get in if remote logins break.'
+            Write-LabLine 'Before any change, check you can still get in if remote logins break.'
             if (-not (Read-LabAnswer "Break-glass check: log in at this host's console with the break-glass account, then type its name: ")) {
                 Exit-Lab 'no answer: break-glass not confirmed; nothing was changed' 20
             }
@@ -1292,6 +1293,19 @@ function Assert-LabBreakGlass {
         try { Save-LabBreakGlass -Protected $script:Protected -Account $account }
         catch { Write-LabErrorLine $_.Exception.Message; Exit-Lab 'break-glass not confirmed; nothing was changed' 20 }
         Write-LabLine "Break-glass account ${account}: confirmed and recorded."
+        # The answer is the operator's word. A session for the account at
+        # the console backs it up; without one, the run goes on with a
+        # warning, and the manifest says which it was.
+        $session = Get-LabConsoleSession -Account $account
+        if ($null -eq $session) {
+            $script:BreakGlassNote = 'no console session found'
+            Write-LabWarning "no session for $account was found at this host's console; check that the break-glass login works before relying on it"
+        } elseif ($session -eq 'unknown') {
+            $script:BreakGlassNote = 'console sessions could not be listed'
+            Write-LabWarning 'this host cannot list console sessions, so the break-glass answer was not checked against one'
+        } else {
+            $script:BreakGlassNote = "console session $session"
+        }
     }
     $script:BreakGlassAccount = $account
 }
@@ -1837,7 +1851,7 @@ function Invoke-LabApplyCommand {
         } catch { Exit-Lab 'the run and backup folders cannot be created; nothing was changed' 20 }
         try {
             Add-LabEntryFor '' 'run_start' $hostName "phase $Phase, profile $($script:ProfileName), group $group"
-            Add-LabEntryFor '' 'breakglass_verified' $script:BreakGlassAccount
+            Add-LabEntryFor '' 'breakglass_verified' $script:BreakGlassAccount $script:BreakGlassNote
         } catch {
             Write-LabErrorLine $_.Exception.Message
             Exit-Lab 'the run manifest cannot be written; nothing was changed'
@@ -2086,7 +2100,7 @@ function Invoke-LabRollbackCommand {
     # would undo changes while it goes on making them and reports success.
     $locked = Enter-LabLock -WaitSeconds 10
     if (-not $locked) {
-        [void](Stop-LabLockHolder -WaitSeconds 30)
+        [void](Close-LabLockHolder -WaitSeconds 30)
         $locked = Enter-LabLock -WaitSeconds 10
     }
     if (-not $locked) { [Console]::Error.WriteLine('warning: rolling back without the run lock') }
