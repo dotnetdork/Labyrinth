@@ -2096,7 +2096,7 @@ function Invoke-LabApplyCommand {
     try { Protect-LabDataRoot -Path $script:DataRoot } catch { Exit-Lab "$($_.Exception.Message); nothing was changed" 20 }
     Assert-LabTrustedTree
     $entry = Find-LabThisHost
-    if ($null -eq $entry) { Exit-Lab 'this host is not in the hosts file, so its ring group is unknown' 20 "Add the line '$hostName <group> <profile> <platform>' to $(Join-Path $env:LAB_CONFIG_DIR 'hosts')" }
+    if ($null -eq $entry) { Exit-Lab 'this host is not in the hosts file, so its group is unknown' 20 "Add the line '$hostName <group> <profile> <platform>' to $(Join-Path $env:LAB_CONFIG_DIR 'hosts')" }
     $group = $entry.Group
     if ($group -eq 'manual') { Exit-Lab 'this host is in the manual group: Labyrinth never changes it' 20 'Configure it by hand, from its runbook.' }
     if ($script:ProfileName -ne '' -and $script:ProfileName -cne $entry.Profile) {

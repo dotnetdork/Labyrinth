@@ -1993,7 +1993,7 @@ cmd_apply() {
   lab_is_admin || die 'apply needs root' 20 "$FIX_ADMIN"
   gate_trusted
   rc=0; host_lookup "$host" || rc=$?
-  (( rc == 0 )) || die "this host is not in the hosts file, so its ring group is unknown" 20 \
+  (( rc == 0 )) || die "this host is not in the hosts file, so its group is unknown" 20 \
     "Add the line '$host <group> <profile> <platform>' to $LAB_CONFIG_DIR/hosts"
   group="$LAB_HOST_GROUP"
   [[ "$group" != manual ]] || die "this host is in the manual group: Labyrinth never changes it" 20 \
