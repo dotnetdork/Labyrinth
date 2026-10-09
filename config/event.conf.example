@@ -14,3 +14,8 @@ RING_MAX_HOSTS=3
 
 # Seconds before a probe gives up and counts as a failure (designs 01, 13).
 PROBE_TIMEOUT=5
+
+# Proxy and mirror for package installs after the lockdown (design 20).
+# Leave unset when the hosts reach their repositories directly.
+# PROXY=http://192.0.2.30:3128
+# MIRROR=http://192.0.2.31/

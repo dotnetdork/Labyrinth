@@ -84,7 +84,7 @@ flowchart LR
 
 ### Lock out, part 1 — Establish trust
 
-The attacker's power comes from credentials, existing sessions and footholds left before the event. Remove all three, on each host in one step: the first-minute bundle rotates admin passwords, removes unregistered keys and checks the SSH configuration, ends intruder sessions, quarantines high-confidence persistence, then applies default-deny (design 01, section 6.1). Scored services are a primary Red Team target, so they are defended, with probes and revert timers, rather than left as found.
+The attacker's power comes from credentials, existing sessions and footholds left before the event. Remove all three, on each host in one step: the first-minute bundle rotates admin passwords, removes unregistered keys and checks the SSH configuration, ends intruder sessions, then applies default-deny inbound and outbound, using only what the host already has (design 01, section 6.1). Packages are installed and persistence is swept behind that lockdown. Scored services are a primary Red Team target, so they are defended, with probes and revert timers, rather than left as found.
 
 - **Rotate administrator-class credentials you were handed or that ship by default:** local admins, appliance web logins, SNMP (Simple Network Management Protocol) strings, and service or database accounts once the dependency map is known. Do it first, everywhere.
 
@@ -205,7 +205,7 @@ Linux specifics link back to the §5 table and appendix A.
 
 - **Principle:** turn repeated hostile touches into automatic, expiring blocks, and make the blocking scale.
 - **Linux (reference §5.3):** `fail2ban` backed by an **ipset** (one kernel hash-set and one match rule per chain) instead of one iptables rule per IP, so thousands of bans stay flat. Jails cover SSH, the trap-port honeypot, the planted-key canary, and repeat offenders. Bans apply on **both** `INPUT` and `DOCKER-USER`.
-- **Labyrinth:** a small native watcher in bash feeds the same kernel set, because fail2ban needs python3 and, on RHEL-family hosts, the EPEL repository, and Labyrinth never installs packages. A host that already runs fail2ban keeps it, with the never-ban list added to its `ignoreip` (design 12).
+- **Labyrinth:** a small native watcher in bash feeds the same kernel set. fail2ban is installed after the lockdown where the host's repositories offer it (on RHEL-family hosts it needs EPEL, which Labyrinth does not add), and starts only once the never-ban list is in its `ignoreip` (designs 12, 20).
 - **Windows:** there is no fail2ban. Approximate it with a scheduled task or a WinLogbeat → SIEM alert that drives a firewall block, or with an IDS (intrusion detection system) at the edge. This is usually better handled at the perimeter.
 - **CCDC note:** ipset matters when a tarpit is feeding you thousands of IPs; a per-IP ruleset will bloat and slow the box.
 
@@ -262,7 +262,7 @@ Linux specifics link back to the §5 table and appendix A.
 - **Principle:** unexpected *outbound* traffic is the C2 signature. Watch it even if you cannot block it.
 - **Linux (reference §5.7):** containers normally reach out only to DNS, HTTP, HTTPS and NTP (Network Time Protocol). A new outbound SYN to any other external port is logged as `[CONTAINER OUT] …`. The rule is rate-limited, scoped to the external interface, placed above Docker's `RETURN`, and re-installed after Docker restarts.
 - **Windows:** Windows Firewall outbound logging; alert on beaconing patterns through Sysmon network events.
-- **Every host:** a rate-limited, log-only rule for new outbound connections (Tier 2; blocks nothing) feeds an unusual-outbound search, such as NTP or DNS to a server not in the run-time configuration. Outbound default-deny is offered per host only after approval (Tier 3), because scored services' outbound needs differ (design 10).
+- **Every host:** a rate-limited, log-only rule for new outbound connections (Tier 2; blocks nothing) feeds an unusual-outbound search, such as NTP or DNS to a server not in the run-time configuration. Outbound default-deny is part of the first-minute bundle, from the services file and the run-time `outbound-allow` list (design 01, section 6.1).
 - **CCDC note:** combine with DNS sinkholing (§4.5): see the beacon, then dead-end it without tipping off the attacker.
 
 ### 3.11 Backups, rollback & break-glass — **P1**
@@ -407,7 +407,7 @@ This is the proven source for Labyrinth's Linux roles. Each control below is pro
 
 **Native scripts, run locally or remotely.**
 
-**[RULES]** The 2025 Midwest packet describes a web proxy limited to essential sites and the team's declared repository (MWCCDC, 2025; *Provisional*), and team tools may not use outside resources (NCCDC, 2025, Rule 5.6.4). Packages and collections cannot be assumed to download at the event.
+**[RULES]** The 2025 Midwest packet describes a web proxy that includes the team's declared repository (MWCCDC, 2025; *Provisional*). Team tools may not use outside resources such as cloud services or cloud processing (NCCDC, 2025, Rule 5.6.4), while public software sources are allowed (NCCDC, 2025, Rules 5.1, 5.2). So Labyrinth must run with nothing downloaded, and installs packages only after the lockdown, skipping them when no source answers (design 20).
 
 Labyrinth is therefore bash on Linux and PowerShell on Windows, self-contained in one repository with vendored third-party code. It runs on each host directly (local mode), or from a control node that sends the same command over SSH or PowerShell remoting (remote mode). Ansible was considered and not adopted. Network appliances use templated configuration and a manual runbook. See design 00.
 

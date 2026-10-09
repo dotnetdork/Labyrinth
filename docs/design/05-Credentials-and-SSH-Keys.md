@@ -33,7 +33,7 @@ Operating system passwords are not the only default credentials. Red Teams repor
 
 - **Inventory (Tier 0).** For each scored app in the profile, list its admin accounts, using the app's own tools where present (for example `wp user list --role=administrator`, or a read-only query of the database's user table), and the configuration files that store a password the app uses to reach its database.
 - **Rotate (Tier 3, approve then act).** Each account is shown with what depends on it. Once a person approves, Labyrinth sets a new password, updates every listed configuration file that stores it (backed up first), runs the app's syntax check and probes under a revert timer, and shows the new password once for the offline record.
-- **Never automatic**, because an app password can be stored in places the inventory misses, and the scoring engine may log in to the app. An account the packet names as used by scoring or employees is in the protected set and never offered.
+- **Never automatic**, because an app password can be stored in places the inventory misses, and the scoring engine may log in to the app. An account the packet names as used by scoring or employees is in the protected set and never offered. In a first-minute run, an account on the profile's pre-approved list counts as approved (design 01, section 6.3).
 - **Appliances** (firewall and router admin logins) stay in their runbooks (design 16).
 
 ### 2.2 Password and lockout policy
