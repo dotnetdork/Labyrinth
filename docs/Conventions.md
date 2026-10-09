@@ -49,7 +49,7 @@ Configuration is **data, never code**. It is never `source`d in bash or dot-sour
 | `never-ban` | one address or CIDR per line | Addresses that bans must never touch (design 12) |
 | `outbound-allow` | `address proto port` per line; proto `tcp` or `udp`, port a number or `any` | Outbound destinations the first-minute default deny keeps open, beyond the scored services (design 01, section 6.1) |
 | `services` | `name proto host port expect` per line; no value begins with `-` except an `expect` of `-` alone, meaning no expected text | Scored services and what their probe expects |
-| `hosts` | `host group profile platform` per line | Which hosts exist, their ring group, profile and platform |
+| `hosts` | `host group profile platform` per line | Which hosts exist, and each one's group (its ring, design 01), profile and platform |
 | `profiles/<name>.profile` | one module id per line | Optional override of a shipped profile |
 | `pre-approved` | `module-id category item` per line; `item` is an item id, or `*` for every item of the category | Approval items the team approved before the event (section 3.1). Optional: when it is missing, nothing is approved in advance |
 

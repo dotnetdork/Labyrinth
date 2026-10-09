@@ -441,7 +441,7 @@ The design keeps the speed and adds guard rails:
 
 - a protected set;
 - plan-before-apply;
-- rings with a canary host per platform;
+- host groups (rings), with one test host per platform first;
 - a confirmed break-glass path;
 - dead-man revert timers;
 - scoring-style probes after each module.

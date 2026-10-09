@@ -26,7 +26,7 @@ The original idea ran against every reachable host in one pass, resetting creden
 
 1. **Protect first.** Load the protected set before doing anything else. If it is missing or empty, stop.
 2. **Plan before apply.** Plan mode is the default. Apply needs a confirmation naming the target group, typed, or given on the command line in a first-minute run (section 6.3).
-3. **Small blast radius.** Apply in rings, one canary host first, except in a first-minute run, where speed matters more and each host's revert timer is the safety net (section 6.3).
+3. **Small blast radius.** Apply in rings, one test host first, except in a first-minute run, where speed matters more and each host's revert timer is the safety net (section 6.3).
 4. **Reversible.** Every change is backed up and recorded in the run manifest.
 5. **Verify like the scoring engine.** After each module, run probes and compare with the probes taken before.
 6. **Fail toward access.** On any doubt, abort and leave the host as it was.
@@ -90,9 +90,9 @@ flowchart LR
 
 Steps 4 to 7 run ring by ring in a normal run, and on every host at once in a first-minute run (section 6.3). Each host's steps 4 to 7 run under its own revert timer, re-armed before each module.
 
-**Rings.** Ring 0 holds one low-impact host per platform, for example one Linux host and one Windows workstation, because a change that works on one platform proves little about another. Ring 1 is the next group. Later rings follow, never more than a set share of hosts at once. A failed verify stops the run. The bundle takes seconds on the canary, so the rings delay the rest of the network very little.
+**Rings.** Ring 0 holds one low-impact host per platform, for example one Linux host and one Windows workstation, because a change that works on one platform proves little about another. Ring 1 is the next group. Later rings follow, never more than a set share of hosts at once. In the hosts file and on the command line a ring is called a *group* (docs/Conventions.md, section 2). A failed verify stops the run. The bundle takes seconds on the test host, so the rings delay the rest of the network very little.
 
-**Hosts with no canary.** A host that is the only one of its kind, such as the domain controller or the only mail server, has no canary that tested the change on the same software first. It goes in the last ring, and its Tier 2 changes rely on the revert timer and the before-and-after probes alone.
+**Hosts with no test host.** A host that is the only one of its kind, such as the domain controller or the only mail server, has no test host that tried the change on the same software first. It goes in the last ring, and its Tier 2 changes rely on the revert timer and the before-and-after probes alone.
 
 ### 6.1 The first-minute bundle
 
