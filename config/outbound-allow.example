@@ -1,0 +1,12 @@
+# Outbound destinations the first-minute default deny keeps open
+# (design 01, section 6.1), beyond the scored services in `services`.
+# Format: `address proto port`, one per line; address is an address or CIDR,
+# proto is tcp or udp, port is a number or `any`. Include DNS resolvers,
+# NTP servers, the SIEM, the package mirror or proxy, and anything a scored
+# service connects out to. Placeholder (documentation) ranges only.
+
+192.0.2.53 udp 53
+192.0.2.53 tcp 53
+192.0.2.123 udp 123
+192.0.2.10 udp 514
+192.0.2.30 tcp 3128

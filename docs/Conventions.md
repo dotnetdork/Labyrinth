@@ -12,7 +12,7 @@ These conventions turn the design specs into code that every module writes the s
 | Windows | Windows PowerShell | 5.1 | PowerShell 7-only syntax: `??`, `?.`, ternary `a ? b : c`, `&&`/`||` between commands, `ForEach-Object -Parallel`, `Clean {}` blocks |
 | Appliances | none | — | Any automation that writes to an appliance (design 16) |
 
-Team-written tools must not use resources outside the competition environment, apart from simple DNS lookups (National Collegiate Cyber Defense Competition [NCCDC], 2025, Rule 5.6.4). So Labyrinth never downloads anything. Labyrinth goes further than the rule as a design choice: it never installs packages at all, not even from a mirror inside the event network (design 00, section 3; design 15, sections 5 and 7). If a module needs a tool the host lacks, it reports exit code 20 (blocked) with a clear message.
+Team-written tools must not use resources outside the competition environment, apart from simple DNS lookups (National Collegiate Cyber Defense Competition [NCCDC], 2025, Rule 5.6.4). The rule's own example is cloud services and cloud processing, so Labyrinth never sends data to, or has anything processed by, an outside service. Installing public software is different: the `packages` module, and only it, installs the profile's packages after the first-minute lockdown, from the host's configured repositories, an event mirror or proxy, or a public download pinned by SHA-256 in the release (design 20). If a module needs a tool the host still lacks, it uses its fallback or reports exit code 20 (blocked) with a clear message.
 
 ## 2. Files and data formats
 
@@ -43,10 +43,11 @@ Configuration is **data, never code**. It is never `source`d in bash or dot-sour
 
 | File | Format | Holds |
 |---|---|---|
-| `event.conf` | `KEY=value`, one per line | Single values: SIEM address, revert-timer minutes, ring size |
+| `event.conf` | `KEY=value`, one per line | Single values: SIEM address, revert-timer minutes, ring size, package proxy and mirror |
 | `protected-accounts` | `account class` per line, optional `# reason`; class is `official`, `scoring`, `employee`, `operator`, `breakglass`, `service` or `builtin` | The protected set (design 01, section 4); the class decides what Labyrinth may do to the account |
 | `scoring-allowlist` | one address or CIDR per line | Scoring engine sources, applied before any deny rule |
 | `never-ban` | one address or CIDR per line | Addresses that bans must never touch (design 12) |
+| `outbound-allow` | `address proto port` per line; proto `tcp` or `udp`, port a number or `any` | Outbound destinations the first-minute default deny keeps open, beyond the scored services (design 01, section 6.1) |
 | `services` | `name proto host port expect` per line; no value begins with `-` except an `expect` of `-` alone, meaning no expected text | Scored services and what their probe expects |
 | `hosts` | `host group profile platform` per line | Which hosts exist, their ring group, profile and platform |
 | `profiles/<name>.profile` | one module id per line | Optional override of a shipped profile |
