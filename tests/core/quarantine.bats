@@ -183,13 +183,79 @@ exit 0"
   called 'systemctl start upd.service'
 }
 
-@test "unit: a package's unit file is never quarantined" {
+@test "unit: one outside /etc is refused when the host cannot tell whether a package owns it" {
+  export LAB_FACT_pkg_db=none
   stub systemctl 'echo "FragmentPath=/usr/lib/systemd/system/ssh.service"'
   run lab_quarantine_unit ssh.service test
   [ "$status" -eq 20 ]
-  [[ "$output" == *"not under /etc"* ]]
+  [[ "$output" == *"cannot tell whether a package installed ssh.service"* ]]
   never_ran 'disable'
   never_ran 'stop'
+}
+
+@test "unit: a package's unit is left for approval, but drop-ins no package installed are quarantined" {
+  export LAB_FACT_pkg_db=dpkg
+  mkdir -p "$R/etc/systemd/system/ssh.service.d" "$R/usr/lib/systemd/system/ssh.service.d"
+  printf '[Service]\nExecStartPre=/tmp/.x\n' > "$R/etc/systemd/system/ssh.service.d/x.conf"
+  printf '[Service]\n' > "$R/usr/lib/systemd/system/ssh.service.d/pkg.conf"
+  stub systemctl "
+case \"\$1 \$2 \$3\" in
+  'show -p FragmentPath') echo \"FragmentPath=$R/usr/lib/systemd/system/ssh.service\" ;;
+  'show -p DropInPaths') echo \"DropInPaths=$R/etc/systemd/system/ssh.service.d/x.conf $R/usr/lib/systemd/system/ssh.service.d/pkg.conf\" ;;
+esac
+exit 0"
+  # With a merged /usr, dpkg knows the unit by its /lib path.
+  stub dpkg-query '
+case "$2" in
+  /lib/systemd/system/ssh.service | /usr/lib/systemd/system/ssh.service.d/pkg.conf) echo "openssh-server: $2" ;;
+  *) exit 1 ;;
+esac'
+  run lab_quarantine_unit ssh.service 'runs from /tmp'
+  [ "$status" -eq 20 ]
+  [[ "$output" == *"package's unit (openssh-server)"* ]]
+  never_ran 'systemctl disable'
+  never_ran 'systemctl stop'
+  called 'systemctl daemon-reload'
+  absent "$R/etc/systemd/system/ssh.service.d/x.conf"
+  [ -f "$R/usr/lib/systemd/system/ssh.service.d/pkg.conf" ]
+  [ "$(manifest_field quarantine_unit prev)" = 'dropins=only' ]
+  lab_quarantine_restore
+  [ -f "$R/etc/systemd/system/ssh.service.d/x.conf" ]
+  never_ran 'systemctl start'
+}
+
+@test "unit: one in /usr/lib that no package owns is quarantined" {
+  export LAB_FACT_pkg_db=rpm
+  mkdir -p "$R/usr/lib/systemd/system"
+  printf '[Service]\nExecStart=/tmp/.x\n' > "$R/usr/lib/systemd/system/upd.service"
+  stub systemctl "
+case \"\$1 \$2 \$3\" in
+  'show -p FragmentPath') echo \"FragmentPath=$R/usr/lib/systemd/system/upd.service\" ;;
+esac
+case \"\$1\" in is-enabled) echo enabled ;; is-active) echo active ;; esac
+exit 0"
+  stub rpm 'echo "file $2 is not owned by any package"; exit 1'
+  lab_quarantine_unit upd.service test
+  called 'systemctl disable upd.service'
+  called 'systemctl stop upd.service'
+  absent "$R/usr/lib/systemd/system/upd.service"
+}
+
+@test "unit: a transient unit is stopped and recorded, and cannot be brought back" {
+  stub systemctl "
+case \"\$1 \$2 \$3\" in
+  'show -p FragmentPath') echo \"FragmentPath=/run/systemd/transient/run-x.service\" ;;
+  'show -p Transient') echo 'Transient=yes' ;;
+esac
+case \"\$1\" in is-active) echo active ;; esac
+exit 0"
+  lab_quarantine_unit run-x.service 'started from /tmp'
+  called 'systemctl stop run-x.service'
+  never_ran 'systemctl disable'
+  [ "$(manifest_field quarantine_unit prev)" = 'transient=yes active=active' ]
+  : > "$CALLS"
+  lab_quarantine_restore
+  never_ran 'systemctl start'
 }
 
 @test "process: ended and recorded; never process 1 or Labyrinth itself" {
