@@ -73,6 +73,19 @@ streams() {
   [[ "$output" == *"armed: rollback time unknown"* ]]
 }
 
+@test "an armed run whose timer a reboot dropped says so, and can still be kept" {
+  local a
+  a="$(armed_run)"
+  touch "$LAB/TIMER_LOST"
+  lab runs
+  [ "$status" -eq 0 ]
+  [[ "$(grep "^$a " <<< "$output")" == *" armed: timer lost (restart?)" ]]
+  lab keep
+  [ "$status" -eq 0 ]
+  lab runs
+  [[ "$(grep "^$a " <<< "$output")" == *" kept" ]]
+}
+
 @test "a run named by its last 4 characters, in any case, is kept" {
   local a
   a="$(armed_run)"

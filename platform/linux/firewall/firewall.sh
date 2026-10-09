@@ -36,6 +36,19 @@ lab_fw() {
     *) _lab_fw_err "unknown function: ${fn:-(none)}"; return 40 ;;
   esac
   backend="$(lab_fact firewall)"
+  if [[ "$backend" == none ]]; then
+    # No firewall is active, the default on many fresh installs. Use one the
+    # host already has, never install one (design 19, section 6). The
+    # snapshot of the empty ruleset puts the host back exactly as it was.
+    if lab_have nft; then
+      backend=nftables
+    elif lab_have iptables; then
+      backend=iptables
+    else
+      _lab_fw_err "no firewall is active and neither nft nor iptables is installed; nothing was changed"
+      return 20
+    fi
+  fi
   case "$backend" in
     ufw | firewalld | nftables | iptables) ;;
     *)
@@ -145,23 +158,84 @@ _lab_fw_allow() {
   lab_log_info firewall_allow "allowed $proto/$port from $source ($backend)" || true
 }
 
-# _lab_fw_scoring_covered: has every scoring-allowlist address been the
-# source of an allow in this run?
+# _lab_fw_local_addrs: this host's own addresses, one per line.
+_lab_fw_local_addrs() {
+  local a
+  if lab_have ip; then
+    ip -o addr show 2> /dev/null | while read -r _ _ _ a _; do printf '%s\n' "${a%/*}"; done
+  elif lab_have hostname; then
+    hostname -I 2> /dev/null | tr ' ' '\n'
+  fi
+}
+
+# _lab_fw_is_local HOST: is HOST, from the services file, this host? By its
+# short name, by one of its addresses, or by what HOST resolves to (a simple
+# DNS lookup, which rule 5.6.4 allows).
+_lab_fw_is_local() {
+  local h="${1,,}" mine r
+  mine="$(_lab_fw_local_addrs)"
+  if lab_addr_valid "$h" && [[ "$h" != */* ]]; then
+    grep -qixF -- "$h" <<< "$mine"
+    return
+  fi
+  r="$(lab_host)"
+  [[ "${h%%.*}" == "${r,,}" ]] && return 0
+  lab_have getent || return 1
+  while read -r r _; do
+    [[ -n "$r" ]] && grep -qixF -- "$r" <<< "$mine" && return 0
+  done < <(getent ahosts "$h" 2> /dev/null)
+  return 1
+}
+
+# _lab_fw_scoring_covered: may the inbound default be deny? For each scored
+# service on this host (services file), every scoring address must have an
+# allow on that service's port and transport, or the allow's source must be
+# 'any'. With no scored service found on this host, every scoring address
+# must still have some allow. The missing pairs go to standard error.
 _lab_fw_scoring_covered() {
-  local f rc=0 a s missing=''
-  local -A seen=()
+  local f rc=0 a p n s i missing=''
+  local -A have=() seen=()
+  local -a need=()
   lab_addrs_load scoring-allowlist > /dev/null 2>&1 || rc=$?
   case "$rc" in
     0) ;;
     2) _lab_fw_err 'default deny is refused: the scoring allowlist is missing or empty'; return 20 ;;
     *) _lab_fw_err 'default deny is refused: the scoring allowlist does not load'; return 40 ;;
   esac
+  rc=0
+  lab_services_load > /dev/null 2>&1 || rc=$?
+  if [[ "$rc" == 1 ]]; then
+    _lab_fw_err 'default deny is refused: the services file does not load'
+    return 40
+  fi
+  for ((i = 0; i < ${#LAB_SVC_NAME[@]}; i++)); do
+    _lab_fw_is_local "${LAB_SVC_HOST[i]}" || continue
+    need+=("tcp ${LAB_SVC_PORT[i]} ${LAB_SVC_NAME[i]}")
+    if [[ "${LAB_SVC_PROTO[i]}" == dns ]]; then need+=("udp ${LAB_SVC_PORT[i]} ${LAB_SVC_NAME[i]}"); fi
+  done
   f="$(_lab_fw_allows_file)"
   if [[ -f "$f" ]]; then
-    while read -r _ _ s; do
-      [[ -n "$s" ]] && seen["$s"]=1
+    while read -r p n s; do
+      [[ -n "$s" ]] || continue
+      have["$p $n $s"]=1
+      seen["$s"]=1
     done < "$f"
   fi
+  if (( ${#need[@]} > 0 )); then
+    for i in "${need[@]}"; do
+      read -r p n s <<< "$i"
+      [[ -n "${have[$p $n any]+set}" ]] && continue
+      for a in "${LAB_ADDRS[@]}"; do
+        [[ -n "${have[$p $n $a]+set}" ]] || missing+=" $s $p/$n from $a;"
+      done
+    done
+    if [[ -n "$missing" ]]; then
+      _lab_fw_err "default deny is refused: no allow yet for scored service(s):${missing%;}"
+      return 20
+    fi
+    return 0
+  fi
+  [[ -n "${seen[any]+set}" ]] && return 0
   for a in "${LAB_ADDRS[@]}"; do
     [[ -n "${seen[$a]+set}" ]] || missing+=" $a"
   done

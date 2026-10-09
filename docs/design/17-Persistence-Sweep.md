@@ -87,7 +87,7 @@ Quarantine disables the item and moves it aside, recording what is needed to put
 |---|---|
 | A file (script, unit file, startup file, web shell) | Moved to `<root>/backup/quarantine/<run>/<seq>/<original path>`, keeping its original path, owner, mode and SHA-256 |
 | A cron line | Commented out with a Labyrinth marker; the original line is kept in the manifest |
-| A systemd unit or timer | Disabled and stopped, its file quarantined, then `systemctl daemon-reload` |
+| A systemd unit or timer | Disabled and stopped, its file and the drop-ins no package installed quarantined, then `systemctl daemon-reload`. A transient unit is stopped and recorded; it has no file to keep |
 | A Windows scheduled task | Exported to XML, then disabled |
 | A Windows service | Start type recorded, set to Disabled and stopped |
 | A registry value or WMI subscription | Exported, then removed |
@@ -103,17 +103,18 @@ Quarantine is a core helper (`core/quarantine/`), so every module that removes a
 |---|---|---|---|
 | File | `lab_quarantine_file PATH REASON` | `Move-LabQuarantineFile -Path P -Reason R` | `quarantine_file`: `backup` is the quarantined copy, `prev` the owner, mode and SHA-256 (on Windows, the SHA-256) |
 | Cron line | `lab_quarantine_cron FILE LINE REASON` | | `quarantine_cron`: `prev` is the original line |
-| systemd unit | `lab_quarantine_unit UNIT REASON` | | `quarantine_unit`: `prev` is whether it was enabled and active; its file gets its own `quarantine_file` entry |
+| systemd unit | `lab_quarantine_unit UNIT REASON` | | `quarantine_unit`: `prev` is whether it was enabled and active (`transient=yes` for a transient unit, `dropins=only` when only a package unit's added drop-ins were quarantined); its file and each drop-in get their own `quarantine_file` entry |
 | Scheduled task | | `Disable-LabQuarantineTask -TaskPath P -TaskName N -Reason R` | `quarantine_task`: `backup` is the exported XML, `prev` whether it was enabled |
 | Service | | `Disable-LabQuarantineService -Name N -Reason R` | `quarantine_service`: `prev` is the start mode and whether it was running |
 | Registry value | | `Move-LabQuarantineRegistryValue -Path P -Name N -Reason R` | `quarantine_registry`: `backup` holds the value's name, kind and data |
 | WMI subscription | | `Move-LabQuarantineWmiBinding -Filter F -Consumer C -Reason R` | `quarantine_wmi`: `backup` holds the binding, filter and consumer; only the binding is removed, which stops the subscription |
 | Process | `lab_quarantine_process PID REASON` | `Invoke-LabQuarantineProcess -Id N -Reason R` | `quarantine_process`: `prev` is its command line |
 
-- **Return codes:** `0` done (or the item is already gone, so there was nothing to do), `20` refused, `40` error; the reason goes to standard error.
-- **Refused:** in plan mode; a path that is not absolute, is a folder, or is inside Labyrinth's own root; a cron line that is not in the file; a unit with no unit file, or whose file is outside `/etc` (a package's unit file is never quarantined; its unit is only disabled after approval, in design 15); process 1 and Labyrinth's own process and its parents.
+- **Return codes:** `0` done (or the item is already gone, so there was nothing to do), `20` the item was left as it is (refused, or it could not be moved, such as an immutable or locked file), `40` error; the reason goes to standard error. A module treats `20` as one item for a person, lists it, and goes on with the rest: an item an attacker shaped must never stop the sweep or undo the items already quarantined.
+- **Item text is kept as it is.** A file name, cron line or process command line may hold tabs or other control characters. The manifest escapes them, so they never stop a quarantine.
+- **Refused:** in plan mode; a path that is not absolute, is a folder, or is inside Labyrinth's own root; a cron line that is not in the file; a unit with no unit file; a unit a package installed, asked of the package database (`dpkg-query -S` or `rpm -qf`), not read from its path, since an intruder can write a unit to `/usr/lib` or `/run` too (a package's unit file is never quarantined and its unit is only disabled after approval, in design 15, but its drop-ins that no package installed are quarantined first); a unit outside `/etc` and `/run` on a host with no package database, which cannot tell; process 1 and Labyrinth's own process and its parents.
 - **Recorded first.** Each step is in the manifest before it is made (Conventions, section 7).
-- **Restore.** `lab_quarantine_restore` (`Undo-LabQuarantine`) undoes the current module's quarantine entries, newest first, and a module's `rollback` calls it next to `lab_restore_files`. A file comes back to its path with its owner, mode and SELinux label, after its SHA-256 is checked against the manifest; a file now at that path is moved aside, never overwritten. A cron line is uncommented in place, leaving the rest of the file as it is. A unit is enabled and started again if it was before. A task, service, registry value or binding is put back as exported. Restoring is safe to repeat.
+- **Restore.** `lab_quarantine_restore` (`Undo-LabQuarantine`) undoes the current module's quarantine entries, newest first, and a module's `rollback` calls it next to `lab_restore_files`. A file comes back to its path with its owner, mode and SELinux label, after its SHA-256 is checked against the manifest; a file now at that path is moved aside, never overwritten. A cron line is uncommented in place, leaving the rest of the file as it is. A unit is enabled and started again if it was before. A transient unit cannot be brought back, like a process: its entry is the record. A task, service, registry value or binding is put back as exported. Restoring is safe to repeat.
 - **A process cannot be restored.** Ending it is recorded, and rollback restores the item that started it, which restarts it if it is a unit or service that was running.
 - **Cron.** Commenting a line in a per-user crontab under the cron spool also touches the spool folder, so cron reads the change.
 - **Values every logon needs.** Winlogon's `Userinit` and `Shell` are never removed, because a host without them cannot log anyone on. A planted value there is listed for approval, and a person sets it back to the Windows default.
@@ -150,7 +151,8 @@ Watching tools often abused for persistence, rather than blocking them, is cover
 - No item is ever deleted.
 - Each quarantine step is in the run manifest before it is made, and a module's rollback restores every item it quarantined; restoring twice changes nothing.
 - A file put back is checked against its recorded SHA-256 first; a quarantined copy that changed is not restored, and a file found at the original path is moved aside, not overwritten.
-- Quarantine is refused in plan mode, for a folder, for a path inside Labyrinth's own tree, for a systemd unit whose file is outside `/etc`, for process 1 and Labyrinth's own processes, and for Winlogon's `Userinit` and `Shell` values.
+- A unit in `/usr/lib` or `/run` that no package owns is quarantined; a transient unit is stopped and recorded.
+- Quarantine is refused in plan mode, for a folder, for a path inside Labyrinth's own tree, for a systemd unit a package installed (its added drop-ins are quarantined) or, with no package database, one outside `/etc` and `/run`, for process 1 and Labyrinth's own processes, and for Winlogon's `Userinit` and `Shell` values.
 
 ## References
 

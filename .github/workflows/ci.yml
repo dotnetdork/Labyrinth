@@ -7,6 +7,12 @@ on:
   push:
   pull_request:
 
+# A newer push to a working branch cancels the run it replaces, so runners
+# test only the latest commit. Runs on main always finish.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
 permissions:
   contents: read
 
@@ -15,7 +21,7 @@ jobs:
     name: Linux (bash, ShellCheck, guard, bats)
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       - name: Install bats
         run: |
@@ -44,7 +50,7 @@ jobs:
     name: Manuals (Linux and Windows PDFs, man page, help topic)
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       - name: Install pandoc
         run: |
@@ -65,7 +71,7 @@ jobs:
           echo "widest rendered line: $(awk '{ if (length > w) w = length } END { print w }' build/man.txt)"
           head -20 build/man.txt
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
           name: labyrinth-manuals
           path: build/manual/
@@ -78,21 +84,23 @@ jobs:
       run:
         shell: powershell
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       - name: Install Pester 5 and PSScriptAnalyzer
         run: |
           $PSVersionTable.PSVersion
-          if (-not (Get-Module -ListAvailable Pester | Where-Object { $_.Version -ge [version]'5.5.0' })) {
-            Install-Module Pester -MinimumVersion 5.5.0 -Force -Scope CurrentUser -SkipPublisherCheck
+          # Exact versions, so a new release cannot change what CI runs.
+          if (-not (Get-Module -ListAvailable Pester | Where-Object { $_.Version -eq [version]'5.7.1' })) {
+            Install-Module Pester -RequiredVersion 5.7.1 -Force -Scope CurrentUser -SkipPublisherCheck
           }
-          if (-not (Get-Module -ListAvailable PSScriptAnalyzer)) {
-            Install-Module PSScriptAnalyzer -Force -Scope CurrentUser
+          if (-not (Get-Module -ListAvailable PSScriptAnalyzer | Where-Object { $_.Version -eq [version]'1.24.0' })) {
+            Install-Module PSScriptAnalyzer -RequiredVersion 1.24.0 -Force -Scope CurrentUser
           }
 
       - name: PSScriptAnalyzer
         # The guard fixtures are deliberately bad code, so they are skipped.
         run: |
+          Import-Module PSScriptAnalyzer -RequiredVersion 1.24.0
           $files = Get-ChildItem -Recurse -File -Include *.ps1, *.psm1 |
             Where-Object { $_.FullName -notmatch '\\tests\\fixtures\\guard\\' -and $_.FullName -notmatch '\\vendor\\' }
           $issues = @($files | ForEach-Object { Invoke-ScriptAnalyzer -Path $_.FullName -Severity Warning, Error })
@@ -108,7 +116,7 @@ jobs:
         env:
           LAB_REALSYSTEM: 1
         run: |
-          Import-Module Pester -MinimumVersion 5.5.0
+          Import-Module Pester -RequiredVersion 5.7.1
           $config = New-PesterConfiguration
           $config.Run.Path = 'tests'
           $config.Run.Exit = $true

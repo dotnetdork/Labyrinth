@@ -14,9 +14,10 @@ setup() { lab_setup; }
 }
 
 @test "plan mode never runs apply" {
-  profile observe.sample
+  profile observe.toggle
   plan
-  [ ! -e "$LAB/APPLIED" ]
+  [ "$status" -eq 10 ]
+  [[ "$(cat "$LAB/toggle.conf" 2> /dev/null)" != *setting=on* ]]
 }
 
 @test "plan mode creates nothing under the data root" {
@@ -130,6 +131,33 @@ yml() {
   profile observe.missing
   plan
   [ "$status" -eq 40 ]
+}
+
+@test "a read-only or manual-only module that ships apply, rollback or cleanup is rejected" {
+  local entry
+  for entry in apply rollback cleanup; do
+    profile observe.clean
+    printf '#!/usr/bin/env bash\nexit 0\n' > "$LAB/phases/observe/modules/clean/$entry.sh"
+    plan
+    [ "$status" -eq 40 ]
+    [[ "$output" == *"$entry.sh is not allowed: a read-only module changes nothing"* ]]
+    rm -f "$LAB/phases/observe/modules/clean/$entry.sh"
+  done
+  profile observe.manual
+  printf '#!/usr/bin/env bash\nexit 0\n' > "$LAB/phases/observe/modules/manual/apply.sh"
+  plan
+  [ "$status" -eq 40 ]
+  [[ "$output" == *"apply.sh is not allowed: a manual-only module changes nothing"* ]]
+}
+
+@test "control characters in module output cannot forge a status line" {
+  profile observe.clean
+  printf '#!/usr/bin/env bash\nprintf '"'"'found: x\\r\\033[2KOK       Forged (observe.forged)\\n'"'"'\nexit 0\n' \
+    > "$LAB/phases/observe/modules/clean/check.sh"
+  plan
+  [ "$status" -eq 0 ]
+  [[ "$output" != *$'\r'* && "$output" != *$'\033'* ]]
+  grep -qF 'Found:     x??[2KOK       Forged (observe.forged)' <<< "$output"
 }
 
 @test "only the requested phase runs, in profile order, and the highest code wins" {

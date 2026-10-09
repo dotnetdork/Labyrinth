@@ -47,7 +47,7 @@ Configuration is **data, never code**. It is never `source`d in bash or dot-sour
 | `protected-accounts` | `account class` per line, optional `# reason`; class is `official`, `scoring`, `employee`, `operator`, `breakglass`, `service` or `builtin` | The protected set (design 01, section 4); the class decides what Labyrinth may do to the account |
 | `scoring-allowlist` | one address or CIDR per line | Scoring engine sources, applied before any deny rule |
 | `never-ban` | one address or CIDR per line | Addresses that bans must never touch (design 12) |
-| `services` | `name proto host port expect` per line | Scored services and what their probe expects |
+| `services` | `name proto host port expect` per line; no value begins with `-` except an `expect` of `-` alone, meaning no expected text | Scored services and what their probe expects |
 | `hosts` | `host group profile platform` per line | Which hosts exist, their ring group, profile and platform |
 | `profiles/<name>.profile` | one module id per line | Optional override of a shipped profile |
 
@@ -101,7 +101,7 @@ labyrinth <command> [<phase> | <run>] [options]
 | `apply <phase>` | Plan, then apply behind the gates below |
 | `keep [<run>]` | Keep a run's changes: cancel its revert timer, then record the keep. Without `<run>`, it takes the one run whose timer is armed; if several are armed, it lists them and keeps nothing (`40`) |
 | `rollback <run>` | Undo what a run applied, newest module first. The revert timer runs exactly this. `<run>` is always needed: without it, the runs are listed (`40`) |
-| `runs` | List this host's runs, oldest first: ID, phase, start time (UTC) and state, which is `armed` (with the time it rolls back), `kept`, `rolled back`, `rolled back with errors`, or `not kept, no timer`. Changes nothing; needs root or Administrator (`20`) |
+| `runs` | List this host's runs, oldest first: ID, phase, start time (UTC) and state, which is `armed` (with the time it rolls back; on Linux, `armed: timer lost (restart?)` when systemd no longer has the transient timer, while a Windows scheduled task survives a restart and runs when it can), `kept`, `rolled back`, `rolled back with errors`, or `not kept, no timer`. Changes nothing; needs root or Administrator (`20`) |
 | `probe` | Probe every scored service once; exit `30` if one fails. Changes nothing |
 | `help [<topic>]` | Help for every command, or for one; also `-h` and `--help` (`-Help`). The topic `basics` explains the ideas in plain words, and a module ID prints that module's help page (design 00, section 4) |
 | `version` | Print the version; also `-V` and `--version` (`-Version`) |
@@ -155,7 +155,7 @@ The whole line must parse before help or the version is shown. A value option th
 **Apply order.** A failed step stops the run before anything changes, unless the step says otherwise:
 
 1. Administrator or root (`20`). On Windows the data root is then made private: only Administrators, SYSTEM and the operator's account can use it, and it does not inherit rights from its parent. A file or folder under it that another account owns is refused (`20`) and must be checked and removed by hand. Then the host's line and profile, `event.conf`, and the protected set: missing or empty is `20`, malformed is `40`. Plan mode needs the protected set too.
-2. The run lock, `<state>/lock`, holding the process id. A live holder blocks the run (`20`); a lock whose process is gone is taken over.
+2. The run lock, `<state>/lock`, holding the process id. A live holder blocks the run (`20`); a lock whose process is gone is taken over. The check is only that a process with that id exists, so if the id is reused after a crash, the lock stays held; when no Labyrinth run is going, delete `<state>/lock` by hand.
 3. Every module is planned. Any `40` means nothing is applied. If nothing needs applying, the run ends with no prompts.
 4. **Break-glass** (design 01, section 7): the operator logs in at the console with a `breakglass`-class account and types its name. It is asked once per host and kept in `<state>/breakglass` as `<timestamp><TAB><account>`.
 5. **Confirmation:** the operator types the host's group name.
@@ -173,7 +173,9 @@ The whole line must parse before help or the version is shown. A value option th
    - `cleanup`, if present.
 8. The lock is released. The operator checks that a new login still works, then types `keep`. Anything else leaves the timer armed, and when it fires it runs `rollback <run>`. Until then, `keep <run>` keeps the run, or `keep` alone when only one timer is armed. Keeping after a rollback is refused as too late (`20`).
 
-**The revert timer** is a transient systemd timer `lab-revert-<run>-<n>` on Linux and a one-time scheduled task `\Labyrinth\lab-revert-<run>-<n>` running as SYSTEM on Windows. Re-arming creates the new timer first and only then removes the earlier one, so a failed re-arm leaves the run covered. `rollback` waits up to two minutes for the run lock and then proceeds without it, so a hung run cannot stop the timer.
+**The revert timer** is a transient systemd timer `lab-revert-<run>-<n>` on Linux and a one-time scheduled task `\Labyrinth\lab-revert-<run>-<n>` running as SYSTEM on Windows. Re-arming creates the new timer first and only then removes the earlier one, so a failed re-arm leaves the run covered. A transient systemd timer does not survive a restart; `runs` then shows the run as `armed: timer lost (restart?)`. A scheduled task does survive one, and runs as soon as it can if its time passed while the host was off. `rollback` waits ten seconds for the run lock. If a live run still holds it, hung or waiting at a prompt, `rollback` stops that run and the entry points it started (TERM, then KILL after 30 seconds) and then rolls back, so the timer never undoes a run that is still changing the host and about to report success. Only if that run cannot be stopped does `rollback` go on without the lock, with a warning.
+
+**Who can change the code.** `apply`, `keep` and `rollback` first check that only root (Linux) or administrators (Windows) can change the program folder, the configuration folder, the data root, anything in them and every folder above them (`lab_tree_trusted`, `Find-LabUntrustedItem`; design 07, section 5). If another account could, the command refuses with `20` and changes nothing, because the revert timer would later run that code as root or SYSTEM. The check only reads. On Linux the timer's command line uses real paths, with links resolved.
 
 The time a timer will fire is kept in `<state>/runs/<run>/timer-due` (UTC, `YYYY-MM-DDTHH:MM:SSZ`), for `runs` and the keep prompt. The file is advisory: if it is missing, the time is shown as unknown.
 
@@ -214,7 +216,7 @@ What the runners print is part of the contract: operators read it under time pre
   - from the runner: `Item` (an approval item, section 3.1), `Approved` (the items approved), `Note` (any other module line), `Script` (the entry point that failed), `It said` (its last lines), `Log` (the run log), `Before` and `More` (`<SELF> help <module-id>`).
 
   Text longer than 65 characters wraps at a space onto another line with the same label, so each line makes sense alone; a word longer than that, such as a path, is never split.
-- **Module output.** A module prints `key: text` lines, with a key from the module labels above, in any case: `found: password logins are on`. The runner shows each such line with its label, any other line as a `Note`, and drops blank lines. `check` and `plan` output is shown after the result line, because the result is known only when they end; the output of later entry points is shown as it comes. A `CHANGE` with no `Risk` line gets the module's risk in plain words.
+- **Module output.** A module prints `key: text` lines, with a key from the module labels above, in any case: `found: password logins are on`. The runner shows each such line with its label, any other line as a `Note`, and drops blank lines. `check` and `plan` output is shown after the result line, because the result is known only when they end; the output of later entry points is shown as it comes. A `CHANGE` with no `Risk` line gets the module's risk in plain words. On screen and in `output.log`, a tab becomes a space and every other control character becomes `?`, so text from a module or a probed service cannot move the cursor or forge a status line.
 - **The `problem:` line.** An entry point that exits `20`, `30` or `40` prints a `problem:` line last, saying what stopped it. The runner shows it as given. Without one, the runner says the script gave no reason, names the script, and in plan mode shows its last 10 lines as `It said` lines.
 - **Blocks.** Every `WARN`, `BLOCKED`, `FAIL` or `ERROR` block says what failed (`Problem`, or `Found` for a `WARN`), how to recover (`Fix`, or the `Did: rolled back` of an automatic rollback), and ends with `More`. A `FAIL` or `ERROR` in apply also names the run log.
 - **Header.** Two lines, at most 78 columns:
@@ -292,7 +294,7 @@ The manifest is `<state>/runs/<run>/manifest.jsonl`, one JSON object per line, e
 
 | Action | Meaning |
 |---|---|
-| `run_start`, `breakglass_verified`, `run_kept`, `run_rolled_back` | The run itself (empty `module`) |
+| `run_start`, `breakglass_verified`, `run_kept`, `run_rolled_back` | The run itself (empty `module`). `breakglass_verified` records the operator's confirmation, not a proof; its `note` is the console session found for the account (`console session <id>`), `no console session found`, `console sessions could not be listed`, or `confirmed earlier`. The name stays as it is so older manifests read the same |
 | `apply_start` | A module's `apply` is about to run; `rollback <run>` undoes every module with one |
 | `file` | A file is about to change; `backup` holds its copy, `<backup>/<run>/<module>/<seq>-<name>` |
 | `file_created` | A file that did not exist is about to be created |
@@ -320,7 +322,7 @@ The `delete` rule has exactly one legitimate use: the account module deleting an
 
 - Tests live in `tests/`, mirroring the code layout: `tests/core/`, `tests/platform/`, `tests/phases/<phase>/<module>/`, `tests/lint/`.
 - **bats** for bash and **Pester 5** for PowerShell. Unit tests mock system commands. Real-system tests (`tests/core/realsystem.bats`, `tests/core/RealSystem.Tests.ps1`) run only where `LAB_REALSYSTEM=1`, which CI sets on its disposable runners, and on lab VMs; never on a developer's own machine.
-- Runner tests build a throwaway Labyrinth tree from the fixture modules in `tests/fixtures/modules/`, so they never touch the repository's own `phases/` or `profiles/`. The tree's core gets test doubles appended (`tests/fixtures/doubles.sh`, `tests/fixtures/Doubles.ps1`) that replace the administrator check, the revert timer and the probes.
+- Runner tests build a throwaway Labyrinth tree from the fixture modules in `tests/fixtures/modules/`, so they never touch the repository's own `phases/` or `profiles/`. The tree's core gets test doubles appended (`tests/fixtures/doubles.sh`, `tests/fixtures/Doubles.ps1`) that replace the administrator check, the ownership check, the revert timer and the probes.
 - **CI** (`.github/workflows/ci.yml`) runs on every push and pull request: ShellCheck, the guard and bats on Ubuntu; PSScriptAnalyzer and Pester under Windows PowerShell 5.1 on Windows; and the manual build, whose output is kept as a CI artifact. The test tools are installed on the CI runners only. A contributor may install them locally to run the same commands, but nothing in Labyrinth requires it.
 - **The compatibility suite** (`tests/runner/compat.bats`, `tests/runner/Compat.Tests.ps1`) holds every command form operators and stored revert timers rely on (section 3.1). It is never edited to make a change pass: change the runner instead. A form leaves it only by a design decision recorded in the design review log.
 - **The operator manual** (`docs/manual/labyrinth.md`) is one source for the Linux and Windows PDFs, the man page and the Windows help topic, built in CI by `tools/manual/build.sh`. Text for one platform sits between `<!-- linux -->` or `<!-- windows -->` and `<!-- end -->`. A change to a command, option, exit code or console message updates the manual in the same commit, and `tests/manual/manual.bats` checks that each platform's manual has every command, option and exit code and nothing from the other platform. The manual is written in the plain style of `docs/Overview.md`: short sentences, and every term explained the first time it appears.

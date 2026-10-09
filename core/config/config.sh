@@ -137,11 +137,49 @@ lab_addr_valid() {
       (( 10#$o <= 255 )) || return 1
     done
     [[ -z "$bits" ]] || { [[ "$bits" =~ ^[0-9]{1,2}$ ]] && (( 10#$bits <= 32 )); }
-  elif [[ "$ip" == *:* && "$ip" =~ ^[0-9A-Fa-f:.]+$ ]]; then
+  elif _lab_ip6_valid "$ip"; then
     [[ -z "$bits" ]] || { [[ "$bits" =~ ^[0-9]{1,3}$ ]] && (( 10#$bits <= 128 )); }
   else
     return 1
   fi
+}
+
+# _lab_ip6_valid ADDRESS: is it an IPv6 address: eight groups of 1 to 4 hex
+# digits, or fewer around a single '::', the last two optionally written
+# as an IPv4 address?
+_lab_ip6_valid() {
+  local ip="$1" v4 o a b
+  [[ "$ip" == *:* && "$ip" =~ ^[0-9A-Fa-f:.]+$ ]] || return 1
+  if [[ "$ip" == *.* ]]; then
+    v4="${ip##*:}"
+    [[ "$v4" =~ ^([0-9]{1,3})\.([0-9]{1,3})\.([0-9]{1,3})\.([0-9]{1,3})$ ]] || return 1
+    for o in "${BASH_REMATCH[@]:1}"; do
+      (( 10#$o <= 255 )) || return 1
+    done
+    ip="${ip%"$v4"}0:0"
+  fi
+  if [[ "$ip" == *::* ]]; then
+    [[ "${ip#*::}" != *::* ]] || return 1
+    a="$(_lab_ip6_groups "${ip%%::*}")" || return 1
+    b="$(_lab_ip6_groups "${ip#*::}")" || return 1
+    [[ $((a + b)) -le 7 ]]
+  else
+    a="$(_lab_ip6_groups "$ip")" || return 1
+    [[ "$a" == 8 ]]
+  fi
+}
+
+# _lab_ip6_groups PART: print how many hex groups PART (no '::') holds;
+# 1 if one is empty or not 1 to 4 hex digits.
+_lab_ip6_groups() {
+  local IFS=: g n=0
+  if [[ -z "$1" ]]; then printf '0\n'; return 0; fi
+  [[ "$1" != :* && "$1" != *: ]] || return 1
+  for g in $1; do
+    [[ "$g" =~ ^[0-9A-Fa-f]{1,4}$ ]] || return 1
+    n=$((n + 1))
+  done
+  printf '%s\n' "$n"
 }
 
 # lab_addrs_load NAME: read an address list (scoring-allowlist, never-ban)
@@ -171,6 +209,12 @@ lab_services_load() {
     line="${LAB_CFG_LINES[i]}"
     n="${LAB_CFG_NOS[i]}"
     [[ "$line" =~ $re ]] || { lab_cfg_error "$file" "$n" 'expected: name proto host port expect'; return 1; }
+    # The probes pass these to commands, where a leading '-' reads as an
+    # option; a lone '-' is the "no expected text" placeholder.
+    if [[ "${BASH_REMATCH[1]}" == -* || "${BASH_REMATCH[3]}" == -* || "${BASH_REMATCH[5]}" == -?* ]]; then
+      lab_cfg_error "$file" "$n" "a value may not begin with '-'"
+      return 1
+    fi
     lab_in_list "${BASH_REMATCH[2]}" "$LAB_PROBE_PROTOS" \
       || { lab_cfg_error "$file" "$n" "unknown protocol ${BASH_REMATCH[2]}"; return 1; }
     (( 10#${BASH_REMATCH[4]} >= 1 && 10#${BASH_REMATCH[4]} <= 65535 )) \

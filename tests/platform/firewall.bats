@@ -60,7 +60,7 @@ ufw_host() {
 
 @test "firewall: every function but restore is refused when the backend is not known" {
   local fact fn
-  for fact in none conflict unknown; do
+  for fact in conflict unknown; do
     LAB_FACT_firewall="$fact"
     for fn in snapshot 'allow tcp 22 any' default_deny_in state; do
       run lab_fw $fn
@@ -70,6 +70,26 @@ ufw_host() {
   done
   [ -z "$(calls)" ]
   [ ! -e "$(lab_manifest_file)" ]
+}
+
+@test "firewall: with no active firewall, an installed nft is used, then iptables, else refused" {
+  LAB_FACT_firewall=none
+  run lab_fw snapshot
+  [ "$status" -eq 20 ]
+  [[ "$output" == *"neither nft nor iptables is installed"* ]]
+  [ ! -e "$(lab_manifest_file)" ]
+  stub iptables-save 'echo "*filter"'
+  stub ip6tables-save 'echo "*filter"'
+  stub iptables 'exit 0'
+  lab_fw snapshot
+  [ "$(cat "$(lab_json_get "$(grep firewall_snapshot "$(lab_manifest_file)")" backup)/backend")" = iptables ]
+  stub nft 'exit 0'
+  lab_fw snapshot
+  # The stubbed PATH has no tail, so take the last line in bash.
+  local last
+  last="$(grep firewall_snapshot "$(lab_manifest_file)")"
+  last="${last##*$'\n'}"
+  [ "$(lab_json_get "$last" target)" = nftables ]
 }
 
 @test "firewall: allow and default deny need a snapshot first" {
@@ -143,6 +163,37 @@ ufw_host() {
   [ "$status" -eq 20 ]
   [[ "$output" == *"no longer accepts ICMP echo requests"* ]]
   never_ran 'default deny'
+}
+
+@test "firewall: default deny needs each scored service's port allowed from every scoring address" {
+  ufw_host
+  printf 'web-main http %s 80 Welcome\ndns-main dns %s 53 www.example.test=192.0.2.20\nmail-smtp smtp other.example.test 25 -\n' \
+    "$(lab_host)" "$(lab_host)" > "$LAB_CONFIG_DIR/services"
+  lab_fw snapshot
+  lab_fw allow tcp 22 198.51.100.7
+  lab_fw allow tcp 22 2001:db8::7
+  run lab_fw default_deny_in
+  [ "$status" -eq 20 ]
+  [[ "$output" == *"web-main tcp/80 from 198.51.100.7"* && "$output" == *"dns-main udp/53 from 2001:db8::7"* ]]
+  [[ "$output" != *mail-smtp* ]]
+  never_ran 'default deny'
+  lab_fw allow tcp 80 any
+  lab_fw allow tcp 53 198.51.100.7
+  lab_fw allow tcp 53 2001:db8::7
+  run lab_fw default_deny_in
+  [ "$status" -eq 20 ]
+  [[ "$output" == *"dns-main udp/53"* && "$output" != *web-main* ]]
+  lab_fw allow udp 53 any
+  lab_fw default_deny_in
+  called 'ufw default deny incoming'
+}
+
+@test "firewall: with no scored service here, an allow from any covers every scoring address" {
+  ufw_host
+  lab_fw snapshot
+  lab_fw allow tcp 80 any
+  lab_fw default_deny_in
+  called 'ufw default deny incoming'
 }
 
 @test "firewall: default deny is refused without a scoring allowlist" {
@@ -254,6 +305,18 @@ exit 0'
   lab_fw_rollback
   called 'iptables-restore '
   called 'ip6tables-restore '
+}
+
+@test "iptables: without ip6tables, the default deny says IPv6 stays open" {
+  LAB_FACT_firewall=iptables
+  stub iptables 'case "$1" in -C | -S) exit 1 ;; esac; exit 0'
+  stub iptables-save 'echo "*filter"'
+  lab_fw snapshot
+  lab_fw allow tcp 22 any
+  run lab_fw default_deny_in
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"ip6tables is not installed, so IPv6 stays open"* ]]
+  called 'iptables -P INPUT DROP'
 }
 
 @test "firewalld: every active zone, at run time and permanently; added files moved aside" {

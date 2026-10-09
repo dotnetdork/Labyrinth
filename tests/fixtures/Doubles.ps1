@@ -3,12 +3,28 @@
 # They replace the host-specific parts of the core, so runner tests need no
 # administrator rights, no scheduled tasks and no network:
 #   - the administrator check passes unless $env:LAB_ROOT\NOT_ADMIN exists;
+#   - the ownership check passes unless $env:LAB_ROOT\UNTRUSTED exists;
+#   - every account has console session 1 unless $env:LAB_ROOT\NO_CONSOLE exists;
 #   - the revert timer is recorded in $env:LAB_ROOT\timer.log instead of registered;
 #   - a probe fails if its host is listed as "<host> fail" in
 #     $env:LAB_ROOT\probe-state, and passes otherwise;
 #   - the console is two files, $env:LAB_ROOT\tty.out and tty.in (below).
 
 function Test-LabAdmin { return -not (Test-Path -LiteralPath (Join-Path $env:LAB_ROOT 'NOT_ADMIN')) }
+
+function Find-LabUntrustedItem {
+    param([AllowEmptyString()] [string[]] $Path)
+    $null = $Path
+    if (Test-Path -LiteralPath (Join-Path $env:LAB_ROOT 'UNTRUSTED')) { return $env:LAB_ROOT }
+    return $null
+}
+
+function Get-LabConsoleSession {
+    param([string] $Account)
+    $null = $Account
+    if (Test-Path -LiteralPath (Join-Path $env:LAB_ROOT 'NO_CONSOLE')) { return $null }
+    return '1'
+}
 
 function Register-LabRevertTimer {
     param([int] $Seconds, [string] $RunId, [string] $Execute, [string] $Argument)

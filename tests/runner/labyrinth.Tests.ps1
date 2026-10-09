@@ -25,9 +25,10 @@ Describe 'labyrinth.ps1 plan mode' {
     }
 
     It 'plan mode never runs apply' {
-        Write-TestProfile $t 'observe.sample'
-        Invoke-TestPlan $t | Out-Null
-        Join-Path $lab 'APPLIED' | Should -Not -Exist
+        Write-TestProfile $t 'observe.toggle'
+        (Invoke-TestPlan $t).Code | Should -Be 10
+        $conf = Join-Path $lab 'toggle.conf'
+        if (Test-Path -LiteralPath $conf) { (Get-Content -LiteralPath $conf) -ccontains 'setting=on' | Should -BeFalse }
     }
 
     It 'plan mode creates nothing under the data root' {
@@ -146,6 +147,36 @@ Describe 'labyrinth.ps1 plan mode' {
     It 'a module in the profile that does not exist is an error' {
         Write-TestProfile $t 'observe.missing'
         (Invoke-TestPlan $t).Code | Should -Be 40
+    }
+
+    It 'control characters in module output cannot forge a status line' {
+        $check = Join-Path $lab 'phases\observe\modules\clean\check.ps1'
+        Set-Content -LiteralPath $check -Encoding Ascii -Value @(
+            '[Console]::Out.Write("found: x`r" + [char]27 + "[2KOK       Forged (observe.forged)`n")', 'exit 0')
+        Write-TestProfile $t 'observe.clean'
+        $r = Invoke-TestPlan $t
+        $r.Code | Should -Be 0
+        $r.Output.Contains([string][char]27) | Should -BeFalse
+        @($r.Output -split "`r?`n" | Where-Object { $_ -clike 'OK*Forged*' }).Count | Should -Be 0
+        $r.Output | Should -Match ([regex]::Escape('?[2KOK       Forged (observe.forged)'))
+    }
+
+    It 'a read-only or manual-only module that ships apply, rollback or cleanup is rejected' {
+        $clean = Join-Path $lab 'phases\observe\modules\clean'
+        foreach ($entry in @('apply', 'rollback', 'cleanup')) {
+            $file = Join-Path $clean "$entry.ps1"
+            Set-Content -LiteralPath $file -Value 'exit 0' -Encoding Ascii
+            Write-TestProfile $t 'observe.clean'
+            $r = Invoke-TestPlan $t
+            $r.Code | Should -Be 40
+            $r.Output | Should -Match "$entry\.ps1 is not allowed: a read-only module changes nothing"
+            Remove-Item -LiteralPath $file
+        }
+        Set-Content -LiteralPath (Join-Path $lab 'phases\observe\modules\manual\apply.ps1') -Value 'exit 0' -Encoding Ascii
+        Write-TestProfile $t 'observe.manual'
+        $r = Invoke-TestPlan $t
+        $r.Code | Should -Be 40
+        $r.Output | Should -Match 'apply.ps1 is not allowed: a manual-only module changes nothing'
     }
 
     It 'only the requested phase runs, in profile order, and the highest code wins' {

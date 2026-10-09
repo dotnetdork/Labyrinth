@@ -54,6 +54,43 @@ setup() {
   [ ! -e "$LAB/toggle.conf" ]
 }
 
+@test "apply, keep and rollback refuse code or data another account can change" {
+  answers root ring1 no
+  apply
+  [ "$status" -eq 0 ]
+  id="$(run_id)"
+  touch "$LAB/UNTRUSTED"
+  rm "$LAB/toggle.conf"
+  apply
+  [ "$status" -eq 20 ]
+  [[ "$output" == *"$LAB can be changed by an account other than root"* ]]
+  [ ! -e "$LAB/toggle.conf" ]
+  printf 'setting=on\n' > "$LAB/toggle.conf"
+  for cmd in keep rollback; do
+    run bash "$LAB/labyrinth.sh" --root "$ROOT" --config "$ETC" "$cmd" "$id"
+    [ "$status" -eq 20 ] || { echo "$cmd: $status"; return 1; }
+  done
+  # Nothing was rolled back, and the timer is still armed.
+  grep -qx 'setting=on' "$LAB/toggle.conf"
+  [ -f "$ROOT/state/runs/$id/timer" ]
+}
+
+@test "an entry point gets no standard input, so it cannot take the operator's answers" {
+  printf '%s\n' '#!/usr/bin/env bash' \
+    'if IFS= read -r l; then printf "%s\n" "$l" > "$LAB_ROOT/STDIN_SEEN"; fi' \
+    'echo "toggle: would set setting=on in toggle.conf"' 'exit 10' > "$LAB/phases/observe/modules/toggle/plan.sh"
+  apply
+  [ "$status" -eq 0 ]
+  [ ! -e "$LAB/STDIN_SEEN" ]
+  grep -qx 'setting=on' "$LAB/toggle.conf"
+}
+
+@test "the host comes from the system, not from HOSTNAME" {
+  HOSTNAME=not-this-host apply
+  [ "$status" -eq 0 ]
+  grep -qx 'setting=on' "$LAB/toggle.conf"
+}
+
 @test "apply needs this host in the hosts file, and never touches the manual group" {
   rm "$ETC/hosts"
   apply
@@ -102,6 +139,19 @@ setup() {
   [ "$status" -eq 0 ]
   [[ "$output" == *"Break-glass account root: confirmed earlier, so not asked again."* ]]
   grep -qx 'setting=on' "$LAB/toggle.conf"
+}
+
+@test "break-glass: the console session found is recorded; with none, a warning and the run goes on" {
+  apply
+  [ "$status" -eq 0 ]
+  [[ "$(manifest)" == *'"action":"breakglass_verified","target":"root"'*'"note":"console session 1"'* ]]
+  rm "$ROOT/state/breakglass"
+  touch "$LAB/NO_CONSOLE"
+  printf 'setting=off\n' > "$LAB/toggle.conf"
+  apply
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"warning: no session for root was found at this host's console"* ]]
+  [[ "$(manifest)" == *'"note":"no console session found"'* ]]
 }
 
 @test "a wrong group name: the plan is not confirmed and nothing is changed" {
@@ -376,6 +426,24 @@ fp() { printf '%s' "$1" | sha256sum | cut -c1-12; }
   apply
   [ "$status" -eq 20 ]
   [ ! -e "$LAB/toggle.conf" ]
+}
+
+@test "rollback stops a live run that holds the lock, and its children, before undoing it" {
+  printf 'setting=off\n' > "$LAB/toggle.conf"
+  answers root ring1 no
+  apply
+  id="$(run_id)"
+  bash -c 'sleep 300; :' &
+  local holder=$!
+  mkdir -p "$ROOT/state/lock"
+  printf '%s\n' "$holder" > "$ROOT/state/lock/pid"
+  run bash "$LAB/labyrinth.sh" --root "$ROOT" --config "$ETC" rollback "$id"
+  wait "$holder" 2> /dev/null || true
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"stopping the Labyrinth run (pid $holder)"* ]]
+  [[ "$output" != *"without the run lock"* ]]
+  ! kill -0 "$holder" 2> /dev/null || return 1
+  grep -qx 'setting=off' "$LAB/toggle.conf"
 }
 
 @test "a stale run lock is taken over" {

@@ -69,7 +69,11 @@ function Test-LabAddress {
         foreach ($o in $Matches[1..4]) { if ([int]$o -gt 255) { return $false } }
         return ($null -eq $bits -or ($bits -match '^\d{1,2}$' -and [int]$bits -le 32))
     }
-    if ($ip -match ':' -and $ip -match '^[0-9A-Fa-f:.]+$') {
+    # .NET parses the IPv6 form, so ':::' and the like are refused; the
+    # character check keeps out a zone ID and other forms it also accepts.
+    $parsed = $null
+    if ($ip -match ':' -and $ip -match '^[0-9A-Fa-f:.]+$' -and [Net.IPAddress]::TryParse($ip, [ref]$parsed) -and
+        $parsed.AddressFamily -eq [Net.Sockets.AddressFamily]::InterNetworkV6) {
         return ($null -eq $bits -or ($bits -match '^\d{1,3}$' -and [int]$bits -le 128))
     }
     return $false
@@ -102,6 +106,11 @@ function Read-LabServiceList {
             throw "${where}: expected: name proto host port expect"
         }
         $svc = [pscustomobject]@{ Name = $Matches[1]; Proto = $Matches[2]; Target = $Matches[3]; Port = [int]$Matches[4]; Expect = $Matches[5] }
+        # The probes pass these to commands, where a leading '-' reads as an
+        # option; a lone '-' is the "no expected text" placeholder.
+        if ($svc.Name.StartsWith('-') -or $svc.Target.StartsWith('-') -or ($svc.Expect.StartsWith('-') -and $svc.Expect -ne '-')) {
+            throw "${where}: a value may not begin with '-'"
+        }
         if ($protos -cnotcontains $svc.Proto) { throw "${where}: unknown protocol $($svc.Proto)" }
         if ($svc.Port -lt 1 -or $svc.Port -gt 65535) { throw "${where}: port out of range: $($svc.Port)" }
         if ($svc.Proto -eq 'dns' -and $svc.Expect -notmatch '^.+=.+$') { throw "${where}: a dns probe expects name=answer" }
