@@ -17,7 +17,7 @@ So this spec splits the work by blast radius. A change that affects one host is 
 | Tools must not deliberately break expected functionality (National Collegiate Cyber Defense Competition [NCCDC], 2025, Rule 5.6.5). | Every change comes from an explicit list and skips the protected set. |
 | Officials must be given access on request (NCCDC, 2025, Rule 4.1). | When an official asks, the captain gives them a working login (design 05, section 5). Remote Desktop and firewall restrictions still allow the admin source and any official sources named in the event packet. |
 | Scoring is based partly on controlling and preventing unauthorized access (NCCDC, 2025, Scoring section), and scored services are a primary Red Team target. | Where RDP or WinRM is itself scored, the restriction also allows the scoring engine, and the service is hardened rather than closed (section 3). |
-| Anything that interferes with the scoring engine is the team's responsibility (NCCDC, 2025, Rule 4.11). | DNS on the domain controller is treated as scored and changed by hand only (Blueprint §4.6). |
+| Anything that interferes with the scoring engine is the team's responsibility (NCCDC, 2025, Rule 4.11). | The rule assigns responsibility; it does not require changes to be made by hand. As a design choice, DNS on the domain controller is treated as scored and changed by hand only, because its settings replicate to every domain controller (Blueprint §4.6). |
 
 ## 3. Blast radius decides the tier
 
@@ -46,7 +46,7 @@ So this spec splits the work by blast radius. A change that affects one host is 
 **Ending a process that runs as SYSTEM.** An administrator cannot always end a process running as SYSTEM, and Red Teams use this to keep implants alive (*Background*). When a person approves it, Labyrinth ends the process through a one-time scheduled task that runs as SYSTEM, then deletes the task. The approval names the process ID and the hash of its executable; if either no longer matches when the task runs, nothing is ended. The process's persistence (its service, scheduled task or autorun) is quarantined first (design 17), so it does not come straight back, and the executable is kept as evidence (design 02). It is never offered for a process the dependency map ties to a scored service.
 
 
-- **Why Group Policy is manual.** One Group Policy change reaches every machine in the domain at once. That is the "indiscriminate" pattern the rules warn about (NCCDC, 2025, Rule 5.6.5), so it stays with a person who can watch the effect.
+- **Why Group Policy is manual.** One Group Policy change reaches every machine in the domain at once, and a mistake breaks all of them before any probe can catch it. No rule forbids a Group Policy change that breaks nothing; keeping it with a person who can watch the effect is a design choice, made for blast radius. Rule 5.6.5's "indiscriminately" describes ending all outbound connections, not every change that touches many hosts (NCCDC, 2025, Rule 5.6.5).
 - **Why Print Spooler.** The print spooler has had several serious remote vulnerabilities, and a domain controller rarely needs to print (*Background*). It is turned off only when printing is not a scored service on that host.
 - **Why local policy for LLMNR and NBT-NS.** Both let an attacker on the network answer name lookups and collect password hashes (*Background*). The per-host setting keeps the blast radius to one host; the domain-wide setting is a Group Policy change and therefore Tier 3.
 

@@ -54,7 +54,7 @@ Labyrinth/
 ├── labyrinth.sh / labyrinth.ps1  ← main program: plan, apply, keep, rollback, runs, probe
 ├── core/ phases/ profiles/ platform/ report/   ← code layout from design 00
 ├── config/                       ← *.example templates for run-time values; never real values
-├── vendor/                       ← pinned third-party code, each under its own license
+├── vendor/                       ← pinned third-party code, each under its own license (planned)
 ├── tests/                        ← bats and Pester tests, the guard and fixtures
 ├── tools/manual/                 ← builds the Linux and Windows manuals (CI only)
 ├── docs/
@@ -64,12 +64,13 @@ Labyrinth/
 │   ├── Roadmap.md                 ← build order: milestones, branches, settled decisions
 │   ├── lab/README.md              ← the test lab: machines, how to run a pass, results
 │   ├── manual/labyrinth.md        ← operator manual: one source, Linux and Windows editions
-│   └── design/                    ← design specs 00–18 (module contract, panic button,
+│   └── design/                    ← design specs 00–21 (module contract, panic button,
 │                                    incident reporting, event seed, baseline, credentials,
 │                                    status feed, cleanup, reference mining, deception maze,
 │                                    log forwarding, Windows/AD, bans, health monitor,
 │                                    backups, patching, appliance runbooks, persistence
-│                                    sweep, service packs)
+│                                    sweep, service packs, platform adapters, packages,
+│                                    vulnerability tracker)
 └── .github/workflows/ci.yml       ← lint, guard and tests on Linux and Windows
 ```
 
@@ -77,7 +78,7 @@ Strategy, rules baseline, topology notes and the vulnerability assessment live i
 
 ## Status
 
-Core phase (reviewed 2026-10-02). The design specs are the blueprint the code is built against. The core is built for Linux and Windows: logging, the run manifest, the safety gates, the dead-man revert timer, scoring-style probes, and the main program's plan, apply, keep, rollback, runs and probe commands (docs/Conventions.md, section 3.1). It is tested on CI, but not yet in a lab. The guard checks every script for outside calls and blanket actions. No hardening module exists yet.
+Groundwork stage (reviewed 2026-10-09). The design specs are the blueprint the code is built against, and [`docs/Roadmap.md`](docs/Roadmap.md) gives the order they are built in. The core is built for Linux and Windows: logging, the run manifest, the safety gates, the dead-man revert timer, scoring-style probes, and the main program's plan, apply, keep, rollback, runs and probe commands (docs/Conventions.md, section 3.1). The groundwork modules need is built too: platform facts, the firewall adapter, quarantine, approval items and the shipped profiles. It is tested on CI, but not yet in a lab. The guard checks every script for outside calls and blanket actions. No hardening module exists yet, and remote mode (driving many hosts from one control node) is not built.
 
 
 > [!IMPORTANT]

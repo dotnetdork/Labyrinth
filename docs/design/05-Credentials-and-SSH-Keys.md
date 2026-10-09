@@ -182,7 +182,7 @@ Administrator rights can hide in places a simple group listing misses. The inven
 | Unexpected *domain* account or group member | Printed on the domain checklist (design 11, section 5) | 3, person-run |
 | Expected account | Unchanged | — |
 
-Locking means: on Linux, `usermod -L` and an expiry date in the past, with the login shell left as it is (Rule 5.6.5 names shell changes); on Windows, the account disabled. Both are recorded in the run manifest and undone by `rollback`. Re-enabling a locked account raises an alert (Windows event 4722; an auditd rule on Linux; design 10).
+Locking means: on Linux, `usermod -L` and an expiry date in the past, with the login shell left as it is (a design choice: Rule 5.6.5's example is setting *all* user shells to `/bin/false`, and leaving the shell alone keeps rollback simple and avoids any resemblance to it); on Windows, the account disabled. Both are recorded in the run manifest and undone by `rollback`. Re-enabling a locked account raises an alert (Windows event 4722; an auditd rule on Linux; design 10).
 
 ### 6.4 Delete once confirmed
 

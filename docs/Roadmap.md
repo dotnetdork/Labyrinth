@@ -43,24 +43,27 @@ Built on one branch, `phase-3/groundwork`, one commit per part. The parts are li
 
 ### Stage 4: P0 lockout
 
-Each module ships its read-only `check` and `plan` first.
+Each module ships its read-only `check` and `plan` first. The branches are listed in the order a first-minute run uses them (design 01, section 6), so each one can be tried in the lab behind the ones before it.
 
 | Branch | Spec | Delivers |
 |---|---|---|
-| `phase-4/baseline-inventory` | 04, 05 §2 | Read-only inventory and the dependency map of each scored service, which later modules rely on |
+| `phase-4/baseline-inventory` | 04, 05 §2 | Read-only inventory and the dependency map of each scored service, including the addresses each one connects out to, which later modules and the outbound allowlist rely on |
+| `phase-4/vuln-check` | 21 §3 | The read-only finding and ranking of known flaws: host security data, web apps on disk, the dated known-exploited snapshot, and WES-NG on Windows. Built early so the team sees what is exposed from the first build |
 | `phase-4/credentials` | 05 | Rotation from an explicit list; password and lockout policy (§2.2) |
-| `phase-4/accounts` | 05 §6 | Locking accounts from a list; deletion only after approval and a passing checkpoint |
-| `phase-4/sessions` | 01 §6 | Ending intruder sessions outside the protected set |
-| `phase-4/persistence-sweep` | 17 | Classification, automatic quarantine of high-confidence items, and limits on who can schedule jobs |
-| `phase-4/firewall` | 01, 11 | Default-deny through the adapter, under a revert timer |
 | `phase-4/ssh` | 05 §4 | Remote-admin hardening and the SSH key registry |
-| `phase-4/win-base` | 11 §3, §3.3 | Windows protocol and credential settings |
+| `phase-4/sessions` | 01 §6.2 | Ending intruder sessions outside the protected set |
+| `phase-4/firewall` | 01 §6.1, 11, 19 | Default-deny inbound and outbound through the adapter, under a revert timer. The adapter gains an outbound default and the `outbound-allow` list, on every backend |
+| `phase-4/packages` | 20 | Installing the profile's packages behind the lockdown: source order, lock wait, simulation check, services kept stopped, `package_install` entries; vendored tools and pinned downloads with the core download helper |
+| `phase-4/restore-points` | 14 | `backup <service>` and `restore <service>`, so a restore point exists before the sweep and before any patch |
+| `phase-4/persistence-sweep` | 17 | Classification, automatic quarantine of high-confidence items, and limits on who can schedule jobs |
+| `phase-4/accounts` | 05 §6 | Locking accounts from a list; deletion only after approval and a passing checkpoint |
+| `phase-4/win-base` | 11 §3, §3.3 | Windows protocol and credential settings, including SMBv1 and Print Spooler |
 | `phase-4/ad-readonly` | 11 §3.1, §3.2 | Domain read-only checks and the printed domain checklist |
-| `phase-4/first-minute` | 01 §6 | The first-minute bundle, ring order and canary hosts |
+| `phase-4/first-minute` | 01 §6, §6.3 | The first-minute bundle in its order (lock down, install, sweep, reopen outbound), first-minute runs with every answer on the command line, ring order and canary hosts |
 
 ### Stage 5: remote mode
 
-Built right after the P0 lockout works locally, so the lockout reaches every host quickly.
+Built right after the P0 lockout works locally, so the lockout reaches every host quickly. A first-minute run on every host at once depends on it.
 
 | Branch | Spec | Delivers |
 |---|---|---|
@@ -71,27 +74,28 @@ Built right after the P0 lockout works locally, so the lockout reaches every hos
 | Branch | Spec | Delivers |
 |---|---|---|
 | `phase-6/seal` | 04 §6 | `seal`, `reseal --reason`, and integrity findings against the sealed baseline |
-| `phase-6/checkpoint` | 13 | The read-only `checkpoint` summary; the sweep re-runs in report mode |
-| `phase-6/linux-audit` | 10 | auditd rules |
-| `phase-6/win-audit` | 10 | Audit policy, script block logging and log sizes |
-| `phase-6/log-forwarding` | 10 §4 | syslog forwarding on Linux; on Windows, the forwarder already present or the HEC script; saved searches |
+| `phase-6/checkpoint` | 13 | The read-only `checkpoint` summary; the sweep re-runs in report mode; the known-flaw section reads the tracker once stage 7 builds it |
+| `phase-6/linux-audit` | 10 | auditd, installed by `packages`, with the vendored rule set |
+| `phase-6/win-audit` | 10 | Audit policy, script block logging, log sizes, and Sysmon from its pinned download |
+| `phase-6/log-forwarding` | 10 §4 | syslog forwarding on Linux; on Windows, the forwarder already present or the HEC script; saved searches, including the outbound log rule |
 
 ### Stage 7: sustain and hardening (P1)
 
 | Branch | Spec | Delivers |
 |---|---|---|
-| `phase-7/service-packs-web` | 18 | nginx, Apache and IIS |
+| `phase-7/service-packs-web` | 18 | nginx, Apache and IIS; ModSecurity with the Core Rule Set in detection-only mode, and approved blocking rules for one flaw (§6.1) |
 | `phase-7/service-packs-mail-dns` | 18 | Postfix, Dovecot, BIND, and Windows DNS on servers that are not domain controllers |
-| `phase-7/service-packs-data` | 18 | MySQL or MariaDB, vsftpd, and the sysctl library |
-| `phase-7/service-reduction` | 15 | Stopping services from an explicit candidate list; patching runbooks |
-| `phase-7/backup-restore` | 14 | `backup <service>` and `restore <service>` |
-| `phase-7/win-tier3` | 11 | LDAP signing, lockout settings and the remaining approval items |
+| `phase-7/service-packs-data` | 18 | MySQL or MariaDB, vsftpd, and the host settings library, including the `pkexec` setting |
+| `phase-7/service-reduction` | 15 §3 | Stopping services from an explicit candidate list |
+| `phase-7/patching` | 15 §4, 20 §5 | Applying an approved security update, one package at a time, after a restore point; pre-approved updates for scored packages in a first-minute run; Windows patching checklist |
+| `phase-7/vuln-tracker` | 21 §3.2, §4, §5 | The version scan of the team's own hosts, the tracker and its states, and the mitigation catalog, with automatic mitigations applied through the modules that own each setting |
+| `phase-7/win-tier3` | 10 §5, 11 | LDAP signing, lockout settings, the per-host abused-tool block, and the remaining approval items |
 
 ### Stage 8: reporting and cleanup
 
 | Branch | Spec | Delivers |
 |---|---|---|
-| `phase-8/report` | 02 | The incident report builder, fed by quarantine evidence and integrity findings |
+| `phase-8/report` | 02 | The incident report builder, fed by quarantine evidence, integrity findings and the tracker's closed flaws |
 | `phase-8/cleanup-integrity` | 07 | Cleanup, and checking the release before a run |
 
 ### Stage 9: deceive and extras (P2)
@@ -101,32 +105,51 @@ Built right after the P0 lockout works locally, so the lockout reaches every hos
 | `phase-9/seed` | 03 | Event seed derivation in `core/seed/` |
 | `phase-9/canaries` | 03, 09, 11 | Canary files and honey-accounts |
 | `phase-9/maze` | 09 | The deception maze, CVE decoys and the web tarpit |
-| `phase-9/dynamic-bans` | 12 | Bans that never touch the never-ban list or the scoring allowlist |
+| `phase-9/dynamic-bans` | 12 | Bans in both directions that never touch the never-ban list or the scoring allowlist; fail2ban where installed; approved outbound bans (§6.1) |
 | `phase-9/status-feed` | 06 | The status feed and login banner |
-| `phase-9/egress` | 10 §5, Blueprint | Outbound logging and the DNS sinkhole (person-run on a domain controller) |
+| `phase-9/dns-sinkhole` | 10 §5, Blueprint §4.6 | The DNS sinkhole (person-run on a domain controller). Outbound filtering moved to `phase-4/firewall` and the outbound log rule to `phase-6/log-forwarding` |
 
 ### Any time: appliance runbooks
 
 `phase-x/appliance-runbooks` (design 16) holds templates and runbooks only. It depends on nothing above.
 
-## 4. Decisions settled in the 2026-10-05 review
+## 4. Decisions settled in reviews
+
+### 4.1 The 2026-10-05 review
 
 | Question | Decision | Recorded in |
 |---|---|---|
 | How are approvals given? | Typed at the prompt by default. Each item carries a fingerprint from the plan, and `--approve` passes approvals without the prompt for remote mode. An item that changed since the plan is refused. | Conventions §3.1 |
-| How do Windows hosts ship logs? | The Splunk universal forwarder where the host already has one; otherwise a PowerShell script posting to Splunk's HTTP Event Collector. Nothing is installed. | Design 10 §4, design 00 §9 |
+| How do Windows hosts ship logs? | The Splunk universal forwarder where the host already has one; otherwise a PowerShell script posting to Splunk's HTTP Event Collector. No forwarder is installed. | Design 10 §4, design 00 §9 |
 | When is remote mode built? | Right after the P0 lockout works locally (stage 5). | This page, design 00 §9 |
 | Where do real-host tests run? | CI runners for Ubuntu, Windows Server and a single domain controller; a local lab for everything else, before each release. | Conventions §9, `docs/lab/README.md` |
 | Are the Windows registry values right? | Checked against Microsoft's documentation. Netlogon enforcement is now report-only, because patched domain controllers enforce it anyway. LSA protection is offered only in a form that rollback can remove. LDAP and SMB signing defaults on Windows Server 2025 are reported. The removal of the PowerShell 2.0 engine is noted. | Design 11 §3–§3.3, design 10 |
 
-## 5. Open: a question for competition officials
+### 4.2 The 2026-10-08 and 2026-10-09 reviews
 
-Design 00, section 6 assumes that run-time configuration is not part of the frozen submission (NCCDC, 2025, Rule 5.6.2). Labyrinth is designed so that the answer cannot change what the tool does: configuration holds only facts about the event, and a profile override can only choose among modules the release already ships. The question still needs an official answer before the event. Suggested wording:
+| Question | Decision | Recorded in |
+|---|---|---|
+| May Labyrinth install software? | Yes, public software only, after the first-minute lockdown, through the `packages` module: the host's repositories, an event mirror or proxy, or a pinned public download. Rule 5.6.4's example is cloud services and cloud processing, which installing a package is not. Never a private source (Rule 5.2), a new repository or a full upgrade. | Design 20, CLAUDE.md |
+| What runs in the first minute? | Lock down with what the host has (rotate, keys, sessions, default-deny inbound and outbound), then install, then sweep, then reopen outbound to the normal allowlist. | Design 01 §6, §6.1 |
+| How does a first-minute run avoid prompts? | The existing options answer them (`--confirm-group`, `--break-glass`, `--approve`), with a profile reviewed before the event. Revert timers, probes, the scoring allowlist and the protected set stay. No command-line change is needed. | Design 01 §6.3 |
+| Can a ban block outbound traffic? | Yes. Every ban drops the address in both directions; an address from the unusual-outbound search is banned outbound only after approval. | Design 12 §6.1 |
+| How are known flaws handled? | Found and ranked locally, tracked until closed, and closed by mitigation or patch. A scored service is never turned off to close a flaw. | Design 21 |
+| Are design choices labeled as rules? | No longer. Watching abused tools, manual Group Policy, manual DNS on the domain controller, the candidate list and keeping login shells are design choices, and the docs now say so. | Design review log |
+
+## 5. Open: questions for competition officials
+
+**Run-time configuration.** Design 00, section 6 assumes that run-time configuration is not part of the frozen submission (NCCDC, 2025, Rule 5.6.2). Labyrinth is designed so that the answer cannot change what the tool does: configuration holds only facts about the event, and a profile override can only choose among modules the release already ships. The question still needs an official answer before the event. Suggested wording:
 
 > Our team tool is frozen and submitted before the event. At run time it reads a configuration folder that we fill in at the event with values from the team packet: scoring engine addresses, host names, account names, and the list of hosts. These files hold no code and cannot add features; they only tell the frozen tool where things are. Is filling in these values after the freeze allowed under Rule 5.6.2?
 
 When the answer arrives, record it in the design review log and remove the *Provisional* label from design 00, section 6 and the matching sentence from Conventions, section 2.2.
 
+**Installing public software.** Name the install feature in the tool's declaration (design 20, section 2), and ask:
+
+> After securing a host, our tool installs a fixed list of public, open-source packages (for example auditd and fail2ban) using the host's own package manager and its configured repositories, or the event's mirror or proxy. It never uses a private server, never sends host data anywhere, and processes nothing outside the competition environment. Is this allowed under Rules 5.1, 5.2 and 5.6.4?
+
+**A daily vulnerability database.** Trivy's database changes daily and cannot be pinned by hash (design 21, section 6). Ask whether downloading that public data file at the event is allowed, given that all matching runs on the team's own hosts. Until the answer arrives, Trivy stays out of the shipped profiles.
+
 ## References
 
-National Collegiate Cyber Defense Competition. (2025, December 10). *Rules and requirements*. Retrieved October 2, 2026, from https://www.nationalccdc.org/rules.html
+National Collegiate Cyber Defense Competition. (2025, December 10). *Rules and requirements*. Retrieved October 9, 2026, from https://www.nationalccdc.org/rules.html

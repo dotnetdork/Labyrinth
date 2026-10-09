@@ -124,7 +124,7 @@ Quarantine is a core helper (`core/quarantine/`), so every module that removes a
 
 After the sweep, `cron.allow` and `at.allow` are set to root plus any account the dependency map shows using them. Other accounts then cannot add jobs. This is Tier 2, with probes and a revert timer.
 
-Watching tools often abused for persistence, rather than blocking them, is covered in design 10, section 5.
+Watching tools often abused for persistence, and blocking one on a single Windows host after approval, is covered in design 10, section 5.
 
 ## 7. When it runs
 
