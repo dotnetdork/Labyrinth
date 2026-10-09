@@ -113,7 +113,8 @@ help() { run bash "$LAB/labyrinth.sh" "$@" < /dev/null; }
     [[ "$output" != *'Where:'* ]] || { echo "help $t: Where heading"; return 1; }
   done
   run bash "$LAB/labyrinth.sh" version < /dev/null
-  [[ "$output" == "labyrinth "*" (labyrinth.sh, for Linux)" ]]
+  [[ "${lines[0]}" == "labyrinth "*" (labyrinth.sh, for Linux)" ]]
+  [[ "${lines[1]}" == 'Release: '* ]]
 }
 
 @test "everyday words and flags point to the command or option meant" {

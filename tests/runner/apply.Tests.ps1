@@ -524,4 +524,55 @@ Describe 'labyrinth.ps1 apply' {
         $r.Output | Should -Match '\[mail\] fail'
         $t.Root | Should -Not -Exist
     }
+
+    It 'release: with no release list, apply warns and its recap says not checked' {
+        $r = Invoke-TestApply $t $answers
+        $r.Code | Should -Be 0
+        $r.Output | Should -Match ([regex]::Escape("labyrinth: warning: no release.sha256, so Labyrinth's files were not checked"))
+        @($r.Output -split "`n") -ccontains 'Release: not checked (no release.sha256)' | Should -BeTrue
+        $v = @((Invoke-TestLabCapture $t @('version')).Out -split "`r?`n")
+        $v[1] | Should -BeExactly 'Release: not checked (no release.sha256)'
+    }
+
+    It 'release: with a matching list, apply and version print its hash, and nothing warns' {
+        $null = & (Join-Path $script:Repo 'tools\release\manifest.ps1') $lab
+        $sum = (Get-FileHash -LiteralPath (Join-Path $lab 'release.sha256') -Algorithm SHA256).Hash.ToLowerInvariant()
+        $r = Invoke-TestApply $t $answers
+        $r.Code | Should -Be 0
+        $r.Output | Should -Not -Match 'no release\.sha256'
+        $lines = @($r.Output -split "`n")
+        $a = [array]::IndexOf($lines, "Release: $sum")
+        $a | Should -BeGreaterOrEqual 0
+        $b = @(0..($lines.Count - 1) | Where-Object { $lines[$_] -match 'Type the group name' })[0]
+        $a | Should -BeLessThan $b
+        $v = @((Invoke-TestLabCapture $t @('version')).Out -split "`r?`n")
+        $v[1] | Should -BeExactly "Release: $sum"
+    }
+
+    It 'release: a changed core file stops every command before any of the core runs' {
+        $r = Invoke-TestApply $t $answers
+        $r.Code | Should -Be 0
+        $id = Get-TestRunId $r.Output
+        $null = & (Join-Path $script:Repo 'tools\release\manifest.ps1') $lab
+        # The change would leave a mark if any of the core ran.
+        $mark = Join-Path $TestDrive 'ran'
+        [IO.File]::AppendAllText((Join-Path $lab 'core\Lab.ps1'), "`n[IO.File]::WriteAllText('$mark', 'x')`n")
+        foreach ($args2 in @(@('plan', 'observe'), @('apply', 'observe'), @('keep', $id), @('rollback', $id), @('runs'), @('probe'), @('version'), @('help'))) {
+            $c = Invoke-TestLabCapture $t ($args2 + @('-Profile', 'test', '-Root', $t.Root, '-Config', $t.Etc))
+            $c.Code | Should -Be 20 -Because ($args2 -join ' ')
+            $e = @($c.Err -split "`r?`n")
+            $e[0] | Should -BeExactly 'labyrinth: core/Lab.ps1 differs from the release, so Labyrinth will not run'
+            $e[1] | Should -BeExactly "Copy Labyrinth here again from the team's copy, as manual section 11 says."
+        }
+        $mark | Should -Not -Exist
+        $toggle | Should -Exist
+    }
+
+    It 'release: a file planted in a module folder is refused' {
+        $null = & (Join-Path $script:Repo 'tools\release\manifest.ps1') $lab
+        [IO.File]::WriteAllText((Join-Path $lab 'phases\observe\modules\toggle\extra.ps1'), "x`n")
+        $c = Invoke-TestLabCapture $t @('plan', 'observe', '-Profile', 'test', '-Root', $t.Root, '-Config', $t.Etc)
+        $c.Code | Should -Be 20
+        @($c.Err -split "`r?`n")[0] | Should -BeExactly 'labyrinth: phases/observe/modules/toggle/extra.ps1 is not in the release, so Labyrinth will not run'
+    }
 }

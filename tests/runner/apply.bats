@@ -563,3 +563,60 @@ fp() { printf '%s' "$1" | sha256sum | cut -c1-12; }
   [ ! -e "$LAB/toggle.conf" ]
   grep -q '"action":"run_rolled_back"' "$ROOT/state/runs/$id/manifest.jsonl"
 }
+
+# release: write release.sha256 into the test copy, as at release time.
+release() { bash "$REPO/tools/release/manifest.sh" "$LAB" > /dev/null; }
+release_hash() { sha256sum < "$LAB/release.sha256" | cut -d' ' -f1; }
+
+@test "release: with no release list, apply warns and its recap says not checked" {
+  apply
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"labyrinth: warning: no release.sha256, so Labyrinth's files were not checked"* ]]
+  grep -qx 'Release: not checked (no release.sha256)' <<< "$output"
+  run bash "$LAB/labyrinth.sh" version
+  [ "${lines[1]}" = 'Release: not checked (no release.sha256)' ]
+}
+
+@test "release: with a matching list, apply and version print its hash, and nothing warns" {
+  release
+  apply
+  [ "$status" -eq 0 ]
+  [[ "$output" != *'no release.sha256'* ]]
+  local sum; sum="$(release_hash)"
+  grep -qx "Release: $sum" <<< "$output"
+  # The hash is in the recap, before the group prompt.
+  local a b
+  a="$(grep -n "^Release: $sum\$" <<< "$output" | head -n 1 | cut -d: -f1)"
+  b="$(grep -n 'Type the group name' <<< "$output" | head -n 1 | cut -d: -f1)"
+  [ "$a" -lt "$b" ]
+  run bash "$LAB/labyrinth.sh" version
+  [ "$status" -eq 0 ]
+  [ "${lines[1]}" = "Release: $sum" ]
+}
+
+@test "release: a changed core file stops every command before any of the core runs" {
+  apply
+  [ "$status" -eq 0 ]
+  local id; id="$(run_id)"
+  release
+  # The change would leave a mark if any of the core ran.
+  printf 'touch "%s/ran"\n' "$BATS_TEST_TMPDIR" >> "$LAB/core/lib.sh"
+  for args in 'plan observe' 'apply observe' "keep $id" "rollback $id" 'runs' 'probe' 'version' 'help'; do
+    # shellcheck disable=SC2086
+    run bash "$LAB/labyrinth.sh" --profile test --root "$ROOT" --config "$ETC" $args < /dev/null
+    [ "$status" -eq 20 ] || { echo "$args: exit $status"; return 1; }
+    [ "${lines[0]}" = 'labyrinth: core/lib.sh differs from the release, so Labyrinth will not run' ]
+    [ "${lines[1]}" = "Copy Labyrinth here again from the team's copy, as manual section 11 says." ]
+  done
+  [ ! -e "$BATS_TEST_TMPDIR/ran" ]
+  # The run was not rolled back: its change is still in place.
+  grep -qx 'setting=on' "$LAB/toggle.conf"
+}
+
+@test "release: a file planted in a module folder is refused" {
+  release
+  printf '#!/bin/bash\n' > "$LAB/phases/observe/modules/toggle/extra.sh"
+  plan
+  [ "$status" -eq 20 ]
+  [ "${lines[0]}" = 'labyrinth: phases/observe/modules/toggle/extra.sh is not in the release, so Labyrinth will not run' ]
+}

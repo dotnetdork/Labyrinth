@@ -106,7 +106,7 @@ labyrinth <command> [<phase> | <run>] [options]
 | `runs` | List this host's runs, oldest first: ID, phase, start time (UTC) and state, which is `armed` (with the time it rolls back; on Linux, `armed: timer lost (restart?)` when systemd no longer has the transient timer, while a Windows scheduled task survives a restart and runs when it can), `kept`, `rolled back`, `rolled back with errors`, or `not kept, no timer`. Changes nothing; needs root or Administrator (`20`) |
 | `probe` | Probe every scored service once; exit `30` if one fails. Changes nothing |
 | `help [<topic>]` | Help for every command, or for one; also `-h` and `--help` (`-Help`). The topic `basics` explains the ideas in plain words, and a module ID prints that module's help page (design 00, section 4) |
-| `version` | Print the version; also `-V` and `--version` (`-Version`) |
+| `version` | Print the version, the runner, and the release hash (`Release: <sha256>`, or `not checked`); also `-V` and `--version` (`-Version`) |
 
 `<phase>` is `lockout`, `observe`, `deceive` or `sustain`. `<run>` is a run ID (`20261002T140301Z-4f2a`) or its last four characters (`4f2a`). A run that does not exist, or four characters that match more than one run, is an error (`40`) that points to `runs`. Commands, phases, option names and run IDs ignore case; other values do not.
 
@@ -163,7 +163,7 @@ The whole line must parse before help or the version is shown. A value option th
 2. The run lock, `<state>/lock`, holding the process id. A live holder blocks the run (`20`); a lock whose process is gone is taken over. The check is only that a process with that id exists, so if the id is reused after a crash, the lock stays held; when no Labyrinth run is going, delete `<state>/lock` by hand.
 3. Every module is planned, after the `pre-approved` file is read (a malformed one is `40`). Any `40` means nothing is applied. If nothing needs applying, the run ends with no prompts.
 4. **Break-glass** (design 01, section 7): the operator logs in at the console with a `breakglass`-class account and types its name. It is asked once per host and kept in `<state>/breakglass` as `<timestamp><TAB><account>`.
-5. **Confirmation:** the operator types the host's group name.
+5. **Confirmation:** the recap lists what will change and the release hash (`Release:`), and the operator types the host's group name.
 6. From here, changes are made and recorded: the run's manifest starts (`run_start`, `breakglass_verified`), and the scored services are probed if the `services` file lists any (otherwise a warning). A run folder or manifest that cannot be written is an error (`40`).
 7. Each module that needs a change, in order:
    - `manual-only`: never applied; its plan is the checklist.
@@ -182,6 +182,8 @@ The whole line must parse before help or the version is shown. A value option th
 **The revert timer** is a transient systemd timer `lab-revert-<run>-<n>` on Linux and a one-time scheduled task `\Labyrinth\lab-revert-<run>-<n>` running as SYSTEM on Windows. Re-arming creates the new timer first and only then removes the earlier one, so a failed re-arm leaves the run covered. A transient systemd timer does not survive a restart; `runs` then shows the run as `armed: timer lost (restart?)`. A scheduled task does survive one, and runs as soon as it can if its time passed while the host was off. `rollback` waits ten seconds for the run lock. If a live run still holds it, hung or waiting at a prompt, `rollback` stops that run and the entry points it started (TERM, then KILL after 30 seconds) and then rolls back, so the timer never undoes a run that is still changing the host and about to report success. Only if that run cannot be stopped does `rollback` go on without the lock, with a warning.
 
 **Who can change the code.** `apply`, `keep` and `rollback` first check that only root (Linux) or administrators (Windows) can change the program folder, the configuration folder, the data root, anything in them and every folder above them (`lab_tree_trusted`, `Find-LabUntrustedItem`; design 07, section 5). If another account could, the command refuses with `20` and changes nothing, because the revert timer would later run that code as root or SYSTEM. The check only reads. On Linux the timer's command line uses real paths, with links resolved.
+
+**What the code is.** Before it loads the rest of the core, each runner checks every file of its folder against `release.sha256` (`lab_release_check`, `Test-LabRelease`; design 07, section 5.1), for every command. A file that is changed, missing or not in the list refuses the command with `20`, the revert timer's `rollback` included, which also sends a notice. With no list, `apply`, `keep` and `rollback` warn, and the release hash reads `not checked`.
 
 The time a timer will fire is kept in `<state>/runs/<run>/timer-due` (UTC, `YYYY-MM-DDTHH:MM:SSZ`), for `runs` and the keep prompt. The file is advisory: if it is missing, the time is shown as unknown.
 

@@ -48,6 +48,7 @@ You need:
 - **Labyrinth's folder on the host,** normally `C:\ProgramData\Labyrinth`. The program is `labyrinth.ps1` in its `bin` folder, so run the commands from there: `cd C:\ProgramData\Labyrinth\bin`.
 - **Permission to run the script.** If Windows refuses to run it because of the execution policy, start it like this instead, for this window only: `powershell -ExecutionPolicy Bypass -File .\labyrinth.ps1 plan lockout`.
 <!-- end -->
+- **The release hash,** in the team's notes kept off the hosts. When the team makes a release, the captain records the SHA-256 of its release list, `release.sha256`. Before it runs, Labyrinth checks each of its own files against that list, and it prints the list's hash on the `Release:` line of `version` and of every apply. Compare the two by eye. If they differ, stop: this copy is not the release the team checked. A copy taken straight from the repository has no list, and its `Release:` line says `not checked`.
 - **The event's configuration,** in the `etc` folder under the data root (section 10). The team prepares these files before the event. The two that matter most:
   - `hosts` lists every host Labyrinth may act on, with its **group** (which wave of hosts it belongs to), its profile and its platform.
   - `protected-accounts` is the **protected set**: accounts Labyrinth must never touch, such as the officials' accounts and the accounts the scoring engine logs in with. If this file is missing or empty, Labyrinth refuses to run.
@@ -201,7 +202,7 @@ parts of `docs/manual/labyrinth.md` in Labyrinth's folder.
 
 ## version
 
-Prints Labyrinth's version and which program printed it.
+Prints Labyrinth's version, which program printed it, and the release hash on a `Release:` line (section 2).
 <!-- linux -->
 `-V` or `--version`
 <!-- end -->
@@ -277,7 +278,7 @@ An apply goes through a fixed series of safety checks. If one fails, the run sto
 2. **No other run is in progress** on this host. Only one run at a time may change a host.
 3. **Every module is planned.** If any plan has an error, nothing is applied. If nothing needs changing, the run ends here without asking you anything.
 4. **Break-glass check.** Log in at the host's own console with the break-glass account, then type its name at the `Break-glass account name:` prompt. Labyrinth asks this once per host. It takes your word for it, then looks for that account's session at the console. Your answer is saved only once you confirm the plan in step 5, so a run that stops before then asks again next time; the run's manifest records what the console check found. If it finds none, it warns `no session for NAME was found at this host's console` and goes on: stop there and check the login yourself if you did not just use it.
-5. **Confirmation.** Labyrinth shows what each module will do, then asks you to type the host's group name. Anything else stops the run, and nothing is changed or saved.
+5. **Confirmation.** Labyrinth shows what each module will do and the release hash on its `Release:` line, which you compare with the team's notes (section 2), then asks you to type the host's group name. Anything else stops the run, and nothing is changed or saved.
 6. **Changes start.** For each module that needs a change, in order:
    - the revert timer is armed (or moved later), unless the module only reads;
    - the change is made;
@@ -420,7 +421,7 @@ Everything Labyrinth keeps is under one folder, the **data root**: `@ROOT@` unle
 <!-- linux -->
 | Folder | Holds |
 |---|---|
-| `<root>/bin` | The program. |
+| `<root>/bin` | The program, and `release.sha256`, the hash of each of its files. |
 | `<root>/etc` | The event's configuration: `hosts`, `protected-accounts`, `event.conf`, `services`, `scoring-allowlist`, `never-ban`, `outbound-allow`, `pre-approved`. |
 | `<root>/state` | Run records: one folder per run under `state/runs`, with the run's change record (`manifest.jsonl`), its timer, and its log (`output.log`). |
 | `<root>/logs` | Logs, one folder per kind. |
@@ -431,7 +432,7 @@ Only root can read `etc`, `state` and `backup`. Only root may be able to change 
 <!-- windows -->
 | Folder | Holds |
 |---|---|
-| `<root>\bin` | The program. |
+| `<root>\bin` | The program, and `release.sha256`, the hash of each of its files. |
 | `<root>\etc` | The event's configuration: `hosts`, `protected-accounts`, `event.conf`, `services`, `scoring-allowlist`, `never-ban`, `outbound-allow`, `pre-approved`. |
 | `<root>\state` | Run records: one folder per run under `state\runs`, with the run's change record (`manifest.jsonl`), its timer, and its log (`output.log`). |
 | `<root>\logs` | Logs, one folder per kind. |
@@ -485,6 +486,17 @@ Most errors that stop Labyrinth are two lines: what failed and why, then how to 
 <!-- windows -->
 **"... can be changed by an account that is not an administrator".** Labyrinth runs its program, its configuration and its run records as an administrator, and the revert timer runs them again later as SYSTEM. So `apply`, `keep` and `rollback` refuse if any other account could change them: the program folder, the configuration folder, the data root, anything in them, or any folder above them. The line names the first one found. Keep Labyrinth in `C:\ProgramData\Labyrinth`, where `apply` makes the data root private to administrators. A copy unpacked in a user's own folder, or one that gives Users or Authenticated Users the right to change it, is refused.
 <!-- end -->
+
+**"... differs from the release", "is not in the release" or "is missing".** Before it runs anything, Labyrinth checks each of its own files against `release.sha256`, and one was changed, added or removed. Every command refuses, the revert timer's rollback too, which also shows a notice on every terminal: the changes of an armed run stay in place until this is mended. Until you know otherwise, treat it as a sign of an intruder. Note the line, copy Labyrinth here again from the team's copy, and check the copy with the host's own tools, which do not depend on Labyrinth's code. In Labyrinth's folder:
+<!-- linux -->
+`sha256sum release.sha256` must print the hash in the team's notes, and `sha256sum -c --quiet release.sha256` must print nothing.
+<!-- end -->
+<!-- windows -->
+`(Get-FileHash .\release.sha256).Hash.ToLower()` must print the hash in the team's notes, and `Get-Content .\release.sha256 | ForEach-Object { $h, $f = $_ -split '  ', 2; if ((Get-FileHash $f).Hash -ne $h) { $f } }` must print nothing.
+<!-- end -->
+Then run the command again. Labyrinth's own check finds a changed, added or missing file. It cannot find an intruder who changed the check as well, who could make it print the expected hash; the commands above can.
+
+**"no release.sha256, so Labyrinth's files were not checked".** This copy has no release list, so Labyrinth could not check its files, and `Release:` says `not checked`. A copy taken straight from the repository has none. Go on only if the team's notes say this copy is the one to run.
 
 **"the protected set is not loaded".** The line ends with the reason: there is no `protected-accounts` file in the configuration folder, or it lists no accounts. Labyrinth will not change anything without it. Copy in the team's prepared file.
 
