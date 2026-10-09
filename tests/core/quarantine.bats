@@ -108,6 +108,34 @@ manifest_field() { lab_json_get "$(grep "\"action\":\"$1\"" "$(lab_manifest_file
   absent "$R/tmp/x"
 }
 
+@test "file and cron: control characters in an item never stop its quarantine" {
+  local name="$R/tmp/shell"$'\v'".php" line=$'*\t*\t*\t*\t*\troot\t/tmp/.x'
+  printf 'x\n' > "$name"
+  printf '%s\n' "$line" > "$R/etc/cron.d/tabs"
+  lab_quarantine_file "$name" 'web shell'
+  absent "$name"
+  lab_quarantine_cron "$R/etc/cron.d/tabs" "$line" 'runs from /tmp'
+  grep -qxF "# labyrinth-quarantine $LAB_RUN_ID-2: $line" "$R/etc/cron.d/tabs"
+  [ "$(manifest_field quarantine_cron prev)" = "$line" ]
+  lab_quarantine_restore
+  [ -f "$name" ]
+  [ "$(cat "$R/etc/cron.d/tabs")" = "$line" ]
+}
+
+@test "file: one that cannot be moved is left for a person (20), not an error" {
+  [ "$(id -u)" -ne 0 ] || skip 'root can move a file out of a read-only folder'
+  mkdir -p "$R/tmp/ro"
+  printf 'x\n' > "$R/tmp/ro/f"
+  chmod 555 "$R/tmp/ro"
+  run lab_quarantine_file "$R/tmp/ro/f" test
+  chmod 755 "$R/tmp/ro"
+  [ "$status" -eq 20 ]
+  [[ "$output" == *"list it for a person"* ]]
+  [ -f "$R/tmp/ro/f" ]
+  lab_quarantine_restore
+  [ -f "$R/tmp/ro/f" ]
+}
+
 @test "cron: one line commented out with a marker, then uncommented in place" {
   local bad='* * * * * root /tmp/.x' good='0 3 * * * root /usr/bin/backup'
   printf 'SHELL=/bin/sh\n%s\n%s\n' "$good" "$bad" > "$R/etc/cron.d/jobs"
@@ -177,4 +205,14 @@ exit 0"
   [ "$status" -eq 20 ]
   run lab_quarantine_process 'x' test
   [ "$status" -eq 40 ]
+}
+
+@test "process: a control character in its arguments never stops it being ended" {
+  bash -c 'exec -a "beacon"$'"'"'\001'"'"' sleep 60' &
+  local pid=$!
+  sleep 0.2
+  lab_quarantine_process "$pid" 'beacon'
+  wait "$pid" 2> /dev/null || true
+  [ ! -d "/proc/$pid" ]
+  [[ "$(manifest_field quarantine_process prev)" == beacon$'\001'* ]]
 }

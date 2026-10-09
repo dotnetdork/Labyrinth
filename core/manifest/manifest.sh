@@ -26,18 +26,14 @@ lab_manifest_next_seq() {
 # lab_manifest_record ACTION TARGET [BACKUP] [PREV] [NOTE]: append an entry
 # for LAB_MODULE_ID. Refused in plan mode.
 lab_manifest_record() {
-  local action="$1" target="${2:-}" backup="${3:-}" prev="${4:-}" note="${5:-}" f line v
+  local action="$1" target="${2:-}" backup="${3:-}" prev="${4:-}" note="${5:-}" f line
   if [[ "${LAB_DRY_RUN:-1}" != 0 ]]; then
     printf 'manifest: refused in plan mode (%s %s)\n' "$action" "$target" >&2
     return 1
   fi
   [[ "$action" =~ ^[a-z0-9_]+$ ]] || { printf 'manifest: bad action name: %s\n' "$action" >&2; return 1; }
-  for v in "$target" "$backup" "$prev"; do
-    if [[ "$v" =~ [[:cntrl:]] ]]; then
-      printf 'manifest: control characters are not allowed in %s\n' "$action" >&2
-      return 1
-    fi
-  done
+  # Control characters are kept: lab_json_str escapes them, and refusing
+  # them would let an attacker's file name or cron line stop a quarantine.
   f="$(lab_manifest_file)"
   mkdir -p "${f%/*}"
   line="{\"ts\":$(lab_json_str "$(lab_now)"),\"run\":$(lab_json_str "$LAB_RUN_ID")"

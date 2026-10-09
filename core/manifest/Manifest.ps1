@@ -35,9 +35,8 @@ function Add-LabManifestEntry {
     )
     if ($env:LAB_DRY_RUN -ne '0') { throw "manifest: refused in plan mode ($Action $Target)" }
     if ($Action -cnotmatch '^[a-z0-9_]+$') { throw "manifest: bad action name: $Action" }
-    foreach ($v in @($Target, $Backup, $Prev)) {
-        if ($v -match '[\x00-\x1f\x7f]') { throw "manifest: control characters are not allowed in $Action" }
-    }
+    # Control characters are kept: ConvertTo-LabJsonString escapes them, and
+    # refusing them would let an attacker's file name stop a quarantine.
     $fields = [ordered]@{
         ts = Get-LabUtcNow; run = "$env:LAB_RUN_ID"; host = Get-LabHostName; module = "$env:LAB_MODULE_ID"
         seq = [string](Get-LabManifestNextSeq); action = $Action; target = $Target; backup = $Backup; prev = $Prev; note = $Note
