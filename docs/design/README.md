@@ -492,6 +492,18 @@ Where: design 07, section 5.1; design 17, section 3; Conventions, section 3.1; m
 - The persistence sweep reports unexplained files in Labyrinth's data root without quarantining them, and lists look-alike `lab-revert-*` timers and `\Labyrinth\` tasks that no run names.
 - The broken table in design 07, section 5, is mended.
 
+### 2026-10-09: Readability
+
+Where: README; Overview; 01; Conventions, sections 2.2 and 3.1; manual, section 3; Blueprint; Roadmap; this log.
+
+- This log is now dated sections with short bullets instead of one table.
+- The README opens in plain words and no longer points at private material.
+- Overview: section 4 headings name their phase in words; the module figure says a person confirms once per run; the safety gates are a numbered list; the long Tier 3 cell moved under the table.
+- A host group is defined where it is first used, in the Overview and the manual; "ring" is kept as the specs' word for it, and the first host of each kind is a *test host*, because "canary" also names bait files (01, Blueprint, Roadmap).
+- The runners say "group", not "ring group", when this host is not in the hosts file.
+- Conventions section 3.1 is split into sub-sections, and the revert timer's paragraphs are together.
+- The PDF manuals open with a contents list.
+
 ## References
 
 National Collegiate Cyber Defense Competition. (2025, December 10). *Rules and requirements*. Retrieved October 2, 2026,
