@@ -260,7 +260,12 @@ exit 0"
 
 @test "process: ended and recorded; never process 1 or Labyrinth itself" {
   sleep 60 &
-  local pid=$!
+  local pid=$! i
+  # Wait until the child has become sleep, or the record holds bash's line.
+  for ((i = 0; i < 50; i++)); do
+    [[ "$(tr '\0' ' ' < "/proc/$pid/cmdline")" == 'sleep 60'* ]] && break
+    sleep 0.1
+  done
   lab_quarantine_process "$pid" 'started by a quarantined job'
   wait "$pid" 2> /dev/null || true
   [ ! -d "/proc/$pid" ]
