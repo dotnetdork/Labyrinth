@@ -367,6 +367,25 @@ Describe 'labyrinth.ps1 apply' {
         $toggle | Should -Not -Exist
     }
 
+    It 'rollback stops a live run that holds the lock before undoing it' {
+        [IO.File]::WriteAllText($toggle, "setting=off`n")
+        $id = Get-TestRunId (Invoke-TestApply $t @('labadmin', 'ring1', 'no')).Output
+        $holder = Start-Process -FilePath 'powershell.exe' -ArgumentList '-NoProfile', '-Command', 'Start-Sleep -Seconds 300' -PassThru -WindowStyle Hidden
+        try {
+            $lock = Join-Path $t.Root 'state\lock'
+            New-Item -ItemType Directory -Path $lock -Force | Out-Null
+            [IO.File]::WriteAllText((Join-Path $lock 'pid'), "$($holder.Id)`n")
+            $r = Invoke-TestRunCommand $t 'rollback' $id
+            $r.Code | Should -Be 0
+            $r.Output | Should -Match "stopping the Labyrinth run \(pid $($holder.Id)\)"
+            $r.Output | Should -Not -Match 'without the run lock'
+            $holder.WaitForExit(5000) | Should -BeTrue
+            (Get-Content -LiteralPath $toggle) | Should -Be 'setting=off'
+        } finally {
+            if (-not $holder.HasExited) { $holder.Kill() }
+        }
+    }
+
     It 'a stale run lock is taken over' {
         $lock = Join-Path $t.Root 'state\lock'
         New-Item -ItemType Directory -Path $lock -Force | Out-Null

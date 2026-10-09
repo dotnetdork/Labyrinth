@@ -378,6 +378,24 @@ fp() { printf '%s' "$1" | sha256sum | cut -c1-12; }
   [ ! -e "$LAB/toggle.conf" ]
 }
 
+@test "rollback stops a live run that holds the lock, and its children, before undoing it" {
+  printf 'setting=off\n' > "$LAB/toggle.conf"
+  answers root ring1 no
+  apply
+  id="$(run_id)"
+  bash -c 'sleep 300; :' &
+  local holder=$!
+  mkdir -p "$ROOT/state/lock"
+  printf '%s\n' "$holder" > "$ROOT/state/lock/pid"
+  run bash "$LAB/labyrinth.sh" --root "$ROOT" --config "$ETC" rollback "$id"
+  wait "$holder" 2> /dev/null || true
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"stopping the Labyrinth run (pid $holder)"* ]]
+  [[ "$output" != *"without the run lock"* ]]
+  ! kill -0 "$holder" 2> /dev/null || return 1
+  grep -qx 'setting=off' "$LAB/toggle.conf"
+}
+
 @test "a stale run lock is taken over" {
   mkdir -p "$ROOT/state/lock"
   printf '999999\n' > "$ROOT/state/lock/pid"

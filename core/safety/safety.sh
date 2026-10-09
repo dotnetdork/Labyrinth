@@ -59,6 +59,44 @@ lab_lock_acquire() {
   printf '%s\n' "$$" > "$lock/pid"
 }
 
+# _lab_descendants PID: print the process IDs below PID, children first.
+_lab_descendants() {
+  local p stat ppid
+  for p in /proc/[0-9]*; do
+    stat="$(cat "$p/stat" 2> /dev/null)" || continue
+    stat="${stat##*) }"
+    read -r _ ppid _ <<< "$stat"
+    if [[ "$ppid" == "$1" ]]; then
+      _lab_descendants "${p#/proc/}"
+      printf '%s\n' "${p#/proc/}"
+    fi
+  done
+}
+
+# lab_lock_stop_holder [WAIT_SECONDS]: stop the live run that holds the lock
+# and the entry points it started: TERM, then KILL after WAIT_SECONDS. The
+# revert timer's rollback uses it, so it never undoes a run while that run
+# is still changing the host. Returns 1 if the holder is still alive.
+lab_lock_stop_holder() {
+  local wait="${1:-30}" pid n kids
+  pid="$(cat "$LAB_STATE_DIR/lock/pid" 2> /dev/null || true)"
+  [[ "$pid" =~ ^[0-9]+$ && "$pid" != "$$" ]] || return 0
+  kill -0 "$pid" 2> /dev/null || return 0
+  printf 'stopping the Labyrinth run (pid %s) that holds the lock\n' "$pid" >&2
+  kids="$(_lab_descendants "$pid")"
+  # shellcheck disable=SC2086 # one PID per word
+  kill -TERM $kids "$pid" 2> /dev/null || true
+  for ((n = 0; n < wait; n++)); do
+    kill -0 "$pid" 2> /dev/null || return 0
+    sleep 1
+  done
+  kids="$(_lab_descendants "$pid")"
+  # shellcheck disable=SC2086 # one PID per word
+  kill -KILL $kids "$pid" 2> /dev/null || true
+  sleep 1
+  ! kill -0 "$pid" 2> /dev/null
+}
+
 # lab_lock_release: release the run lock if this process holds it.
 lab_lock_release() {
   local lock="$LAB_STATE_DIR/lock"
