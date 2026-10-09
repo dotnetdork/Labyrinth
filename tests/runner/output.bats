@@ -184,6 +184,7 @@ LABELS='Found|Will do|Did|Why|Risk|Problem|Cause|Fix|Undo|Note|Log|Script|It sai
 }
 
 @test "plan's Next line never names an apply that would be refused" {
+  rm "$ETC/hosts"
   profile observe.sample
   plan
   [ "$status" -eq 10 ]
@@ -240,7 +241,7 @@ LABELS='Found|Will do|Did|Why|Risk|Problem|Cause|Fix|Undo|Note|Log|Script|It sai
   grep -qxF "  More:      $SELF help observe.toggle" <<< "$output"
   [[ "$output" == *'Summary: 1 module: 1 FAIL.'* ]]
   [[ "$output" == *'Next: undo the earlier changes, or keep them, with the commands above.'* ]]
-  [[ "$output" == *'apply finished: exit 30 (a check failed and that change was undone; earlier ones stay)'* ]]
+  [[ "$output" == *'apply finished: exit 30 (a check failed; that change was undone)'* ]]
 }
 
 @test "apply: the recap comes after break-glass and before the group prompt" {
@@ -321,7 +322,10 @@ LABELS='Found|Will do|Did|Why|Risk|Problem|Cause|Fix|Undo|Note|Log|Script|It sai
   profile observe.clean observe.sample observe.manual observe.blocked observe.crash observe.toggle
   plan
   local l
+  # A hint may be longer by the length of the command in it (Conventions,
+  # section 3.2), so the runner is measured as its bare name.
   for l in "${lines[@]}"; do
+    l="${l//$SELF/labyrinth.sh}"
     (( ${#l} <= 78 )) || [[ "${l##* }" == /* ]] || { echo "too long: $l"; return 1; }
   done
   touch "$LAB/FAIL_VERIFY"
@@ -329,6 +333,7 @@ LABELS='Found|Will do|Did|Why|Risk|Problem|Cause|Fix|Undo|Note|Log|Script|It sai
   # The prompts end without a newline, so they are answered by options here.
   apply --break-glass root --confirm-group ring1
   for l in "${lines[@]}"; do
+    l="${l//$SELF/labyrinth.sh}"
     (( ${#l} <= 78 )) || [[ "${l##* }" == /* ]] || { echo "too long: $l"; return 1; }
   done
 }

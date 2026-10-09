@@ -548,8 +548,14 @@ detail() {
   printf -v l '  %-11s%s' "$label" "$text"; out "$l"
 }
 
-# more ID: the last line of a WARN, BLOCKED, FAIL or ERROR block.
-more() { detail More "$SELF help $1"; }
+# more ID: the last line of a WARN, BLOCKED, FAIL or ERROR block. It is a
+# command to paste, so it is never wrapped, however long the path to the
+# runner (docs/Conventions.md section 3.2).
+more() {
+  local l
+  printf -v l '  %-11s%s' More: "$SELF help $1"
+  out "$l"
+}
 
 # log_ref: the run log's path, under a FAIL or ERROR line.
 log_ref() { if [[ -n "$LOG_FILE" ]]; then detail Log "$LOG_FILE"; fi; }
@@ -720,6 +726,7 @@ next_step() {
       out "Next: apply uses this host's profile in the hosts file, $LAB_HOST_PROFILE."
       out "  To apply ${GIVEN[profile]}, change that line first: $LAB_CONFIG_DIR/hosts"
     else
+      if [[ -n "${GIVEN[profile]:-}" ]]; then opts+=" --profile ${GIVEN[profile]}"; fi
       if [[ -n "${GIVEN[root]:-}" ]]; then opts+=" --root $(shell_word "${GIVEN[root]}")"; fi
       if [[ -n "${GIVEN[config]:-}" ]]; then opts+=" --config $(shell_word "${GIVEN[config]}")"; fi
       # A command too long for one line goes on a line of its own.
@@ -744,7 +751,7 @@ finish() {
     apply:0) what='done' ;;
     apply:10) what='manual steps needed' ;;
     *:20) what='blocked' ;;
-    *:30) what='a check failed and that change was undone; earlier ones stay' ;;
+    *:30) what='a check failed; that change was undone' ;;
     *) what='error' ;;
   esac
   out ''
