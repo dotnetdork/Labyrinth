@@ -141,6 +141,8 @@ Entry points:
 | `rollback` | Undo `apply` from the manifest | Safe to run repeatedly |
 | `cleanup` | Remove temporary files this module created | Safe to run repeatedly |
 
+A module of risk `reversible`, `service-affecting` or `approval` must have `check`, `apply`, `verify` and `rollback`. A module of risk `read-only` or `manual-only` never changes anything, so it must not have `apply`, `rollback` or `cleanup`. The runner refuses to load a module that breaks either rule (`40`), in plan mode too, so its risk can be trusted.
+
 Exit codes:
 
 | Code | Meaning |
