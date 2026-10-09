@@ -11,3 +11,5 @@ table { border-collapse: collapse; width: 100%; margin: 0.6em 0 1em; break-insid
 th, td { border: 1px solid #9ca3af; padding: 0.3em 0.5em; text-align: left; vertical-align: top; }
 th { background: #e5e7eb; }
 a { color: #1d4ed8; text-decoration: none; }
+#TOC { break-after: page; }
+#TOC ul { list-style: none; padding-left: 0; }

@@ -59,6 +59,7 @@ You need:
 |---|---|
 | Phase | A stage of defense. There are four, run in order: `lockout`, `observe`, `deceive` and `sustain`. |
 | Module | One small job in a phase, such as turning off password logins. Each has a plain name and an ID, such as `lockout.firewall`: the phase, a dot, then its short name. `@CMD@ help <module-id>` explains it. |
+| Host group | A set of hosts that Labyrinth changes together, such as `ring1`. The team's hosts file gives each host its group; the first group holds one test host of each kind, so a mistake shows up there before it reaches the rest. `apply` asks you to type the group's name before it changes anything. |
 | Run | One use of `plan` or `apply` on one host. |
 | Run ID | The name of a run, such as `20261002T140301Z-4f2a`: the start time in UTC and four random characters. Wherever a command asks for a run, the last four characters (`4f2a`) are enough. |
 | Plan | A dry run: each module reports what it would change. Nothing is changed and nothing is written. |
