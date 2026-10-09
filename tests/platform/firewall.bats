@@ -145,6 +145,37 @@ ufw_host() {
   never_ran 'default deny'
 }
 
+@test "firewall: default deny needs each scored service's port allowed from every scoring address" {
+  ufw_host
+  printf 'web-main http %s 80 Welcome\ndns-main dns %s 53 www.example.test=192.0.2.20\nmail-smtp smtp other.example.test 25 -\n' \
+    "$(lab_host)" "$(lab_host)" > "$LAB_CONFIG_DIR/services"
+  lab_fw snapshot
+  lab_fw allow tcp 22 198.51.100.7
+  lab_fw allow tcp 22 2001:db8::7
+  run lab_fw default_deny_in
+  [ "$status" -eq 20 ]
+  [[ "$output" == *"web-main tcp/80 from 198.51.100.7"* && "$output" == *"dns-main udp/53 from 2001:db8::7"* ]]
+  [[ "$output" != *mail-smtp* ]]
+  never_ran 'default deny'
+  lab_fw allow tcp 80 any
+  lab_fw allow tcp 53 198.51.100.7
+  lab_fw allow tcp 53 2001:db8::7
+  run lab_fw default_deny_in
+  [ "$status" -eq 20 ]
+  [[ "$output" == *"dns-main udp/53"* && "$output" != *web-main* ]]
+  lab_fw allow udp 53 any
+  lab_fw default_deny_in
+  called 'ufw default deny incoming'
+}
+
+@test "firewall: with no scored service here, an allow from any covers every scoring address" {
+  ufw_host
+  lab_fw snapshot
+  lab_fw allow tcp 80 any
+  lab_fw default_deny_in
+  called 'ufw default deny incoming'
+}
+
 @test "firewall: default deny is refused without a scoring allowlist" {
   ufw_host
   rm "$LAB_CONFIG_DIR/scoring-allowlist"

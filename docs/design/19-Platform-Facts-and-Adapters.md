@@ -91,7 +91,7 @@ Every backend's adapter offers the same functions, so the firewall, ban and egre
 **Order and records.** The order is fixed. The caller takes a snapshot, adds the scoring allowlist and the admin source, then the rest of the allows, then calls `default_deny_in` (design 01). The adapter enforces it:
 
 - `allow` and `default_deny_in` are refused (`20`) until the current module has taken a snapshot in the current run, and in plan mode.
-- `default_deny_in` is refused (`20`) unless every address in the run-time `scoring-allowlist` has been the source of an `allow` in the current run. The adapter keeps the run's allows in `<state>/runs/<run>/firewall-allows`.
+- `default_deny_in` is refused (`20`) until the scoring engine can still reach every scored service on this host. A service in the run-time `services` file is on this host when its host field is this host's short name or one of its addresses, or resolves to one (a simple DNS lookup). For each such service, every `scoring-allowlist` address needs an `allow` on the service's port: TCP, plus UDP for `dns`. An allow from `any` covers every address. When no scored service is on this host, every scoring address still needs some allow, or one from `any`. The refusal lists the missing pairs. The adapter keeps the run's allows in `<state>/runs/<run>/firewall-allows`. No probe can test this, because probes run from the host itself, where an inbound deny does not apply; the firewall module's `verify` therefore reads the live rules for the same pairs.
 - Each change is recorded in the run manifest before it is made (Conventions, section 7): `firewall_snapshot` (target: the backend; backup: DIR) once the snapshot is saved, then `firewall_allow` and `firewall_default_deny`. Rollback restores from the `firewall_snapshot` entries; the other two are the record of what was done.
 - Repeating `allow` with the same arguments in the same run changes nothing.
 
@@ -129,7 +129,7 @@ Every backend's adapter offers the same functions, so the firewall, ban and egre
 - A Windows domain controller, member server and workstation each report the right `role`, and a host without UEFI reports `secure_boot` as `unsupported`.
 - Reading every fact leaves the host unchanged: on Linux, no file under `/etc` changes; on Windows, no registry value changes.
 - For each adapter on its lab host: `snapshot`, then changes, then `restore` gives the same `state` as before.
-- `default_deny_in` with no scoring allowlist added is refused, and the ruleset is unchanged. The same holds when one scoring-allowlist address has no allow.
+- `default_deny_in` with no scoring allowlist added is refused, and the ruleset is unchanged. The same holds when one scoring-allowlist address has no allow, and when a scored service on this host has no allow on its port from a scoring address: an allow on another port, such as SSH, is not enough. An allow from `any` on the service's port is enough.
 - `allow` and `default_deny_in` before a snapshot, or in plan mode, are refused and change nothing.
 - Each change is in the run manifest before it is made, and `lab_fw_rollback` (`Undo-LabFirewallChange`) restores the snapshot.
 - After `default_deny_in` on each lab host, the host still answers ping, an allowed port from an allowed source still connects, and an established session survives.
