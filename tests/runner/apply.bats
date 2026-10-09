@@ -159,6 +159,16 @@ setup() {
   apply
   [ "$status" -eq 20 ]
   [ ! -e "$LAB/toggle.conf" ]
+  [[ "$output" == *"labyrinth: the plan was not confirmed: 'ring2' was typed, not ring1; nothing was changed"* ]]
+  [[ "$output" == *'Run apply again and type ring1 at the prompt, or give it with --confirm-group ring1.'* ]]
+}
+
+@test "a break-glass answer that is not a break-glass account says which class it needs" {
+  answers nobody
+  apply
+  [ "$status" -eq 20 ]
+  [[ "$output" == *"labyrinth: break-glass not confirmed: 'nobody' is not listed with class breakglass in $ETC/protected-accounts"* ]]
+  [ ! -e "$LAB/toggle.conf" ]
 }
 
 @test "--breakglass and --confirm answer the gates without typing" {

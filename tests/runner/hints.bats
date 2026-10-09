@@ -78,6 +78,52 @@ lab() { run bash "$LAB/labyrinth.sh" --root "$ROOT" --config "$ETC" "$@" < /dev/
   [ "${#lines[@]}" -eq 2 ]
 }
 
+@test "an empty service list counts as none, and plan finds a malformed one" {
+  printf '# filled in later\n' > "$ETC/services"
+  lab probe
+  [ "$status" -eq 20 ]
+  [ "${lines[0]}" = "labyrinth: $ETC/services lists no service" ]
+  [[ "${lines[1]}" == 'List the scored services there'* ]]
+  printf 'web\n' > "$ETC/services"
+  lab plan observe --profile test
+  [ "$status" -eq 40 ]
+  [[ "${lines[0]}" == "labyrinth: the service list is malformed: $ETC/services:1: "* ]]
+  [ "${lines[1]}" = 'Correct that line, then run the same command again.' ]
+}
+
+@test "a missing configuration folder is named, not taken for empty files" {
+  run bash "$LAB/labyrinth.sh" plan observe --profile test --root "$ROOT"
+  [ "$status" -eq 40 ]
+  [ "${lines[0]}" = "labyrinth: the configuration folder does not exist: $ROOT/etc" ]
+  [[ "${lines[1]}" == *'--root'*'--config'* ]]
+}
+
+@test "a configuration file that cannot be read says it needs root" {
+  [[ "$(id -u)" != 0 ]] || skip 'root reads every file'
+  chmod 000 "$ETC/protected-accounts"
+  lab plan observe --profile test
+  chmod 600 "$ETC/protected-accounts"
+  [ "$status" -eq 20 ]
+  [ "${lines[0]}" = "labyrinth: needs root to read $ETC/protected-accounts" ]
+  [ "${lines[1]}" = 'Run it again as root, for example with sudo.' ]
+}
+
+@test "help on a module with a bad module.yml names the line and keeps the message whole" {
+  printf 'bad line\n' >> "$LAB/phases/observe/modules/clean/module.yml"
+  run bash "$LAB/labyrinth.sh" help observe.clean
+  [ "$status" -eq 40 ]
+  [ "${lines[0]}" = 'labyrinth: the module.yml of observe.clean is not valid: not a key: value line' ]
+  [[ "${lines[1]}" =~ ^Report\ the\ module\ to\ its\ author,\ or\ correct\ .*/module\.yml:[0-9]+$ ]]
+}
+
+@test "a profile that differs from the hosts file says to leave it out" {
+  hosts ring1
+  lab apply observe --profile other
+  [ "$status" -eq 40 ]
+  [ "${lines[0]}" = 'labyrinth: the hosts file gives this host profile test, not other' ]
+  [ "${lines[1]}" = "Leave out --profile, or change this host's line in $ETC/hosts." ]
+}
+
 @test "a host listed for another platform says where to run" {
   printf '%s ring1 test windows\n' "$HOST" > "$ETC/hosts"
   lab plan observe

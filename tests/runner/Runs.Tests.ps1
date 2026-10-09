@@ -109,10 +109,10 @@ Describe 'labyrinth.ps1 runs' {
         $r.Out | Should -Match "kept: the revert timer for run $a is cancelled"
     }
 
-    It 'keep without a run refuses when no run, or more than one, is armed' {
+    It 'keep without a run: nothing to keep is not an error; more than one armed is refused' {
         $r = Invoke-TestLabRun $t @('keep')
-        $r.Code | Should -Be 40
-        $r.Err | Should -Match 'nothing to keep'
+        $r.Code | Should -Be 0
+        $r.Out | Should -Match ([regex]::Escape('There is nothing to keep: no run on this host has an armed revert timer.'))
         $a = Get-TestArmedRun $t
         $b = Get-TestArmedRun $t
         $r = Invoke-TestLabRun $t @('keep')

@@ -145,7 +145,17 @@ Describe 'labyrinth.ps1 apply' {
     }
 
     It 'a wrong group name: the plan is not confirmed and nothing is changed' {
-        (Invoke-TestApply $t @('labadmin', 'ring2')).Code | Should -Be 20
+        $r = Invoke-TestApply $t @('labadmin', 'ring2')
+        $r.Code | Should -Be 20
+        $toggle | Should -Not -Exist
+        $r.Output | Should -Match ([regex]::Escape("labyrinth: the plan was not confirmed: 'ring2' was typed, not ring1; nothing was changed"))
+        $r.Output | Should -Match ([regex]::Escape('Run apply again and type ring1 at the prompt, or give it with -ConfirmGroup ring1.'))
+    }
+
+    It 'a break-glass answer that is not a break-glass account says which class it needs' {
+        $r = Invoke-TestApply $t @('nobody')
+        $r.Code | Should -Be 20
+        $r.Output | Should -Match ([regex]::Escape("labyrinth: break-glass not confirmed: 'nobody' is not listed with class breakglass in $(Join-Path $t.Etc 'protected-accounts')"))
         $toggle | Should -Not -Exist
     }
 

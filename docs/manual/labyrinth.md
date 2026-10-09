@@ -126,7 +126,7 @@ Ends with 0 when every change was made and checked, or the highest problem code 
 
 ## keep [*run*]
 
-Keeps a run's changes: cancels its revert timer, then records that the run was kept. Without a run, it keeps the only run whose timer is armed; if more than one is armed, it lists them and keeps nothing.
+Keeps a run's changes: cancels its revert timer, then records that the run was kept. Without a run, it keeps the only run whose timer is armed. If none is armed, there is nothing to keep, and it says so and ends with 0. If more than one is armed, it lists them and keeps nothing.
 
 Ends with 0 when the run is kept, 20 when it is not run as @ADMIN@ or it is too late because the run was already rolled back, and 40 when the timer could not be cancelled or the keep could not be recorded. If the timer could not be cancelled, the run is **not** kept and the timer will still undo it: Labyrinth says when, and gives the command to try again.
 
@@ -164,7 +164,7 @@ Below the list, it shows how to name a run by its last four characters. Then it 
 
 ## probe
 
-Tests every scored service once, the way the scoring engine would, and prints the result for each. Changes nothing. Ends with 0 when every service passes, 20 when there is no list of scored services, 30 when any service fails, and 40 on an error.
+Tests every scored service once, the way the scoring engine would, and prints the result for each. Changes nothing. Ends with 0 when every service passes, 20 when there is no list of scored services or the list names none, 30 when any service fails, and 40 on an error.
 
 ## help [*topic*]
 
@@ -441,6 +441,13 @@ Most errors that stop Labyrinth are two lines: what failed and why, then how to 
 <!-- end -->
 
 <!-- linux -->
+**"needs root to read".** A file in the configuration folder, or the folder itself, can be read only with full rights; after the first `apply` that is normal. `plan` and `probe` refuse rather than treat the file as missing, which could turn off a safety check without anyone noticing. Run the command again as @ADMIN@.
+<!-- end -->
+<!-- windows -->
+**"needs an elevated Administrator session to read".** A file in the configuration folder, or the folder itself, can be read only with full rights; after the first `apply` that is normal. `plan` and `probe` refuse rather than treat the file as missing, which could turn off a safety check without anyone noticing. Run the command again as @ADMIN@.
+<!-- end -->
+
+<!-- linux -->
 **"... can be changed by an account other than root".** Labyrinth runs its program, its configuration and its run records as root, and the revert timer runs them again later. So `apply`, `keep` and `rollback` refuse if any other account could change them: the program folder, the configuration folder, the data root, anything in them, or any folder above them. The line names the first one found. Keep Labyrinth in `/opt/labyrinth`, owned by root and not writable by group or others: `sudo chown -R root: /opt/labyrinth` and `sudo chmod -R go-w /opt/labyrinth`. A copy unpacked in a home folder or under `/tmp` is refused.
 <!-- end -->
 <!-- windows -->
@@ -453,7 +460,13 @@ Most errors that stop Labyrinth are two lines: what failed and why, then how to 
 
 **"no profile named".** No profile file has that name. The next line lists the profiles there are; check the name for a typing mistake.
 
-**"folder does not exist" or "is a file, not a folder".** The path given with the configuration option is not a folder. Give the folder that holds the `hosts` file, or leave the option out to use the one under the data root. `keep` and `rollback` still work without it.
+**"folder does not exist" or "is a file, not a folder".** The path given with the configuration option is not a folder, or, without that option, there is no `etc` folder under the data root. Check the data root option for a typing mistake, or give the folder that holds the `hosts` file. `keep` and `rollback` still work without it.
+
+**"lists no service".** The `services` file is there but names no scored service, so nothing can show that a change left the services working. `probe` stops, and an `apply` blocks every module that can affect a scored service. List the scored services, one per line.
+
+**"the plan was not confirmed".** The group name typed at the prompt was not this host's group; the line says what was typed. Nothing was changed. Run `apply` again and type the group name shown in the prompt.
+
+**"break-glass not confirmed".** The name typed at the break-glass prompt is not listed with the class `breakglass` in `protected-accounts`, or nothing was typed. Nothing was changed. Log in at the console with the break-glass account, run `apply` again and type that account's name.
 
 **"does not serve this host's platform".** This host's line in `hosts` names a platform this program does not serve, so `plan`, `apply` and `probe` refuse to run here. Correct the line, or use the Labyrinth runner for that platform on the host. `keep` and `rollback` still work, so a run can always be undone.
 

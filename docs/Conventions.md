@@ -101,7 +101,7 @@ labyrinth <command> [<phase> | <run>] [options]
 |---|---|
 | `plan <phase>` | Every module of the phase reports what it would change. Nothing is written, not even logs |
 | `apply <phase>` | Plan, then apply behind the gates below |
-| `keep [<run>]` | Keep a run's changes: cancel its revert timer, then record the keep. Without `<run>`, it takes the one run whose timer is armed; if several are armed, it lists them and keeps nothing (`40`) |
+| `keep [<run>]` | Keep a run's changes: cancel its revert timer, then record the keep. Without `<run>`, it takes the one run whose timer is armed; with none armed there is nothing to keep (`0`); if several are armed, it lists them and keeps nothing (`40`) |
 | `rollback <run>` | Undo what a run applied, newest module first, except the modules kept once they verified (`keep_on_verify`, below); `--all` undoes those too. The revert timer runs exactly `rollback <run>`. `<run>` is always needed: without it, the runs are listed (`40`). When it undid anything, it writes a notice to every terminal or session logged in on the host (`wall` on Linux, `msg` on Windows; best effort), so the team learns of a rollback no one was watching |
 | `runs` | List this host's runs, oldest first: ID, phase, start time (UTC) and state, which is `armed` (with the time it rolls back; on Linux, `armed: timer lost (restart?)` when systemd no longer has the transient timer, while a Windows scheduled task survives a restart and runs when it can), `kept`, `rolled back`, `rolled back with errors`, or `not kept, no timer`. Changes nothing; needs root or Administrator (`20`) |
 | `probe` | Probe every scored service once; exit `30` if one fails. Changes nothing |
@@ -145,13 +145,15 @@ The whole line must parse before help or the version is shown. A value option th
 
 **Host checks** run for `plan`, `apply` and `probe` only:
 
-- A `--config` folder that does not exist is an error (`40`).
+- A `--config` folder that does not exist is an error (`40`), and so is a missing `<root>/etc` when `--config` is not given.
+- Every file in the configuration folder must be readable. One that is not is refused with "needs root (or an elevated Administrator session) to read <file>" (`20`), because a file that cannot be read would otherwise look missing or empty and could quietly weaken a gate.
+- A `services` file that is malformed is an error (`40`) in `plan` as in `apply`, before anything is asked. A `services` file with no service in it counts as missing.
 - This host's line in `hosts` must name a platform the runner serves: `ubuntu` (the whole Debian family) or `rhel-family` (Fedora, RHEL, Rocky, Oracle Linux, AlmaLinux) for `labyrinth.sh`, `windows` for `labyrinth.ps1`. Otherwise the run is blocked (`20`).
 - An `appliance` is never changed (design 16).
 
 `keep`, `rollback` and `runs` skip these checks, so a stored revert-timer command still works after the configuration changes.
 
-**Profile.** `--profile` names it; otherwise it is this host's line in the `hosts` file. On apply the host must be listed (else `20`), a given `--profile` must match its line (else `40`), and a host in the `manual` group is refused (`20`).
+**Profile.** `--profile` names it; otherwise it is this host's line in the `hosts` file. On apply the host must be listed (else `20`), a given `--profile` must match its line (else `40`), and a host in the `manual` group is refused (`20`). So the `Next:` line of a plan suggests `apply` only when that apply would get past these checks; otherwise it says what to change in `hosts` first.
 
 **Modules run by priority** (`P0` first), and in profile order within a priority. A `reversible`, `service-affecting` or `approval` module must have `check`, `apply`, `verify` and `rollback`, or it is invalid (`40`).
 
@@ -162,7 +164,7 @@ The whole line must parse before help or the version is shown. A value option th
 3. Every module is planned, after the `pre-approved` file is read (a malformed one is `40`). Any `40` means nothing is applied. If nothing needs applying, the run ends with no prompts.
 4. **Break-glass** (design 01, section 7): the operator logs in at the console with a `breakglass`-class account and types its name. It is asked once per host and kept in `<state>/breakglass` as `<timestamp><TAB><account>`.
 5. **Confirmation:** the operator types the host's group name.
-6. From here, changes are made and recorded: the run's manifest starts (`run_start`, `breakglass_verified`), and the scored services are probed if a `services` file exists (otherwise a warning).
+6. From here, changes are made and recorded: the run's manifest starts (`run_start`, `breakglass_verified`), and the scored services are probed if the `services` file lists any (otherwise a warning). A run folder or manifest that cannot be written is an error (`40`).
 7. Each module that needs a change, in order:
    - `manual-only`: never applied; its plan is the checklist.
    - `touches_scored: true`: blocked (`20`) without a non-empty `scoring-allowlist` and a `services` file; the run continues.

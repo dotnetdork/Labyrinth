@@ -117,10 +117,10 @@ streams() {
   [[ "$output" == *"kept: the revert timer for run $a is cancelled"* ]]
 }
 
-@test "keep without a run refuses when no run, or more than one, is armed" {
+@test "keep without a run: nothing to keep is not an error; more than one armed is refused" {
   lab keep
-  [ "$status" -eq 40 ]
-  [[ "$output" == *"nothing to keep"* ]]
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"There is nothing to keep: no run on this host has an armed revert timer."* ]]
   local a b
   a="$(armed_run)"
   b="$(armed_run)"
