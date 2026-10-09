@@ -302,6 +302,8 @@ The manifest is `<state>/runs/<run>/manifest.jsonl`, one JSON object per line, e
 | `firewall_snapshot` | The firewall adapter saved the ruleset; `target` is the backend and `backup` the snapshot folder. Rollback restores it (design 19, section 5) |
 | `firewall_allow`, `firewall_default_deny` | The firewall adapter is about to add an allow, or set the inbound default to deny; undone by the snapshot |
 | `quarantine_file`, `quarantine_cron`, `quarantine_unit`, `quarantine_task`, `quarantine_service`, `quarantine_registry`, `quarantine_wmi`, `quarantine_process` | An item is about to be quarantined; `lab_quarantine_restore` / `Undo-LabQuarantine` put it back, except an ended process (design 17, section 5.1) |
+| `package_install` | The `packages` module installed a package; `target` is the package and `note` its version. Rollback stops and disables any service it brought and leaves the package installed (design 20, section 4) |
+| `finding_state` | A known flaw changed state in the vulnerability tracker; `target` is the flaw and host, `note` the new state and how. Nothing to undo; the change that closed it has its own entry (design 21, section 4) |
 | `approval_refused` | An approved item was left alone because it changed since the plan; `target` is the item id (section 3.1). Nothing to undo |
 | `rolled_back` | The module was rolled back |
 

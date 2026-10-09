@@ -104,7 +104,7 @@ The attacker's power comes from credentials, existing sessions and footholds lef
 - **Move or hide admin:** get SSH (Secure Shell) and RDP (Remote Desktop Protocol) off the obvious port. Consider port-knocking on hosts that support it (§3.4, §4.7).
 - **Disable services you are not graded on.** Every listener is a vector.
 
-  **[RULES]** Only from a per-profile candidate list, and only after the scored-service list is known. Anything that interferes with the scoring engine is the team's responsibility (NCCDC, 2025, Rule 4.11).
+  **[RULES]** Anything that interferes with the scoring engine is the team's responsibility (NCCDC, 2025, Rule 4.11). As a design choice, services are disabled only from a per-profile candidate list, and only after the scored-service list is known (design 15).
 
 - **Patch the obvious:** the known-exploited, internet-facing things only. Do not start a 40-minute `dist-upgrade` mid-round.
 
@@ -342,7 +342,7 @@ When you identify a C2 domain, **redirect** its resolution to loopback or a capt
 - **Per-host:** append the domain → `127.0.0.1` in `/etc/hosts`.
 - **Network-wide:** RPZ (Response Policy Zone) or conditional forwarding on the AD DNS server, or DNS host overrides on the perimeter firewall, to sinkhole across all assets at once.
 
-  **[RULES]** DNS is a scored service, so changes to the domain controller's DNS are manual-only and tested with a scoring-style query before and after (NCCDC, 2025, Rule 4.11).
+  **[RULES]** DNS is a scored service, and anything that interferes with scoring is the team's responsibility (NCCDC, 2025, Rule 4.11). The rule does not require changes by hand; keeping changes to the domain controller's DNS manual, tested with a scoring-style query before and after, is a design choice (design 11).
 
 ### 4.7 Port knocking (stealth admin) — see §3.4
 
