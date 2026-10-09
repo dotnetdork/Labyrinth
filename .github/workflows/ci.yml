@@ -7,6 +7,12 @@ on:
   push:
   pull_request:
 
+# A newer push to a working branch cancels the run it replaces, so runners
+# test only the latest commit. Runs on main always finish.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
 permissions:
   contents: read
 
