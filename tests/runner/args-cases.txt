@@ -40,6 +40,8 @@
 40|err|not <module-id>:<item-id>@<fingerprint>|apply observe --approve observe.ask:item-a
 40|err|not <module-id>:<item-id>@<fingerprint>|apply observe --approve observe.ask:item-a@2a2c17aaaf66,
 40|err|takes no categories|apply observe --approve observe.ask:category:sample
+40|err|is only for rollback, not keep|keep 4f2a --all
+40|err|is only for rollback, not plan|observe --all
 #
 # Accepted spellings: each plans the observe phase (10).
 10|out|run |--profile test --root @ROOT@ --config @ETC@ observe

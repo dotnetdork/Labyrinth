@@ -24,6 +24,8 @@
       -Config DIR          the configuration folder (default <root>\etc)
       -BreakGlass NAME     answer the break-glass prompt (apply only)
       -ConfirmGroup GROUP  answer the group-name prompt (apply only)
+      -Approve LIST        approve items without the prompt (apply only)
+      -All                 also undo changes kept once verified (rollback)
 
     Exit codes: 0 done or nothing to do, 10 change needed, 20 blocked,
     30 a check failed (probe: a service failed), 40 error.
@@ -68,7 +70,7 @@ $ErrorActionPreference = 'Stop'
 
 $LabVersion = '0.1.0-dev'
 $Phases = @('lockout', 'observe', 'deceive', 'sustain')
-$ModuleKeys = @('id', 'title', 'phase', 'priority', 'platforms', 'risk', 'touches_scored', 'requires', 'outputs', 'spec', 'pre_approvable')
+$ModuleKeys = @('id', 'title', 'phase', 'priority', 'platforms', 'risk', 'touches_scored', 'requires', 'outputs', 'spec', 'pre_approvable', 'keep_on_verify')
 $RequiredKeys = @('id', 'title', 'phase', 'priority', 'platforms', 'risk', 'touches_scored')
 $Risks = @('read-only', 'reversible', 'service-affecting', 'approval', 'manual-only')
 $Platforms = @('ubuntu', 'rhel-family', 'windows', 'appliance')
@@ -92,6 +94,7 @@ $script:LabOptions = @(
     @{ Name = 'confirm-group'; Show = '-ConfirmGroup'; Keys = @('confirmgroup', 'confirm'); Value = $true }
     @{ Name = 'approve'; Show = '-Approve'; Keys = @('approve'); Value = $true }
     @{ Name = 'apply'; Show = '-Apply'; Keys = @('apply'); Value = $false }
+    @{ Name = 'all'; Show = '-All'; Keys = @('all'); Value = $false }
     @{ Name = 'help'; Show = '-Help'; Keys = @('help'); Value = $false }
     @{ Name = 'version'; Show = '-Version'; Keys = @('version'); Value = $false }
 )
@@ -213,11 +216,12 @@ Example: $Self keep 4f2a
         'rollback' { @"
 Usage: $Self rollback <run> [options]
 
-Undo everything the run changed, newest change first. This is what
-the revert timer runs. Safe to run twice. <run> is a run ID or its
-last 4 characters; '$Self runs' lists them.
+Undo what the run changed, newest change first. This is what the
+revert timer runs. Safe to run twice. <run> is a run ID or its last
+4 characters; '$Self runs' lists them.
 
 $where
+  -All                   also undo changes kept once they verified
 
 Exit: 0 rolled back, 20 not an Administrator, 40 error.
 Example: $Self rollback 4f2a
@@ -348,6 +352,10 @@ function Show-LabModuleHelp {
         Write-LabLine 'Scored services: it can affect one, so they are tested after it.'
     } else {
         Write-LabLine 'Scored services: it does not touch them.'
+    }
+    if ($m.ContainsKey('keep_on_verify') -and $m['keep_on_verify'] -ceq 'true') {
+        Write-LabLine 'Kept once it verifies and no scored service got worse; the revert'
+        Write-LabLine 'timer then leaves it alone.'
     }
     Write-LabLine ('Runs on: {0}.' -f ((Get-LabListItem $m['platforms']) -join ', '))
     Write-LabLine "Folder: $dir"
@@ -967,6 +975,12 @@ function Test-LabModule {
             if ($c -cnotmatch '^[a-z0-9-]+$') { Write-YmlError $File "not a category: $c"; return $false }
         }
     }
+    if ($m.ContainsKey('keep_on_verify')) {
+        if (@('true', 'false') -cnotcontains $m['keep_on_verify']) { Write-YmlError $File 'keep_on_verify must be true or false'; return $false }
+        if ($m['keep_on_verify'] -ceq 'true' -and @('reversible', 'service-affecting', 'approval') -cnotcontains $m['risk']) {
+            Write-YmlError $File 'keep_on_verify is only for a module that changes something'; return $false
+        }
+    }
     return $true
 }
 
@@ -1127,7 +1141,7 @@ function Import-LabRunModule {
         $found += [pscustomobject]@{
             Id = $id; Dir = $dir; Risk = $script:Mod['risk']; Scored = ($script:Mod['touches_scored'] -eq 'true')
             Requires = $requires; Priority = $script:Mod['priority']; Rc = 0; State = 'planned'; Items = @()
-            PreOk = $preOk
+            PreOk = $preOk; Keep = ($script:Mod.ContainsKey('keep_on_verify') -and $script:Mod['keep_on_verify'] -ceq 'true')
         }
     }
     $ordered = @()
@@ -1782,8 +1796,37 @@ function Invoke-LabApplyOne {
     Write-LabStatus 'OK' $name
     Write-LabDetail 'Did' 'applied and verified'
     Write-LabLogFor $id 'info' 'applied' 'applied and verified'
+    if ($M.Keep) { Save-LabModuleKept $id }
     $M.State = 'done'
     return 0
+}
+
+# Save-LabModuleKept ID: keep a keep_on_verify module that verified, so the
+# revert timer leaves it alone (docs\Conventions.md section 3.1). Only when
+# the scored services were tested, so that none is known to have got worse.
+# A failure leaves the module under the timer, which is the safe side.
+function Save-LabModuleKept {
+    param([string] $Id)
+    if (-not $script:HaveServices) {
+        Write-LabDetail 'Note' 'not kept yet: with no service list, nothing shows that no scored service got worse, so the revert timer still covers it'
+        return
+    }
+    try {
+        Add-LabEntryFor $Id 'module_kept' '' 'verified; no scored service got worse'
+    } catch {
+        Write-LabDetail 'Note' 'not kept yet: the manifest cannot be written, so the revert timer still covers it'
+        return
+    }
+    Write-LabDetail 'Did' 'kept: it verified and no scored service got worse, so the revert timer leaves it alone'
+    Write-LabLogFor $Id 'info' 'module_kept' 'kept once verified'
+}
+
+# Get-LabUnkeptModule: the modules of the current run that a rollback
+# started by the revert timer would still undo.
+function Get-LabUnkeptModule {
+    $kept = @(Get-LabKeptModule -RunId $env:LAB_RUN_ID)
+    $applied = @(Get-LabAppliedModule -RunId $env:LAB_RUN_ID)
+    return @($applied | Where-Object { $kept -cnotcontains $_ })
 }
 
 function Read-LabSetting {
@@ -1866,16 +1909,25 @@ function Write-LabPlanIntro {
 function Write-LabRecap {
     param([string] $HostName, [string] $Group)
     $remote = $false
+    $kept = $false
     Write-LabLine ''
     Write-LabLine "About to apply on host $HostName, group ${Group}:"
     foreach ($m in $script:Run) {
         $what = ''
         if ($m.Rc -eq 10 -and $m.Risk -eq 'manual-only') { $what = 'Manual:' }
-        elseif ($m.Rc -eq 10) { $what = 'Will change:'; if ($m.Risk -eq 'service-affecting') { $remote = $true } }
+        elseif ($m.Rc -eq 10) {
+            $what = 'Will change:'
+            if ($m.Risk -eq 'service-affecting') { $remote = $true }
+            if ($m.Keep) { $kept = $true }
+        }
         elseif ($m.Rc -eq 20) { $what = 'Blocked:' }
         if ($what -ne '') { Write-LabLine ('  {0}{1}' -f $what.PadRight(13), (Get-LabModuleName $m.Id)) }
     }
-    Write-LabLine "A revert timer undoes this whole run in $($script:Settings['REVERT_MINUTES']) minutes unless you keep it."
+    Write-LabLine "A revert timer undoes this run in $($script:Settings['REVERT_MINUTES']) minutes unless you keep it."
+    if ($kept) {
+        Write-LabLine 'A change that only takes access away is kept once it verifies; the timer'
+        Write-LabLine 'then leaves it alone.'
+    }
     if ($remote) {
         if ("$env:SSH_CONNECTION$env:SSH_CLIENT$env:SSH_TTY" -ne '') {
             Write-LabLine 'You are connected over SSH, and a change may interrupt a service.'
@@ -1978,6 +2030,11 @@ function Invoke-LabApplyCommand {
     Write-LabLine ''
     if ($stopped) {
         foreach ($l in (Get-LabRunStopped)) { Write-LabLine $l }
+    } elseif ((Test-LabRevertTimer -RunId $env:LAB_RUN_ID) -and @(Get-LabUnkeptModule).Count -eq 0) {
+        # Every change was kept once verified: the timer has nothing to undo.
+        Write-LabLine 'All changes are applied, verified and kept.'
+        $rc = Invoke-LabKeep
+        if ($rc -gt $worst) { $worst = $rc }
     } elseif (Test-LabRevertTimer -RunId $env:LAB_RUN_ID) {
         Write-LabLine 'All changes are applied and verified.'
         Write-LabLine 'From a NEW session, check that you can still log in.'
@@ -2196,11 +2253,26 @@ function Invoke-LabRollbackCommand {
         $ok = 0
         $bad = 0
         $mods = @(Get-LabAppliedModule -RunId $env:LAB_RUN_ID)
+        # Modules kept once verified stay, unless -All (section 3.1).
+        $left = @()
+        if (-not $script:Given.ContainsKey('all')) {
+            $kept = @(Get-LabKeptModule -RunId $env:LAB_RUN_ID)
+            $left = @($mods | Where-Object { $kept -ccontains $_ })
+            $mods = @($mods | Where-Object { $kept -cnotcontains $_ })
+        }
         # A rollback started by the revert timer is logged too, though no
         # one watches it.
         Open-LabRunLog "rollback run $env:LAB_RUN_ID"
         Write-LabLine "labyrinth ${LabVersion}: rollback run $env:LAB_RUN_ID"
-        if ($mods.Count -eq 0) { Write-LabLine 'This run changed nothing that needs undoing.' }
+        if ($left.Count -gt 0) {
+            Write-LabLine 'Kept once verified, so left in place (add -All to undo these too):'
+            foreach ($id in $left) {
+                Import-LabModuleTitle $id
+                Write-LabLine "  $(Get-LabModuleName $id)"
+            }
+        }
+        if ($mods.Count -eq 0 -and $left.Count -gt 0) { Write-LabLine 'Nothing else needs undoing.' }
+        elseif ($mods.Count -eq 0) { Write-LabLine 'This run changed nothing that needs undoing.' }
         elseif ($mods.Count -eq 1) { Write-LabLine 'Undoing 1 module.' }
         else { Write-LabLine "Undoing $($mods.Count) modules, newest change first." }
         Write-LabLine ''
@@ -2230,6 +2302,10 @@ function Invoke-LabRollbackCommand {
             $rc = 40
         }
         Write-LabLogFor '' 'warn' 'run_rolled_back' "run rolled back, exit $rc"
+        if ($ok + $bad -gt 0) {
+            # Whoever is logged in learns that changes were undone; best effort.
+            [void](Send-LabNotice -Message "Labyrinth rolled back run $env:LAB_RUN_ID on $(Get-LabHostName): its changes are undone. See '$Self runs'.")
+        }
         Write-LabLine ''
         $parts = @()
         if ($ok -gt 0) { $parts += "$ok OK" }
@@ -2341,6 +2417,9 @@ try {
             '' { Exit-LabUsage '-Apply needs a phase' 'apply' }
             default { Exit-LabUsage "-Apply cannot be used with $cmd" $cmd }
         }
+    }
+    if ($script:Given.ContainsKey('all') -and $cmd -ne '' -and $cmd -cne 'rollback' -and $cmd -cne 'help') {
+        Exit-LabUsage "-All is only for rollback, not $cmd" $cmd
     }
     # The whole line must parse before help or the version is shown.
     $helping = $script:Given.ContainsKey('help') -or $script:Given.ContainsKey('version')

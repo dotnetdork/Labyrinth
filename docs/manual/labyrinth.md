@@ -62,8 +62,9 @@ You need:
 | Run ID | The name of a run, such as `20261002T140301Z-4f2a`: the start time in UTC and four random characters. Wherever a command asks for a run, the last four characters (`4f2a`) are enough. |
 | Plan | A dry run: each module reports what it would change. Nothing is changed and nothing is written. |
 | Apply | A real run: Labyrinth plans, asks you to confirm, then makes the changes. |
-| Revert timer | A timer started before a risky change. If nobody **keeps** the run in time, the timer undoes the whole run by itself. It protects you if a change locks you out. |
+| Revert timer | A timer started before a risky change. If nobody **keeps** the run in time, the timer undoes the run by itself. It protects you if a change locks you out. |
 | Keep | Telling Labyrinth that a run's changes are good: the revert timer is cancelled and the changes stay. |
+| Kept once verified | A change that only takes access away from an intruder, such as a new admin password or a removed planted key, cannot lock you out. Labyrinth keeps it as soon as its check passes and no scored service got worse, so the revert timer does not hand the intruder their access back. |
 | Rollback | Undoing what a run changed, newest first. The revert timer starts one automatically; you can start one too. |
 | Break-glass account | The emergency login, kept in the team's offline record, used only when normal access fails. Labyrinth asks you to confirm it works before changing anything. |
 | Scored service | A service the scoring engine checks, such as a website, email or DNS. Labyrinth tests them before and after each change. |
@@ -131,7 +132,18 @@ Ends with 0 when the run is kept, 20 when it is not run as @ADMIN@ or it is too 
 
 ## rollback *run*
 
-Undoes everything the run changed, newest change first. This is exactly what the revert timer does when it fires. You must name the run. Without one, it changes nothing and ends with 40; run as @ADMIN@, it also lists the runs to choose from. Running it twice is safe.
+Undoes what the run changed, newest change first. This is exactly what the revert timer does when it fires. You must name the run. Without one, it changes nothing and ends with 40; run as @ADMIN@, it also lists the runs to choose from. Running it twice is safe.
+
+Changes that were kept once verified stay: rollback lists them first and leaves them in place. To undo them too, add
+<!-- linux -->
+`--all`.
+<!-- end -->
+<!-- windows -->
+`-All`.
+<!-- end -->
+If that undoes a password change, the old password is back: change it again and correct the offline record.
+
+When rollback undoes anything, it also shows a short notice on every terminal logged in to the host, so the team knows, even when nobody was watching the revert timer.
 
 Ends with 0 when the run is rolled back, 20 when not run as @ADMIN@, and 40 on an error.
 
@@ -201,6 +213,7 @@ all work.
 | `--break-glass NAME` | Answers the break-glass prompt without typing. | apply |
 | `--confirm-group GROUP` | Answers the group-name prompt without typing. | apply |
 | `--approve LIST` | Approves items without the approval prompt; see section 7. | apply |
+| `--all` | Also undoes the changes that were kept once verified. | rollback |
 | `-h`, `-?`, `--help` | Show help. | all |
 | `-V`, `--version` | Show the version. | all |
 
@@ -215,6 +228,7 @@ Example: `sudo ./labyrinth.sh apply lockout --root /srv/labyrinth`
 | `-BreakGlass NAME` | Answers the break-glass prompt without typing. | apply |
 | `-ConfirmGroup GROUP` | Answers the group-name prompt without typing. | apply |
 | `-Approve LIST` | Approves items without the approval prompt; see section 7. | apply |
+| `-All` | Also undoes the changes that were kept once verified. | rollback |
 | `-h`, `-Help` | Show help. | all |
 | `-V`, `-Version` | Show the version. | all |
 
@@ -242,8 +256,9 @@ An apply goes through a fixed series of safety checks. If one fails, the run sto
    - the revert timer is armed (or moved later), unless the module only reads;
    - the change is made;
    - the module checks its own work; if the check fails, that module is undone and the run stops;
-   - the scored services are tested again; if one that worked before now fails, that module is undone and the run stops.
-7. **Keep or not.** Check that a new login works, then type `keep`. Anything else leaves the timer armed.
+   - the scored services are tested again; if one that worked before now fails, that module is undone and the run stops;
+   - a change that only takes access away is kept now, if the scored services were tested, and the timer leaves it alone.
+7. **Keep or not.** If every change was kept once verified, the run is kept and nothing is asked. Otherwise, check that a new login works, then type `keep`. Anything else leaves the timer armed.
 
 Some modules never change anything on their own: they print a checklist for a person to follow, or ask you which items to change.
 
@@ -356,7 +371,7 @@ Next: bring the failed service back, then run '@CMD@ probe' again.
 probe finished: exit 30 (a service failed)
 ```
 
-`WARN` means a service could not be checked, for example because a tool is missing. A `rollback` says how many modules it undoes, shows each as `CHANGE` and then `OK` or `ERROR`, and ends with `rollback finished: exit 0 (rolled back)`, or `exit 40 (error)` if a module could not be undone.
+`WARN` means a service could not be checked, for example because a tool is missing. A `rollback` first lists the modules it leaves in place because they were kept once verified, then says how many modules it undoes, shows each as `CHANGE` and then `OK` or `ERROR`, and ends with `rollback finished: exit 0 (rolled back)`, or `exit 40 (error)` if a module could not be undone.
 
 An apply also recaps twice. Before it asks for the group name, it lists what each module will do and says that a revert timer will be armed. If you are connected over the network, it also reminds you to keep a second session open. Before it asks whether to keep the changes, it gives the time, in UTC and in minutes from now, at which the revert timer will undo them.
 
@@ -456,7 +471,7 @@ Most errors that stop Labyrinth are two lines: what failed and why, then how to 
 
 **"rollback FAILED".** Labyrinth could not undo one module of the run. The line names the module and the backup folder that holds its files as they were before the run. The other modules are still undone, and `runs` shows the run as `rolled back with errors`. Restore that module's files by hand from the backup folder, then check the service it affects.
 
-**You are locked out.** Do nothing: when the revert timer fires, it undoes the run. If you cannot wait, log in at the console with the break-glass account and run `rollback`.
+**You are locked out.** Do nothing: when the revert timer fires, it undoes the run, and every terminal logged in to the host shows a notice. It leaves the changes that were kept once verified, such as a new admin password, because they cannot lock you out; the new password is in the offline record. If you cannot wait, log in at the console with the break-glass account and run `rollback`.
 
 # 12. See also
 

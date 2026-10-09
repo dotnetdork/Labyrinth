@@ -36,7 +36,7 @@ trap 'on_internal_error "$?" "${BASH_SOURCE[0]##*/}" "$LINENO" "$BASH_COMMAND"' 
 
 readonly LAB_VERSION='0.1.0-dev'
 readonly PHASES='lockout observe deceive sustain'
-readonly MODULE_KEYS='id title phase priority platforms risk touches_scored requires outputs spec pre_approvable'
+readonly MODULE_KEYS='id title phase priority platforms risk touches_scored requires outputs spec pre_approvable keep_on_verify'
 readonly -a REQUIRED_KEYS=(id title phase priority platforms risk touches_scored)
 readonly RISKS='read-only reversible service-affecting approval manual-only'
 readonly PLATFORMS='ubuntu rhel-family windows appliance'
@@ -75,9 +75,9 @@ readonly COMMANDS='plan apply keep rollback runs probe help version'
 # The options, one row each (docs/Conventions.md section 3.1): the canonical
 # name, the keys it is matched by (lower case, no dashes), and whether it
 # takes a value.
-readonly -a OPT_NAMES=(profile root config break-glass confirm-group approve apply help version)
-readonly -a OPT_KEYS=('profile profilename' root config breakglass 'confirmgroup confirm' approve apply help version)
-readonly -a OPT_VALUE=(1 1 1 1 1 1 0 0 0)
+readonly -a OPT_NAMES=(profile root config break-glass confirm-group approve apply all help version)
+readonly -a OPT_KEYS=('profile profilename' root config breakglass 'confirmgroup confirm' approve apply all help version)
+readonly -a OPT_VALUE=(1 1 1 1 1 1 0 0 0 0)
 declare -A GIVEN=()        # canonical option name -> value given
 declare -a WORDS=()        # the words that are not options, in order
 PARSE_ERR=""                # the first option error, reported by main
@@ -93,9 +93,10 @@ readonly LOG_CAP=500       # most lines logged from one entry point
 
 # The modules of this run, in run order, one array element per module.
 # RUN_ITEMS holds the items an approval module's plan listed, one
-# 'id<TAB>category<TAB>fingerprint<TAB>reason' line each, and RUN_PREOK
-# the categories its module.yml lets a pre-approval rule approve.
-declare -a RUN_IDS=() RUN_DIR=() RUN_RISK=() RUN_SCORED=() RUN_REQUIRES=() RUN_RC=() RUN_STATE=() RUN_ITEMS=() RUN_PREOK=()
+# 'id<TAB>category<TAB>fingerprint<TAB>reason' line each, RUN_PREOK the
+# categories its module.yml lets a pre-approval rule approve, and RUN_KEEP
+# its keep_on_verify (true or false).
+declare -a RUN_IDS=() RUN_DIR=() RUN_RISK=() RUN_SCORED=() RUN_REQUIRES=() RUN_RC=() RUN_STATE=() RUN_ITEMS=() RUN_PREOK=() RUN_KEEP=()
 
 # cmd_help [COMMAND]: the help for every command, or for one, on stdout.
 # Each topic is at most 15 lines of at most 78 columns, with one Exit line
@@ -171,11 +172,12 @@ EOF
     rollback) cat <<EOF
 Usage: $SELF rollback <run> [options]
 
-Undo everything the run changed, newest change first. This is what
-the revert timer runs. Safe to run twice. <run> is a run ID or its
-last 4 characters; '$SELF runs' lists them.
+Undo what the run changed, newest change first. This is what the
+revert timer runs. Safe to run twice. <run> is a run ID or its last
+4 characters; '$SELF runs' lists them.
 
 $where
+  --all                  also undo changes kept once they verified
 
 Exit: 0 rolled back, 20 not root, 40 error.
 Example: $SELF rollback 4f2a
@@ -304,6 +306,10 @@ cmd_help_module() {
     printf 'Scored services: it can affect one, so they are tested after it.\n'
   else
     printf 'Scored services: it does not touch them.\n'
+  fi
+  if [[ "${MOD[keep_on_verify]:-false}" == true ]]; then
+    printf 'Kept once it verifies and no scored service got worse; the revert\n'
+    printf 'timer then leaves it alone.\n'
   fi
   printf 'Runs on: %s.\n' "${items// /, }"
   printf 'Folder: %s\n\n' "$dir"
@@ -895,6 +901,12 @@ validate_module() {
       [[ "$p" =~ ^[a-z0-9-]+$ ]] || { yml_error "$file" "not a category: $p"; return 1; }
     done
   fi
+  if [[ -n "${MOD[keep_on_verify]:-}" ]]; then
+    lab_in_list "${MOD[keep_on_verify]}" 'true false' || { yml_error "$file" 'keep_on_verify must be true or false'; return 1; }
+    if [[ "${MOD[keep_on_verify]}" == true ]] && ! lab_in_list "${MOD[risk]}" 'reversible service-affecting approval'; then
+      yml_error "$file" 'keep_on_verify is only for a module that changes something'; return 1
+    fi
+  fi
 }
 
 # Read a profile into PROFILE_IDS: one module id per line. A run-time
@@ -1005,7 +1017,7 @@ explain() {
 # within a priority. Returns 40 if any module is invalid.
 load_modules() {
   local phase="$1" id name dir worst=0 p i entry needed line
-  local -a ids=() dirs=() risks=() scored=() reqs=() prios=() preok=()
+  local -a ids=() dirs=() risks=() scored=() reqs=() prios=() preok=() keeps=()
   PHASE_COUNT=0 LOAD_ERRORS=0 LOAD_SKIPPED=0
   for id in "${PROFILE_IDS[@]+"${PROFILE_IDS[@]}"}"; do
     if [[ "${id%%.*}" != "$phase" ]]; then continue; fi
@@ -1063,15 +1075,15 @@ load_modules() {
     fi
     ids+=("$id"); dirs+=("$dir"); risks+=("${MOD[risk]}"); scored+=("${MOD[touches_scored]}")
     reqs+=("$(list_items "${MOD[requires]:-[]}")"); prios+=("${MOD[priority]}")
-    preok+=("$(list_items "${MOD[pre_approvable]:-[]}")")
+    preok+=("$(list_items "${MOD[pre_approvable]:-[]}")"); keeps+=("${MOD[keep_on_verify]:-false}")
   done
-  RUN_IDS=() RUN_DIR=() RUN_RISK=() RUN_SCORED=() RUN_REQUIRES=() RUN_RC=() RUN_STATE=() RUN_ITEMS=() RUN_PREOK=()
+  RUN_IDS=() RUN_DIR=() RUN_RISK=() RUN_SCORED=() RUN_REQUIRES=() RUN_RC=() RUN_STATE=() RUN_ITEMS=() RUN_PREOK=() RUN_KEEP=()
   for p in P0 P1 P2 P3; do
     for ((i = 0; i < ${#ids[@]}; i++)); do
       if [[ "${prios[i]}" != "$p" ]]; then continue; fi
       RUN_IDS+=("${ids[i]}"); RUN_DIR+=("${dirs[i]}"); RUN_RISK+=("${risks[i]}")
       RUN_SCORED+=("${scored[i]}"); RUN_REQUIRES+=("${reqs[i]}"); RUN_RC+=(0); RUN_STATE+=(planned); RUN_ITEMS+=('')
-      RUN_PREOK+=("${preok[i]}")
+      RUN_PREOK+=("${preok[i]}"); RUN_KEEP+=("${keeps[i]}")
     done
   done
   return "$worst"
@@ -1686,8 +1698,38 @@ apply_one() {
   say OK "$name"
   detail Did 'applied and verified'
   LAB_MODULE_ID="$id" lab_log_info applied "applied and verified"
+  if [[ "${RUN_KEEP[i]}" == true ]]; then keep_module "$id"; fi
   RUN_STATE[i]='done'
   return 0
+}
+
+# keep_module ID: keep a keep_on_verify module that verified, so the revert
+# timer leaves it alone (docs/Conventions.md section 3.1). Only when the
+# scored services were tested, so that none is known to have got worse.
+# A failure leaves the module under the timer, which is the safe side.
+keep_module() {
+  local id="$1"
+  if (( ! HAVE_SERVICES )); then
+    detail Note 'not kept yet: with no service list, nothing shows that no scored service got worse, so the revert timer still covers it'
+    return 0
+  fi
+  if ! record_for "$id" module_kept '' 'verified; no scored service got worse'; then
+    detail Note 'not kept yet: the manifest cannot be written, so the revert timer still covers it'
+    return 0
+  fi
+  detail Did 'kept: it verified and no scored service got worse, so the revert timer leaves it alone'
+  LAB_MODULE_ID="$id" lab_log_info module_kept "kept once verified"
+}
+
+# unkept_modules: the modules of the current run that a rollback started
+# by the revert timer would still undo.
+unkept_modules() {
+  local applied kept m
+  applied="$(lab_manifest_applied "$LAB_RUN_ID")" || return 1
+  kept="$(lab_manifest_kept "$LAB_RUN_ID")" || return 1
+  for m in $applied; do
+    lab_in_list "$m" "${kept//$'\n'/ }" || printf '%s\n' "$m"
+  done
 }
 
 # check_host: the host checks for plan, apply and probe (docs/Conventions.md
@@ -1767,21 +1809,26 @@ plan_intro() {
 
 # recap HOST GROUP: what apply is about to do, before the group-name prompt.
 recap() {
-  local i what l remote=0
+  local i what l remote=0 kept=0
   out ''
   out "About to apply on host $1, group $2:"
   for ((i = 0; i < ${#RUN_IDS[@]}; i++)); do
     case "${RUN_RC[i]}" in
       10) what='Will change:'
           if [[ "${RUN_RISK[i]}" == manual-only ]]; then what='Manual:'; fi
-          if [[ "${RUN_RISK[i]}" == service-affecting ]]; then remote=1; fi ;;
+          if [[ "${RUN_RISK[i]}" == service-affecting ]]; then remote=1; fi
+          if [[ "${RUN_KEEP[i]}" == true ]]; then kept=1; fi ;;
       20) what='Blocked:' ;;
       *) continue ;;
     esac
     printf -v l '  %-13s%s' "$what" "$(module_name "${RUN_IDS[i]}")"
     out "$l"
   done
-  out "A revert timer undoes this whole run in ${LAB_EVENT[REVERT_MINUTES]} minutes unless you keep it."
+  out "A revert timer undoes this run in ${LAB_EVENT[REVERT_MINUTES]} minutes unless you keep it."
+  if (( kept )); then
+    out 'A change that only takes access away is kept once it verifies; the timer'
+    out 'then leaves it alone.'
+  fi
   if (( remote )) && [[ -n "${SSH_CONNECTION:-}${SSH_CLIENT:-}${SSH_TTY:-}" ]]; then
     out 'You are connected over SSH, and a change may interrupt a service.'
     out 'Keep a second session open until you have checked you can log in.'
@@ -1790,7 +1837,7 @@ recap() {
 }
 
 cmd_apply() {
-  local phase="$1" host group worst=0 rc i todo=0 stopped=0 when
+  local phase="$1" host group worst=0 rc i todo=0 stopped=0 when unkept
   export LAB_DRY_RUN=1
   umask 077
   host="$(lab_host)"
@@ -1877,6 +1924,10 @@ cmd_apply() {
   out ''
   if (( stopped )); then
     run_stopped
+  elif lab_timer_armed "$LAB_RUN_ID" && unkept="$(unkept_modules)" && [[ -z "$unkept" ]]; then
+    # Every change was kept once verified: the timer has nothing to undo.
+    out 'All changes are applied, verified and kept.'
+    keep_run || worst=$?
   elif lab_timer_armed "$LAB_RUN_ID"; then
     out 'All changes are applied and verified.'
     out 'From a NEW session, check that you can still log in.'
@@ -2082,8 +2133,8 @@ cmd_keep() {
 }
 
 cmd_rollback() {
-  local id rc=0 i list ok=0 bad=0 parts
-  local -a mods=() runs=()
+  local id rc=0 i list ok=0 bad=0 parts kept=''
+  local -a mods=() runs=() left=() rest=()
   export LAB_DRY_RUN=0
   umask 077
   if [[ -z "$1" ]]; then
@@ -2120,11 +2171,27 @@ cmd_rollback() {
   # Captured, not read from a process substitution, so a failure is seen.
   list="$(lab_manifest_applied "$LAB_RUN_ID")" || die "the manifest of run $LAB_RUN_ID cannot be read" 40 'Nothing was rolled back.'
   if [[ -n "$list" ]]; then mapfile -t mods <<< "$list"; fi
+  # Modules kept once verified stay, unless --all (section 3.1).
+  if [[ -z "${GIVEN[all]+set}" ]]; then
+    kept="$(lab_manifest_kept "$LAB_RUN_ID")" || die "the manifest of run $LAB_RUN_ID cannot be read" 40 'Nothing was rolled back.'
+    for id in "${mods[@]+"${mods[@]}"}"; do
+      if lab_in_list "$id" "${kept//$'\n'/ }"; then left+=("$id"); else rest+=("$id"); fi
+    done
+    mods=("${rest[@]+"${rest[@]}"}")
+  fi
   # A rollback started by the revert timer is logged too, though no one watches it.
   log_open "rollback run $LAB_RUN_ID"
   out "labyrinth $LAB_VERSION: rollback run $LAB_RUN_ID"
+  if (( ${#left[@]} > 0 )); then
+    out 'Kept once verified, so left in place (add --all to undo these too):'
+    for id in "${left[@]}"; do
+      load_title "$id"
+      out "  $(module_name "$id")"
+    done
+  fi
   case "${#mods[@]}" in
-    0) out 'This run changed nothing that needs undoing.' ;;
+    0) if (( ${#left[@]} > 0 )); then out 'Nothing else needs undoing.'
+       else out 'This run changed nothing that needs undoing.'; fi ;;
     1) out 'Undoing 1 module.' ;;
     *) out "Undoing ${#mods[@]} modules, newest change first." ;;
   esac
@@ -2149,6 +2216,10 @@ cmd_rollback() {
     rc=40
   fi
   lab_log_warn run_rolled_back "run rolled back, exit $rc" 2> /dev/null
+  if (( ok + bad > 0 )); then
+    # Whoever is logged in learns that changes were undone; best effort.
+    lab_notify_all "Labyrinth rolled back run $LAB_RUN_ID on $(lab_host): its changes are undone. See '$SELF runs'." || true
+  fi
   out ''
   parts=''
   if (( ok > 0 )); then parts="$ok OK"; fi
@@ -2254,6 +2325,9 @@ main() {
       '') usage_error '--apply needs a phase' apply ;;
       *) usage_error "--apply cannot be used with $cmd" "$cmd" ;;
     esac
+  fi
+  if [[ -n "${GIVEN[all]+set}" && -n "$cmd" && "$cmd" != rollback && "$cmd" != help ]]; then
+    usage_error "--all is only for rollback, not $cmd" "$cmd"
   fi
   # The whole line must parse before help or the version is shown.
   local helping=0

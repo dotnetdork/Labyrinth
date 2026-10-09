@@ -1,0 +1,12 @@
+# Test fixture: like toggle, but kept once it verifies (keep_on_verify)
+id: observe.keeper
+title: Keeper setting sample
+phase: observe
+priority: P2
+platforms: [ubuntu, rhel-family, windows]
+risk: reversible
+touches_scored: false
+requires: []
+outputs: []
+spec: 00
+keep_on_verify: true
