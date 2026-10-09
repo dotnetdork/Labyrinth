@@ -4,7 +4,7 @@
 
 ## 1. Why this matters
 
-A thorough incident report that correctly identifies and addresses a successful Red Team attack may reduce the Red Team penalty for that event, and incomplete or vague reports earn no partial points (National Collegiate Cyber Defense Competition [NCCDC], 2025, Rule 9.4).
+A thorough incident report that correctly identifies and addresses a successful Red Team attack may reduce the Red Team penalty for that event, and incomplete or vague reports earn no partial points (National Collegiate Cyber Defense Competition [NCCDC], 2025, Rule 11.4).
 
 Hand-written reports are slow and tend to miss required fields. The aim is for the tools to assemble every fact they can observe, so a human only adds judgment and the final sentence.
 
@@ -12,10 +12,10 @@ Hand-written reports are slow and tend to miss required fields. The aim is for t
 
 | Rule | Effect |
 |---|---|
-| Report content requirements (NCCDC, 2025, Rule 9.4) | The report template is built from the required fields. Re-check the field list against the 2027 rules and packet. |
-| Reports are presented to the White Team for collection (NCCDC, 2025, Rule 9.4) | Labyrinth produces a file or text block. A human submits it through the channel the officials specify. Nothing is auto-submitted. |
+| Report content requirements (NCCDC, 2025, Rule 11.4) | The report template is built from the required fields. Re-check the field list against the 2027 rules and packet. |
+| Reports are presented to the White Team for collection (NCCDC, 2025, Rule 11.4) | Labyrinth produces a file or text block. A human submits it through the channel the officials specify. Nothing is auto-submitted. |
 | No outside resources (NCCDC, 2025, Rule 5.6.4) | No external enrichment such as IP reputation lookups. |
-| Only a thorough report that correctly identifies and addresses the attack may reduce the penalty (NCCDC, 2025, Rule 9.4) | Reports state only what evidence shows. Unknown fields say "unknown". |
+| Only a thorough report that correctly identifies and addresses the attack may reduce the penalty (NCCDC, 2025, Rule 11.4) | Reports state only what evidence shows. Unknown fields say "unknown". |
 
 ## 3. Pipeline
 
@@ -67,7 +67,7 @@ flowchart LR
 | Remediation and prevention (the remediation plan) | Human | No |
 | Confidence and open questions | Human | No |
 
-The rows from "What happened" to "Remediation" follow the content Rule 9.4 lists: what happened, with addresses, timelines, passwords cracked, access obtained and damage done; what was affected; and a remediation plan (NCCDC, 2025, Rule 9.4). The template keeps them in that order so a reviewer can check each one.
+The rows from "What happened" to "Remediation" follow the content Rule 11.4 lists: what happened, with addresses, timelines, passwords cracked, access obtained and damage done; what was affected; and a remediation plan (NCCDC, 2025, Rule 11.4). The template keeps them in that order so a reviewer can check each one.
 
 **Completeness check.** Because a vague or incomplete report earns nothing, the builder lists every required field still marked `UNKNOWN` or empty each time the draft is shown, and once more when the incident lead marks it ready to submit. The lead may still submit, since an honest `UNKNOWN` is better than a guess, but never without seeing the list.
 
@@ -97,7 +97,7 @@ All output is text so that it works from any host and needs no interpreter on th
 - A decoy trip in the lab produces a draft with correct time, host, source address and evidence.
 - Two related events within the window merge into one incident.
 - A missing field is shown as `UNKNOWN`, never blank or guessed.
-- Every field Rule 9.4 lists has a place in the template, and a draft with an unfilled required field shows the completeness warning before it is marked ready.
+- Every field Rule 11.4 lists has a place in the template, and a draft with an unfilled required field shows the completeness warning before it is marked ready.
 - Secrets planted in a log line are removed from the report.
 - No network call is made during report generation.
 
