@@ -196,6 +196,7 @@ Describe 'labyrinth.ps1 console output' {
     }
 
     It "plan's Next line never names an apply that would be refused" {
+        Remove-Item -LiteralPath (Join-Path $t.Etc 'hosts') -ErrorAction SilentlyContinue
         Write-TestProfile $t @('observe.sample')
         $r = Invoke-TestPlan $t
         $r.Code | Should -Be 10
@@ -251,7 +252,7 @@ Describe 'labyrinth.ps1 console output' {
         $b = Get-TestLineOf $r 'OK       Toggle setting sample (observe.toggle)'
         $a | Should -BeGreaterThan (Get-TestLineOf $r 'Type the group name')
         $b | Should -BeGreaterThan $a
-        $lines[$b + 1] | Should -BeExactly '  Did:       applied and verified'
+        (Get-TestLine $r)[$b + 1] | Should -BeExactly '  Did:       applied and verified'
         $r.Output | Should -Match ([regex]::Escape('Summary: 1 module: 1 OK.'))
         $r.Output | Should -Not -Match 'Next:'
         $lines[-1] | Should -BeExactly 'apply finished: exit 0 (done)'

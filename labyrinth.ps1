@@ -1928,8 +1928,10 @@ function Save-LabModuleKept {
 # Get-LabUnkeptModule: the modules of the current run that a rollback
 # started by the revert timer would still undo.
 function Get-LabUnkeptModule {
-    $kept = @(Get-LabKeptModule -RunId $env:LAB_RUN_ID)
-    $applied = @(Get-LabAppliedModule -RunId $env:LAB_RUN_ID)
+    # The manifest readers return their list as one array, so it is taken
+    # as it comes: @() around the call would wrap it in a second array.
+    $kept = Get-LabKeptModule -RunId $env:LAB_RUN_ID
+    $applied = Get-LabAppliedModule -RunId $env:LAB_RUN_ID
     return @($applied | Where-Object { $kept -cnotcontains $_ })
 }
 
@@ -2409,11 +2411,11 @@ function Invoke-LabRollbackCommand {
         $rc = 0
         $ok = 0
         $bad = 0
-        $mods = @(Get-LabAppliedModule -RunId $env:LAB_RUN_ID)
+        $mods = Get-LabAppliedModule -RunId $env:LAB_RUN_ID
         # Modules kept once verified stay, unless -All (section 3.1).
         $left = @()
         if (-not $script:Given.ContainsKey('all')) {
-            $kept = @(Get-LabKeptModule -RunId $env:LAB_RUN_ID)
+            $kept = Get-LabKeptModule -RunId $env:LAB_RUN_ID
             $left = @($mods | Where-Object { $kept -ccontains $_ })
             $mods = @($mods | Where-Object { $kept -cnotcontains $_ })
         }
