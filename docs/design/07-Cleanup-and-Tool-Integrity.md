@@ -19,7 +19,7 @@
 
 ## 3. Materials handling
 
-Competition materials, including team-generated reports and documents, must stay in the competition area, and nothing may be removed without authorization (National Collegiate Cyber Defense Competition [NCCDC], 2025, Rules 4.4, 8.5). Collect logs for the debrief only as far as those rules and the officials allow.
+Competition materials, including team-generated reports and documents, must stay in the competition area, and nothing may be removed without authorization (National Collegiate Cyber Defense Competition [NCCDC], 2025, Rules 4.4, 10.5). Collect logs for the debrief only as far as those rules and the officials allow.
 
 ## 4. Rejected: encrypted script folder with a shared password
 

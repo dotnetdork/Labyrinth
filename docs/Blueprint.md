@@ -11,7 +11,7 @@
 - **New to the project?** The [overview](Overview.md) explains every part in plain language.
 
 > [!IMPORTANT]
-> **Rules basis and warning.** Rule numbers follow the web version of the national CCDC (Collegiate Cyber Defense Competition) rules, updated 10 December 2025 (National Collegiate Cyber Defense Competition [NCCDC], 2025). That page letters the items in each section, so Rule 4.14 appears as item 4(n) and Rule 5.6.1 as 5(f)(i).
+> **Rules basis and warning.** Rule numbers follow the web version of the national CCDC (Collegiate Cyber Defense Competition) rules, updated 10 December 2025 (National Collegiate Cyber Defense Competition [NCCDC], 2025). A rule number is the page's section number, then the item's place in it: Rule 4.14 is item 14 of section 4, and Rule 5.6.1 is the first point of item 6 of section 5. The page has no sections 6 or 7, so the sections after Internet Usage are numbered as printed: Rule 10.5 is in Questions, Disputes, and Disclosures, and Rule 11.3 is in Scoring.
 >
 > The 2027 rules and the Midwest packet are not published yet. Every rule citation must be re-checked when they arrive. Where this document and the rules disagree, the rules win.
 >
@@ -118,7 +118,7 @@ The attacker's power comes from credentials, existing sessions and footholds lef
 
 - **Deploy the trap layer** (§4): scanner tarpits, canary tokens, honey-accounts, port traps, DNS (Domain Name System) sinkholes. Now every attacker action generates a high-confidence alert.
 
-  **[RULES]** No decoy on a scored port, and no decoy that misleads the scoring engine (NCCDC, 2025, Rule 9.3).
+  **[RULES]** No decoy on a scored port, and no decoy that misleads the scoring engine (NCCDC, 2025, Rule 11.3).
 
 - **Keep scored services green:** health-check them (design 13), and use your rollback path the instant a change hurts a service.
 - **Hold and triage:** work your alert queue by confidence. Canary and honey-account hits come first (near-certain), then anomalies.
@@ -307,7 +307,7 @@ Two implementations of one idea: punish tools like Gobuster, Dirb and Nikto that
 - **Reference (slow-drip):** an nginx regex `location` matches attack paths that no real visitor requests. It returns a **rate-limited** decoy (`limit_rate`), capped per real client IP (`limit_conn`, keyed on the binary remote address so a flood cannot exhaust workers), and logs the real IP to a scanner log. It never matches real app routes, APIs or assets. There is no automatic ban wired from host to container (that would be fragile coupling): the tarpit *is* the punishment, and the log drives a manual block.
 - **Playbook (recursive loop):** a `trap.php` that returns `200 OK` with a link to a fresh random folder, so recursive crawlers loop forever and bloat memory until they crash.
 
-  **[RULES]** Not recommended: an always-`200` responder can look like a live page to the scoring engine and mislead it (NCCDC, 2025, Rule 9.3), and it risks load on a scored host. Use the slow-drip approach on paths the scoring engine never requests.
+  **[RULES]** Not recommended: an always-`200` responder can look like a live page to the scoring engine and mislead it (NCCDC, 2025, Rule 11.3), and it risks load on a scored host. Use the slow-drip approach on paths the scoring engine never requests.
 
 - **CCDC note:** this is the highest-value, lowest-risk trap on a graded web host, because real users never hit these paths.
 
@@ -544,7 +544,7 @@ The "trap playbook" is an earlier brainstorming list of deception techniques. It
 
 | Playbook technique | Labyrinth home |
 |---|---|
-| Directory-busting loop (`trap.php`) | `nginx_edge` scanner tarpit (§4.3). The slow-drip version is used; the always-200 loop is not (Rule 9.3). |
+| Directory-busting loop (`trap.php`) | `nginx_edge` scanner tarpit (§4.3). The slow-drip version is used; the always-200 loop is not (Rule 11.3). |
 | Canary files / `Passwords_2026.docx` | `deception` canaries (§4.4), host-native audited files only. Hosted tracking tokens are out (Rule 5.6.4). |
 | Honey-account login hook + port trap | `deception` honey-accounts (§4.5), alerting to the local trip log only, and trap ports (§4.1, log-driven preferred) |
 | DNS sinkholing (`/etc/hosts`, RPZ, firewall DNS overrides) | `deceive` sinkhole module (§4.6); DC DNS changes are manual-only |
@@ -562,7 +562,7 @@ The "trap playbook" is an earlier brainstorming list of deception techniques. It
 | 4.14 | No migrating or containerizing scored services |
 | 5.1 | Free public internet resources only, nothing behind a fee or membership |
 | 5.6.1–5.6.5 | Team-written tools |
-| 9.3 | Misleading the scoring engine |
+| 11.3 | Misleading the scoring engine; incident reports are 11.4 |
 
 **Notes and terms**
 
