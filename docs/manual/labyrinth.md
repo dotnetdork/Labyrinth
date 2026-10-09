@@ -384,7 +384,7 @@ Every command ends with one of these numbers. Scripts can test it; people can re
 | 0 | Done, or nothing to do. |
 | 10 | A change is needed (plan), or only steps a person must carry out are left (apply). |
 | 20 | Blocked by a safety check. The blocked part changed nothing. |
-| 30 | A check after a change failed, and that change was undone. For probe: a scored service failed. |
+| 30 | A check after a change failed, and that change was undone. The changes made before it stay, and the revert timer is still armed. For probe: a scored service failed. |
 | 40 | An error, including a mistyped command. Read the message. |
 
 # 10. Files
@@ -425,11 +425,17 @@ Each revert timer is a scheduled task named `\Labyrinth\lab-revert-<run>-<n>`, r
 
 # 11. When something goes wrong
 
-**"another Labyrinth run (pid N) holds ... lock".** A run is already in progress on this host. Wait for it to finish. If that process has ended, run the command again: a lock left by a process that is gone is taken over. Rarely, after a crash, another program gets the same process number and the lock stays held. If no Labyrinth run is going, delete the `lock` folder in the data root's `state` folder, then run the command again.
-
 Most errors that stop Labyrinth are two lines: what failed and why, then how to recover. Do what the second line says, then run the same command again.
 
 **Read the run log.** Every apply, keep and rollback writes a log of the run: everything you saw, your answers to the questions, and every line the modules printed, with the time each started and how it ended. A `FAIL` or `ERROR` shows its path on a `Log:` line, and so does the end of the run. `runs` lists the logs of the runs that had problems. Only @ADMIN@ can read the log; open it with any text viewer. A plan writes no log: its output is all there is.
+
+**You are locked out.** Do nothing: when the revert timer fires, it undoes the run, and every terminal logged in to the host shows a notice. It leaves the changes that were kept once verified, such as a new admin password, because they cannot lock you out; the new password is in the offline record. If you cannot wait, log in at the console with the break-glass account and run `@CMD@ runs`. The run that is `armed` is the one to undo; its ID is also on the second line of the apply. Then run `@CMD@ rollback` with the last four characters of that ID, for example `@CMD@ rollback 4f2a`.
+
+**"The run stopped".** A module failed partway through a run. The changes made before it are still in place, and the revert timer is still armed; Labyrinth says when it fires and prints the commands to undo or keep the changes, undo first. If in doubt, undo them: the timer would do the same, only later.
+
+**An `ERROR` line during a rollback ("its rollback stopped").** Labyrinth could not undo one module of the run. The `Problem:` line says that its rollback stopped and the change may still be in place, and the `Fix:` line names the backup folder that holds the module's files as they were before the run. The other modules are still undone, the rollback ends with exit code 40, and `runs` shows the run as `rolled back with errors`. Restore that module's files by hand from the backup folder and check the service it affects, then run the same rollback again: it is safe to repeat.
+
+**"another Labyrinth run (pid N) holds ... lock".** A run is already in progress on this host. Wait for it to finish. If that process has ended, run the command again: a lock left by a process that is gone is taken over. Rarely, after a crash, another program gets the same process number and the lock stays held. If no Labyrinth run is going, delete the `lock` folder in the data root's `state` folder, then run the command again.
 
 **A module's `Problem:` line** says what stopped it. If the module gave no reason, Labyrinth says so, names the module's script on a `Script:` line, and in a plan shows the script's last lines as `It said:` lines. The `More:` line gives the command that explains the module.
 
@@ -478,13 +484,7 @@ Most errors that stop Labyrinth are two lines: what failed and why, then how to 
 
 **"the keep could not be recorded".** `keep` cancelled the revert timer, so the changes stay, but the run's record could not be written. `runs` may not show the run as `kept`. Check that the data folder is not full or read-only.
 
-**"The run stopped".** A module failed partway through a run. The changes made before it are still in place, and the revert timer is still armed; Labyrinth says when it fires and prints the commands to keep or undo the changes. If in doubt, roll back.
-
-**"internal error".** Something failed that Labyrinth did not expect, such as a full disk or a damaged file. The line says where, and the next line says what it means for the run: "Nothing was changed.", "The run stopped." with the commands to keep or undo it, or the command to repeat. Exit code 40.
-
-**"rollback FAILED".** Labyrinth could not undo one module of the run. The line names the module and the backup folder that holds its files as they were before the run. The other modules are still undone, and `runs` shows the run as `rolled back with errors`. Restore that module's files by hand from the backup folder, then check the service it affects.
-
-**You are locked out.** Do nothing: when the revert timer fires, it undoes the run, and every terminal logged in to the host shows a notice. It leaves the changes that were kept once verified, such as a new admin password, because they cannot lock you out; the new password is in the offline record. If you cannot wait, log in at the console with the break-glass account and run `rollback`.
+**"internal error".** Something failed that Labyrinth did not expect, such as a full disk or a damaged file. The line says where, and the next line says what it means for the run: "Nothing was changed.", "The run stopped." with the commands to undo or keep it, or the command to repeat. Exit code 40.
 
 # 12. See also
 

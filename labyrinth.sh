@@ -336,6 +336,7 @@ die() {
 # How to get the rights a command needs.
 FIX_ADMIN='Run it again as root, for example with sudo.'
 FIX_LINE='Correct that line, then run the same command again.'
+FIX_DATA='Check that the data folder is not full or read-only, then run the same command again.'
 FIX_SERVICES='List the scored services there, one "name proto host port expect" per line.'
 
 # load_reason LOADER [ARG...]: the first error line a configuration loader
@@ -414,8 +415,9 @@ run_stopped() {
   if when="$(due_words "$LAB_RUN_ID")"; then
     out "The revert timer rolls this run back $when."
   fi
-  out "To keep them now: $SELF keep ${LAB_RUN_ID: -4}"
   out "To undo them now: $SELF rollback ${LAB_RUN_ID: -4}"
+  out "To keep them now: $SELF keep ${LAB_RUN_ID: -4}"
+  out 'If in doubt, undo them.'
 }
 
 # due_words RUN: when the run's revert timer fires, as 'at HH:MM UTC, in N
@@ -645,7 +647,7 @@ shell_word() {
 next_step() {
   local mode="$1" code="$2" phase="$3" i manual=0 other=0 opts=''
   if [[ "$mode" == apply ]] && (( STOPPED )); then
-    out 'Next: keep the earlier changes or undo them, with the commands above.'
+    out 'Next: undo the earlier changes, or keep them, with the commands above.'
   elif [[ "$mode" == apply ]] && lab_timer_armed "$LAB_RUN_ID"; then
     out "Next: check you can log in from a NEW session, then '$SELF keep ${LAB_RUN_ID: -4}'."
   elif (( code == 40 )); then
@@ -694,7 +696,7 @@ finish() {
     apply:0) what='done' ;;
     apply:10) what='manual steps needed' ;;
     *:20) what='blocked' ;;
-    *:30) what='a check failed, and that change was undone' ;;
+    *:30) what='a check failed and that change was undone; earlier ones stay' ;;
     *) what='error' ;;
   esac
   out ''
@@ -1932,7 +1934,11 @@ cmd_apply() {
   out "run $LAB_RUN_ID on host $host, group $group"
   plan_intro apply "$phase"
   plan_all "$phase" || worst=$?
-  (( worst < 40 )) || die 'the plan has errors; nothing was changed'
+  if (( worst >= 40 )); then
+    out ''
+    out 'The plan has errors, so apply stops here.'
+    finish apply "$worst" "$phase"
+  fi
   if [[ -n "${GIVEN[approve]+set}" ]]; then approve_unmatched; fi
   for ((i = 0; i < ${#RUN_IDS[@]}; i++)); do
     if [[ "${RUN_RC[i]}" == 10 && "${RUN_RISK[i]}" != manual-only ]]; then todo=$((todo + 1)); fi
@@ -1953,7 +1959,7 @@ cmd_apply() {
     || die 'the run and backup folders cannot be created; nothing was changed' 40
   if ! record_for '' run_start "$host" "phase $phase, profile $OPT_PROFILE, group $group" \
       || ! record_for '' breakglass_verified "$BREAKGLASS" "$BREAKGLASS_NOTE"; then
-    die 'the run manifest cannot be written; nothing was changed'
+    die 'the run manifest cannot be written; nothing was changed' 40 "$FIX_DATA"
   fi
   RUN_OPEN=1 APPLIED=1
   log_open "apply $phase, run $LAB_RUN_ID, host $host"
@@ -2019,7 +2025,8 @@ keep_run() {
   lab_lock_acquire 10 || return 20
   if run_rolled_back; then
     lab_lock_release
-    out "too late: run $LAB_RUN_ID was already rolled back"
+    err "labyrinth: too late: run $LAB_RUN_ID was already rolled back"
+    err 'Its changes are gone. Plan and apply again if you still want them.'
     return 20
   fi
   # Checked by hand: errexit is off inside a function called with ||.
@@ -2108,7 +2115,7 @@ cmd_runs() {
   local -a runs=()
   local list
   lab_is_admin || die 'runs needs root' 20 "$FIX_ADMIN"
-  list="$(list_runs)" || die "the runs in $LAB_STATE_DIR/runs cannot be read"
+  list="$(list_runs)" || die "the runs in $LAB_STATE_DIR/runs cannot be read" 40 "$FIX_DATA"
   flush_warnings
   if [[ -n "$list" ]]; then mapfile -t runs <<< "$list"; fi
   if (( ${#runs[@]} == 0 )); then
@@ -2145,7 +2152,7 @@ resolve_run() {
       || usage_error "no run $2 on this host" "$cmd" "'$SELF runs' lists them."
     RUN_REF="$2"; return 0
   fi
-  list="$(list_runs)" || die "the runs in $LAB_STATE_DIR/runs cannot be read"
+  list="$(list_runs)" || die "the runs in $LAB_STATE_DIR/runs cannot be read" 40 "$FIX_DATA"
   for id in $list; do
     if [[ "${id: -4}" == "$ref" ]]; then hits+=("$id"); fi
   done
@@ -2174,7 +2181,7 @@ cmd_keep() {
   gate_trusted
   if [[ -z "$1" ]]; then
     # Without a run, keep the one run whose timer is armed (section 3.1).
-    list="$(armed_runs)" || die "the runs in $LAB_STATE_DIR/runs cannot be read"
+    list="$(armed_runs)" || die "the runs in $LAB_STATE_DIR/runs cannot be read" 40 "$FIX_DATA"
     if [[ -n "$list" ]]; then mapfile -t armed <<< "$list"; fi
     case "${#armed[@]}" in
       0) out 'There is nothing to keep: no run on this host has an armed revert timer.'
@@ -2188,7 +2195,7 @@ cmd_keep() {
     resolve_run keep "$1"
   fi
   export LAB_RUN_ID="$RUN_REF"
-  [[ -f "$(lab_manifest_file)" ]] || die "no run $LAB_RUN_ID on this host"
+  [[ -f "$(lab_manifest_file)" ]] || die "no run $LAB_RUN_ID on this host" 40 "'$SELF runs' lists them."
   flush_warnings
   umask 077
   log_open "keep run $LAB_RUN_ID"
@@ -2218,7 +2225,7 @@ cmd_rollback() {
   gate_trusted
   resolve_run rollback "$1"
   export LAB_RUN_ID="$RUN_REF"
-  [[ -f "$(lab_manifest_file)" ]] || die "no run $LAB_RUN_ID on this host"
+  [[ -f "$(lab_manifest_file)" ]] || die "no run $LAB_RUN_ID on this host" 40 "'$SELF runs' lists them."
   flush_warnings
   # The revert timer must work even if a run still holds the lock, hung or
   # waiting at a prompt. That run is stopped first: rolling back beside it
@@ -2231,7 +2238,7 @@ cmd_rollback() {
   if (( locked )); then
     trap 'lab_lock_release' EXIT
   else
-    printf 'warning: rolling back without the run lock\n' >&2
+    warn 'rolling back without the run lock'
   fi
   # Captured, not read from a process substitution, so a failure is seen.
   list="$(lab_manifest_applied "$LAB_RUN_ID")" || die "the manifest of run $LAB_RUN_ID cannot be read" 40 'Nothing was rolled back.'
@@ -2273,7 +2280,7 @@ cmd_rollback() {
   done
   # A timer left armed runs this rollback again, which is safe.
   if ! lab_timer_cancel "$LAB_RUN_ID"; then
-    err "warning: the revert timer for run $LAB_RUN_ID could not be removed"
+    err "labyrinth: warning: the revert timer for run $LAB_RUN_ID could not be removed"
     err 'When it fires, it repeats this rollback, which is safe.'
   fi
   if ! record_for '' run_rolled_back '' "exit $rc"; then
