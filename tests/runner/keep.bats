@@ -102,7 +102,7 @@ rollback() { run bash "$LAB/labyrinth.sh" --root "$ROOT" --config "$ETC" rollbac
   sed -i 's/^risk: reversible/risk: read-only/' "$LAB/phases/observe/modules/keeper/module.yml"
   plan
   [ "$status" -eq 40 ]
-  [[ "$output" == *"keep_on_verify is only for a module that changes something"* ]]
+  [[ "$output" == *"keep_on_verify is only for a module that changes"* ]]
 }
 
 @test "keep_on_verify must be true or false" {

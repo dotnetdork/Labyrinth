@@ -110,7 +110,7 @@ Describe 'labyrinth.ps1 keep_on_verify' {
         [IO.File]::WriteAllText($yml, [IO.File]::ReadAllText($yml).Replace('risk: reversible', 'risk: read-only'))
         $r = Invoke-TestPlan $t
         $r.Code | Should -Be 40
-        $r.Output | Should -Match 'keep_on_verify is only for a module that changes something'
+        $r.Output | Should -Match 'keep_on_verify is only for a module that changes'
     }
 
     It 'keep_on_verify must be true or false' {
