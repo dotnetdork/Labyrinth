@@ -48,7 +48,7 @@ Code that calls a package manager or downloads a file carries a guard allow comm
 
 ## 5. Patching
 
-Security updates use the same sources and the same checks. Design 15, section 4, ranks them, and Labyrinth applies each one a person approves (Tier 3), one package at a time, after a restore point. A full upgrade is never run.
+Security updates use the same sources and the same checks. Design 21 ranks them, and Labyrinth applies each one a person approves (Tier 3), one package at a time, after a restore point. A full upgrade is never run.
 
 ## 6. Catalog
 
@@ -67,6 +67,8 @@ Licenses were read from each project's repository on 2026-10-09 (*Verified*), ex
 | Lynis | Read-only hardening audit; its findings feed the service packs and checklists | 18 | GPL-3.0 |
 | ModSecurity with the OWASP Core Rule Set | Web application firewall inside the scored Apache or nginx, never in front of it. Detection-only first; blocking only after a person approves and the probes pass | 18 | Apache-2.0 (rule set) |
 | YARA | Scans web roots and temporary folders for web shells and known malware with vendored rules | 17 | BSD-3-Clause |
+| nmap | Service and version scan of the team's own hosts, from the control node, with no scripts | 21 | Nmap Public Source License (*Background*) |
+| debsecan | Lists Debian packages with security fixes available | 21 | GPL-2.0 (*Background*) |
 
 **Vendored in the release.**
 
@@ -79,6 +81,8 @@ Licenses were read from each project's repository on 2026-10-09 (*Verified*), ex
 | HardeningKitty | Windows settings audit against Microsoft and CIS lists; audit mode is Tier 0, applying a finding is Tier 3 | 11 | MIT |
 | PersistenceSniper | Windows persistence hunting: run keys, services, scheduled tasks, WMI and more | 17 | MIT with the Commons Clause (no commercial use) |
 | Hayabusa, Chainsaw | Search Windows event logs with Sigma rules for the incident record | 02, 10 | AGPL-3.0, GPL-3.0 |
+| WES-NG, with its definitions file taken at release | Matches a Windows host's `systeminfo` to the updates it is missing and the vulnerabilities they fix, offline | 21 | BSD-3-Clause |
+| CISA known-exploited catalog, dated snapshot | Ranks findings | 15, 21 | Public U.S. government data (*Background*) |
 
 **Pinned public downloads.**
 
@@ -87,6 +91,7 @@ Licenses were read from each project's repository on 2026-10-09 (*Verified*), ex
 | Sysmon | Process, network and file events on Windows | 10 | The Sysinternals license does not allow redistribution (*Provisional*) |
 | Autoruns (`autorunsc`) | Every Windows autostart location, for the persistence sweep | 17 | Same |
 | PingCastle | Read-only Active Directory audit on the domain controller | 11 | Its license is the Non-Profit Open Software License 3.0 alongside a proprietary one, so it is fetched from its publisher, not copied |
+| Trivy | Finds flawed libraries bundled inside apps, which no package manager tracks | 21 | Apache-2.0, so it could be vendored, but its binary is large. Its vulnerability database changes daily and cannot be pinned by hash; whether it may be fetched at the event is a pinned question (design 21, section 6) |
 
 **Considered and not adopted.**
 
@@ -98,6 +103,8 @@ Licenses were read from each project's repository on 2026-10-09 (*Verified*), ex
 | SwiftOnSecurity sysmon-config | No license file, so it cannot be copied into a public repository. sysmon-modular is used instead. |
 | DeepBlueCLI | Not updated since 2023; Hayabusa and Chainsaw cover the same ground. |
 | BloodHound | Useful for a person mapping domain attack paths, but large and slow for the first hour. |
+| Grype | Covers the same ground as Trivy; one is enough. |
+| nmap `vulners` script, online vulnerability APIs | Send the host's software versions to an outside service for matching, which is the cloud processing Rule 5.6.4 prohibits. |
 
 ## 7. What it will never do
 

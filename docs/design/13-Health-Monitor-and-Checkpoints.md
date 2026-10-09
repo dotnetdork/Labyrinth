@@ -81,7 +81,7 @@ flowchart TD
 | Integrity: changes since the latest sealed baseline | Baseline comparison against the seal (design 04, section 6) |
 | Persistence: new items, and items still waiting for approval | Persistence sweep in report mode (design 17, section 7) |
 | Locked accounts ready to offer for deletion, once every scored service passes | Account module (design 05, section 6.4) |
-
+| Known flaws: open findings by rank, mitigated findings still waiting for a patch, accepted findings with their reasons, and any mitigation that has drifted | Vulnerability tracker (design 21, section 4) |
 | Inventory drift: new accounts, listeners, services, tasks | Inventory module (design 08, section 4.1) |
 | Open incidents and reports not yet submitted | Report tracker (design 02) |
 | Trap trips and active bans | Trip log and ban set (designs 09, 12) |

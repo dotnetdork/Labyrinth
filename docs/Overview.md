@@ -418,7 +418,7 @@ Some outside repositories are kept as **reference only** ([design 08](design/08-
 
 **Services.** Each kind of host has a list of services that may be turned off, with the reason and the conditions that keep one on, such as "it is scored". Turning a service off is easy to undo, so Labyrinth does it automatically with the usual checks.
 
-**Patches.** Undoing a software update is often impossible, so each patch needs a person's approval. Labyrinth lists the security updates available, ranks them (software that is both reachable from the network and known to be actively exploited comes first; on Windows, where updates cannot be matched to that list offline, by how exposed the machine is), and for each approved one takes a restore point, updates that one package and tests the service afterwards. Windows updates stay a checklist for a person. It never runs a full system upgrade in the middle of an event. Known-exploited flaws on the domain controller, such as ZeroLogon, always come first.
+**Patches.** Undoing a software update is often impossible, so each patch needs a person's approval. Labyrinth takes the ranked list of known flaws (section 4.19), and for each approved update takes a restore point, updates that one package and tests the service afterwards. Windows updates stay a checklist for a person. It never runs a full system upgrade in the middle of an event. Known-exploited flaws on the domain controller, such as ZeroLogon, always come first. A team can pre-approve security updates for named scored programs, so a first-minute run applies them without waiting.
 
 **Web apps and plugins.** The system's update tools do not track most web apps, so Labyrinth also lists each scored web app's version and its plugins, read from the files on disk, and ranks them the same way. An unused plugin with a known flaw can be switched off after a person approves.
 
@@ -453,6 +453,16 @@ Some outside repositories are kept as **reference only** ([design 08](design/08-
 **Why it exists.** The scored services are what the Red Team attacks most, so leaving them exactly as found is not safe. But changing them by hand under pressure is how teams break their own services.
 
 **How it works.** Each setting is sorted in advance. Safe ones (such as hiding the software version or turning off file listings nobody uses) are applied automatically, after the program's own syntax check, with a gentle reload, a test like the scoring engine's and a revert timer. Settings that could change what the scoring engine sees wait for a person's approval. Anything too specific to the event's own app is written up as a step-by-step runbook.
+
+### 4.19 🟥 Finding and closing known flaws
+
+**What it does.** Finds the known flaws on the team's machines before the Red Team uses them, closes the dangerous ones first, and keeps each one on a list until it is closed ([design 21](design/21-Vulnerability-Tracker-and-Mitigations.md)).
+
+**Why it exists.** A Red Team's first step is to check which software versions are running and attack the ones with known flaws. Labyrinth does the same check from the inside, first.
+
+**How it works.** Labyrinth reads the system's own update data, the versions of scored web apps and plugins on disk, and on Windows the updates that are missing. It also scans the team's own machines (never anyone else's) for the software versions they show the network, which catches programs installed by hand. All matching happens on the team's machines; nothing is sent out to be looked up. Flaws are ranked: the domain controller first, then scored services, then anything reachable from the network that is known to be exploited.
+
+**Closing a flaw.** An unscored service with a flaw is simply turned off. A scored service is never turned off. Instead, Labyrinth closes the flaw while the service keeps running: first with a tested setting or firewall rule from its catalog where one exists (for example, removing a dangerous permission from a helper program nothing uses), then with the security update once a person approves it. Each flaw is tracked as open, mitigated, patched or accepted, and every checkpoint shows what is still open.
 
 ---
 
