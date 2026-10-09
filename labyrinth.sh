@@ -1358,7 +1358,9 @@ gate_breakglass() {
       account="$OPT_BREAKGLASS"
     else
       out 'Before any change, check you can still get in if remote logins break.'
-      ask 'Break-glass check: log in at this host'"'"'s console with the break-glass account, then type its name: ' \
+      out "Break-glass check: log in at this host's console with the break-glass"
+      out 'account, then type its name here.'
+      ask 'Break-glass account name: ' \
         || die 'no answer: break-glass not confirmed; nothing was changed' 20 \
           'Run apply again and answer the prompt, or name the account with --break-glass NAME.'
       account="$ANSWER"
@@ -1367,19 +1369,21 @@ gate_breakglass() {
       die "break-glass not confirmed: '$(safe_text "$account")' is not listed with class breakglass in $LAB_CONFIG_DIR/protected-accounts; nothing was changed" 20 \
         'Name the account you logged in with at the console; that file lists it as "NAME breakglass".'
     fi
-    lab_breakglass_record "$account" || die 'break-glass not confirmed: the answer could not be recorded; nothing was changed' 40
+    # Recorded only once the plan is confirmed (gate_confirm), so a run
+    # that stops at the group prompt leaves nothing behind.
+    BREAKGLASS_NEW=1
     # The answer is the operator's word. A session for the account at the
     # console backs it up; without one, the run goes on with a warning, and
     # the manifest says which it was.
     rc=0; sid="$(lab_console_session "$account")" || rc=$?
     case "$rc" in
       0) BREAKGLASS_NOTE="console session $sid"
-         out "Break-glass account $account: confirmed and recorded." ;;
+         out "Break-glass account $account: confirmed." ;;
       1) BREAKGLASS_NOTE='no console session found'
-         out "Break-glass account $account: confirmed and recorded."
+         out "Break-glass account $account: confirmed."
          warn "no session for $account was found at this host's console; check that the break-glass login works before relying on it" ;;
       *) BREAKGLASS_NOTE='console sessions could not be listed'
-         out "Break-glass account $account: confirmed and recorded."
+         out "Break-glass account $account: confirmed."
          warn "this host cannot list console sessions, so the break-glass answer was not checked against one" ;;
     esac
   fi
@@ -1387,6 +1391,7 @@ gate_breakglass() {
 }
 BREAKGLASS=''
 BREAKGLASS_NOTE='confirmed earlier'
+BREAKGLASS_NEW=0           # 1 when this run asked, so the answer is recorded
 
 gate_confirm() {
   local group="$1" typed
@@ -1400,6 +1405,10 @@ gate_confirm() {
     if [[ -z "$typed" ]]; then typed='no group name was typed'; else typed="'$(safe_text "$typed")' was typed, not $group"; fi
     die "the plan was not confirmed: $typed; nothing was changed" 20 \
       "Run apply again and type $group at the prompt, or give it with --confirm-group $group."
+  fi
+  if (( BREAKGLASS_NEW )); then
+    lab_breakglass_record "$BREAKGLASS" \
+      || die 'the break-glass answer could not be recorded; nothing was changed' 40 "$FIX_DATA"
   fi
 }
 
@@ -1552,8 +1561,9 @@ choose_items() {
       if [[ -z "$iid" || "$chosen" == *" $iid@"* ]]; then continue; fi
       detail Item "$(item_words "$iid" "$cat" "$fp" "$reason")"
     done <<< "${RUN_ITEMS[i]}"
-    out 'To approve every item of a category, type category: and its name.'
-    ask "Type the ids of the items to approve, separated by spaces, or press Enter for none: " || ANSWER=''
+    out 'Type the ids of the items to approve, separated by spaces. To approve'
+    out 'every item of a category, type category: and its name.'
+    ask 'Items to approve (Enter for none): ' || ANSWER=''
     read -ra words <<< "$ANSWER"
     for tok in ${words[@]+"${words[@]}"}; do
       if [[ ! "$tok" =~ ^(category:)?[a-z0-9-]+$ ]]; then
@@ -2039,7 +2049,7 @@ cmd_apply() {
     if when="$(due_words "$LAB_RUN_ID")"; then
       out "The revert timer rolls this run back $when."
     fi
-    if ask "Type keep to keep the changes; anything else leaves the revert timer to undo them in ${LAB_EVENT[REVERT_MINUTES]} minutes: " \
+    if ask 'Type keep to keep the changes, or press Enter to leave them to the timer: ' \
         && [[ "$ANSWER" == keep ]]; then
       keep_run || worst=$?
     else

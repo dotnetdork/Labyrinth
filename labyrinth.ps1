@@ -138,6 +138,7 @@ $script:HaveServices = $false
 $script:HostEntry = $null        # this host's line in hosts, for plan's Next line
 $script:BreakGlassAccount = ''
 $script:BreakGlassNote = 'confirmed earlier'   # what the console check found
+$script:BreakGlassNew = $false   # true when this run asked, so the answer is recorded
 $script:GivenBreakGlass = ''     # -BreakGlass, read inside functions
 $script:GivenGroup = ''          # -ConfirmGroup, read inside functions
 $script:DataRoot = ''            # the data root (-Root)
@@ -1428,7 +1429,9 @@ function Assert-LabBreakGlass {
             $account = $script:GivenBreakGlass
         } else {
             Write-LabLine 'Before any change, check you can still get in if remote logins break.'
-            if (-not (Read-LabAnswer "Break-glass check: log in at this host's console with the break-glass account, then type its name: ")) {
+            Write-LabLine "Break-glass check: log in at this host's console with the break-glass"
+            Write-LabLine 'account, then type its name here.'
+            if (-not (Read-LabAnswer 'Break-glass account name: ')) {
                 Exit-Lab 'no answer: break-glass not confirmed; nothing was changed' 20 'Run apply again and answer the prompt, or name the account with -BreakGlass NAME.'
             }
             $account = $script:Answer
@@ -1436,9 +1439,10 @@ function Assert-LabBreakGlass {
         if (-not $script:Protected.ContainsKey($account) -or $script:Protected[$account] -cne 'breakglass') {
             Exit-Lab "break-glass not confirmed: '$(Get-LabSafeText $account)' is not listed with class breakglass in $(Join-Path $env:LAB_CONFIG_DIR 'protected-accounts'); nothing was changed" 20 'Name the account you logged in with at the console; that file lists it as "NAME breakglass".'
         }
-        try { Save-LabBreakGlass -Protected $script:Protected -Account $account }
-        catch { Write-LabErrorLine $_.Exception.Message; Exit-Lab 'break-glass not confirmed: the answer could not be recorded; nothing was changed' 40 }
-        Write-LabLine "Break-glass account ${account}: confirmed and recorded."
+        # Recorded only once the plan is confirmed (Assert-LabPlanConfirmed),
+        # so a run that stops at the group prompt leaves nothing behind.
+        $script:BreakGlassNew = $true
+        Write-LabLine "Break-glass account ${account}: confirmed."
         # The answer is the operator's word. A session for the account at
         # the console backs it up; without one, the run goes on with a
         # warning, and the manifest says which it was.
@@ -1466,6 +1470,10 @@ function Assert-LabPlanConfirmed {
     if ($typed -cne $Group) {
         if ($typed -eq '') { $what = 'no group name was typed' } else { $what = "'$(Get-LabSafeText $typed)' was typed, not $Group" }
         Exit-Lab "the plan was not confirmed: $what; nothing was changed" 20 "Run apply again and type $Group at the prompt, or give it with -ConfirmGroup $Group."
+    }
+    if ($script:BreakGlassNew) {
+        try { Save-LabBreakGlass -Protected $script:Protected -Account $script:BreakGlassAccount }
+        catch { Write-LabErrorLine $_.Exception.Message; Exit-Lab 'the break-glass answer could not be recorded; nothing was changed' 40 $FixData }
     }
 }
 
@@ -1639,8 +1647,9 @@ function Select-LabItem {
         Write-LabLine "$name changes only the items you approve:"
         if ($script:Pre.Count -gt 0) { Write-LabDetail 'Approved' "$(Get-LabItemList $script:Pre) (pre-approved)" }
         foreach ($i in $rest) { Write-LabDetail 'Item' (Get-LabItemWord $i.Id $i.Category $i.Fingerprint $i.Reason) }
-        Write-LabLine 'To approve every item of a category, type category: and its name.'
-        if (-not (Read-LabAnswer 'Type the ids of the items to approve, separated by spaces, or press Enter for none: ')) { $script:Answer = '' }
+        Write-LabLine 'Type the ids of the items to approve, separated by spaces. To approve'
+        Write-LabLine 'every item of a category, type category: and its name.'
+        if (-not (Read-LabAnswer 'Items to approve (Enter for none): ')) { $script:Answer = '' }
         $words = @($script:Answer -split '\s+' | Where-Object { $_ -ne '' })
         foreach ($tok in $words) {
             if ($tok -cnotmatch '^(category:)?[a-z0-9-]+$') {
@@ -2153,7 +2162,7 @@ function Invoke-LabApplyCommand {
         Write-LabLine 'From a NEW session, check that you can still log in.'
         $when = Get-LabDueWord $env:LAB_RUN_ID
         if ($when -ne '') { Write-LabLine "The revert timer rolls this run back $when." }
-        $ok = Read-LabAnswer "Type keep to keep the changes; anything else leaves the revert timer to undo them in $($script:Settings['REVERT_MINUTES']) minutes: "
+        $ok = Read-LabAnswer 'Type keep to keep the changes, or press Enter to leave them to the timer: '
         if ($ok -and $script:Answer -ceq 'keep') {
             $rc = Invoke-LabKeep
             if ($rc -gt $worst) { $worst = $rc }

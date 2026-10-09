@@ -274,10 +274,39 @@ Describe 'labyrinth.ps1 console output' {
         $r.Output | Should -Match ([regex]::Escape('apply finished: exit 30 (a check failed and that change was undone; earlier ones stay)'))
     }
 
+    It 'every prompt fits 78 columns, with what it asks for on the lines above' {
+        Write-TestProfile $t @('observe.ask', 'observe.toggle')
+        $r = Invoke-TestApply $t @('labadmin', 'ring1', 'item-a', 'keep')
+        $r.Code | Should -Be 0
+        $id = Get-TestRunId $r.Output
+        # The run log holds each prompt with the answer typed after it.
+        $log = @([IO.File]::ReadAllLines((Join-Path $t.Root "state\runs\$id\output.log")))
+        $prompts = @($log | Where-Object { $_ -match ': (labadmin|ring1|item-a|keep)$' })
+        $prompts.Count | Should -BeGreaterOrEqual 4
+        foreach ($l in $prompts) {
+            $l.Substring(0, $l.LastIndexOf(' ')).Length | Should -BeLessOrEqual 78 -Because $l
+        }
+        $log -ccontains 'Break-glass account name: labadmin' | Should -BeTrue
+        $log -ccontains 'Items to approve (Enter for none): item-a' | Should -BeTrue
+        $log -ccontains 'Type keep to keep the changes, or press Enter to leave them to the timer: keep' | Should -BeTrue
+    }
+
+    It 'a declined confirmation records no break-glass answer, so the next apply asks again' {
+        Write-TestProfile $t @('observe.toggle')
+        $r = Invoke-TestApply $t @('labadmin', 'wrong')
+        $r.Code | Should -Be 20
+        $r.Output | Should -Match ([regex]::Escape('Break-glass account labadmin: confirmed.'))
+        Test-Path -LiteralPath (Join-Path $t.Root 'state\breakglass') | Should -BeFalse
+        $r = Invoke-TestApply $t @('labadmin', 'ring1', 'keep')
+        $r.Code | Should -Be 0
+        $r.Output | Should -Match 'Break-glass check:'
+        Test-Path -LiteralPath (Join-Path $t.Root 'state\breakglass') -PathType Leaf | Should -BeTrue
+    }
+
     It 'apply: the recap comes after break-glass and before the group prompt' {
         Write-TestProfile $t @('observe.toggle', 'observe.blocked', 'observe.manual')
         $r = Invoke-TestApply $t @('labadmin', 'ring1', 'keep')
-        $a = Get-TestLineOf $r 'Break-glass account labadmin: confirmed and recorded.'
+        $a = Get-TestLineOf $r 'Break-glass account labadmin: confirmed.'
         $b = Get-TestLineOf $r 'About to apply on host'
         $c = Get-TestLineOf $r 'Type the group name (ring1)'
         $a | Should -BeGreaterThan -1

@@ -276,15 +276,15 @@ An apply goes through a fixed series of safety checks. If one fails, the run sto
 1. **You are @ADMIN@,** the host is listed in `hosts`, and the protected set is loaded.
 2. **No other run is in progress** on this host. Only one run at a time may change a host.
 3. **Every module is planned.** If any plan has an error, nothing is applied. If nothing needs changing, the run ends here without asking you anything.
-4. **Break-glass check.** Log in at the host's own console with the break-glass account and type its name. Labyrinth asks this once per host. It takes your word for it, then looks for that account's session at the console and records what it found in the run's manifest. If it finds none, it warns `no session for NAME was found at this host's console` and goes on: stop there and check the login yourself if you did not just use it.
-5. **Confirmation.** Labyrinth shows what each module will do, then asks you to type the host's group name. Anything else stops the run.
+4. **Break-glass check.** Log in at the host's own console with the break-glass account, then type its name at the `Break-glass account name:` prompt. Labyrinth asks this once per host. It takes your word for it, then looks for that account's session at the console. Your answer is saved only once you confirm the plan in step 5, so a run that stops before then asks again next time; the run's manifest records what the console check found. If it finds none, it warns `no session for NAME was found at this host's console` and goes on: stop there and check the login yourself if you did not just use it.
+5. **Confirmation.** Labyrinth shows what each module will do, then asks you to type the host's group name. Anything else stops the run, and nothing is changed or saved.
 6. **Changes start.** For each module that needs a change, in order:
    - the revert timer is armed (or moved later), unless the module only reads;
    - the change is made;
    - the module checks its own work; if the check fails, that module is undone and the run stops;
    - the scored services are tested again; if one that worked before now fails, that module is undone and the run stops;
    - a change that only takes access away is kept now, if the scored services were tested, and the timer leaves it alone.
-7. **Keep or not.** If every change was kept once verified, the run is kept and nothing is asked. Otherwise, check that a new login works, then type `keep`. Anything else leaves the timer armed.
+7. **Keep or not.** If every change was kept once verified, the run is kept and nothing is asked. Otherwise, check that a new login works, then type `keep`. Pressing Enter, or typing anything else, leaves the timer armed.
 
 Some modules never change anything on their own: they print a checklist for a person to follow, or ask you which items to change.
 
@@ -292,7 +292,7 @@ Some modules never change anything on their own: they print a checklist for a pe
 
 - Type the ids you approve, separated by spaces, for example `cron-3f1a cron-77b0`.
 - Type `category:cron` to approve every item of that category in this plan.
-- Press Enter to approve nothing. Nothing is then changed.
+- Press Enter at the `Items to approve` prompt to approve nothing. Nothing is then changed.
 
 An id that is not in the plan is ignored, and Labyrinth says so. If anything else is typed, the module is blocked and changes nothing.
 
