@@ -247,7 +247,7 @@ LABELS='Found|Will do|Did|Why|Risk|Problem|Cause|Fix|Undo|Note|Log|Script|It sai
   profile observe.toggle observe.blocked observe.manual
   answers root ring1 keep
   apply
-  a="$(line_of 'Break-glass account root: confirmed and recorded.')"
+  a="$(line_of 'Break-glass account root: confirmed.')"
   b="$(line_of 'About to apply on host')"
   c="$(line_of 'Type the group name (ring1)')"
   (( a < b && b <= c ))
@@ -280,6 +280,41 @@ LABELS='Found|Will do|Did|Why|Risk|Problem|Cause|Fix|Undo|Note|Log|Script|It sai
   b="$(line_of 'Type keep to keep')"
   [ -n "$a" ] && (( a <= b ))
   [[ "$output" == *"Next: check you can log in from a NEW session, then '$SELF keep ${id: -4}'."* ]]
+}
+
+@test "every prompt fits 78 columns, with what it asks for on the lines above" {
+  profile observe.ask observe.toggle
+  answers root ring1 item-a keep
+  apply
+  [ "$status" -eq 0 ]
+  # The run log holds each prompt with the answer typed after it.
+  local log="$ROOT/state/runs/$(run_id)/output.log" n=0 l
+  while IFS= read -r l; do
+    case "$l" in
+      *': root' | *': ring1' | *': item-a' | *': keep')
+        n=$((n + 1))
+        l="${l% *}"
+        (( ${#l} <= 78 )) || { echo "prompt too long: $l"; return 1; } ;;
+    esac
+  done < "$log"
+  [ "$n" -ge 4 ]
+  grep -qx 'Break-glass account name: root' "$log"
+  grep -qx 'Items to approve (Enter for none): item-a' "$log"
+  grep -qx 'Type keep to keep the changes, or press Enter to leave them to the timer: keep' "$log"
+}
+
+@test "a declined confirmation records no break-glass answer, so the next apply asks again" {
+  profile observe.toggle
+  answers root wrong
+  apply
+  [ "$status" -eq 20 ]
+  [[ "$output" == *'Break-glass account root: confirmed.'* ]]
+  [ ! -e "$ROOT/state/breakglass" ]
+  answers root ring1 keep
+  apply
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'Break-glass check:'* ]]
+  [ -f "$ROOT/state/breakglass" ]
 }
 
 @test "output lines are at most 78 columns, unless they end with a path" {
