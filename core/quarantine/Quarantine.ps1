@@ -66,12 +66,19 @@ function Move-LabQuarantineFile {
         $sum = (Get-FileHash -LiteralPath $Path -Algorithm SHA256 -ErrorAction Stop).Hash.ToLowerInvariant()
         Add-LabManifestEntry -Action quarantine_file -Target $Path -Backup $dest -Prev $sum -Note $Reason
         New-Item -ItemType Directory -Path (Split-Path -Parent $dest) -Force | Out-Null
-        Move-Item -LiteralPath $Path -Destination $dest -ErrorAction Stop
-        Write-LabLog -EventName quarantine_file -Message "quarantined ${Path}: $Reason"
     } catch {
         Write-LabQuarantineError "could not quarantine ${Path}: $($_.Exception.Message)"
         return 40
     }
+    # A file that cannot be moved (locked or denied) is one item left for a
+    # person, not an error that stops the whole sweep.
+    try {
+        Move-Item -LiteralPath $Path -Destination $dest -ErrorAction Stop
+    } catch {
+        Write-LabQuarantineError "could not move ${Path} (locked or denied?); list it for a person: $($_.Exception.Message)"
+        return 20
+    }
+    try { Write-LabLog -EventName quarantine_file -Message "quarantined ${Path}: $Reason" } catch { Write-Verbose 'log not written' }
     return 0
 }
 

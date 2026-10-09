@@ -8,8 +8,12 @@
 # module decides its class (design 17, section 4). lab_quarantine_restore
 # undoes the current module's entries, newest first.
 #
-# Return codes: 0 done (or the item is already gone), 20 refused, 40 error.
-# The reason goes to standard error.
+# Return codes: 0 done (or the item is already gone), 20 this item was left
+# as it is (refused, or it could not be moved), 40 error. A module treats 20
+# as one item for a person and goes on with the rest (design 17, section
+# 5.1), so one item an attacker shaped cannot stop the sweep. Item text may
+# hold control characters: the manifest escapes them. The reason goes to
+# standard error.
 
 _lab_q_err() { printf 'quarantine: %s\n' "$1" >&2; }
 
@@ -69,7 +73,12 @@ lab_quarantine_file() {
   meta="$(_lab_q_meta "$path")" || { _lab_q_err "cannot read $path"; return 40; }
   lab_manifest_record quarantine_file "$path" "$dest" "$meta" "$reason" || return 40
   mkdir -p -- "$(dirname -- "$dest")" || return 40
-  mv -- "$path" "$dest" || { _lab_q_err "could not move $path to $dest"; return 40; }
+  # A file that cannot be moved (immutable, or on a read-only mount) is one
+  # item left for a person, not an error that stops the whole sweep.
+  if ! mv -- "$path" "$dest" 2> /dev/null; then
+    _lab_q_err "could not move $path (immutable or read-only?); list it for a person"
+    return 20
+  fi
   lab_log_info quarantine_file "quarantined $path: $reason" || true
 }
 
