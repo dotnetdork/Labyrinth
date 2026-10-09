@@ -26,6 +26,11 @@ function Initialize-TestLab {
     $doubles = [IO.File]::ReadAllText((Join-Path $script:Repo 'tests\fixtures\Doubles.ps1'))
     [IO.File]::AppendAllText((Join-Path $t.Lab 'core\Lab.ps1'), "`n$doubles")
     Write-TestConfig $t 'protected-accounts' @('labadmin breakglass', 'scoring1 scoring')
+    # How hints name the runner: the tests start it by its full path, from
+    # another folder (docs\Conventions.md section 3.2).
+    $self = Join-Path $t.Lab 'labyrinth.ps1'
+    if ($self -notmatch '^[A-Za-z0-9_.:\\/~-]+$') { $self = "& '" + $self.Replace("'", "''") + "'" }
+    $t | Add-Member -NotePropertyName Self -NotePropertyValue $self
     return $t
 }
 

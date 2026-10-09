@@ -21,7 +21,7 @@ setup() {
 @test "the Windows manual has nothing from the Linux one" {
   run bash "$SPLIT" windows
   [ "$status" -eq 0 ]
-  if grep -Eq 'sudo|labyrinth\.sh|systemd|/opt/labyrinth|--(profile|root|config|break-glass|confirm-group)' <<<"$output"; then return 1; fi
+  if grep -Eq 'sudo|labyrinth\.sh|systemd|/opt/labyrinth|--(profile|root|config|break-glass|confirm-group|approve|all|apply)' <<<"$output"; then return 1; fi
   [[ "$output" == *'.\labyrinth.ps1 plan lockout'* ]]
   [[ "$output" == *'C:\ProgramData\Labyrinth'* ]]
 }
@@ -29,7 +29,7 @@ setup() {
 @test "the Linux manual has nothing from the Windows one" {
   run bash "$SPLIT" linux
   [ "$status" -eq 0 ]
-  if grep -Eq 'labyrinth\.ps1|PowerShell|ProgramData|scheduled task|Administrator|(^|[ `])-(Profile|Root|Config|BreakGlass|ConfirmGroup|Help|Version)' <<<"$output"; then return 1; fi
+  if grep -Eq 'labyrinth\.ps1|PowerShell|ProgramData|scheduled task|Administrator|(^|[ `])-(Profile|Root|Config|BreakGlass|ConfirmGroup|Approve|All|Apply|Help|Version)' <<<"$output"; then return 1; fi
   [[ "$output" == *'sudo ./labyrinth.sh plan lockout'* ]]
   [[ "$output" == *'/opt/labyrinth'* ]]
 }
@@ -45,11 +45,11 @@ setup() {
     done
   done
   run bash "$SPLIT" linux
-  for o in --profile --root --config --break-glass --confirm-group --help --version; do
+  for o in --profile --root --config --break-glass --confirm-group --approve --all --apply --help --version; do
     [[ "$output" == *"\`$o"* ]] || { echo "linux: $o missing"; return 1; }
   done
   run bash "$SPLIT" windows
-  for o in -Profile -Root -Config -BreakGlass -ConfirmGroup -Help -Version; do
+  for o in -Profile -Root -Config -BreakGlass -ConfirmGroup -Approve -All -Apply -Help -Version; do
     [[ "$output" == *"\`$o"* ]] || { echo "windows: $o missing"; return 1; }
   done
 }

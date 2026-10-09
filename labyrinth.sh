@@ -12,7 +12,7 @@
 #                                    also -h and --help
 #   labyrinth.sh version             the version; also -V and --version
 #
-# Options may come anywhere; 'labyrinth.sh help' lists them.
+# Options may come anywhere; 'labyrinth.sh help <command>' lists them.
 # Exit codes (design 00, section 4); the highest code from any module wins:
 #   0 nothing to do or success, 10 change needed, 20 blocked,
 #   30 verify failed or a scored service regressed, 40 error
@@ -69,7 +69,14 @@ OPT_PROFILE='' OPT_BREAKGLASS='' OPT_CONFIRM=''
 RUN_REF=''                 # the run keep or rollback acts on
 CMD=''                     # the command being run, for on_internal_error
 RUN_OPEN=0                 # 1 once an apply has recorded run_start
-SELF="${0##*/}"            # how the operator started this program, for hints
+# How the operator started this program, so a hint can be pasted and run
+# (docs/Conventions.md section 3.2): the path as typed, './' added when it
+# was a bare name not on the PATH, quoted if it needs it, and 'sudo' in
+# front when sudo started it.
+SELF="$0"
+if [[ "$SELF" != */* ]] && ! command -v -- "$SELF" > /dev/null 2>&1; then SELF="./$SELF"; fi
+if [[ ! "$SELF" =~ ^[A-Za-z0-9_./+-]+$ ]]; then SELF="$(printf '%q' "$SELF")"; fi
+if [[ -n "${SUDO_USER:-}" ]]; then SELF="sudo $SELF"; fi
 readonly COMMANDS='plan apply keep rollback runs probe help version'
 
 # The options, one row each (docs/Conventions.md section 3.1): the canonical
@@ -99,10 +106,11 @@ readonly LOG_CAP=500       # most lines logged from one entry point
 declare -a RUN_IDS=() RUN_DIR=() RUN_RISK=() RUN_SCORED=() RUN_REQUIRES=() RUN_RC=() RUN_STATE=() RUN_ITEMS=() RUN_PREOK=() RUN_KEEP=()
 
 # cmd_help [COMMAND]: the help for every command, or for one, on stdout.
-# Each topic is at most 15 lines of at most 78 columns, with one Exit line
-# and one Example line (docs/Conventions.md section 3.2).
+# Each topic is at most 18 lines (basics 24) of at most 78 columns, not
+# counting the command in hints, with one Exit line and one Example line
+# (docs/Conventions.md section 3.2).
 cmd_help() {
-  local where="Where:
+  local where="Options:
   --root DIR             data root (default /opt/labyrinth)
   --config DIR           configuration folder (default <root>/etc)"
   case "${1:-}" in
@@ -120,9 +128,10 @@ New to Labyrinth? Start with '$SELF help basics'.
   version           print the version
 
 Phases: lockout, observe, deceive, sustain. <run>: an ID or its last 4.
+Options: '$SELF help <command>' lists them; so does <command> -h.
 Exit: 0 ok, 10 change needed, 20 blocked, 30 check failed, 40 error.
 Example: $SELF plan lockout
-Manual: 'man labyrinth' once installed; docs/manual in the release.
+Manual: the Linux parts of $LAB_ROOT/docs/manual/labyrinth.md
 EOF
     ;;
     plan) cat <<EOF
@@ -130,7 +139,7 @@ Usage: $SELF plan <phase> [options]
 
 Show what every module of the phase would change on this host.
 Nothing is changed and nothing is written. <phase> is lockout,
-observe, deceive or sustain.
+observe, deceive or sustain. Needs root to read the configuration.
 
 $where
   --profile NAME         use this profile, not the one in the hosts file
@@ -143,7 +152,9 @@ EOF
     apply) cat <<EOF
 Usage: $SELF apply <phase> [options]
 
-Plan, confirm, then change; a revert timer undoes it unless kept.
+Plan, then ask you to name the break-glass account (first apply only)
+and to type this host's group name. Then change, checking each change;
+a revert timer undoes the run unless you keep it. Needs root.
 
 $where
   --profile NAME         must match this host's line in the hosts file
@@ -152,6 +163,7 @@ $where
   --approve LIST         approve without asking: module:item@fingerprint,...
 
 Exit: 0 done, 10 manual steps left, 20 blocked, 30 check failed, 40 error.
+Blocked: not root, another run, host not in hosts, or a safety gate.
 Example: $SELF apply lockout
 Compatibility: '$SELF <phase> --apply' also applies.
 EOF
@@ -161,11 +173,13 @@ Usage: $SELF keep [<run>] [options]
 
 Keep a run's changes: cancel its revert timer, then record the keep.
 Without <run>, keep the one run whose timer is armed. <run> is a run
-ID or its last 4 characters; '$SELF runs' lists them.
+ID or its last 4 characters; '$SELF runs' lists them. Needs root.
 
 $where
 
-Exit: 0 kept or none armed, 20 not root or too late (rolled back), 40 error.
+Exit: 0 kept or none armed, 20 blocked, 40 error.
+Blocked: not root, a file another account can change, or too late
+(the run was already rolled back).
 Example: $SELF keep 4f2a
 EOF
     ;;
@@ -174,12 +188,13 @@ Usage: $SELF rollback <run> [options]
 
 Undo what the run changed, newest change first. This is what the
 revert timer runs. Safe to run twice. <run> is a run ID or its last
-4 characters; '$SELF runs' lists them.
+4 characters; '$SELF runs' lists them. Needs root.
 
 $where
   --all                  also undo changes kept once they verified
 
-Exit: 0 rolled back, 20 not root, 40 error.
+Exit: 0 rolled back, 20 blocked, 40 error.
+Blocked: not root, or a file another account can change.
 Example: $SELF rollback 4f2a
 EOF
     ;;
@@ -187,8 +202,10 @@ EOF
 Usage: $SELF runs [options]
 
 List this host's runs, oldest first: run ID, phase, start time (UTC)
-and state (armed, kept, rolled back, or not kept, no timer).
-Changes nothing; needs root.
+and state: armed (and when it rolls back), kept, rolled back,
+rolled back with errors, or not kept, no timer. 'armed: timer lost'
+means the host restarted and nothing will undo the run by itself:
+keep it or roll it back. Changes nothing; needs root.
 
 $where
 
@@ -200,7 +217,8 @@ EOF
 Usage: $SELF probe [options]
 
 Test every scored service once, the way the scoring engine would,
-and print one line per service. Changes nothing.
+and print one line per service. Changes nothing. Needs root to read
+the configuration.
 
 $where
 
@@ -230,8 +248,9 @@ logins. '$SELF help <module-id>' explains any module.
 
 1. Plan: '$SELF plan lockout' shows what each module would change.
    It changes nothing, so run it as often as you like.
-2. Apply: '$SELF apply lockout' plans again, asks you to type this
-   host's group name, then makes the changes and checks each one.
+2. Apply: '$SELF apply lockout' plans again, has you name the
+   break-glass account the first time, asks you to type this host's
+   group name, then makes the changes and checks each one.
 3. Keep: an apply is a run, named by an ID; its last 4 characters are
    enough. A revert timer undoes the run after a few minutes unless you
    keep it, so a change that locks you out undoes itself. Log in from
@@ -249,7 +268,8 @@ EOF
     version) cat <<EOF
 Usage: $SELF version
 
-Print the version of Labyrinth. '-V' and '--version' do the same.
+Print the version of Labyrinth and which program printed it.
+'-V' and '--version' do the same.
 
 Exit: 0 printed.
 Example: $SELF version
@@ -258,7 +278,7 @@ EOF
   esac
 }
 
-cmd_version() { printf 'labyrinth %s\n' "$LAB_VERSION"; }
+cmd_version() { printf 'labyrinth %s (labyrinth.sh, for Linux)\n' "$LAB_VERSION"; }
 
 # risk_words RISK: what a module's risk means, in plain words.
 risk_words() {
@@ -743,13 +763,14 @@ edit_distance() {
 }
 
 # suggest WORD CANDIDATE...: the candidate WORD most likely meant: the only
-# one it is a prefix of, else the nearest within an edit distance of 2.
-# Prints nothing when there is none.
+# one it is a prefix of, else the nearest within an edit distance of 2, or
+# of 1 for a word of 3 letters or fewer. Prints nothing when there is none.
 suggest() {
   local word="$1" c best='' bestd=3 d
   local -a prefix=()
   shift
   [[ -n "$word" ]] || return 0
+  if (( ${#word} < 4 )); then bestd=2; fi
   for c in "$@"; do
     if [[ "$c" == "$word"* ]]; then prefix+=("$c"); fi
   done
@@ -759,6 +780,16 @@ suggest() {
     if (( d < bestd )); then bestd=$d; best="$c"; fi
   done
   if [[ -n "$best" ]]; then printf '%s\n' "$best"; fi
+}
+
+# synonym WORD: the command an everyday word for it means, or nothing.
+synonym() {
+  case "$1" in
+    undo | revert) printf 'rollback\n' ;;
+    status | list) printf 'runs\n' ;;
+    check | test) printf 'probe\n' ;;
+    dry-run | dryrun) printf 'plan\n' ;;
+  esac
 }
 
 # opt_lookup KEY: the row of the option matched by KEY (lower case, no
@@ -794,6 +825,10 @@ parse_args() {
     fi
     key="${key,,}"; key="${key//-/}"
     if ! opt_lookup "$key"; then
+      case "$key" in
+        dryrun) parse_fail "unknown option '${w%%[=:]*}' (did you mean the command 'plan'?)"; continue ;;
+        yes | force) parse_fail "unknown option '${w%%[=:]*}' (did you mean '--confirm-group'?)"; continue ;;
+      esac
       keys=()
       # One candidate per option, its first key, so a prefix of two keys
       # of the same option still counts as one.
@@ -2383,7 +2418,8 @@ main() {
       cmd=plan                        # compatibility: a phase alone
     else
       local hint
-      hint="$(suggest "$lc" $COMMANDS $PHASES)"
+      hint="$(synonym "$lc")"
+      if [[ -z "$hint" ]]; then hint="$(suggest "$lc" $COMMANDS $PHASES)"; fi
       if [[ "$1" == '/?' ]]; then hint=help; fi
       usage_error "unknown command '$1'${hint:+ (did you mean '$hint'?)}"
     fi
@@ -2429,7 +2465,8 @@ main() {
       if [[ "$word" == *.* ]]; then cmd_help_module "$word"; exit 0; fi
       if [[ -n "$word" ]] && ! lab_in_list "$word" "$COMMANDS"; then
         local hint
-        hint="$(suggest "$word" basics $COMMANDS)"
+        hint="$(synonym "$word")"
+        if [[ -z "$hint" ]]; then hint="$(suggest "$word" basics $COMMANDS)"; fi
         usage_error "no help for '$1'${hint:+ (did you mean '$hint'?)}"
       fi
       # 'help plan --help' is help on plan; 'help --help' is help on help.

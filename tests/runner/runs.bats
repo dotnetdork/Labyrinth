@@ -58,7 +58,7 @@ streams() {
   [[ "$(grep "^$c " <<< "$output")" == "$c observe "*" rolled back" ]]
   [[ "$(grep "^$a " <<< "$output")" == *" ${a:0:4}-${a:4:2}-${a:6:2} ${a:9:2}:${a:11:2} "* ]]
   printf '%s\n' "${lines[@]:1:3}" | LC_ALL=C sort -c
-  [[ "$output" == *"like 'labyrinth.sh keep ${a: -4}'"* ]]
+  [[ "$output" == *"like '$SELF keep ${a: -4}'"* ]]
   [ "$(awk '{ if (length > w) w = length } END { print w }' <<< "$output")" -le 78 ]
 }
 

@@ -102,7 +102,7 @@ LABELS='Found|Will do|Did|Why|Risk|Problem|Cause|Fix|Undo|Note|Log|Script|It sai
   [ "$(grep -c '^  It said:   line ' <<< "$output")" -eq 10 ]
   grep -qx '  It said:   line 3' <<< "$output"
   ! grep -qx '  It said:   line 2' <<< "$output"
-  [ "$(tail -n 1 <<< "$(grep '^  ' <<< "$output")")" = '  More:      labyrinth.sh help observe.crash' ]
+  [ "$(tail -n 1 <<< "$(grep '^  ' <<< "$output")")" = "  More:      $SELF help observe.crash" ]
 }
 
 @test "a failed entry point that ends with 'problem:' is shown as it said it" {
@@ -128,7 +128,7 @@ LABELS='Found|Will do|Did|Why|Risk|Problem|Cause|Fix|Undo|Note|Log|Script|It sai
     # A block ends at the next status line or at a line that is not a detail.
     if [[ "$l" != '  '* ]]; then
       if [[ "$word" =~ ^(WARN|BLOCKED|ERROR)$ ]]; then
-        [[ "$prev" == '  More:      labyrinth.sh help observe.'* ]] || { echo "no More after: $word"; return 1; }
+        [[ "$prev" == "  More:      $SELF help observe."* ]] || { echo "no More after: $word"; return 1; }
       fi
       word="${l%% *}"
     fi
@@ -163,7 +163,7 @@ LABELS='Found|Will do|Did|Why|Risk|Problem|Cause|Fix|Undo|Note|Log|Script|It sai
   [ "${lines[last-3]}" = 'Nothing on this host was changed.' ]
   # Too long for one line with the test's paths, so the command has its own.
   [ "${lines[last-2]}" = 'Next:' ]
-  [ "${lines[last-1]}" = "  labyrinth.sh apply observe --profile test --root $ROOT --config $ETC" ]
+  [ "${lines[last-1]}" = "  $SELF apply observe --profile test --root $ROOT --config $ETC" ]
   [ "${lines[last]}" = 'plan finished: exit 10 (change needed)' ]
 }
 
@@ -237,7 +237,7 @@ LABELS='Found|Will do|Did|Why|Risk|Problem|Cause|Fix|Undo|Note|Log|Script|It sai
   [ "${lines[n+1]}" = "  Script:    $LAB/phases/observe/modules/toggle/verify.sh" ]
   grep -qx '  Did:       rolled back' <<< "$output"
   grep -qx "  Log:       $ROOT/state/runs/$(run_id)/output.log" <<< "$output"
-  grep -qx '  More:      labyrinth.sh help observe.toggle' <<< "$output"
+  grep -qxF "  More:      $SELF help observe.toggle" <<< "$output"
   [[ "$output" == *'Summary: 1 module: 1 FAIL.'* ]]
   [[ "$output" == *'Next: undo the earlier changes, or keep them, with the commands above.'* ]]
   [[ "$output" == *'apply finished: exit 30 (a check failed and that change was undone; earlier ones stay)'* ]]
@@ -279,7 +279,7 @@ LABELS='Found|Will do|Did|Why|Risk|Problem|Cause|Fix|Undo|Note|Log|Script|It sai
   a="$(line_of "The revert timer rolls this run back at ${due:11:5} UTC, ")"
   b="$(line_of 'Type keep to keep')"
   [ -n "$a" ] && (( a <= b ))
-  [[ "$output" == *"Next: check you can log in from a NEW session, then 'labyrinth.sh keep ${id: -4}'."* ]]
+  [[ "$output" == *"Next: check you can log in from a NEW session, then '$SELF keep ${id: -4}'."* ]]
 }
 
 @test "output lines are at most 78 columns, unless they end with a path" {
@@ -369,7 +369,7 @@ LABELS='Found|Will do|Did|Why|Risk|Problem|Cause|Fix|Undo|Note|Log|Script|It sai
   [ "$status" -eq 30 ]
   [ "${lines[1]}" = 'FAIL     [web] fail: fake probe' ]
   [ "${lines[3]}" = 'Summary: 2 FAIL' ]
-  [ "${lines[4]}" = "Next: bring the failed services back, then run 'labyrinth.sh probe' again." ]
+  [ "${lines[4]}" = "Next: bring the failed services back, then run '$SELF probe' again." ]
   [ "${lines[5]}" = 'probe finished: exit 30 (2 services failed)' ]
 }
 

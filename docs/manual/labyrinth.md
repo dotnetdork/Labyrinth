@@ -114,21 +114,21 @@ Commands, phases, option names and run IDs can be typed in any mix of upper and 
 
 ## plan *phase*
 
-Shows what every module of the phase would change on this host. Nothing is changed, and nothing is written, not even a log. Run it as often as you like.
+Shows what every module of the phase would change on this host. Nothing is changed, and nothing is written, not even a log. Run it as often as you like. Run it as @ADMIN@: only @ADMIN@ can read the configuration.
 
-Ends with 0 when nothing needs changing, 10 when something does, 20 when a safety check blocks a module, and 40 on an error.
+Ends with 0 when nothing needs changing, 10 when something does, 20 when a safety check blocks a module or the configuration cannot be read, and 40 on an error.
 
 ## apply *phase*
 
-Plans, then makes the changes behind the safety checks described in section 7. You are asked to confirm before anything changes.
+Plans, then makes the changes behind the safety checks described in section 7. It must be run as @ADMIN@. Before anything changes, it asks you to name the break-glass account (the first apply on a host only) and to type this host's group name.
 
-Ends with 0 when every change was made and checked, or the highest problem code otherwise: 20 blocked, 30 a check after a change failed, 40 an error.
+Ends with 0 when every change was made and checked, or the highest problem code otherwise: 20 blocked, 30 a check after a change failed, 40 an error. An apply is blocked when it is not run as @ADMIN@, when another Labyrinth run holds the lock, when this host is not in the `hosts` file, or when a safety check fails.
 
 ## keep [*run*]
 
 Keeps a run's changes: cancels its revert timer, then records that the run was kept. Without a run, it keeps the only run whose timer is armed. If none is armed, there is nothing to keep, and it says so and ends with 0. If more than one is armed, it lists them and keeps nothing.
 
-Ends with 0 when the run is kept, 20 when it is not run as @ADMIN@ or it is too late because the run was already rolled back, and 40 when the timer could not be cancelled or the keep could not be recorded. If the timer could not be cancelled, the run is **not** kept and the timer will still undo it: Labyrinth says when, and gives the command to try again.
+Ends with 0 when the run is kept, 20 when it is not run as @ADMIN@, when Labyrinth's files could be changed by another account (section 11), or when it is too late because the run was already rolled back, and 40 when the timer could not be cancelled or the keep could not be recorded. If the timer could not be cancelled, the run is **not** kept and the timer will still undo it: Labyrinth says when, and gives the command to try again.
 
 ## rollback *run*
 
@@ -145,7 +145,7 @@ If that undoes a password change, the old password is back: change it again and 
 
 When rollback undoes anything, it also shows a short notice on every terminal logged in to the host, so the team knows, even when nobody was watching the revert timer.
 
-Ends with 0 when the run is rolled back, 20 when not run as @ADMIN@, and 40 on an error.
+Ends with 0 when the run is rolled back, 20 when not run as @ADMIN@ or when Labyrinth's files could be changed by another account (section 11), and 40 on an error.
 
 ## runs
 
@@ -164,7 +164,7 @@ Below the list, it shows how to name a run by its last four characters. Then it 
 
 ## probe
 
-Tests every scored service once, the way the scoring engine would, and prints the result for each. Changes nothing. Ends with 0 when every service passes, 20 when there is no list of scored services or the list names none, 30 when any service fails, and 40 on an error.
+Tests every scored service once, the way the scoring engine would, and prints the result for each. Changes nothing. Run it as @ADMIN@, so it can read the configuration. Ends with 0 when every service passes, 20 when there is no list of scored services or the list names none, 30 when any service fails, and 40 on an error.
 
 ## help [*topic*]
 
@@ -182,9 +182,26 @@ After any command,
 <!-- end -->
 does the same, once the rest of the line is correct.
 
+Commands in help and in hints are printed the way you started Labyrinth, so you can copy and run them:
+<!-- linux -->
+the path you typed, such as `./labyrinth.sh` or `/opt/labyrinth/labyrinth.sh`, with `sudo` in front when you used sudo.
+<!-- end -->
+<!-- windows -->
+`.\labyrinth.ps1` when you are in Labyrinth's folder, and its full path otherwise.
+<!-- end -->
+
+The general help ends with where to find this manual: the
+<!-- linux -->
+Linux
+<!-- end -->
+<!-- windows -->
+Windows
+<!-- end -->
+parts of `docs/manual/labyrinth.md` in Labyrinth's folder.
+
 ## version
 
-Prints Labyrinth's version.
+Prints Labyrinth's version and which program printed it.
 <!-- linux -->
 `-V` or `--version`
 <!-- end -->
@@ -214,6 +231,7 @@ all work.
 | `--confirm-group GROUP` | Answers the group-name prompt without typing. | apply |
 | `--approve LIST` | Approves items without the approval prompt; see section 7. | apply |
 | `--all` | Also undoes the changes that were kept once verified. | rollback |
+| `--apply` | The older form of apply: a phase with `--apply` applies it. | a phase |
 | `-h`, `-?`, `--help` | Show help. | all |
 | `-V`, `--version` | Show the version. | all |
 
@@ -229,6 +247,7 @@ Example: `sudo ./labyrinth.sh apply lockout --root /srv/labyrinth`
 | `-ConfirmGroup GROUP` | Answers the group-name prompt without typing. | apply |
 | `-Approve LIST` | Approves items without the approval prompt; see section 7. | apply |
 | `-All` | Also undoes the changes that were kept once verified. | rollback |
+| `-Apply` | The older form of apply: a phase with `-Apply` applies it. | a phase |
 | `-h`, `-Help` | Show help. | all |
 | `-V`, `-Version` | Show the version. | all |
 
@@ -236,12 +255,19 @@ Example: `.\labyrinth.ps1 apply lockout -Root D:\Labyrinth`
 
 Use `-h` for help, not `-?`: PowerShell takes `-?` for itself and shows its own page. PowerShell's common parameters, such as `-Verbose`, are not supported.
 
-Run IDs that are all digits, such as `0123`, must be put in quotes, or PowerShell turns them into a number: `.\labyrinth.ps1 keep '0123'`.
+A run ID that PowerShell can read as a number must be put in quotes, or PowerShell turns it into one: all digits, such as `0123`, but also forms such as `4e21` (4 times 10 to the 21st) and `12d`. Labyrinth says so when it happens. If in doubt, quote it: `.\labyrinth.ps1 keep '4e21'`.
 <!-- end -->
 
-An option given twice, an option with no value, or a word Labyrinth does not know is an error (exit 40). Labyrinth says which word is wrong and, for a near miss, suggests the right one.
+An option given twice, an option with no value, or a word Labyrinth does not know is an error (exit 40). Labyrinth says which word is wrong and, for a near miss, suggests the right one. It also knows a few everyday words: `undo` and `revert` point to `rollback`, `status` and `list` to `runs`, `check` and `test` to `probe`, and a dry-run option to `plan`, which never changes anything.
 
-**Older forms still work.** A phase on its own (`@CMD@ lockout`) means `plan lockout`, and `--apply` with a phase means `apply`. They are kept because a revert timer that is already armed still uses them.
+**Older forms still work.** A phase on its own (`@CMD@ lockout`) means `plan lockout`, and
+<!-- linux -->
+`--apply`
+<!-- end -->
+<!-- windows -->
+`-Apply`
+<!-- end -->
+with a phase means `apply`. They are kept because a revert timer that is already armed still uses them.
 
 # 7. What happens during an apply
 
