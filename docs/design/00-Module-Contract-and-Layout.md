@@ -204,7 +204,8 @@ labyrinth plan|apply <phase> [--profile <name>]        # local; remote adds --gr
    2. safety gates (protected set loaded, break-glass confirmed; the scoring allowlist
       for modules that touch scored services)
    3. plan all modules and print the combined plan
-   4. human confirms (typed confirmation) → apply in rings (design 01)
+   4. human confirms (typed, or given on the command line in a first-minute run)
+      → apply in rings, or on every host at once in a first-minute run (design 01)
    5. verify each module with scoring-style probes; auto-rollback a module on regression
    6. write run manifest; run cleanup
 ```
