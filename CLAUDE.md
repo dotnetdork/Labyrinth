@@ -13,7 +13,7 @@ Each rule below says where it comes from. **Rule** items restate the national CC
 5. **Never mislead the scoring engine, and never impede it.** *Rule 11.3:* changing a system to make the scoring engine think a service is up when it is not can bring disqualification or penalties; nothing fakes a service state. *Rules 4.11, 11.3:* anything that interferes with scoring is the team's responsibility and lowers the score. *Design (01):* the scoring allowlist goes in before any deny rule.
 6. **Officials get access.** *Rule 4.1:* Operations and White Team must be given access immediately when they ask. *Design (01, 05):* nothing removes the break-glass path.
 7. **Reversible.** *Design (00):* back up before changing; record every change in the run manifest; `rollback` must work from that manifest.
-8. **Confirm, then act.** *Design (00, 01):* an `approval` module changes only the items a person approved, with the same backups, manifest and rollback as any change. A `manual-only` module never changes anything.
+8. **Confirm, then act.** *Design (00, 01):* an `approval` module changes only the items a person approved, at the prompt or in advance through a pre-approval rule in a category the module allows, with the same backups, manifest and rollback as any change. A `manual-only` module never changes anything.
 
 ## Public boundary
 

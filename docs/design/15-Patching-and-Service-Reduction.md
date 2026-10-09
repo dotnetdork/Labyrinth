@@ -47,7 +47,7 @@ Services are disabled, never removed. Rollback starts them again with their prev
 
 **Scored services are patched, not turned off.** A flaw in a scored service is never closed by stopping or disabling the service (design 21, section 5.1). Where the mitigation catalog has a setting that closes the flaw with the service still running, that goes in first. Patching then replaces the flawed version, and the tracker records the finding as `patched` once a later check confirms it.
 
-**Plan and apply.** The operator approves picks from the ranked list (Tier 3). In a first-minute run, a security update for a scored package that the profile lists as pre-approved counts as approved (design 01, section 6.3). The pre-approval names the package, not a version, because the version available at the event is not known when the profile is reviewed. It covers only an update from the host's own release stream that passes the simulation check (design 20, section 4); a new major version, or an update that would remove or replace a package, still waits for a person. The restore point comes first, and a failed probe after the update raises an alert and offers the restore at once. For each approved pick, Labyrinth:
+**Plan and apply.** The operator approves picks from the ranked list (Tier 3). Each update is an item in category `security-update`, whose id is the package name with any character other than a lowercase letter, a digit or `-` replaced by `-`. The module lets a pre-approval rule cover this category (Conventions, section 3.1), so a security update for a scored package that a rule names counts as approved, and a first-minute run applies it without a prompt (design 01, section 6.3). The rule names the package, not a version, because the version available at the event is not known when the team decides. It covers only an update from the host's own release stream that passes the simulation check (design 20, section 4); a new major version, or an update that would remove or replace a package, still waits for a person. The restore point comes first, and a failed probe after the update raises an alert and offers the restore at once. For each approved pick, Labyrinth:
 
 1. takes a restore point of the service (design 14);
 2. upgrades only that package with the host's package manager, never the whole system, after the same simulation check as an install (design 20, section 4);
@@ -76,7 +76,7 @@ flowchart LR
     class OK ok
 ```
 
-*Figure: the tracker finds and ranks the security updates (design 21), a person approves each package or the profile pre-approved it, and Labyrinth takes a restore point, upgrades that one package and checks the result. Red is lock-out work done by Labyrinth, amber is a person's decision and green is the restore point and the recorded finish.*
+*Figure: the tracker finds and ranks the security updates (design 21), a person approves each package or a pre-approval rule covers it, and Labyrinth takes a restore point, upgrades that one package and checks the result. Red is lock-out work done by Labyrinth, amber is a person's decision and green is the restore point and the recorded finish.*
 
 ## 5. Pinned questions
 

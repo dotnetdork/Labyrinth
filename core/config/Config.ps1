@@ -93,6 +93,23 @@ function Read-LabAddressList {
     return , $list
 }
 
+# Read-LabPreApproved: the pre-approval rules (pre-approved) as objects with
+# Module, Category and Item, where Item is an item id or '*' for every item
+# of the category (docs/Conventions.md section 3.1).
+function Read-LabPreApproved {
+    $file = Join-Path $env:LAB_CONFIG_DIR 'pre-approved'
+    if (-not (Test-Path -LiteralPath $file -PathType Leaf)) { return $null }
+    $rules = @()
+    foreach ($l in @(Get-LabConfigLine $file)) {
+        if ($l.Text -cnotmatch '^((lockout|observe|deceive|sustain)\.[a-z0-9_-]+)\s+([a-z0-9-]+)\s+([a-z0-9-]+|\*)$') {
+            throw "${file}:$($l.No): expected: module-id category item-id (or * for every item)"
+        }
+        $rules += [pscustomobject]@{ Module = $Matches[1]; Category = $Matches[3]; Item = $Matches[4] }
+    }
+    if ($rules.Count -eq 0) { return $null }
+    return , $rules
+}
+
 # Read-LabServiceList: the scored-service list as objects with Name, Proto,
 # Target, Port and Expect; an empty array if the file has no entries.
 function Read-LabServiceList {

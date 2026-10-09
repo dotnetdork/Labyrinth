@@ -68,7 +68,7 @@ $ErrorActionPreference = 'Stop'
 
 $LabVersion = '0.1.0-dev'
 $Phases = @('lockout', 'observe', 'deceive', 'sustain')
-$ModuleKeys = @('id', 'title', 'phase', 'priority', 'platforms', 'risk', 'touches_scored', 'requires', 'outputs', 'spec')
+$ModuleKeys = @('id', 'title', 'phase', 'priority', 'platforms', 'risk', 'touches_scored', 'requires', 'outputs', 'spec', 'pre_approvable')
 $RequiredKeys = @('id', 'title', 'phase', 'priority', 'platforms', 'risk', 'touches_scored')
 $Risks = @('read-only', 'reversible', 'service-affecting', 'approval', 'manual-only')
 $Platforms = @('ubuntu', 'rhel-family', 'windows', 'appliance')
@@ -107,6 +107,8 @@ $script:PendingWarnings = @()
 $script:EntryRc = 0
 $script:Approved = ''            # items approved for the module being applied
 $script:Refused = @()            # approved items that changed since the plan
+$script:Pre = @()                # those approved items a pre-approval rule approved
+$script:PreRules = @()           # the pre-approval rules (pre-approved)
 $script:PhaseCount = 0
 $script:LoadErrors = 0           # modules of the phase that could not be loaded
 $script:LoadSkipped = 0          # modules skipped: no entry points for this platform
@@ -957,6 +959,14 @@ function Test-LabModule {
     if ($m.ContainsKey('requires') -and $null -eq (Get-LabListItem $m['requires'])) {
         Write-YmlError $File 'requires must be a list'; return $false
     }
+    if ($m.ContainsKey('pre_approvable')) {
+        $cats = Get-LabListItem $m['pre_approvable']
+        if ($null -eq $cats) { Write-YmlError $File 'pre_approvable must be a list'; return $false }
+        if ($m['risk'] -cne 'approval') { Write-YmlError $File 'pre_approvable is only for approval modules'; return $false }
+        foreach ($c in $cats) {
+            if ($c -cnotmatch '^[a-z0-9-]+$') { Write-YmlError $File "not a category: $c"; return $false }
+        }
+    }
     return $true
 }
 
@@ -1112,9 +1122,12 @@ function Import-LabRunModule {
         }
         $requires = @()
         if ($script:Mod.ContainsKey('requires')) { $requires = Get-LabListItem $script:Mod['requires'] }
+        $preOk = @()
+        if ($script:Mod.ContainsKey('pre_approvable')) { $preOk = Get-LabListItem $script:Mod['pre_approvable'] }
         $found += [pscustomobject]@{
             Id = $id; Dir = $dir; Risk = $script:Mod['risk']; Scored = ($script:Mod['touches_scored'] -eq 'true')
             Requires = $requires; Priority = $script:Mod['priority']; Rc = 0; State = 'planned'; Items = @()
+            PreOk = $preOk
         }
     }
     $ordered = @()
@@ -1184,6 +1197,10 @@ function Invoke-LabPlanOne {
         } elseif (-not (Test-LabLabel 'risk' (@($said) + @($script:EntryOut)))) {
             Write-LabDetail 'Risk' (Get-LabRiskWord $M.Risk)
         }
+        if ($M.Risk -eq 'approval') {
+            $preWords = @(Get-LabPreItem $M)
+            if ($preWords.Count -gt 0) { Write-LabDetail 'Note' "pre-approved, so applied without asking: $(Get-LabItemList $preWords)" }
+        }
         $M.Rc = 10; return
     }
     if ($rc -eq 20) {
@@ -1218,6 +1235,54 @@ function Read-LabItem {
     return ''
 }
 
+# Get-LabPreItem M: the items of approval module M that a pre-approval
+# rule approves, as 'id@fingerprint' words, with this run's fingerprints.
+# A rule counts only for a category the module's pre_approvable lists
+# (docs/Conventions.md section 3.1).
+function Get-LabPreItem {
+    param($M)
+    $words = @()
+    foreach ($r in @($script:PreRules)) {
+        if ($r.Module -cne $M.Id -or @($M.PreOk) -cnotcontains $r.Category) { continue }
+        foreach ($i in @($M.Items)) {
+            if ($i.Category -cne $r.Category) { continue }
+            if ($r.Item -cne '*' -and $r.Item -cne $i.Id) { continue }
+            if (@($words | Where-Object { $_.StartsWith("$($i.Id)@") }).Count -eq 0) { $words += "$($i.Id)@$($i.Fingerprint)" }
+        }
+    }
+    return $words
+}
+
+# Get-LabItemList WORDS: the ids of 'id@fingerprint' words, comma-separated.
+function Get-LabItemList {
+    param([string[]] $Words)
+    return (@($Words | ForEach-Object { $_.Substring(0, $_.LastIndexOf('@')) }) -join ', ')
+}
+
+# Write-LabPreUnmatched: after the plan, each pre-approval rule for a module
+# in this run whose module.yml does not let that category be pre-approved is
+# ignored, with a line saying so. Rules for other modules are for other
+# hosts, and are passed over in silence.
+function Write-LabPreUnmatched {
+    $said = $false
+    foreach ($r in @($script:PreRules)) {
+        foreach ($m in $script:Run) {
+            if ($m.Id -cne $r.Module -or @($m.PreOk) -ccontains $r.Category) { continue }
+            if (-not $said) { Write-LabLine ''; $said = $true }
+            Write-LabLine "Pre-approval ignored: $($r.Module) does not let category $($r.Category) be pre-approved: $($r.Module) $($r.Category) $($r.Item)"
+        }
+    }
+}
+
+# Read-LabPreRule: the pre-approval rules; a malformed file is an error,
+# and a missing one approves nothing in advance.
+function Read-LabPreRule {
+    $rules = $null
+    try { $rules = Read-LabPreApproved } catch { Exit-Lab "pre-approved is malformed: $($_.Exception.Message)" 40 $FixLine }
+    $script:PreRules = @()
+    if ($null -ne $rules) { $script:PreRules = @($rules) }
+}
+
 # Load and plan the phase's modules; return the worst code.
 function Invoke-LabPlanAll {
     param([string] $Phase)
@@ -1226,6 +1291,7 @@ function Invoke-LabPlanAll {
         Invoke-LabPlanOne $m
         if ($m.Rc -gt $worst) { $worst = $m.Rc }
     }
+    Write-LabPreUnmatched
     if ($script:PhaseCount -eq 0) {
         Write-LabStatus 'WARN' "Phase $Phase"
         Write-LabDetail 'Found' "profile $($script:ProfileName) lists no $Phase modules: nothing to check"
@@ -1442,8 +1508,10 @@ function Get-LabApproveEntry {
 
 # Select-LabItem M: the items of approval module M that a person approved,
 # as 'id@fingerprint' words in $script:Approved (docs/Conventions.md
-# section 3.1): the -Approve entries that name the module when it was given,
-# otherwise the ids and categories typed at the prompt. An -Approve entry
+# section 3.1): those a pre-approval rule approves, then the -Approve
+# entries that name the module when it was given, otherwise the ids and
+# categories typed at the prompt, which is not asked when every item is
+# pre-approved. An -Approve entry
 # whose fingerprint differs from this run's plan is recorded as refused and
 # left out. Returns 0 with something approved; 1, after an OK block, when
 # nothing was; 20, after a BLOCKED block, when the answer is not ids and
@@ -1454,11 +1522,18 @@ function Select-LabItem {
     $name = Get-LabModuleName $id
     $script:Approved = ''
     $script:Refused = @()
+    $script:Pre = @()
     $list = @()
     if (@($M.Items).Count -eq 0) {
         Write-LabStatus 'OK' $name
         Write-LabDetail 'Did' 'its plan listed no items to approve, so nothing changed'
         return 1
+    }
+    $script:Pre = @(Get-LabPreItem $M)
+    $list += $script:Pre
+    $rest = @()
+    foreach ($i in $M.Items) {
+        if (@($list | Where-Object { $_.StartsWith("$($i.Id)@") }).Count -eq 0) { $rest += $i }
     }
     if ($script:Given.ContainsKey('approve')) {
         foreach ($tok in (Get-LabApproveEntry)) {
@@ -1479,9 +1554,10 @@ function Select-LabItem {
             }
             $list += $want
         }
-    } else {
+    } elseif ($rest.Count -gt 0) {
         Write-LabLine "$name changes only the items you approve:"
-        foreach ($i in $M.Items) { Write-LabDetail 'Item' (Get-LabItemWord $i.Id $i.Category $i.Fingerprint $i.Reason) }
+        if ($script:Pre.Count -gt 0) { Write-LabDetail 'Approved' "$(Get-LabItemList $script:Pre) (pre-approved)" }
+        foreach ($i in $rest) { Write-LabDetail 'Item' (Get-LabItemWord $i.Id $i.Category $i.Fingerprint $i.Reason) }
         Write-LabLine 'To approve every item of a category, type category: and its name.'
         if (-not (Read-LabAnswer 'Type the ids of the items to approve, separated by spaces, or press Enter for none: ')) { $script:Answer = '' }
         $words = @($script:Answer -split '\s+' | Where-Object { $_ -ne '' })
@@ -1515,10 +1591,15 @@ function Select-LabItem {
     return 0
 }
 
-# Write-LabChoice: under a module's status line, the items approved and
-# those left alone because they changed since the plan.
+# Write-LabChoice: under a module's status line, the items approved, each
+# one a pre-approval rule approved marked so, and those left alone because
+# they changed since the plan.
 function Write-LabChoice {
-    $ids = @($script:Approved -split ' ' | Where-Object { $_ -ne '' } | ForEach-Object { $_.Substring(0, $_.LastIndexOf('@')) })
+    $ids = @($script:Approved -split ' ' | Where-Object { $_ -ne '' } | ForEach-Object {
+            $word = $_.Substring(0, $_.LastIndexOf('@'))
+            if (@($script:Pre) -ccontains $_) { $word += ' (pre-approved)' }
+            $word
+        })
     if ($ids.Count -gt 0) { Write-LabDetail 'Approved' ($ids -join ', ') }
     foreach ($r in $script:Refused) { Write-LabDetail 'Found' "$r changed since the plan, so it is left alone" }
 }
@@ -1557,6 +1638,7 @@ function Invoke-LabApplyOne {
     $id = $M.Id
     $name = Get-LabModuleName $id
     $script:Approved = ''
+    $script:Pre = @()
     if ($M.Risk -eq 'manual-only') {
         Write-LabStatus 'WARN' $name
         Write-LabDetail 'Found' 'this needs a person; Labyrinth changed nothing'
@@ -1624,6 +1706,7 @@ function Invoke-LabApplyOne {
     try {
         $note = "risk $($M.Risk)"
         if ($script:Approved -ne '') { $note += ", approved $($script:Approved)" }
+        if (@($script:Pre).Count -gt 0) { $note += ", pre-approved $($script:Pre -join ' ')" }
         Add-LabEntryFor $id 'apply_start' '' $note
     } catch {
         Write-LabErrorLine $_.Exception.Message
@@ -1744,6 +1827,7 @@ function Invoke-LabPlanCommand {
     }
     Read-LabProfile $script:ProfileName
     Read-LabSetting
+    Read-LabPreRule
     Assert-LabProtectedSet
     Write-LabPendingWarning
     Write-LabLine ('labyrinth {0}: plan {1}, profile {2}' -f $LabVersion, $Phase, $script:ProfileName)
@@ -1822,6 +1906,7 @@ function Invoke-LabApplyCommand {
     $script:ProfileName = $entry.Profile
     Read-LabProfile $script:ProfileName
     Read-LabSetting
+    Read-LabPreRule
     Assert-LabProtectedSet
     if (-not (Enter-LabLock -WaitSeconds 0)) { exit 20 }
     try {
