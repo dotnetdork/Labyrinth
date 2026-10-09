@@ -16,7 +16,7 @@ Red Teams plan for exactly this. Public Red Team accounts describe mid-event tak
 |---|---|
 | Tools must not deliberately break expected functionality (National Collegiate Cyber Defense Competition [NCCDC], 2025, Rule 5.6.5). | A backup must never fill a disk or lock a database long enough to fail a check (section 5). |
 | Scored services may not be migrated or containerized (NCCDC, 2025, Rule 4.14). | A restore puts data back in place on the same host. It never moves a service. |
-| Competition materials stay in the competition area (NCCDC, 2025, Rules 4.4, 8.5). | Backups never leave the event network. |
+| Competition materials stay in the competition area (NCCDC, 2025, Rules 4.4, 10.5). | Backups never leave the event network. |
 | Team tools may not use outside resources apart from DNS (NCCDC, 2025, Rule 5.6.4). | No cloud or remote backup target. |
 
 ## 3. What is backed up

@@ -15,7 +15,7 @@ This spec finds those footholds and removes them as early as is safe, without br
 | Scoring is based partly on controlling and preventing unauthorized access (NCCDC, 2025, Scoring section). No rule forbids removing an attacker's foothold. | Removal is part of the job, not an optional extra. |
 | Tools must not deliberately break expected functionality (NCCDC, 2025, Rule 5.6.5). | Never a blanket action such as removing every cron job. Each item is judged on its own and quarantined, never deleted. |
 | Anything that interferes with the scoring engine is the team's responsibility (NCCDC, 2025, Rule 4.11). | An item a scored service depends on is never removed automatically. Probes run before and after, under a revert timer. |
-| Reports must say what happened and what was affected (NCCDC, 2025, Rule 9.4). | Quarantine keeps every item, so it can be shown as evidence in the report (design 02). |
+| Reports must say what happened and what was affected (NCCDC, 2025, Rule 11.4). | Quarantine keeps every item, so it can be shown as evidence in the report (design 02). |
 
 ## 3. Where it looks
 

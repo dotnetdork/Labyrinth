@@ -15,7 +15,7 @@ The original idea ran against every reachable host in one pass, resetting creden
 | Tools must not deliberately break expected functionality. The examples are setting all user shells on Linux to `/bin/false` and indiscriminately terminating all outbound connections after 30 seconds (National Collegiate Cyber Defense Competition [NCCDC], 2025, Rule 5.6.5). | No blanket actions. Every destructive action works from an explicit allowlist and skips the protected set. |
 | Operations and White Team must be given access immediately on request (NCCDC, 2025, Rule 4.1). | A confirmed break-glass path is a precondition. Nothing removes it. |
 | Anything that interferes with the scoring engine is the team's responsibility (NCCDC, 2025, Rule 4.11). | The scoring engine allowlist is applied first. Verification uses scoring-style probes. |
-| Do not mislead the scoring engine (NCCDC, 2025, Rule 9.3). | The panic button never fakes a service state. |
+| Do not mislead the scoring engine (NCCDC, 2025, Rule 11.3). | The panic button never fakes a service state. |
 | Administrator-class passwords are not used for scoring and may be changed freely. Other user passwords follow the notification process (Midwest Collegiate Cyber Defense Competition [MWCCDC], 2025, Rule 13). | Only admin-class credentials are rotated automatically. User-level rotation is manual-only. |
 | Scored services may not be migrated or containerized (NCCDC, 2025, Rule 4.14). | The panic button contains no container actions. |
 | Blue Teams should keep ICMP working on all competition devices (MWCCDC, 2025, Rule 14; *Provisional*). | Default-deny always allows ICMP, inbound and outbound, unless the run-time configuration says the event packet allows otherwise. |
