@@ -273,7 +273,7 @@ If an item has changed since the plan you copied it from, its fingerprint no lon
   Type 'recorded' once it is in the offline record:
 ```
 
-Copy it into the team's offline record, check the copy, then type `recorded`. Anything else asks again. Labyrinth then clears the password from the screen. If the window closes before you type `recorded`, the module puts the old password back, because nobody has the new one. A module that sets passwords needs a terminal to show them on; started without one, for example from a script with no window, it changes nothing and is blocked.
+Copy it into the team's offline record, check the copy, then type `recorded`. Anything else asks again. Labyrinth then clears the password from the screen. If the window closes before you type `recorded`, the module puts the old password back, because nobody has the new one. Answer within the revert time: when the revert timer fires, it stops the run, even at this prompt, and undoes it, the new password included. A module that sets passwords needs a terminal to show them on; started without one, for example from a script with no window, it changes nothing and is blocked.
 
 # 8. Reading the output
 
