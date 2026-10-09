@@ -233,6 +233,20 @@ Describe 'core library' {
         @($sids | Where-Object { $trusted -notcontains $_ }) -join ' ' | Should -Be ''
     }
 
+    It 'safety: code and data that an account other than an administrator can change are found' {
+        $dir = Join-Path $base 'code'
+        New-Item -ItemType Directory -Path (Join-Path $dir 'core') -Force | Out-Null
+        $f = Join-Path $dir 'core\lib.ps1'
+        Write-TestFile $f @('x')
+        Find-LabUntrustedItem -Path @($dir, '', (Join-Path $base 'not-made\etc')) | Should -BeNullOrEmpty
+        # Authenticated Users may change one file.
+        $acl = Get-Acl -LiteralPath $f
+        $acl.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule(
+            (New-Object Security.Principal.SecurityIdentifier 'S-1-5-11'), 'Modify', 'Allow')))
+        Set-Acl -LiteralPath $f -AclObject $acl
+        Find-LabUntrustedItem -Path $dir | Should -BeLike '*\code\core\lib.ps1'
+    }
+
     It 'safety: revert-timer arguments survive a real command line' {
         $script = Join-Path $base 'args.ps1'
         [IO.File]::WriteAllText($script, '$args | ForEach-Object { "<$_>" }')

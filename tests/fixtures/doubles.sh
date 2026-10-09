@@ -3,12 +3,19 @@
 # They replace the host-specific parts of the core, so runner tests need no
 # root, no systemd and no network:
 #   - the administrator check passes unless $LAB_ROOT/NOT_ADMIN exists;
+#   - the ownership check passes unless $LAB_ROOT/UNTRUSTED exists;
 #   - the revert timer is recorded in $LAB_ROOT/timer.log instead of armed;
 #   - a probe fails if its host is listed as "<host> fail" in
 #     $LAB_ROOT/probe-state, and passes otherwise.
 #   - the terminal is two files, $LAB_ROOT/tty.out and tty.in (below).
 
 lab_is_admin() { [[ ! -e "$LAB_ROOT/NOT_ADMIN" ]]; }
+
+lab_tree_trusted() {
+  [[ -e "$LAB_ROOT/UNTRUSTED" ]] || return 0
+  printf '%s\n' "$LAB_ROOT"
+  return 1
+}
 
 lab_timer_arm() {
   local secs="$1" run="$2"

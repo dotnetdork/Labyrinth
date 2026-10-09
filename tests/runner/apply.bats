@@ -54,6 +54,27 @@ setup() {
   [ ! -e "$LAB/toggle.conf" ]
 }
 
+@test "apply, keep and rollback refuse code or data another account can change" {
+  answers root ring1 no
+  apply
+  [ "$status" -eq 0 ]
+  id="$(run_id)"
+  touch "$LAB/UNTRUSTED"
+  rm "$LAB/toggle.conf"
+  apply
+  [ "$status" -eq 20 ]
+  [[ "$output" == *"$LAB can be changed by an account other than root"* ]]
+  [ ! -e "$LAB/toggle.conf" ]
+  printf 'setting=on\n' > "$LAB/toggle.conf"
+  for cmd in keep rollback; do
+    run bash "$LAB/labyrinth.sh" --root "$ROOT" --config "$ETC" "$cmd" "$id"
+    [ "$status" -eq 20 ] || { echo "$cmd: $status"; return 1; }
+  done
+  # Nothing was rolled back, and the timer is still armed.
+  grep -qx 'setting=on' "$LAB/toggle.conf"
+  [ -f "$ROOT/state/runs/$id/timer" ]
+}
+
 @test "apply needs this host in the hosts file, and never touches the manual group" {
   rm "$ETC/hosts"
   apply

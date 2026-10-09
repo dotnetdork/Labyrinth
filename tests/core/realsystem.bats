@@ -11,7 +11,10 @@ setup() {
 
 # Files made by root would stop bats from removing its test directory.
 teardown() {
-  if [ "${LAB_REALSYSTEM:-}" = 1 ]; then sudo -n rm -rf -- "$W/root" "$W/state" "$W/lab"; fi
+  if [ "${LAB_REALSYSTEM:-}" = 1 ]; then
+    sudo -n rm -rf -- "$W/root" "$W/state" "$W/lab"
+    if [ -s "$W/base" ]; then sudo -n rm -rf -- "$(cat "$W/base")"; fi
+  fi
 }
 
 @test "realsystem: an armed revert timer fires, and a cancelled one does not" {
@@ -27,19 +30,28 @@ teardown() {
 }
 
 @test "realsystem: an apply that is not kept is rolled back by the timer" {
-  LAB="$W/lab" ETC="$W/etc" ROOT="$W/root"
-  mkdir -p "$LAB/phases/observe/modules" "$LAB/profiles" "$ETC"
-  cp "$REPO/labyrinth.sh" "$LAB/"
-  cp -R "$REPO/core" "$LAB/"
-  cp -R "$REPO/tests/fixtures/modules/toggle" "$LAB/phases/observe/modules/"
-  printf 'observe.toggle\n' > "$LAB/profiles/test.profile"
-  printf 'root breakglass\n' > "$ETC/protected-accounts"
-  printf '%s ring0 test ubuntu\n' "${HOSTNAME%%.*}" > "$ETC/hosts"
-  printf 'REVERT_MINUTES=1\n' > "$ETC/event.conf"
-  printf 'setting=off\n' > "$LAB/toggle.conf"
+  # Labyrinth runs as root only from folders root alone can change, so the
+  # copy is made by root in a folder of its own, outside the test folder.
+  B="$(sudo -n mktemp -d /var/tmp/lab-real.XXXXXX)"
+  printf '%s\n' "$B" > "$W/base"
+  LAB="$B/lab" ETC="$B/etc" ROOT="$B/root"
+  sudo -n env REPO="$REPO" LAB="$LAB" ETC="$ETC" H="${HOSTNAME%%.*}" bash -c '
+    set -Eeuo pipefail
+    umask 022
+    mkdir -p "$LAB/phases/observe/modules" "$LAB/profiles" "$ETC"
+    cp "$REPO/labyrinth.sh" "$LAB/"
+    cp -R "$REPO/core" "$LAB/"
+    cp -R "$REPO/tests/fixtures/modules/toggle" "$LAB/phases/observe/modules/"
+    printf "observe.toggle\n" > "$LAB/profiles/test.profile"
+    printf "root breakglass\n" > "$ETC/protected-accounts"
+    printf "%s ring0 test ubuntu\n" "$H" > "$ETC/hosts"
+    printf "REVERT_MINUTES=1\n" > "$ETC/event.conf"
+    printf "setting=off\n" > "$LAB/toggle.conf"
+    chown -R root:root "$LAB" "$ETC"
+    chmod -R go-w "$LAB" "$ETC"'
   run sudo -n bash -c 'printf "root\nring0\nno\n" | bash "$1" --root "$2" --config "$3" --apply observe' _ "$LAB/labyrinth.sh" "$ROOT" "$ETC"
-  [ "$status" -eq 0 ]
-  grep -qx 'setting=on' "$LAB/toggle.conf"
+  [ "$status" -eq 0 ] || { printf '%s\n' "$output"; return 1; }
+  sudo -n grep -qx 'setting=on' "$LAB/toggle.conf"
   # The run's state is root-only, so the manifest is read through sudo. The
   # run is rolled back once its last manifest entry is written.
   rolled_back() {
@@ -50,5 +62,21 @@ teardown() {
     sleep 5
   done
   rolled_back
+  sudo -n grep -qx 'setting=off' "$LAB/toggle.conf"
+}
+
+@test "realsystem: apply refuses code that another account can change" {
+  LAB="$W/lab" ETC="$W/etc" ROOT="$W/root"
+  mkdir -p "$LAB/phases/observe/modules" "$LAB/profiles" "$ETC"
+  cp "$REPO/labyrinth.sh" "$LAB/"
+  cp -R "$REPO/core" "$LAB/"
+  cp -R "$REPO/tests/fixtures/modules/toggle" "$LAB/phases/observe/modules/"
+  printf 'observe.toggle\n' > "$LAB/profiles/test.profile"
+  printf 'root breakglass\n' > "$ETC/protected-accounts"
+  printf '%s ring0 test ubuntu\n' "${HOSTNAME%%.*}" > "$ETC/hosts"
+  printf 'setting=off\n' > "$LAB/toggle.conf"
+  run sudo -n bash -c 'printf "root\nring0\nno\n" | bash "$1" --root "$2" --config "$3" --apply observe' _ "$LAB/labyrinth.sh" "$ROOT" "$ETC"
+  [ "$status" -eq 20 ]
+  [[ "$output" == *"can be changed by an account other than root"* ]]
   grep -qx 'setting=off' "$LAB/toggle.conf"
 }

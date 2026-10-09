@@ -1232,6 +1232,17 @@ function Invoke-LabPlanAll {
     return $worst
 }
 
+# Only administrators may be able to change Labyrinth's code, its
+# configuration and its data root, because they run as SYSTEM, later too,
+# by the revert timer (design 07, section 5).
+function Assert-LabTrustedTree {
+    $bad = Find-LabUntrustedItem -Path @($env:LAB_ROOT, $env:LAB_CONFIG_DIR, $script:DataRoot)
+    if ($null -ne $bad) {
+        Exit-Lab "$bad can be changed by an account that is not an administrator, so Labyrinth will not run as SYSTEM from it" 20 `
+            "Keep Labyrinth's folders owned by Administrators, with no other account allowed to change them, as under C:\ProgramData\Labyrinth."
+    }
+}
+
 # The protected set must load and hold at least one account (design 01,
 # section 7). Plan mode needs it too, because plans that touch accounts depend on it.
 function Assert-LabProtectedSet {
@@ -1784,6 +1795,7 @@ function Invoke-LabApplyCommand {
     if (-not (Test-LabAdmin)) { Exit-Lab 'apply needs an elevated Administrator session' 20 $FixAdmin }
     # Before any configuration under the root is trusted.
     try { Protect-LabDataRoot -Path $script:DataRoot } catch { Exit-Lab "$($_.Exception.Message); nothing was changed" 20 }
+    Assert-LabTrustedTree
     $entry = Find-LabThisHost
     if ($null -eq $entry) { Exit-Lab 'this host is not in the hosts file, so its ring group is unknown' 20 "Add the line '$hostName <group> <profile> <platform>' to $(Join-Path $env:LAB_CONFIG_DIR 'hosts')" }
     $group = $entry.Group
@@ -2028,6 +2040,7 @@ function Invoke-LabKeepCommand {
     param([string] $Ref)
     $script:DryRun = '0'; $env:LAB_DRY_RUN = '0'
     if (-not (Test-LabAdmin)) { Exit-Lab 'keep needs an elevated Administrator session' 20 $FixAdmin }
+    Assert-LabTrustedTree
     if ($Ref -eq '') {
         # Without a run, keep the one run whose timer is armed (section 3.1).
         $armed = @(Get-LabArmedRun)
@@ -2063,6 +2076,7 @@ function Invoke-LabRollbackCommand {
         Exit-LabUsage $need 'rollback' 'Pick one from the list above.'
     }
     if (-not (Test-LabAdmin)) { Exit-Lab 'rollback needs an elevated Administrator session' 20 $FixAdmin }
+    Assert-LabTrustedTree
     $env:LAB_RUN_ID = Resolve-LabRunId 'rollback' $Ref
     $script:RunRef = $env:LAB_RUN_ID
     if (-not (Test-Path -LiteralPath (Get-LabManifestPath) -PathType Leaf)) { Exit-Lab "no run $env:LAB_RUN_ID on this host" }
