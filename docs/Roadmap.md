@@ -59,7 +59,7 @@ Each module ships its read-only `check` and `plan` first. The branches are liste
 | `phase-4/accounts` | 05 §6 | Locking accounts from a list; deletion only after approval and a passing checkpoint |
 | `phase-4/win-base` | 11 §3, §3.3 | Windows protocol and credential settings, including SMBv1 and Print Spooler |
 | `phase-4/ad-readonly` | 11 §3.1, §3.2 | Domain read-only checks and the printed domain checklist |
-| `phase-4/first-minute` | 01 §6, §6.3 | The first-minute bundle in its order (lock down, install, sweep, reopen outbound), first-minute runs with every answer on the command line, ring order and canary hosts |
+| `phase-4/first-minute` | 01 §6, §6.3 | The first-minute bundle in its order (lock down, install, sweep, reopen outbound), first-minute runs with every answer on the command line, ring order and test hosts |
 
 ### Stage 5: remote mode
 

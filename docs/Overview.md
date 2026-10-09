@@ -1,6 +1,6 @@
 # How Labyrinth Works
 
-**Status:** Draft · reviewed 2026-10-02
+**Status:** Draft · reviewed 2026-10-09
 
 This is the plain-language tour of Labyrinth. It explains what each part of the system is for and how the parts fit together, without assuming you already know networking or security tooling. The [implementation blueprint](Blueprint.md) and the [design specs](design/README.md) hold the precise details. Each section below links to the one that goes deeper.
 
@@ -149,7 +149,7 @@ Every module offers the same six actions, so every module behaves the same way:
 flowchart LR
     C["check:<br/>change needed?"] -->|no| DONE(["done"])
     C -->|yes| P["plan:<br/>show the change"]
-    P --> H{"a person<br/>confirms?"}
+    P --> H{"a person<br/>confirms the run?"}
     H -->|no| STOP(["nothing changes"])
     H -->|yes| A["apply:<br/>back up, change,<br/>record it"]
     A --> V{"verify:<br/>services still up?"}
@@ -163,7 +163,7 @@ flowchart LR
     class STOP stop
 ```
 
-*Figure: a simplified module run; design 00 has the full version with exit codes and cleanup. Green is a clean finish, amber a person's decision or an undo, and the dashed red outline a stop.*
+*Figure: a simplified module run; design 00 has the full version with exit codes and cleanup. A person confirms once for the whole run, after reading the plan for every module, not once per module. Green is a clean finish, amber a person's decision or an undo, and the dashed red outline a stop.*
 
 Two words you will see often:
 
@@ -180,7 +180,7 @@ Every host uses the same folder layout, so the team always knows where to look: 
 
 Each subsection answers four questions: what the part does, why it exists, how it works, and what it will never do.
 
-### 4.1 🟥 The panic button (lockout)
+### 4.1 The panic button (lockout)
 
 **What it does.** One command carries out the first-minutes lockout across the reachable hosts ([design 01](design/01-Lockout-Panic-Button.md)).
 
@@ -195,7 +195,13 @@ Each subsection answers four questions: what the part does, why it exists, how i
 **How it works.** The obvious version, "reset everything, lock everything, block everything, everywhere, at once", would break things the scoring engine checks, and the rules forbid breaking what the network is expected to do. So the panic button keeps the speed but adds guard rails:
 
 - **The protected set.** Before anything else, the operator loads a list of accounts that must never be touched: the officials' accounts, the accounts the scoring engine logs in with, the team's own accounts, the emergency accounts and system accounts. If the list is missing or empty, the run stops.
-- **Safety gates.** Six checks must all pass before any change: the protected set is loaded, the scoring engine is allowed through every firewall plan, the operator has confirmed that the emergency login works at the host's own console, backups exist, the operator has reviewed the plan and confirmed the target group's name (typed, or given in the command for a first-minute run), and a revert timer is ready for risky changes.
+- **Safety gates.** Six checks must all pass before any change:
+  1. the protected set is loaded;
+  2. the scoring engine is allowed through every firewall plan;
+  3. the operator has confirmed that the emergency login works at the host's own console;
+  4. backups exist;
+  5. the operator has reviewed the plan and confirmed the target group's name (typed, or given in the command for a first-minute run);
+  6. a revert timer is ready for risky changes.
 - **Risk tiers.** Every action is sorted by how much damage it could do, and riskier tiers get more caution:
 
 | Tier | What it covers | Who carries it out |
@@ -203,9 +209,11 @@ Each subsection answers four questions: what the part does, why it exists, how i
 | 0. Observe only | Read-only inventory: users, groups, open ports, running programs, open sessions, scheduled tasks | Runs automatically |
 | 1. Safe and reversible | Change admin-class passwords; remove SSH keys that are not on the approved list; end intruder sessions | Runs automatically after the plan is reviewed |
 | 2. Service-affecting | Check and harden SSH; set aside obvious attacker footholds; block incoming and outgoing traffic except what is needed; install the team's chosen tools; back up the scored services; take admin rights from unexpected local accounts and lock them; safe settings for scored apps and Windows; turn off unneeded services | Runs host group by host group, with a check and a revert timer |
-| 3. Approve, then act | Unexplained footholds; deleting locked accounts; riskier app settings; app admin passwords; restoring a service from a backup; Linux security updates; lifting the outgoing block on one host; ending a stubborn process that runs as SYSTEM on Windows; resetting the domain's ticket-signing password (KRBTGT). A short list stays with a person: ordinary users' passwords, other domain accounts and policy, DNS on the domain controller, restoring the domain controller, rescuing a host that will not boot, Windows patching and network appliances | A person approves, then Labyrinth does it; the short list is a printed checklist |
+| 3. Approve, then act | Unexplained footholds, deleting locked accounts, riskier app settings and passwords, restores, Linux updates, and the other items listed below | A person approves, then Labyrinth does it |
 
-- **Rings.** Changes go first to one low-impact host of each kind of system (the "canaries", for example one Linux host and one Windows workstation), then to the next group, and so on. If a check fails, the run stops before the problem spreads. A host that is the only one of its kind, such as the domain controller, has no canary to go first; it comes last and relies on the revert timer and the tests.
+Tier 3 in full: unexplained footholds; deleting locked accounts; riskier app settings; app admin passwords; restoring a service from a backup; Linux security updates; lifting the outgoing block on one host; ending a stubborn process that runs as SYSTEM on Windows; and resetting the domain's ticket-signing password (KRBTGT). A short list stays with a person, as a printed checklist: ordinary users' passwords, other domain accounts and policy, DNS on the domain controller, restoring the domain controller, rescuing a host that will not boot, Windows patching and network appliances.
+
+- **Host groups.** Each host belongs to one **group**, named in the team's hosts file, and a run acts on one group at a time. The first group holds one low-impact **test host** of each kind of system, for example one Linux host and one Windows workstation; then come the next group, and so on. (The design specs call these groups *rings*.) If a check fails, the run stops before the problem spreads. A host that is the only one of its kind, such as the domain controller, has no test host to go first; it is in the last group and relies on the revert timer and the tests.
 - **Revert timer (dead-man).** Before a change that could lock the team out, such as a firewall or SSH change, Labyrinth sets a timer that will undo the run automatically unless someone keeps it after confirming everything still works. If the change locks the team out, the timer puts things back, and every logged-in screen on the host shows a notice that it did. A change that only takes access away from an intruder, such as a new admin password or a removed planted key, is kept as soon as it checks out: undoing it would hand the intruder their access back.
 - **Checking like the scoring engine.** After each module, Labyrinth tests each scored service the way the scoring engine would (for example, fetching the web page and looking for the expected text) and compares the result with a test taken before the change. If a service got worse, that module is rolled back and the run stops.
 
@@ -214,7 +222,7 @@ Each subsection answers four questions: what the part does, why it exists, how i
 > [!TIP]
 > **Break-glass** means a sealed emergency login, one per critical host, kept by the team captain in the team's **offline record**: on paper or in a local file on a team member's own machine, never in the repository or on the competition hosts. It exists so that the team, and the officials, can always get back in.
 
-### 4.2 🟥 Passwords and SSH keys
+### 4.2 Passwords and SSH keys (lockout)
 
 **What it does.** Changes passwords and manages SSH keys without locking the team out ([design 05](design/05-Credentials-and-SSH-Keys.md)).
 
@@ -235,7 +243,7 @@ Each subsection answers four questions: what the part does, why it exists, how i
 
 **What it will never do.** Change scoring accounts, reset domain-wide passwords automatically, or copy private keys onto managed hosts.
 
-### 4.3 🟦 Baseline and integrity: "what changed, who, when, from where?"
+### 4.3 Baseline and integrity: "what changed, who, when, from where?" (observe)
 
 **What it does.** Records what a healthy host looks like, then spots changes and works out who made them ([design 04](design/04-Baseline-and-Integrity.md)).
 
@@ -257,7 +265,7 @@ Changes made by Labyrinth itself are in the run manifest, so they do not raise f
 
 **The sealed baseline.** The first baseline shows the host as it was found, which may include the attacker's changes. So once the lockout is finished and checked, the team **seals** a new baseline of the cleaned host, and every later check compares against that. If the team changes something on purpose later, it reseals with a written reason, and every seal is logged.
 
-### 4.4 🟦 Status feed and login banner
+### 4.4 Status feed and login banner (observe)
 
 **What it does.** When a team member logs in to a host, a short message shows that host's current alerts and recent changes ([design 06](design/06-Status-Feed-and-MOTD.md)). On Linux this is the **MOTD** (message of the day), the text printed at login.
 
@@ -272,7 +280,7 @@ Changes made by Labyrinth itself are in the run manifest, so they do not raise f
 
 **Safety details.** Text taken from logs is cleaned before it is shown, because an attacker could write special control characters into a log to mess with an operator's terminal. If an update fails, the host shows the last good status marked as out of date, and logging in is never blocked. Windows has no MOTD, so the Windows version is optional.
 
-### 4.5 🟪 The event seed: public code, secret traps
+### 4.5 The event seed: public code, secret traps (deceive)
 
 **The problem.** The rules require Labyrinth's code to be public and shared with every team, so the Red Team can read it. If trap names and port numbers were written in the code, the Red Team would simply avoid them ([design 03](design/03-Event-Seed-and-Deception-Config.md)).
 
@@ -287,7 +295,7 @@ Changes made by Labyrinth itself are in the run manifest, so they do not raise f
 
 **Why not just encrypt a secrets file?** The password for that file would itself need to be shared and typed on every host, and the encrypted file would sit in a public repository where anyone could attack it at leisure. A seed kept offline removes the stored secret entirely.
 
-### 4.6 🟪 The deception maze: traps and decoys
+### 4.6 The deception maze: traps and decoys (deceive)
 
 **What it does.** Makes the Red Team's work noisy, slow and visible, without ever putting scoring at risk ([design 09](design/09-Deception-Maze-and-CVE-Decoys.md), [Blueprint §4](Blueprint.md#4-deception--trap-catalog)).
 
@@ -311,7 +319,7 @@ Changes made by Labyrinth itself are in the run manifest, so they do not raise f
 
 **What it will never do.** Put a trap on a scored port, fake a response from a scored service, attack or scan back, or contact anything outside the team's network. A CVE-mimic decoy contains no real vulnerable code; it only imitates the visible signs. It adds noise and costs the attacker time, but it never replaces actually patching the real service.
 
-### 4.7 🟩 Incident reports
+### 4.7 Incident reports (sustain)
 
 **What it does.** Gathers the facts about an attack automatically, so a person only has to add judgment and the final wording ([design 02](design/02-Incident-Reporting-Automation.md)).
 
@@ -329,7 +337,7 @@ Changes made by Labyrinth itself are in the run manifest, so they do not raise f
 
 Passwords, keys and tokens are stripped from log excerpts before they go into a report.
 
-### 4.8 🟩 Cleanup and tool integrity
+### 4.8 Cleanup and tool integrity (sustain)
 
 **What it does.** Leaves nothing behind at the end, and proves that the Labyrinth code on each host is exactly the code that was released ([design 07](design/07-Cleanup-and-Tool-Integrity.md)).
 
@@ -346,7 +354,7 @@ Passwords, keys and tokens are stripped from log excerpts before they go into a 
 
 Some outside repositories are kept as **reference only** ([design 08](design/08-Reference-Mining.md)). The team reads them for ideas and then writes its own original code from a specification. This avoids software-license obligations (some licenses require anything built from the code to use the same license, and code with no license grants no permission at all) and avoids running code nobody has checked. Ideas and techniques are not covered by copyright; copied code is.
 
-### 4.10 🟦 Getting the logs to the SIEM
+### 4.10 Getting the logs to the SIEM (observe)
 
 **What it does.** Sends the most useful logs from every host to the one SIEM, and runs a handful of saved searches over them ([design 10](design/10-Log-Forwarding-and-Detection.md)).
 
@@ -370,7 +378,7 @@ Some outside repositories are kept as **reference only** ([design 08](design/08-
 
 **What it will never do.** Send logs anywhere outside the competition network, or let logging fill a disk.
 
-### 4.11 🟥 Windows and the domain controller
+### 4.11 Windows and the domain controller (lockout)
 
 **What it does.** Hardens Windows machines and the **domain controller** with the same guard rails as the panic button ([design 11](design/11-Windows-and-AD-Hardening.md)).
 
@@ -380,7 +388,7 @@ Some outside repositories are kept as **reference only** ([design 08](design/08-
 
 **Stubborn processes.** An administrator cannot always end a process that runs as SYSTEM, the most powerful Windows account, and attackers use this to keep their tools running. After a person approves, Labyrinth ends that one process through a one-time scheduled task that runs as SYSTEM, and deletes the task afterwards. Its way of restarting is set aside first, so it does not come straight back.
 
-### 4.12 🟪 Automatic bans
+### 4.12 Automatic bans (deceive)
 
 **What it does.** When an address touches a trap, uses the planted key or keeps failing to log in, the host blocks that address for a while ([design 12](design/12-Dynamic-Bans.md)).
 
@@ -390,7 +398,7 @@ Some outside repositories are kept as **reference only** ([design 08](design/08-
 
 **What it will never do.** Strike back at, scan or report the attacker to anyone. A ban only drops traffic on the team's own host: traffic coming in from that address, and traffic going out to it, so a planted program cannot call back to an attacker who is already banned. Banning an address only for outgoing traffic, when a host seems to be calling out to the attacker, waits for a person's approval.
 
-### 4.13 🟩 Health monitor and checkpoints
+### 4.13 Health monitor and checkpoints (sustain)
 
 **What it does.** Re-tests every scored service on a schedule, and gives the team one command that summarizes the whole network ([design 13](design/13-Health-Monitor-and-Checkpoints.md)).
 
@@ -402,7 +410,7 @@ Some outside repositories are kept as **reference only** ([design 08](design/08-
 
 **Two caveats.** The control node tests from *inside* the network. The scoring engine may test from outside, through the edge firewall. A pass from inside is good evidence, not proof. And the tests check that a service answers, not that a user can log in, because the scoring engine's accounts are never used. A team can close that gap by creating its own test mailbox by hand and checking it at each checkpoint.
 
-### 4.14 🟩 Backups you can restore
+### 4.14 Backups you can restore (sustain)
 
 **What it does.** Takes **restore points** of each scored service: its settings, its website files, its database and, on the domain controller, the directory itself ([design 14](design/14-Backup-and-Recovery.md)).
 
@@ -412,7 +420,7 @@ Some outside repositories are kept as **reference only** ([design 08](design/08-
 
 **Restoring.** `labyrinth restore` puts back a service's settings and files, its database, or a service that was stopped. Restoring overwrites live data, so a person first confirms the restore point is from before the damage; Labyrinth then does the restore, saves the damaged copy as evidence and tests the service. Restoring the domain controller and rescuing a host that will not boot (for example, after an attacker deleted a file it needs to start) stay with a person, following a printed procedure.
 
-### 4.15 🟥 Fewer services, targeted patches
+### 4.15 Fewer services, targeted patches (lockout)
 
 **What it does.** Turns off services the host does not need, and helps the team patch the software most likely to be attacked ([design 15](design/15-Patching-and-Service-Reduction.md)).
 
@@ -423,7 +431,7 @@ Some outside repositories are kept as **reference only** ([design 08](design/08-
 **Web apps and plugins.** The system's update tools do not track most web apps, so Labyrinth also lists each scored web app's version and its plugins, read from the files on disk, and ranks them the same way. An unused plugin with a known flaw can be switched off after a person approves.
 
 
-### 4.16 🟥 Routers and firewall appliances
+### 4.16 Routers and firewall appliances (lockout)
 
 **What it does.** Provides a **runbook** for each type of router or firewall appliance: a tested, numbered procedure a person follows, filled in with the event's own values ([design 16](design/16-Network-Appliance-Runbooks.md)).
 
@@ -431,7 +439,7 @@ Some outside repositories are kept as **reference only** ([design 08](design/08-
 
 **The steps, in order.** Prepare a way back (second session, configuration backup); change the default passwords; allow management only from inside; allow the scoring engine before blocking anything; block everything else from outside; note how the router rewrites addresses; send the logs to the SIEM; save, test and keep a second backup.
 
-### 4.17 🟥 Sweeping for attacker footholds
+### 4.17 Sweeping for attacker footholds (lockout)
 
 **What it does.** Finds the ways back in that an attacker left behind, and removes them without breaking a scored service ([design 17](design/17-Persistence-Sweep.md)).
 
@@ -446,7 +454,7 @@ Some outside repositories are kept as **reference only** ([design 08](design/08-
 
 "Set aside" means **quarantined**: switched off and moved to a locked folder, with a record of how to put it back. Nothing is deleted, so a mistake can be undone and the item can be shown as evidence in the incident report.
 
-### 4.18 🟥 Ready-made settings for scored apps
+### 4.18 Ready-made settings for scored apps (lockout)
 
 **What it does.** Ships tested settings packs for common scored programs: web servers, mail, DNS, databases and FTP ([design 18](design/18-Service-Packs-and-Config-Library.md)).
 
@@ -454,7 +462,7 @@ Some outside repositories are kept as **reference only** ([design 08](design/08-
 
 **How it works.** Each setting is sorted in advance. Safe ones (such as hiding the software version or turning off file listings nobody uses) are applied automatically, after the program's own syntax check, with a gentle reload, a test like the scoring engine's and a revert timer. Settings that could change what the scoring engine sees wait for a person's approval. Anything too specific to the event's own app is written up as a step-by-step runbook.
 
-### 4.19 🟥 Finding and closing known flaws
+### 4.19 Finding and closing known flaws (lockout)
 
 **What it does.** Finds the known flaws on the team's machines before the Red Team uses them, closes the dangerous ones first, and keeps each one on a list until it is closed ([design 21](design/21-Vulnerability-Tracker-and-Mitigations.md)).
 
@@ -464,7 +472,7 @@ Some outside repositories are kept as **reference only** ([design 08](design/08-
 
 **Closing a flaw.** An unscored service with a flaw is simply turned off. A scored service is never turned off. Instead, Labyrinth closes the flaw while the service keeps running: first with a tested setting or firewall rule from its catalog where one exists (for example, removing a dangerous permission from a helper program nothing uses), then with the security update once a person approves it. Each flaw is tracked as open, mitigated, patched or accepted, and every checkpoint shows what is still open.
 
-### 4.20 🟥 Installing the team's tools
+### 4.20 Installing the team's tools (lockout)
 
 **What it does.** Installs the extra tools each kind of host needs, such as auditd, fail2ban and file-integrity and malware scanners, straight after the first-minute lockdown ([design 20](design/20-Packages-and-Third-Party-Tools.md)).
 
@@ -535,6 +543,7 @@ Controls are ranked from **P0** (do first) to **P3** (do last): 🔴 P0 · 🟠 
 | Event seed | The secret random value, kept offline, from which all trap names and ports are derived. |
 | Exit code | The number a command ends with, which says how it went: 0 done or nothing to do, 10 a change is needed, 20 blocked by a safety check, 30 a check after a change failed, 40 an error. |
 | Firewall | Software or a device that decides which network connections are allowed. |
+| Group | A set of hosts that receives a change together, named in the team's hosts file. The first group holds one low-impact test host of each kind of system. |
 | Group Policy | Settings a Windows domain pushes to every machine at once. |
 | Hash | A short fingerprint of a file that changes if the file changes. |
 | Hidden admin | An account with administrator power that does not look like one, such as a second root account or a member of an admin group by a side door. |
@@ -558,7 +567,7 @@ Controls are ranked from **P0** (do first) to **P3** (do last): 🔴 P0 · 🟠 
 | Restore | Putting a service back from a backup (a restore point) after damage. Not the same as a rollback. |
 | Restore point | A backup of a service taken so it can be put back after damage. |
 | Revert timer (dead-man) | A timer started before a risky change that rolls the run back automatically, unless someone keeps the run after confirming things still work. If a change locks the team out, the timer puts things back. Changes that only take access away are kept once they check out, and the timer leaves them alone. |
-| Ring | A group of hosts that receives a change together; the first ring is one low-impact host of each kind of system. |
+| Ring | The design specs' word for a host group. |
 | Rollback | Undoing what a run changed, newest first, using the run manifest. The revert timer starts one automatically; a person can start one too. |
 | Runbook | A tested, numbered procedure that a person follows step by step. |
 | Run ID | The name of one Labyrinth run, such as `20261002T140301Z-4f2a`: the start time in UTC and four random characters. Commands also accept just the last four characters (`4f2a`). |
