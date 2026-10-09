@@ -133,7 +133,7 @@ lab() { run bash "$LAB/labyrinth.sh" --root "$ROOT" --config "$ETC" "$@" < /dev/
 }
 
 @test "a host missing from the hosts file says which line to add" {
-  printf 'elsewhere ring1 test linux\n' > "$ETC/hosts"
+  printf 'elsewhere ring1 test ubuntu\n' > "$ETC/hosts"
   lab apply observe --profile test
   [ "$status" -eq 20 ]
   [ "${lines[0]}" = 'labyrinth: this host is not in the hosts file, so its group is unknown' ]
