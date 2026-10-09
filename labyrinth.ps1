@@ -2067,8 +2067,14 @@ function Invoke-LabRollbackCommand {
     $script:RunRef = $env:LAB_RUN_ID
     if (-not (Test-Path -LiteralPath (Get-LabManifestPath) -PathType Leaf)) { Exit-Lab "no run $env:LAB_RUN_ID on this host" }
     Write-LabPendingWarning
-    # The revert timer must work even if a hung run still holds the lock.
-    $locked = Enter-LabLock -WaitSeconds 120
+    # The revert timer must work even if a run still holds the lock, hung or
+    # waiting at a prompt. That run is stopped first: rolling back beside it
+    # would undo changes while it goes on making them and reports success.
+    $locked = Enter-LabLock -WaitSeconds 10
+    if (-not $locked) {
+        [void](Stop-LabLockHolder -WaitSeconds 30)
+        $locked = Enter-LabLock -WaitSeconds 10
+    }
     if (-not $locked) { [Console]::Error.WriteLine('warning: rolling back without the run lock') }
     try {
         $rc = 0

@@ -61,6 +61,36 @@ function Enter-LabLock {
     return $true
 }
 
+# Get-LabDescendantId PID: the process IDs below PID, children first.
+function Get-LabDescendantId {
+    param([int] $ParentId)
+    foreach ($p in @(Get-CimInstance -ClassName Win32_Process -Filter "ParentProcessId = $ParentId" -ErrorAction SilentlyContinue)) {
+        Get-LabDescendantId -ParentId ([int]$p.ProcessId)
+        [int]$p.ProcessId
+    }
+}
+
+# Stop-LabLockHolder [-WaitSeconds N]: stop the live run that holds the lock
+# and the entry points it started, waiting up to N seconds for it to end.
+# The revert timer's rollback uses it, so it never undoes a run while that
+# run is still changing the host. Returns $false if the holder still lives.
+function Stop-LabLockHolder {
+    param([int] $WaitSeconds = 30)
+    $pidFile = Join-Path (Join-Path $env:LAB_STATE_DIR 'lock') 'pid'
+    if (-not (Test-Path -LiteralPath $pidFile)) { return $true }
+    $holder = ([IO.File]::ReadAllText($pidFile)).Trim()
+    if ($holder -notmatch '^\d+$' -or [int]$holder -eq $PID) { return $true }
+    if (-not (Get-Process -Id ([int]$holder) -ErrorAction SilentlyContinue)) { return $true }
+    [Console]::Error.WriteLine("stopping the Labyrinth run (pid $holder) that holds the lock")
+    $ids = @(Get-LabDescendantId -ParentId ([int]$holder)) + @([int]$holder)
+    foreach ($id in $ids) { Stop-Process -Id $id -Force -ErrorAction SilentlyContinue }
+    for ($n = 0; $n -lt $WaitSeconds; $n++) {
+        if (-not (Get-Process -Id ([int]$holder) -ErrorAction SilentlyContinue)) { return $true }
+        Start-Sleep -Seconds 1
+    }
+    return $false
+}
+
 # Exit-LabLock: release the run lock if this process holds it.
 function Exit-LabLock {
     $lock = Join-Path $env:LAB_STATE_DIR 'lock'

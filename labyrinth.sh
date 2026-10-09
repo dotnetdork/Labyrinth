@@ -1981,8 +1981,13 @@ cmd_rollback() {
   export LAB_RUN_ID="$RUN_REF"
   [[ -f "$(lab_manifest_file)" ]] || die "no run $LAB_RUN_ID on this host"
   flush_warnings
-  # The revert timer must work even if a hung run still holds the lock.
-  if lab_lock_acquire 120; then
+  # The revert timer must work even if a run still holds the lock, hung or
+  # waiting at a prompt. That run is stopped first: rolling back beside it
+  # would undo changes while it goes on making them and reports success.
+  if ! lab_lock_acquire 10; then
+    lab_lock_stop_holder 30 || true
+  fi
+  if lab_lock_acquire 10; then
     trap 'lab_lock_release' EXIT
   else
     printf 'warning: rolling back without the run lock\n' >&2
