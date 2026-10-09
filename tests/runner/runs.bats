@@ -79,7 +79,7 @@ streams() {
   touch "$LAB/TIMER_LOST"
   lab runs
   [ "$status" -eq 0 ]
-  [[ "$(grep "^$a " <<< "$output")" == *" armed: timer lost (reboot?)" ]]
+  [[ "$(grep "^$a " <<< "$output")" == *" armed: timer lost (restart?)" ]]
   lab keep
   [ "$status" -eq 0 ]
   lab runs

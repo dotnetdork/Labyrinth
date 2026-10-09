@@ -1867,7 +1867,7 @@ run_state() {
     # A reboot drops the transient timer; the run stays armed so keep and
     # rollback still find it, but nothing will roll it back by itself.
     if lab_timer_live "$1"; then :; elif [[ $? -eq 1 ]]; then
-      printf 'armed: timer lost (reboot?)\n'
+      printf 'armed: timer lost (restart?)\n'
       return 0
     fi
     if ! due="$(lab_timer_due "$1")"; then printf 'armed: rollback time unknown\n'; return 0; fi
