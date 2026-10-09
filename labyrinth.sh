@@ -36,7 +36,7 @@ trap 'on_internal_error "$?" "${BASH_SOURCE[0]##*/}" "$LINENO" "$BASH_COMMAND"' 
 
 readonly LAB_VERSION='0.1.0-dev'
 readonly PHASES='lockout observe deceive sustain'
-readonly MODULE_KEYS='id title phase priority platforms risk touches_scored requires outputs spec'
+readonly MODULE_KEYS='id title phase priority platforms risk touches_scored requires outputs spec pre_approvable'
 readonly -a REQUIRED_KEYS=(id title phase priority platforms risk touches_scored)
 readonly RISKS='read-only reversible service-affecting approval manual-only'
 readonly PLATFORMS='ubuntu rhel-family windows appliance'
@@ -58,6 +58,7 @@ declare -A MOD=()          # fields of the module.yml being read
 declare -a PROFILE_IDS=()  # module ids from the profile, in order
 ENTRY_RC=0                 # exit code of the last entry point run
 APPROVED=''                # items approved for the module being applied
+PRE=''                     # those of them a pre-approval rule approved
 PHASE_COUNT=0              # modules of the phase in the profile
 LOAD_ERRORS=0              # modules of the phase that could not be loaded
 LOAD_SKIPPED=0             # modules skipped: no entry points for this platform
@@ -92,8 +93,9 @@ readonly LOG_CAP=500       # most lines logged from one entry point
 
 # The modules of this run, in run order, one array element per module.
 # RUN_ITEMS holds the items an approval module's plan listed, one
-# 'id<TAB>category<TAB>fingerprint<TAB>reason' line each.
-declare -a RUN_IDS=() RUN_DIR=() RUN_RISK=() RUN_SCORED=() RUN_REQUIRES=() RUN_RC=() RUN_STATE=() RUN_ITEMS=()
+# 'id<TAB>category<TAB>fingerprint<TAB>reason' line each, and RUN_PREOK
+# the categories its module.yml lets a pre-approval rule approve.
+declare -a RUN_IDS=() RUN_DIR=() RUN_RISK=() RUN_SCORED=() RUN_REQUIRES=() RUN_RC=() RUN_STATE=() RUN_ITEMS=() RUN_PREOK=()
 
 # cmd_help [COMMAND]: the help for every command, or for one, on stdout.
 # Each topic is at most 15 lines of at most 78 columns, with one Exit line
@@ -327,6 +329,17 @@ FIX_LINE='Correct that line, then run the same command again.'
 # load_reason LOADER [ARG...]: the first error line a configuration loader
 # prints, run in a subshell so that nothing it sets is kept.
 load_reason() { "$@" 2>&1 >/dev/null | head -n 1; }
+
+# load_preapproved: read the pre-approval rules; a malformed file is an
+# error, and a missing one approves nothing in advance.
+load_preapproved() {
+  local rc=0
+  lab_preapproved_load 2>/dev/null || rc=$?
+  if [[ "$rc" == 1 ]]; then
+    die "pre-approved is malformed: $(load_reason lab_preapproved_load)" 40 "$FIX_LINE"
+  fi
+  return 0
+}
 
 # host_lookup HOST: lab_host_lookup, with a malformed hosts file an error.
 # Returns 0 when HOST is listed and 2 when it is not.
@@ -875,6 +888,13 @@ validate_module() {
   if [[ -n "${MOD[requires]:-}" ]]; then
     list_items "${MOD[requires]}" > /dev/null || { yml_error "$file" 'requires must be a list'; return 1; }
   fi
+  if [[ -n "${MOD[pre_approvable]:-}" ]]; then
+    items="$(list_items "${MOD[pre_approvable]}")" || { yml_error "$file" 'pre_approvable must be a list'; return 1; }
+    [[ "${MOD[risk]}" == approval ]] || { yml_error "$file" 'pre_approvable is only for approval modules'; return 1; }
+    for p in $items; do
+      [[ "$p" =~ ^[a-z0-9-]+$ ]] || { yml_error "$file" "not a category: $p"; return 1; }
+    done
+  fi
 }
 
 # Read a profile into PROFILE_IDS: one module id per line. A run-time
@@ -985,7 +1005,7 @@ explain() {
 # within a priority. Returns 40 if any module is invalid.
 load_modules() {
   local phase="$1" id name dir worst=0 p i entry needed line
-  local -a ids=() dirs=() risks=() scored=() reqs=() prios=()
+  local -a ids=() dirs=() risks=() scored=() reqs=() prios=() preok=()
   PHASE_COUNT=0 LOAD_ERRORS=0 LOAD_SKIPPED=0
   for id in "${PROFILE_IDS[@]+"${PROFILE_IDS[@]}"}"; do
     if [[ "${id%%.*}" != "$phase" ]]; then continue; fi
@@ -1043,13 +1063,15 @@ load_modules() {
     fi
     ids+=("$id"); dirs+=("$dir"); risks+=("${MOD[risk]}"); scored+=("${MOD[touches_scored]}")
     reqs+=("$(list_items "${MOD[requires]:-[]}")"); prios+=("${MOD[priority]}")
+    preok+=("$(list_items "${MOD[pre_approvable]:-[]}")")
   done
-  RUN_IDS=() RUN_DIR=() RUN_RISK=() RUN_SCORED=() RUN_REQUIRES=() RUN_RC=() RUN_STATE=() RUN_ITEMS=()
+  RUN_IDS=() RUN_DIR=() RUN_RISK=() RUN_SCORED=() RUN_REQUIRES=() RUN_RC=() RUN_STATE=() RUN_ITEMS=() RUN_PREOK=()
   for p in P0 P1 P2 P3; do
     for ((i = 0; i < ${#ids[@]}; i++)); do
       if [[ "${prios[i]}" != "$p" ]]; then continue; fi
       RUN_IDS+=("${ids[i]}"); RUN_DIR+=("${dirs[i]}"); RUN_RISK+=("${risks[i]}")
       RUN_SCORED+=("${scored[i]}"); RUN_REQUIRES+=("${reqs[i]}"); RUN_RC+=(0); RUN_STATE+=(planned); RUN_ITEMS+=('')
+      RUN_PREOK+=("${preok[i]}")
     done
   done
   return "$worst"
@@ -1096,6 +1118,10 @@ plan_one() {
               more "$id"
             elif ! has_label risk "$said"$'\n'"$ENTRY_OUT"; then
               detail Risk "$(risk_words "$risk")"
+            fi
+            if [[ "$risk" == approval ]]; then
+              pre_items "$i"
+              if [[ -n "$PRE" ]]; then detail Note "pre-approved, so applied without asking: $(item_list "$PRE")"; fi
             fi
             rc=10 ;;
           20)
@@ -1156,6 +1182,49 @@ item_fp() {
   return 1
 }
 
+# pre_items INDEX: the items of module INDEX that a pre-approval rule
+# approves, as 'id@fingerprint' words in PRE, with this run's fingerprints.
+# A rule counts only for a category the module's pre_approvable lists
+# (docs/Conventions.md section 3.1).
+pre_items() {
+  local i="$1" rule iid cat fp
+  local -a r=()
+  PRE=''
+  for rule in "${LAB_PRE_RULES[@]+"${LAB_PRE_RULES[@]}"}"; do
+    read -ra r <<< "$rule"
+    if [[ "${r[0]}" != "${RUN_IDS[i]}" ]] || ! lab_in_list "${r[1]}" "${RUN_PREOK[i]}"; then continue; fi
+    while IFS=$'\t' read -r iid cat fp _; do
+      if [[ -z "$iid" || "$cat" != "${r[1]}" ]]; then continue; fi
+      if [[ "${r[2]}" != '*' && "${r[2]}" != "$iid" ]]; then continue; fi
+      if [[ " $PRE " != *" $iid@"* ]]; then PRE+="${PRE:+ }$iid@$fp"; fi
+    done <<< "${RUN_ITEMS[i]}"
+  done
+}
+
+# item_list WORDS: the ids of 'id@fingerprint' words, comma-separated.
+item_list() {
+  local word shown=''
+  for word in $1; do shown+="${shown:+, }${word%@*}"; done
+  printf '%s' "$shown"
+}
+
+# pre_unmatched: after the plan, each pre-approval rule for a module in this
+# run whose module.yml does not let that category be pre-approved is
+# ignored, with a line saying so. Rules for other modules are for other
+# hosts, and are passed over in silence.
+pre_unmatched() {
+  local rule i said=0
+  local -a r=()
+  for rule in "${LAB_PRE_RULES[@]+"${LAB_PRE_RULES[@]}"}"; do
+    read -ra r <<< "$rule"
+    for ((i = 0; i < ${#RUN_IDS[@]}; i++)); do
+      if [[ "${RUN_IDS[i]}" != "${r[0]}" ]] || lab_in_list "${r[1]}" "${RUN_PREOK[i]}"; then continue; fi
+      if (( ! said )); then out ''; said=1; fi
+      out "Pre-approval ignored: ${r[0]} does not let category ${r[1]} be pre-approved: $rule"
+    done
+  done
+}
+
 # plan_all PHASE: load and plan the phase's modules; print the worst code.
 plan_all() {
   local phase="$1" worst=0 rc=0 i
@@ -1165,6 +1234,7 @@ plan_all() {
     plan_one "$i" || rc=$?
     if (( rc > worst )); then worst=$rc; fi
   done
+  pre_unmatched
   if (( PHASE_COUNT == 0 )); then
     say WARN "Phase $1"
     detail Found "profile $OPT_PROFILE lists no $1 modules: nothing to check"
@@ -1347,22 +1417,30 @@ requires_met() {
 
 # choose_items INDEX: the items of approval module INDEX that a person
 # approved, as 'id@fingerprint' words in APPROVED (docs/Conventions.md
-# section 3.1): the --approve entries that name the module when it was given,
-# otherwise the ids and categories typed at the prompt. An --approve entry
+# section 3.1): those a pre-approval rule approves, then the --approve
+# entries that name the module when it was given, otherwise the ids and
+# categories typed at the prompt, which is not asked when every item is
+# pre-approved. An --approve entry
 # whose fingerprint differs from this run's plan is recorded as refused and
 # left out. Returns 0 with something approved; 1, after an OK block, when
 # nothing was; 20, after a BLOCKED block, when the answer is not ids and
 # categories.
 choose_items() {
-  local i="$1" id name tok iid cat fp reason hit chosen=' '
+  local i="$1" id name tok iid cat fp reason hit chosen=' ' rest
   local -a words=()
   id="${RUN_IDS[i]}"; name="$(module_name "$id")"
-  APPROVED='' REFUSED=''
+  APPROVED='' REFUSED='' PRE=''
   if [[ -z "${RUN_ITEMS[i]}" ]]; then
     say OK "$name"
     detail Did 'its plan listed no items to approve, so nothing changed'
     return 1
   fi
+  pre_items "$i"
+  for tok in $PRE; do chosen+="$tok "; done
+  rest=0
+  while IFS=$'\t' read -r iid _; do
+    if [[ -n "$iid" && "$chosen" != *" $iid@"* ]]; then rest=1; fi
+  done <<< "${RUN_ITEMS[i]}"
   if [[ -n "${GIVEN[approve]+set}" ]]; then
     IFS=',' read -ra words <<< "${GIVEN[approve]}"
     for tok in "${words[@]}"; do
@@ -1377,10 +1455,12 @@ choose_items() {
       fi
       chosen+="$tok "
     done
-  else
+  elif (( rest )); then
     out "$name changes only the items you approve:"
+    if [[ -n "$PRE" ]]; then detail Approved "$(item_list "$PRE") (pre-approved)"; fi
     while IFS=$'\t' read -r iid cat fp reason; do
-      if [[ -n "$iid" ]]; then detail Item "$(item_words "$iid" "$cat" "$fp" "$reason")"; fi
+      if [[ -z "$iid" || "$chosen" == *" $iid@"* ]]; then continue; fi
+      detail Item "$(item_words "$iid" "$cat" "$fp" "$reason")"
     done <<< "${RUN_ITEMS[i]}"
     out 'To approve every item of a category, type category: and its name.'
     ask "Type the ids of the items to approve, separated by spaces, or press Enter for none: " || ANSWER=''
@@ -1416,11 +1496,15 @@ choose_items() {
 }
 REFUSED=''
 
-# show_choice: under a module's status line, the items approved and those
-# left alone because they changed since the plan.
+# show_choice: under a module's status line, the items approved, each one a
+# pre-approval rule approved marked so, and those left alone because they
+# changed since the plan.
 show_choice() {
   local word shown='' line
-  for word in $APPROVED; do shown+="${shown:+, }${word%@*}"; done
+  for word in $APPROVED; do
+    shown+="${shown:+, }${word%@*}"
+    if [[ " $PRE " == *" $word "* ]]; then shown+=' (pre-approved)'; fi
+  done
   if [[ -n "$shown" ]]; then detail Approved "$shown"; fi
   while IFS= read -r line; do
     if [[ -n "$line" ]]; then detail Found "$line changed since the plan, so it is left alone"; fi
@@ -1467,7 +1551,7 @@ apply_one() {
   local i="$1" id dir risk name after reg rc why line note
   id="${RUN_IDS[i]}"; dir="${RUN_DIR[i]}"; risk="${RUN_RISK[i]}"
   name="$(module_name "$id")"
-  APPROVED=''
+  APPROVED='' PRE=''
   if [[ "$risk" == manual-only ]]; then
     say WARN "$name"
     detail Found 'this needs a person; Labyrinth changed nothing'
@@ -1531,6 +1615,7 @@ apply_one() {
   # change the manifest does not list could never be rolled back.
   note="risk $risk"
   if [[ -n "$APPROVED" ]]; then note+=", approved $APPROVED"; fi
+  if [[ -n "$PRE" ]]; then note+=", pre-approved $PRE"; fi
   if ! record_for "$id" apply_start '' "$note"; then
     say ERROR "$name"
     detail Problem 'not applied: the run manifest cannot be written'
@@ -1644,6 +1729,7 @@ cmd_plan() {
   resolve_profile
   read_profile "$OPT_PROFILE"
   lab_event_load 2>/dev/null || die "event.conf is malformed: $(load_reason lab_event_load)" 40 "$FIX_LINE"
+  load_preapproved
   gate_protected
   flush_warnings
   out "labyrinth $LAB_VERSION: plan $phase, profile $OPT_PROFILE"
@@ -1722,6 +1808,7 @@ cmd_apply() {
   OPT_PROFILE="$LAB_HOST_PROFILE"
   read_profile "$OPT_PROFILE"
   lab_event_load 2>/dev/null || die "event.conf is malformed: $(load_reason lab_event_load)" 40 "$FIX_LINE"
+  load_preapproved
   gate_protected
   lab_lock_acquire 0 || exit 20
   trap 'lab_lock_release' EXIT

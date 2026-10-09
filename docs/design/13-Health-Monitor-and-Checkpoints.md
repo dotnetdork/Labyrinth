@@ -93,6 +93,8 @@ flowchart TD
 
 The command takes no action. It exists so that a regular review is quick and every review covers the same ground.
 
+**On a schedule.** The monitor also runs `checkpoint` on each host on an interval set in configuration, as the same scheduled job on the control node. It is read-only, like the command, and leaves out the login probe, because a scheduled job holds no password (section 3). When a section shows something new since the last scheduled checkpoint, the monitor raises one alert in the status feed and the SIEM, naming the host and the section: a new persistence item, an integrity change, a mitigation that has drifted, a new open flaw in rank groups 1 to 3, a new account, listener, service or task, or a revert timer left armed longer than its run. A finding that is still there next time does not alert again, and every scheduled summary is saved to the `report` log category for the next person who reviews it.
+
 ## 6. Failure behavior
 
 - If the monitor stops, the status feed marks its data stale (design 06), so silence is never mistaken for health.
@@ -106,6 +108,7 @@ The command takes no action. It exists so that a regular review is quick and eve
 - The monitor never runs a rollback, a restart or any other change, except re-applying the sealed firewall rules (section 4.1).
 - Flushing a lab host's firewall is detected within one interval, the sealed rules are re-applied, and every probe still passes.
 - `labyrinth checkpoint` completes on the full lab network within the target time and changes nothing (the inventory before and after is identical).
+- A scheduled checkpoint changes nothing; a planted listener raises one alert naming the host, and the next scheduled checkpoint does not raise it again.
 - Killing the monitor marks the status feed stale.
 - Probe traffic is under the target rate per service.
 - With a test mailbox configured, breaking mail logins in the lab makes the checkpoint's login probe fail even though the banner probe still passes.

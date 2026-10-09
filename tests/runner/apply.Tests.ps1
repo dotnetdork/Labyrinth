@@ -358,6 +358,63 @@ Describe 'labyrinth.ps1 apply' {
         $timer | Should -Not -Match 'approve'
     }
 
+    It 'approval: a pre-approval rule approves an item without asking; the prompt asks for the rest' {
+        Write-TestProfile $t 'observe.ask'
+        # 'other' is not in the module's pre_approvable list; lockout.elsewhere
+        # is for other hosts.
+        Write-TestConfig $t 'pre-approved' @('# rules', 'observe.ask sample item-a', 'observe.ask other *', 'lockout.elsewhere sample item-a')
+        $r = Invoke-TestPlan $t
+        $r.Code | Should -Be 10
+        $lines = @($r.Output -split "`r?`n")
+        ($lines -ccontains '  Note:      pre-approved, so applied without asking: item-a') | Should -BeTrue
+        ($lines -ccontains 'Pre-approval ignored: observe.ask does not let category other be pre-approved: observe.ask other *') | Should -BeTrue
+        $r.Output | Should -Not -Match 'lockout\.elsewhere'
+        $r = Invoke-TestApply $t @('labadmin', 'ring1', 'item-b', 'keep')
+        $r.Code | Should -Be 0
+        @(Get-Content -LiteralPath (Join-Path $lab 'APPROVED_ITEMS')) | Should -Be @('item-a', 'item-b')
+        $lines = @($r.Output -split "`r?`n")
+        ($lines -ccontains '  Approved:  item-a (pre-approved)') | Should -BeTrue
+        ($lines -ccontains '  Approved:  item-a (pre-approved), item-b') | Should -BeTrue
+        $note = 'risk approval, approved item-a@2a2c17aaaf66 item-b@f09f429ea5f1, pre-approved item-a@2a2c17aaaf66'
+        Get-TestManifest $t (Get-TestRunId $r.Output) | Should -Match ([regex]::Escape("`"note`":`"$note`""))
+    }
+
+    It 'approval: when every item is pre-approved, nothing is asked' {
+        Write-TestProfile $t 'observe.ask'
+        $plan = Join-Path $lab 'phases\observe\modules\ask\plan.ps1'
+        Set-Content -LiteralPath $plan -Value @(Get-Content -LiteralPath $plan | Where-Object { $_ -notmatch 'item-c' }) -Encoding Ascii
+        Write-TestConfig $t 'pre-approved' @('observe.ask sample *')
+        $r = Invoke-TestApply $t @('labadmin', 'ring1', 'keep')
+        $r.Code | Should -Be 0
+        $r.Output | Should -Not -Match 'Type the ids'
+        @(Get-Content -LiteralPath (Join-Path $lab 'APPROVED_ITEMS')) | Should -Be @('item-a', 'item-b')
+        (@($r.Output -split "`r?`n") -ccontains '  Approved:  item-a (pre-approved), item-b (pre-approved)') | Should -BeTrue
+    }
+
+    It 'approval: pre-approval rules and -Approve entries add up' {
+        Write-TestProfile $t 'observe.ask'
+        Write-TestConfig $t 'pre-approved' @('observe.ask sample item-b')
+        $r = Invoke-TestApply $t @('no') @('-BreakGlass', 'labadmin', '-ConfirmGroup', 'ring1', '-Approve', 'observe.ask:item-c@5821d4d89f00')
+        $r.Code | Should -Be 0
+        $r.Output | Should -Not -Match 'Type the ids'
+        @(Get-Content -LiteralPath (Join-Path $lab 'APPROVED_ITEMS')) | Should -Be @('item-b', 'item-c')
+    }
+
+    It 'approval: a malformed pre-approved file is an error, and a module.yml may not misuse pre_approvable' {
+        Write-TestProfile $t 'observe.ask'
+        Write-TestConfig $t 'pre-approved' @('observe.ask sample')
+        $r = Invoke-TestPlan $t
+        $r.Code | Should -Be 40
+        $r.Output | Should -Match 'pre-approved is malformed'
+        $r.Output | Should -Match ([regex]::Escape(':1: expected: module-id category item-id (or * for every item)'))
+        Remove-Item -LiteralPath (Join-Path $t.Etc 'pre-approved')
+        Write-TestProfile $t 'observe.toggle'
+        Add-Content -LiteralPath (Join-Path $lab 'phases\observe\modules\toggle\module.yml') -Value 'pre_approvable: [sample]' -Encoding Ascii
+        $r = Invoke-TestPlan $t
+        $r.Code | Should -Be 40
+        $r.Output | Should -Match 'pre_approvable is only for approval modules'
+    }
+
     It 'approval: an approval plan with a malformed item line is an ERROR' {
         Write-TestProfile $t 'observe.ask'
         [IO.File]::WriteAllText((Join-Path $lab 'phases\observe\modules\ask\plan.ps1'), "Write-Output `"item``tBad Id``tsample``t2a2c17aaaf66``tx`"`nexit 10`n")

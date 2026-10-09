@@ -7,7 +7,7 @@ This is the build order for the rest of Labyrinth. The design specs in `docs/des
 **Built:**
 - the core library in bash and PowerShell: logging, the run manifest with backup and restore, safety gates, the protected set, break-glass, the run lock, revert timers, and the http, dns and banner probes;
 - both runners, with `plan`, `apply`, `keep`, `rollback`, `runs`, `probe`, `help` and `version`;
-- from stage 3: platform facts, the firewall adapter, the quarantine helper, approval items with `--approve` / `-Approve`, the six shipped profiles (empty until their modules are built), and new passwords shown once for the offline record;
+- from stage 3: platform facts, the firewall adapter, the quarantine helper, approval items with `--approve` / `-Approve` and pre-approval rules (`pre-approved`), the six shipped profiles (empty until their modules are built), and new passwords shown once for the offline record;
 - the operator manual, the compatibility suite and CI.
 
 **Not built:**
@@ -67,7 +67,7 @@ Built right after the P0 lockout works locally, so the lockout reaches every hos
 
 | Branch | Spec | Delivers |
 |---|---|---|
-| `phase-5/remote` | 00 §5, 07 §5 | `remote plan` and `remote apply --group <group>` over SSH and PowerShell remoting: it copies and checks the release, runs the local command, and brings back logs and manifests. It collects approval items from the plan and passes each host its own `--approve` entries. It copes with losing the connection while credentials and SSH settings rotate |
+| `phase-5/remote` | 00 §5, 07 §5 | `remote plan` and `remote apply --group <group>` over SSH and PowerShell remoting: it copies and checks the release, runs the local command, and brings back logs and manifests. It collects approval items from the plan and passes each host its own `--approve` entries. It copes with losing the connection while credentials and SSH settings rotate. It keeps a host's run only when it can still log in over the admin path and every scored probe passes; otherwise the timer reverts that host (design 00, section 5) |
 
 ### Stage 6: observe and checkpoints
 
@@ -75,6 +75,7 @@ Built right after the P0 lockout works locally, so the lockout reaches every hos
 |---|---|---|
 | `phase-6/seal` | 04 §6 | `seal`, `reseal --reason`, and integrity findings against the sealed baseline |
 | `phase-6/checkpoint` | 13 | The read-only `checkpoint` summary; the sweep re-runs in report mode; the known-flaw section reads the tracker once stage 7 builds it |
+| `phase-6/health-monitor` | 13 §3–§5 | The scheduled job on the control node: probes of every scored service with state-change alerts and rollback candidates, firewall drift re-applied from the seal, and scheduled checkpoints that alert once on each new finding |
 | `phase-6/linux-audit` | 10 | auditd, installed by `packages`, with the vendored rule set |
 | `phase-6/win-audit` | 10 | Audit policy, script block logging, log sizes, and Sysmon from its pinned download |
 | `phase-6/log-forwarding` | 10 §4 | syslog forwarding on Linux; on Windows, the forwarder already present or the HEC script; saved searches, including the outbound log rule |
@@ -87,9 +88,9 @@ Built right after the P0 lockout works locally, so the lockout reaches every hos
 | `phase-7/service-packs-mail-dns` | 18 | Postfix, Dovecot, BIND, and Windows DNS on servers that are not domain controllers |
 | `phase-7/service-packs-data` | 18 | MySQL or MariaDB, vsftpd, and the host settings library, including the `pkexec` setting |
 | `phase-7/service-reduction` | 15 §3 | Stopping services from an explicit candidate list |
-| `phase-7/patching` | 15 §4, 20 §5 | Applying an approved security update, one package at a time, after a restore point; pre-approved updates for scored packages in a first-minute run; Windows patching checklist |
+| `phase-7/patching` | 15 §4, 20 §5 | Applying an approved security update, one package at a time, after a restore point; the `security-update` category, which pre-approval rules may cover, so a first-minute run applies a named scored package's update; Windows patching checklist |
 | `phase-7/vuln-tracker` | 21 §3.2, §4, §5 | The version scan of the team's own hosts, the tracker and its states, and the mitigation catalog, with automatic mitigations applied through the modules that own each setting |
-| `phase-7/win-tier3` | 10 §5, 11 | LDAP signing, lockout settings, the per-host abused-tool block, and the remaining approval items |
+| `phase-7/win-tier3` | 10 §5, 11 | LDAP signing, lockout settings, the per-host abused-tool block, the KRBTGT reset (two resets with a replication check between, §5.1), and the remaining approval items |
 
 ### Stage 8: reporting and cleanup
 
@@ -131,10 +132,12 @@ Built right after the P0 lockout works locally, so the lockout reaches every hos
 |---|---|---|
 | May Labyrinth install software? | Yes, public software only, after the first-minute lockdown, through the `packages` module: the host's repositories, an event mirror or proxy, or a pinned public download. Rule 5.6.4's example is cloud services and cloud processing, which installing a package is not. Never a private source (Rule 5.2), a new repository or a full upgrade. | Design 20, CLAUDE.md |
 | What runs in the first minute? | Lock down with what the host has (rotate, keys, sessions, default-deny inbound and outbound), then install, then sweep, then reopen outbound to the normal allowlist. | Design 01 §6, §6.1 |
-| How does a first-minute run avoid prompts? | The existing options answer them (`--confirm-group`, `--break-glass`, `--approve`), with a profile reviewed before the event. Revert timers, probes, the scoring allowlist and the protected set stay. No command-line change is needed. | Design 01 §6.3 |
+| How does a first-minute run avoid prompts? | The existing options answer them (`--confirm-group`, `--break-glass`, `--approve`), and pre-approval rules cover the items the team approved before the event. Revert timers, probes, the scoring allowlist and the protected set stay. No command-line change is needed. | Design 01 §6.3 |
 | Can a ban block outbound traffic? | Yes. Every ban drops the address in both directions; an address from the unusual-outbound search is banned outbound only after approval. | Design 12 §6.1 |
 | How are known flaws handled? | Found and ranked locally, tracked until closed, and closed by mitigation or patch. A scored service is never turned off to close a flaw. | Design 21 |
 | Are design choices labeled as rules? | No longer. Watching abused tools, manual Group Policy, manual DNS on the domain controller, the candidate list and keeping login shells are design choices, and the docs now say so. | Design review log |
+| How are items approved before the event? | `--approve` needs a fingerprint from a plan, so it could not carry them. A module declares the categories that are safe to pre-approve (`pre_approvable`), and the run-time `pre-approved` file names the items or categories the team approved. Each item is still checked against this run's plan, the probes and the revert timer. | Conventions §2.2, §3.1; design 00 §4 |
+| Which more steps run without a person? | Pre-approved security updates for named scored packages, default application passwords and settings tested on the event's versions; keeping a host's run in remote mode once the admin login and every scored probe pass; scheduled read-only checkpoints that alert on new findings; and the KRBTGT reset, now carried out by Labyrinth after approval. Deleting accounts, restores, ordinary users' passwords, Group Policy, DNS on the domain controller, appliances, medium-confidence outbound bans and app settings that change what scoring sees stay with a person. | Designs 00 §5, 05 §2.1, 11 §5.1, 13 §5, 15 §4, 18 §4 |
 
 ## 5. Open: questions for competition officials
 

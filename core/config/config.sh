@@ -20,6 +20,7 @@ declare -ga LAB_CFG_LINES=() LAB_CFG_NOS=()
 declare -gA LAB_EVENT=()
 declare -gA LAB_PROTECTED=()
 declare -ga LAB_ADDRS=()
+declare -ga LAB_PRE_RULES=()
 declare -ga LAB_SVC_NAME=() LAB_SVC_PROTO=() LAB_SVC_HOST=() LAB_SVC_PORT=() LAB_SVC_EXPECT=()
 LAB_HOST_GROUP='' LAB_HOST_PROFILE='' LAB_HOST_PLATFORM=''
 
@@ -195,6 +196,24 @@ lab_addrs_load() {
     LAB_ADDRS+=("${LAB_CFG_LINES[i]}")
   done
   (( ${#LAB_ADDRS[@]} > 0 )) || return 2
+}
+
+# lab_preapproved_load: read the pre-approval rules (pre-approved) into
+# LAB_PRE_RULES, one "module-id category item" per element, where item is
+# an item id or '*' for every item of the category (docs/Conventions.md
+# section 3.1). Missing or empty: return 2, nothing is pre-approved.
+lab_preapproved_load() {
+  local file="$LAB_CONFIG_DIR/pre-approved" i
+  local re='^((lockout|observe|deceive|sustain)\.[a-z0-9_-]+)[[:space:]]+([a-z0-9-]+)[[:space:]]+([a-z0-9-]+|\*)$'
+  LAB_PRE_RULES=()
+  [[ -f "$file" ]] || return 2
+  lab_config_lines "$file"
+  for ((i = 0; i < ${#LAB_CFG_LINES[@]}; i++)); do
+    [[ "${LAB_CFG_LINES[i]}" =~ $re ]] \
+      || { lab_cfg_error "$file" "${LAB_CFG_NOS[i]}" 'expected: module-id category item-id (or * for every item)'; return 1; }
+    LAB_PRE_RULES+=("${BASH_REMATCH[1]} ${BASH_REMATCH[3]} ${BASH_REMATCH[4]}")
+  done
+  (( ${#LAB_PRE_RULES[@]} > 0 )) || return 2
 }
 
 # lab_services_load: read the scored-service list into the LAB_SVC_* arrays.

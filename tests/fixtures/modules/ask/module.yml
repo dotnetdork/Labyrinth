@@ -5,6 +5,7 @@ phase: observe
 priority: P2
 platforms: [ubuntu, rhel-family, windows]
 risk: approval
+pre_approvable: [sample]
 touches_scored: false
 requires: []
 outputs: []
