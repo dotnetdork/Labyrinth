@@ -114,7 +114,7 @@ flowchart TD
 
 - The **control node** is the one machine the team runs Labyrinth from. It sends every change to the other hosts over the team's admin connection.
 - The **SIEM** (Security Information and Event Management system; Splunk in the reference setup) collects logs from every host, so the evidence survives even if a host is wiped.
-- Nothing in the diagram talks to the internet. The competition rules forbid team tools from using outside resources other than DNS lookups (see [section 5](#5-the-competition-rules-that-shape-everything)).
+- Nothing in the diagram sends data to an outside service. The competition rules forbid team tools from using outside resources other than DNS lookups, and give cloud services as the example (see [section 5](#5-the-competition-rules-that-shape-everything)). The only outside traffic is installing public software from the hosts' own software sources, after the lockdown ([design 20](design/20-Packages-and-Third-Party-Tools.md)).
 
 ---
 
@@ -130,7 +130,7 @@ Labyrinth is organized so that new abilities can be added without rewriting the 
 
 When you point Labyrinth at a group of hosts, it looks up each host's profile, works out the modules to run, and runs them phase by phase.
 
-It is written in **bash** for Linux and **PowerShell** for Windows, because both are already installed on those systems. Nothing extra has to be downloaded during the event. Labyrinth can run directly on the host it changes, or from a control node that sends the same commands to many hosts and collects the results; the first way still works if the second is cut off. Network appliances (routers and firewall boxes) are handled with prepared configuration templates and a written checklist for a person to follow, not by remote automation.
+It is written in **bash** for Linux and **PowerShell** for Windows, because both are already installed on those systems. Nothing extra has to be downloaded for Labyrinth itself to run. Once the hosts are locked down, it installs the extra tools the team chose, from public sources only, and carries on without them if no source answers ([design 20](design/20-Packages-and-Third-Party-Tools.md)). Labyrinth can run directly on the host it changes, or from a control node that sends the same commands to many hosts and collects the results; the first way still works if the second is cut off. Network appliances (routers and firewall boxes) are handled with prepared configuration templates and a written checklist for a person to follow, not by remote automation.
 
 ### 3.2 The life of one module
 
@@ -186,20 +186,24 @@ Each subsection answers four questions: what the part does, why it exists, how i
 
 **Why it exists.** Assume the attacker is already inside when the event starts. Their power comes from passwords they already know, sessions they already have open, and ways back in they left behind. Removing all of these, fast, removes most of their ways in. The scored services are among the Red Team's main targets, so Labyrinth defends them carefully rather than leaving them as found.
 
-**The first minute.** Each host gets one bundle of steps, in this order: change the admin passwords; remove unapproved SSH keys and check the SSH settings for anything planted; end the intruder's open remote sessions (never the console, the operator's own, the team's admin machine or an official's); set aside the obvious attacker footholds; then turn on the default-deny firewall. One revert timer covers the whole bundle.
+**The first minute.** Each host gets one bundle of steps, in this order, using only what is already on it: change the admin passwords; remove unapproved SSH keys and check the SSH settings for anything planted; end the intruder's open remote sessions (never the console, the operator's own, the team's admin machine or an official's); then block all incoming traffic except the scoring engine, the scored services and the team's admin path, and all outgoing traffic except what the host and its scored services need. One revert timer covers the whole bundle.
 
-**How it works.** The obvious version, "reset everything, lock everything, block everything, everywhere, at once", is exactly what the rules forbid, because it breaks things the scoring engine checks. So the panic button keeps the speed but adds guard rails:
+**Behind the lockdown.** With the network closed around each host, Labyrinth installs the team's extra tools, takes a backup of every scored service, sets aside the attacker's footholds and applies the rest of the hardening, then reopens outgoing traffic to the host's normal list. Anything the attacker planted early is still on disk while this happens, but it cannot be reached or call home.
+
+**First-minute runs.** The team reviews the plan before the event. At the start, one command per host, started on every host at once, gives all the answers up front, so nobody types a confirmation while the Red Team is moving. Items the team approved in advance, such as a security update for a named scored program or an app's known default password, are listed in a file of pre-approvals, and are carried out without asking. A module accepts this only for kinds of item it marks as safe to approve unseen. When the run is started from the control node, the control node keeps each host's changes only if it can still log in to that host and every scored service still works; otherwise the revert timer undoes them. The revert timer, the checks before and after, and the protected set still apply.
+
+**How it works.** The obvious version, "reset everything, lock everything, block everything, everywhere, at once", would break things the scoring engine checks, and the rules forbid breaking what the network is expected to do. So the panic button keeps the speed but adds guard rails:
 
 - **The protected set.** Before anything else, the operator loads a list of accounts that must never be touched: the officials' accounts, the accounts the scoring engine logs in with, the team's own accounts, the emergency accounts and system accounts. If the list is missing or empty, the run stops.
-- **Safety gates.** Six checks must all pass before any change: the protected set is loaded, the scoring engine is allowed through every firewall plan, the operator has confirmed that the emergency login works at the host's own console, backups exist, the operator has reviewed the plan and typed the target group's name, and a revert timer is ready for risky changes.
+- **Safety gates.** Six checks must all pass before any change: the protected set is loaded, the scoring engine is allowed through every firewall plan, the operator has confirmed that the emergency login works at the host's own console, backups exist, the operator has reviewed the plan and confirmed the target group's name (typed, or given in the command for a first-minute run), and a revert timer is ready for risky changes.
 - **Risk tiers.** Every action is sorted by how much damage it could do, and riskier tiers get more caution:
 
 | Tier | What it covers | Who carries it out |
 |---|---|---|
 | 0. Observe only | Read-only inventory: users, groups, open ports, running programs, open sessions, scheduled tasks | Runs automatically |
 | 1. Safe and reversible | Change admin-class passwords; remove SSH keys that are not on the approved list; end intruder sessions | Runs automatically after the plan is reviewed |
-| 2. Service-affecting | Check and harden SSH; set aside obvious attacker footholds; turn on the default-deny firewall; take admin rights from unexpected local accounts and lock them; safe settings for scored apps and Windows; turn off unneeded services | Runs host group by host group, with a check and a revert timer |
-| 3. Approve, then act | Unexplained footholds; deleting locked accounts; riskier app settings; app admin passwords; restoring a service from a backup; filtering outgoing traffic; ending a stubborn process that runs as SYSTEM on Windows. A short list stays with a person: ordinary users' passwords, domain accounts and policy, KRBTGT, DNS on the domain controller, restoring the domain controller, rescuing a host that will not boot, patching and network appliances | A person approves, then Labyrinth does it; the short list is a printed checklist |
+| 2. Service-affecting | Check and harden SSH; set aside obvious attacker footholds; block incoming and outgoing traffic except what is needed; install the team's chosen tools; back up the scored services; take admin rights from unexpected local accounts and lock them; safe settings for scored apps and Windows; turn off unneeded services | Runs host group by host group, with a check and a revert timer |
+| 3. Approve, then act | Unexplained footholds; deleting locked accounts; riskier app settings; app admin passwords; restoring a service from a backup; Linux security updates; lifting the outgoing block on one host; ending a stubborn process that runs as SYSTEM on Windows; resetting the domain's ticket-signing password (KRBTGT). A short list stays with a person: ordinary users' passwords, other domain accounts and policy, DNS on the domain controller, restoring the domain controller, rescuing a host that will not boot, Windows patching and network appliances | A person approves, then Labyrinth does it; the short list is a printed checklist |
 
 - **Rings.** Changes go first to one low-impact host of each kind of system (the "canaries", for example one Linux host and one Windows workstation), then to the next group, and so on. If a check fails, the run stops before the problem spreads. A host that is the only one of its kind, such as the domain controller, has no canary to go first; it comes last and relies on the revert timer and the tests.
 - **Revert timer (dead-man).** Before a change that could lock the team out, such as a firewall or SSH change, Labyrinth sets a timer that will undo the run automatically unless someone keeps it after confirming everything still works. If the change locks the team out, the timer puts things back.
@@ -358,9 +362,9 @@ Some outside repositories are kept as **reference only** ([design 08](design/08-
 
 **Protecting the SIEM itself.** An attacker who controls the SIEM can blind the team. Labyrinth changes its admin password, checks its users, lets only the team's admin machine reach its web page and only the team's hosts send it logs, and sets aside add-ons that could run commands.
 
-**Watching outgoing traffic.** Blocking incoming traffic does not stop a program already inside from calling out. So each host logs new outgoing connections, without blocking any, and a search flags unusual ones, such as time or name lookups sent to an unknown server. Filtering a host's outgoing traffic is offered only after a person approves, because scored services need different outgoing connections.
+**Watching outgoing traffic.** Blocking incoming traffic does not stop a program already inside from calling out. So each host blocks outgoing traffic it does not need from the first minute, and also logs new outgoing connections, and a search flags unusual ones, such as time or name lookups sent to an unknown server.
 
-**Domain takeover signs.** Searches also look for the signs of two well-known attacks that hand over every domain password: ZeroLogon and DCSync. Either one puts the KRBTGT reset at the top of the domain checklist.
+**Domain takeover signs.** Searches also look for the signs of two well-known attacks that hand over every domain password: ZeroLogon and DCSync. Either one marks the KRBTGT reset urgent, so it is offered first for approval.
 
 **Watching, not blocking, risky tools.** Some ordinary tools are favorites for attackers (for example, ones that open network connections or download files). Blocking them everywhere could break real work, so Labyrinth raises an alert when they run instead.
 
@@ -382,9 +386,9 @@ Some outside repositories are kept as **reference only** ([design 08](design/08-
 
 **The big safety catch.** If the router in front of a host rewrites every outside address into one address (NAT), the host cannot tell the scoring engine and the attacker apart. Banning that one address would block scoring. So before bans are switched on, Labyrinth checks what addresses the host really sees, and it refuses to ban if they all look the same.
 
-**Other guard rails.** A **never-ban list** (the scoring engine, the officials, the team's own machines, the SIEM) is loaded first; a trigger from one of those raises an alert instead. Bans expire. Ban thresholds are settings the team can adjust during the event without changing the frozen code. Labyrinth uses its own small watcher rather than installing a ban tool such as fail2ban, which would bring a new interpreter onto the host; where fail2ban is already installed, Labyrinth gives it the never-ban list too.
+**Other guard rails.** A **never-ban list** (the scoring engine, the officials, the team's own machines, the SIEM) is loaded first; a trigger from one of those raises an alert instead. Bans expire. Ban thresholds are settings the team can adjust during the event without changing the frozen code. Labyrinth uses its own small watcher; where the system's own software sources offer fail2ban, it is installed after the lockdown and given the never-ban list before it starts. Failed logins on a scored service never cause a ban, only an alert, because officials checking the service and simulated users can come from any address and may get a password wrong. Traps, the planted key and the fake accounts still ban at once.
 
-**What it will never do.** Strike back at, scan or report the attacker to anyone. A ban only blocks traffic coming into the team's own host.
+**What it will never do.** Strike back at, scan or report the attacker to anyone. A ban only drops traffic on the team's own host: traffic coming in from that address, and traffic going out to it, so a planted program cannot call back to an attacker who is already banned. Banning an address only for outgoing traffic, when a host seems to be calling out to the attacker, waits for a person's approval.
 
 ### 4.13 🟩 Health monitor and checkpoints
 
@@ -394,7 +398,7 @@ Some outside repositories are kept as **reference only** ([design 08](design/08-
 
 **Firewall drift.** The one exception is the firewall. If its rules no longer match the sealed set (for example, because an attacker flushed them), Labyrinth puts the sealed rules back at once, with the usual tests and revert timer, and raises an alert. Rules that keep changing are flagged for a person to investigate.
 
-`labyrinth checkpoint` prints, in one screen: which services are up, new integrity findings, new accounts or open ports, open incident reports, trap hits and bans, and how long since each service was last backed up. It changes nothing.
+`labyrinth checkpoint` prints, in one screen: which services are up, new integrity findings, new accounts or open ports, open incident reports, trap hits and bans, and how long since each service was last backed up. It changes nothing. The control node also runs it on a schedule and raises one alert for each new finding, so nobody has to remember to look.
 
 **Two caveats.** The control node tests from *inside* the network. The scoring engine may test from outside, through the edge firewall. A pass from inside is good evidence, not proof. And the tests check that a service answers, not that a user can log in, because the scoring engine's accounts are never used. A team can close that gap by creating its own test mailbox by hand and checking it at each checkpoint.
 
@@ -414,7 +418,7 @@ Some outside repositories are kept as **reference only** ([design 08](design/08-
 
 **Services.** Each kind of host has a list of services that may be turned off, with the reason and the conditions that keep one on, such as "it is scored". Turning a service off is easy to undo, so Labyrinth does it automatically with the usual checks.
 
-**Patches.** Undoing a software update is often impossible, so patching stays in human hands. Labyrinth lists the security updates available, ranks them (software that is both reachable from the network and known to be actively exploited comes first; on Windows, where updates cannot be matched to that list offline, by how exposed the machine is), takes a restore point, prints the command to update that one package, and tests the service afterwards. It never runs a full system upgrade in the middle of an event. Known-exploited flaws on the domain controller, such as ZeroLogon, always come first.
+**Patches.** Undoing a software update is often impossible, so each patch needs a person's approval. Labyrinth takes the ranked list of known flaws (section 4.19), and for each approved update takes a restore point, updates that one package and tests the service afterwards. Windows updates stay a checklist for a person. It never runs a full system upgrade in the middle of an event. Known-exploited flaws on the domain controller, such as ZeroLogon, always come first. A team can pre-approve security updates for named scored programs, so a first-minute run applies them without waiting.
 
 **Web apps and plugins.** The system's update tools do not track most web apps, so Labyrinth also lists each scored web app's version and its plugins, read from the files on disk, and ranks them the same way. An unused plugin with a known flaw can be switched off after a person approves.
 
@@ -449,6 +453,26 @@ Some outside repositories are kept as **reference only** ([design 08](design/08-
 **Why it exists.** The scored services are what the Red Team attacks most, so leaving them exactly as found is not safe. But changing them by hand under pressure is how teams break their own services.
 
 **How it works.** Each setting is sorted in advance. Safe ones (such as hiding the software version or turning off file listings nobody uses) are applied automatically, after the program's own syntax check, with a gentle reload, a test like the scoring engine's and a revert timer. Settings that could change what the scoring engine sees wait for a person's approval. Anything too specific to the event's own app is written up as a step-by-step runbook.
+
+### 4.19 🟥 Finding and closing known flaws
+
+**What it does.** Finds the known flaws on the team's machines before the Red Team uses them, closes the dangerous ones first, and keeps each one on a list until it is closed ([design 21](design/21-Vulnerability-Tracker-and-Mitigations.md)).
+
+**Why it exists.** A Red Team's first step is to check which software versions are running and attack the ones with known flaws. Labyrinth does the same check from the inside, first.
+
+**How it works.** Labyrinth reads the system's own update data, the versions of scored web apps and plugins on disk, and on Windows the updates that are missing. It also scans the team's own machines (never anyone else's) for the software versions they show the network, which catches programs installed by hand. All matching happens on the team's machines; nothing is sent out to be looked up. Flaws are ranked: the domain controller first, then scored services, then anything reachable from the network that is known to be exploited.
+
+**Closing a flaw.** An unscored service with a flaw is simply turned off. A scored service is never turned off. Instead, Labyrinth closes the flaw while the service keeps running: first with a tested setting or firewall rule from its catalog where one exists (for example, removing a dangerous permission from a helper program nothing uses), then with the security update once a person approves it. Each flaw is tracked as open, mitigated, patched or accepted, and every checkpoint shows what is still open.
+
+### 4.20 🟥 Installing the team's tools
+
+**What it does.** Installs the extra tools each kind of host needs, such as auditd, fail2ban and file-integrity and malware scanners, straight after the first-minute lockdown ([design 20](design/20-Packages-and-Third-Party-Tools.md)).
+
+**Why it exists.** Typing install commands host by host under pressure is slow and error-prone, and a tool installed before the lockdown could start doing things before its settings are in place.
+
+**How it works.** Tools come only from public sources every team can reach: the system's own software sources, a mirror or proxy the event provides, or a public download whose exact file is fixed in the release. Before installing, Labyrinth checks that the install would not remove or replace anything already there. New services stay switched off until their own part of Labyrinth sets them up. Every install is recorded. If no source can be reached, the installs are skipped and the lockdown stands.
+
+**What it will never do.** Upgrade the whole system, add a new software source, use a private server, or install a container system.
 
 ---
 

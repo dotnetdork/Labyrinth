@@ -1,13 +1,13 @@
 # 15. Patching and Service Reduction
 
-**Status:** Draft · reviewed 2026-10-02 · Phase: 🟥 Lock out · Priority: P1
+**Status:** Draft · reviewed 2026-10-09 · Phase: 🟥 Lock out · Priority: P1
 
 ## 1. Goal
 
-Fewer listeners and fewer known-exploited packages (Blueprint §3.6), without breaking a scored service. The two parts are handled differently:
+Fewer listeners and fewer known-exploited packages (Blueprint §3.6), without breaking a scored service. Which flaws need closing, and in what order, comes from the vulnerability tracker (design 21). The two parts are handled differently:
 
 - **Service reduction** can be undone in seconds (start the service again), so it is automated as a Tier 2 action (design 01).
-- **Patching** often cannot be undone cleanly, because an older package version may not be available to reinstall. So Labyrinth plans, backs up and verifies each patch, but a person runs it.
+- **Patching** often cannot be undone cleanly, because an older package version may not be available to reinstall. So each patch needs a person's approval (Tier 3), and Labyrinth then takes a restore point, applies that one package and verifies it.
 
 ## 2. Rules that shape it
 
@@ -16,7 +16,7 @@ Fewer listeners and fewer known-exploited packages (Blueprint §3.6), without br
 | Tools must not deliberately break expected functionality (National Collegiate Cyber Defense Competition [NCCDC], 2025, Rule 5.6.5). | Services are disabled only from a per-profile candidate list; nothing scored is on it. No blind full upgrade. |
 | Anything that interferes with the scoring engine is the team's responsibility (NCCDC, 2025, Rule 4.11). | Every change is followed by the scoring-style probes. |
 | Scored services may not be migrated or containerized (NCCDC, 2025, Rule 4.14). | Patching updates a package in place. No major-version upgrade, no replacement service. |
-| Team tools may not use outside resources apart from DNS (NCCDC, 2025, Rule 5.6.4). | Labyrinth itself downloads nothing. See the pinned question in section 5. |
+| Team tools may not use outside resources apart from DNS; the example is cloud services and cloud processing (NCCDC, 2025, Rule 5.6.4). | Updates come from the host's own package manager and its public repositories, or an event mirror, never a private source (design 20). |
 
 ## 3. Service reduction
 
@@ -43,43 +43,25 @@ Services are disabled, never removed. Rollback starts them again with their prev
 
 ## 4. Patching
 
-**Check (read-only).** List updates that fix security issues and are available now (Blueprint §3.6; *Background*):
+**Finding and ranking** are in design 21. It lists the security updates available now, the scored web apps and plugins with their versions, and the Windows updates missing, and ranks each flaw: domain controller flaws first, then flaws in scored services, then exposed and known-exploited ones. This section covers closing a finding by patching.
 
-| Platform | Source |
-|---|---|
-| Debian | `debsecan`, if installed |
-| Ubuntu | `pro fix` or the security pocket in `apt list --upgradable` |
-| RHEL family (Red Hat Enterprise Linux) | `dnf updateinfo list --security` |
-| Windows | Installed updates and the OS build, listed for a person; ranked by exposure only (below) |
+**Scored services are patched, not turned off.** A flaw in a scored service is never closed by stopping or disabling the service (design 21, section 5.1). Where the mitigation catalog has a setting that closes the flaw with the service still running, that goes in first. Patching then replaces the flawed version, and the tracker records the finding as `patched` once a later check confirms it.
 
-**Rank.** A patch matters most when the package is both exposed and known to be exploited:
-
-- **Exposed:** it serves a listening port, especially a scored or internet-facing one.
-- **Known exploited:** it appears in a vendored snapshot of a public known-exploited-vulnerabilities catalog, taken at release time and dated. The snapshot is never refreshed at the event.
-
-An unpatched, unexploited package on a closed port ranks last (Blueprint §3.6).
-
-**Domain controller flaws rank first.** A known-exploited flaw on a domain controller, such as ZeroLogon (CVE-2020-1472), hands over every domain password at once; Red Teams report it as the source of most of their admin shells at recent state qualifiers (*Background*). So any domain controller flaw in the known-exploited snapshot is placed at the top of the list, above every other host, with the domain checklist's follow-up steps (design 11, section 5).
-
-**Web apps and plugins.** Package managers do not track most web apps. So the check also lists each scored web app's version and its plugins, modules and themes with their versions, read from the files on disk (for example WordPress `readme.txt` and plugin headers, `composer.lock`, Drupal and Joomla manifests). Red Teams read the same files to choose their exploits (*Background*). Each version is matched against the known-exploited snapshot and ranked with the packages. Updating a web app or plugin is patching, so a person does it. An **unused** plugin with a known-exploited flaw can instead be deactivated and quarantined after approval (design 17, scored-app content).
-
-**Windows ranks by exposure only.** The known-exploited catalog names vulnerabilities, not Windows updates. Matching one to the other needs Microsoft's update data, which is not in the release and cannot be fetched at the event. So on Windows the check lists the installed updates and ranks hosts and roles by exposure, and a person judges which known-exploited issues apply.
-
-**Plan and apply.** The operator picks from the ranked list. For each pick, Labyrinth:
+**Plan and apply.** The operator approves picks from the ranked list (Tier 3). Each update is an item in category `security-update`, whose id is the package name with any character other than a lowercase letter, a digit or `-` replaced by `-`. The module lets a pre-approval rule cover this category (Conventions, section 3.1), so a security update for a scored package that a rule names counts as approved, and a first-minute run applies it without a prompt (design 01, section 6.3). The rule names the package, not a version, because the version available at the event is not known when the team decides. It covers only an update from the host's own release stream that passes the simulation check (design 20, section 4); a new major version, or an update that would remove or replace a package, still waits for a person. The restore point comes first, and a failed probe after the update raises an alert and offers the restore at once. For each approved pick, Labyrinth:
 
 1. takes a restore point of the service (design 14);
-2. prints the single-package command (for example, upgrading only that package, never the whole system);
-3. waits while a person runs it and restarts the service if needed;
-4. runs the probes and records the result in the run manifest.
+2. upgrades only that package with the host's package manager, never the whole system, after the same simulation check as an install (design 20, section 4);
+3. restarts the service if the package needs it;
+4. runs the probes and records the result in the run manifest, and the tracker marks the finding `patched` after the next check (design 21, section 4).
 
 If a probe fails, `labyrinth restore` puts the service back from that restore point once a person approves (design 14, section 6).
 
 ```mermaid
 flowchart LR
-    CK["Check: security updates<br/>available now (read-only)"] --> RK["Rank: exposed ×<br/>known exploited"]
-    RK --> PK["A person picks<br/>one package"]
+    CK["Find: security updates<br/>available now (design 21)"] --> RK["Rank: domain controller ·<br/>scored · exposed · known exploited"]
+    RK --> PK["A person approves<br/>one package"]
     PK --> BK["Restore point<br/>(design 14)"]
-    BK --> RUN["A person runs the printed<br/>single-package command"]
+    BK --> RUN["Labyrinth upgrades<br/>that one package"]
     RUN --> VF{"Probes pass?"}
     VF -->|yes| OK(["Record in the run manifest"])
     VF -->|no| RS["Restore from<br/>the restore point"]
@@ -88,17 +70,18 @@ flowchart LR
     classDef sustain fill:#e3f6e8,stroke:#15803d,color:#0f3d20
     classDef ok fill:#e3f6e8,stroke:#15803d,color:#0f3d20
     class CK,RK,VF lockout
-    class PK,RUN,RS human
+    class PK,RS human
+    class RUN lockout
     class BK sustain
     class OK ok
 ```
 
-*Figure: Labyrinth finds and ranks the security updates, takes a restore point and checks the result, while a person chooses each package and runs the command. Red is lock-out work done by Labyrinth, amber is work done by a person and green is the restore point and the recorded finish.*
+*Figure: the tracker finds and ranks the security updates (design 21), a person approves each package or a pre-approval rule covers it, and Labyrinth takes a restore point, upgrades that one package and checks the result. Red is lock-out work done by Labyrinth, amber is a person's decision and green is the restore point and the recorded finish.*
 
 ## 5. Pinned questions
 
-- **Package sources and Rule 5.6.4.** A package manager fetches from the distribution's mirrors or a local mirror. Whether a human running the host's own package manager counts as a team tool using an outside resource is not settled by the rules text read so far. Until it is, patching stays manual (Tier 3) and Labyrinth never calls the package manager to install anything.
-- **Windows updates.** Individual updates usually come from Microsoft's download sites, which may not be reachable. Windows patching is a manual checklist.
+- **Package sources and Rule 5.6.4.** Resolved (2026-10-09): the rule's example is cloud services and cloud processing, and Rules 5.1 and 5.2 allow public sources of software. Labyrinth applies approved updates through the host's package manager (design 20). The install feature is named in the tool's declaration, so officials can rule on it before the event.
+- **Windows updates.** Individual updates usually come from Microsoft's download sites, which may not be reachable. Windows patching is a manual checklist, ranked by the missing updates WES-NG finds (design 21, section 3.1).
 
 ## 6. What it will never do
 
@@ -106,17 +89,16 @@ flowchart LR
 - Upgrade a scored service to a new major version.
 - Remove a package or a service.
 - Disable a service that is not on the candidate list, or one whose `unless` condition holds.
+- Stop or disable a scored service to close a flaw.
 
 ## 7. Acceptance tests
 
 - On a lab host, only the candidate services not marked scored are stopped, and every probe still passes.
 - Rollback restores each stopped service to its previous start type.
-- The patch check lists the known-vulnerable package planted in the lab, ranked above an unexposed one.
-- A known-exploited domain controller flaw in the snapshot ranks above every other finding.
-- A known-exploited WordPress plugin version planted in the lab web app is listed and ranked.
-
-- No Labyrinth command installs or downloads a package.
+- An approved update upgrades only its own package, and an update whose simulation would remove a package is refused.
 - A patch whose probe fails is restored from its restore point.
+- A pre-approved update for a scored package is applied in a first-minute run without a prompt, after a restore point.
+- A scored service with a known-exploited flaw is never stopped; it is patched in place.
 
 ## References
 

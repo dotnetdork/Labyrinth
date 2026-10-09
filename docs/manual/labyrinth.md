@@ -266,6 +266,8 @@ Each entry is the module ID, a colon, then the item as its `Item:` line shows it
 
 If an item has changed since the plan you copied it from, its fingerprint no longer matches. The item is left alone, and Labyrinth says so and records it. The module checks again just before it changes each item. Approvals are never stored: a rollback does not need them.
 
+**Approving before the event.** Some items can be approved before anyone has seen a plan, for example the security update for one scored package. Write each one as a line in the `pre-approved` file in the configuration folder: the module ID, the category, then the item id, or `*` for every item of that category. For example, a line naming the patching module, the category `security-update` and the package `openssl` approves that one package's security update in advance. A module accepts this only for the categories its `module.yml` lists under `pre_approvable`, which are safe to change without anyone seeing each item; for any other category, the line is ignored and Labyrinth says so after the plan. The plan shows the items a line approves on a `Note:` line. During the apply, they are approved without asking, and Labyrinth asks only about the rest; when every item is approved in advance, it asks nothing. They are still checked against this run's plan, the module's own checks, the tests of the scored services and the revert timer, like any other item.
+
 **New passwords.** A module that sets a new password shows it once, straight on your screen, and never writes it to a file or a log:
 
 ```
@@ -378,7 +380,7 @@ Everything Labyrinth keeps is under one folder, the **data root**: `@ROOT@` unle
 | Folder | Holds |
 |---|---|
 | `<root>/bin` | The program. |
-| `<root>/etc` | The event's configuration: `hosts`, `protected-accounts`, `event.conf`, `services`, `scoring-allowlist`, `never-ban`. |
+| `<root>/etc` | The event's configuration: `hosts`, `protected-accounts`, `event.conf`, `services`, `scoring-allowlist`, `never-ban`, `outbound-allow`, `pre-approved`. |
 | `<root>/state` | Run records: one folder per run under `state/runs`, with the run's change record (`manifest.jsonl`), its timer, and its log (`output.log`). |
 | `<root>/logs` | Logs, one folder per kind. |
 | `<root>/backup` | Copies of every file taken before it was changed. |
@@ -389,7 +391,7 @@ Only root can read `etc`, `state` and `backup`. Only root may be able to change 
 | Folder | Holds |
 |---|---|
 | `<root>\bin` | The program. |
-| `<root>\etc` | The event's configuration: `hosts`, `protected-accounts`, `event.conf`, `services`, `scoring-allowlist`, `never-ban`. |
+| `<root>\etc` | The event's configuration: `hosts`, `protected-accounts`, `event.conf`, `services`, `scoring-allowlist`, `never-ban`, `outbound-allow`, `pre-approved`. |
 | `<root>\state` | Run records: one folder per run under `state\runs`, with the run's change record (`manifest.jsonl`), its timer, and its log (`output.log`). |
 | `<root>\logs` | Logs, one folder per kind. |
 | `<root>\backup` | Copies of every file taken before it was changed. |

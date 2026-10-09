@@ -17,7 +17,7 @@ So this spec splits the work by blast radius. A change that affects one host is 
 | Tools must not deliberately break expected functionality (National Collegiate Cyber Defense Competition [NCCDC], 2025, Rule 5.6.5). | Every change comes from an explicit list and skips the protected set. |
 | Officials must be given access on request (NCCDC, 2025, Rule 4.1). | When an official asks, the captain gives them a working login (design 05, section 5). Remote Desktop and firewall restrictions still allow the admin source and any official sources named in the event packet. |
 | Scoring is based partly on controlling and preventing unauthorized access (NCCDC, 2025, Scoring section), and scored services are a primary Red Team target. | Where RDP or WinRM is itself scored, the restriction also allows the scoring engine, and the service is hardened rather than closed (section 3). |
-| Anything that interferes with the scoring engine is the team's responsibility (NCCDC, 2025, Rule 4.11). | DNS on the domain controller is treated as scored and changed by hand only (Blueprint §4.6). |
+| Anything that interferes with the scoring engine is the team's responsibility (NCCDC, 2025, Rule 4.11). | The rule assigns responsibility; it does not require changes to be made by hand. As a design choice, DNS on the domain controller is treated as scored and changed by hand only, because its settings replicate to every domain controller (Blueprint §4.6). |
 
 ## 3. Blast radius decides the tier
 
@@ -26,7 +26,7 @@ So this spec splits the work by blast radius. A change that affects one host is 
 | **0. Observe** | Local admins, services, scheduled tasks, autoruns, listeners (design 04); SMBv1, LLMNR, NBT-NS, RDP and WinRM state; the state of every setting in the tables below; password and lockout policy (design 05, section 2.2); whether the PowerShell 2.0 engine is installed, because it bypasses script block logging (design 10) | All of the left, plus: privileged group membership (Domain Admins, Enterprise Admins, Schema Admins, Administrators), accounts with a service principal name, linked Group Policy objects, Print Spooler state, the Netlogon enforcement state and allow list (section 3.1), and the domain read-only checks (section 3.2) |
 | **1. Safe and reversible** | Rotate the built-in Administrator and other local admin-class passwords that nothing logs on with (design 05, section 2); turn on the audit policy and script block logging (design 10) | Audit policy and script block logging (design 10); logging of unsigned LDAP binds (section 3.1). No password is rotated automatically: every account on a domain controller is a domain account (section 7) |
 | **2. Service-affecting, per host with a revert timer** | Default-deny inbound firewall (design 01); require NLA (Network Level Authentication) for RDP; allow RDP and WinRM only from the admin source, plus the scoring engine where either is scored; turn off SMBv1 server; turn off LLMNR and NBT-NS in local policy; the protocol settings below; rules for new passwords and password history (design 05, section 2.2); stop and disable Print Spooler where nothing prints; remove unexpected local Administrators members that nothing depends on (design 05, section 6) | Firewall as on the left, applied last, after the member servers pass, and always allowing domain traffic from member hosts (below); RDP, WinRM and the protocol settings as on the left; stop and disable Print Spooler if printing is not scored |
-| **3. Approve, then act** | Labyrinth acts after approval: removing a local Administrators member that might be a service dependency; protocol settings in the approval class (below); lockout settings (design 05, section 2.2); ending a process that runs as SYSTEM (below) | Labyrinth acts after approval: requiring LDAP signing (section 3.1); ending a process that runs as SYSTEM (below). A person acts, from the checklist in section 5: rotating the domain Administrator password; KRBTGT reset (twice, with a replication wait); creating domain honey-accounts (design 09); removing members from domain admin groups; domain password resets; disabling and deleting domain accounts; fixing the domain read-only findings (section 3.2); any Group Policy change, including the domain password and lockout policy; service account resets; LAPS (Local Administrator Password Solution) roll-out; any DNS change on the domain controller, including zone settings |
+| **3. Approve, then act** | Labyrinth acts after approval: removing a local Administrators member that might be a service dependency; protocol settings in the approval class (below); lockout settings (design 05, section 2.2); ending a process that runs as SYSTEM (below) | Labyrinth acts after approval: requiring LDAP signing (section 3.1); ending a process that runs as SYSTEM (below); resetting the KRBTGT password twice, with a replication check between (section 5.1). A person acts, from the checklist in section 5: rotating the domain Administrator password; creating domain honey-accounts (design 09); removing members from domain admin groups; domain password resets; disabling and deleting domain accounts; fixing the domain read-only findings (section 3.2); any Group Policy change, including the domain password and lockout policy; service account resets; LAPS (Local Administrator Password Solution) roll-out; any DNS change on the domain controller, including zone settings |
 
 **Protocol and credential settings** (each per host, in the registry, under the revert timer; the keys and values are in section 3.3):
 
@@ -46,7 +46,7 @@ So this spec splits the work by blast radius. A change that affects one host is 
 **Ending a process that runs as SYSTEM.** An administrator cannot always end a process running as SYSTEM, and Red Teams use this to keep implants alive (*Background*). When a person approves it, Labyrinth ends the process through a one-time scheduled task that runs as SYSTEM, then deletes the task. The approval names the process ID and the hash of its executable; if either no longer matches when the task runs, nothing is ended. The process's persistence (its service, scheduled task or autorun) is quarantined first (design 17), so it does not come straight back, and the executable is kept as evidence (design 02). It is never offered for a process the dependency map ties to a scored service.
 
 
-- **Why Group Policy is manual.** One Group Policy change reaches every machine in the domain at once. That is the "indiscriminate" pattern the rules warn about (NCCDC, 2025, Rule 5.6.5), so it stays with a person who can watch the effect.
+- **Why Group Policy is manual.** One Group Policy change reaches every machine in the domain at once, and a mistake breaks all of them before any probe can catch it. No rule forbids a Group Policy change that breaks nothing; keeping it with a person who can watch the effect is a design choice, made for blast radius. Rule 5.6.5's "indiscriminately" describes ending all outbound connections, not every change that touches many hosts (NCCDC, 2025, Rule 5.6.5).
 - **Why Print Spooler.** The print spooler has had several serious remote vulnerabilities, and a domain controller rarely needs to print (*Background*). It is turned off only when printing is not a scored service on that host.
 - **Why local policy for LLMNR and NBT-NS.** Both let an attacker on the network answer name lookups and collect password hashes (*Background*). The per-host setting keeps the blast radius to one host; the domain-wide setting is a Group Policy change and therefore Tier 3.
 
@@ -58,7 +58,7 @@ flowchart TD
     end
     MEM --> DC
     subgraph DC["Domain controller, last"]
-        D1["Tier 1 and Tier 2, host-only settings,<br/>with DNS and logon probes"] --> D3["Tier 3 checklist:<br/>domain Administrator · KRBTGT · domain groups<br/>Group Policy · DNS · domain accounts · LAPS"]
+        D1["Tier 1 and Tier 2, host-only settings,<br/>with DNS and logon probes"] --> D3["Tier 3: KRBTGT reset after approval;<br/>checklist: domain Administrator · domain groups<br/>Group Policy · DNS · domain accounts · LAPS"]
     end
     classDef observe fill:#e3eefc,stroke:#2563eb,color:#0f2a5c
     classDef ok fill:#e3f6e8,stroke:#15803d,color:#0f3d20
@@ -145,7 +145,7 @@ Domain-wide changes reach every machine at once, so they stay with a person even
 
 1. **Domain Administrator.** Check the Tier 0 report for services and scheduled tasks that log on with it (design 05, section 2). Rotate it, update each of those, then re-run the logon probes. The new password goes in the team's offline record.
 2. **Privileged groups.** Compare the Tier 0 report with the expected members. Remove unknown members by hand, one at a time, and re-run the logon probes after each.
-3. **KRBTGT.** Reset the KRBTGT password, wait for replication, then reset it again (Blueprint §3.1). This invalidates forged Kerberos tickets. After any DCSync or ZeroLogon sign (design 10), do this at once and rotate every domain admin account too, because the attacker may hold every domain password hash.
+3. **KRBTGT.** Approve the KRBTGT reset item (section 5.1), which Labyrinth carries out. After any DCSync or ZeroLogon sign (design 10), approve it at once and rotate every domain admin account too, because the attacker may hold every domain password hash.
 4. **Service accounts.** Reset only after their dependencies are known.
 5. **Unexpected domain accounts.** Disable them only after confirming they are not scoring or official accounts; re-enabling raises an alert (event 4722; design 10). Once a checkpoint shows every scored service passing (design 13), delete them, after saving their group membership and creation details for the incident record (design 02).
 6. **Group Policy.** Apply domain-wide settings (for example, turning off LLMNR everywhere) one at a time, with a scoring-style probe after each.
@@ -156,13 +156,23 @@ Domain-wide changes reach every machine at once, so they stay with a person even
 11. **LSA protection with the UEFI lock.** On any Windows host where section 3 does not offer LSA protection, decide by hand. Value 1 with Secure Boot on cannot be undone from the registry; removing it needs Microsoft's opt-out tool at the console. It takes effect at the next reboot.
 12. **Domain honey-accounts.** If the team uses them (design 09), create each one by hand with the name the module prints, disabled or with no usable password, and confirm it does not collide with a scoring or official account.
 
+### 5.1 The KRBTGT reset
+
+The KRBTGT account's password signs every Kerberos ticket in the domain, so an attacker who has its hash can forge tickets (a golden ticket) until it changes twice. Domain controllers accept the current and the previous key, so the first reset breaks nothing; the second makes tickets signed before the first one invalid. Unlike the rest of section 5, this is one account with a known procedure, so Labyrinth carries it out after approval (Tier 3), instead of leaving it on the checklist.
+
+- **The item.** On a domain controller, the plan offers one item, `krbtgt-reset`, in category `krbtgt`, with the password's age as the reason. After a DCSync or ZeroLogon sign (design 10), the reason says it is urgent. The category is never pre-approvable.
+- **Before.** Every domain controller must report successful replication with no errors. If any does not, the item is blocked (`20`) and the reason is printed.
+- **First reset.** Labyrinth sets a random password it never shows or stores; nobody logs on with this account. It then waits until every domain controller reports the new key version, checking for a set time (15 minutes by default), and runs the logon probes and the scored probes.
+- **Second reset.** Once every domain controller has the new key version and the probes pass, it resets the password again and runs the probes once more. If replication is not confirmed in time, it stops after the first reset, says so, and the next plan offers the second reset as its own item, `krbtgt-reset-second`.
+- **Cannot be undone.** A password reset cannot be put back, so this is the one Tier 3 change on a domain controller that rollback does not reverse. The manifest records each reset; rollback records that it cannot undo them and changes nothing. The first reset breaks nothing, because the old key still works. After the second, a service still holding a ticket from before the first reset must get a new one; a failed probe raises an alert and prints the fix: restart that service, which logs on again. Nothing is reset a third time without a new approval.
+
 ## 6. Roll back
 
 Every Tier 1 and Tier 2 change is recorded in the run manifest with its previous value: the registry value, service start type, firewall rule or audit setting. Rollback restores that value. Tier 2 changes are also covered by the one-time scheduled task that serves as the Windows revert timer (design 01, section 8).
 
 ## 7. What it will never do
 
-- Change Group Policy, DNS on a domain controller, or a domain account itself, with or without approval. These stay on the checklist in section 5.
+- Change Group Policy, DNS on a domain controller, or a domain account itself, with or without approval, except the approved KRBTGT reset (section 5.1). These stay on the checklist in section 5.
 - Reboot a host so that a setting takes effect. A setting that needs a reboot is staged and reported.
 - Print or store a value that may be a secret, such as a password found in a description field, a Group Policy Preferences file or the Winlogon key.
 - Touch an account in the protected set.
@@ -181,7 +191,9 @@ Every Tier 1 and Tier 2 change is recorded in the run manifest with its previous
 - After default-deny on the domain controller, a member server still logs on to the domain and resolves names.
 - After the protocol settings, an NTLMv1 logon is refused, WDigest is off, and anonymous user listing fails; turning WDigest back on raises an alert.
 - An approved SYSTEM process in the lab is ended by the one-time task, the task is deleted afterwards, and a process whose executable hash changed is left running.
-- A simulated DCSync marks the KRBTGT step as urgent on the printed checklist.
+- A simulated DCSync marks the KRBTGT reset item as urgent in the plan.
+- In the lab domain, an approved KRBTGT reset changes the key version twice, on every domain controller, with a replication check between; a member server still logs on to the domain, and every scored probe passes.
+- With replication broken on one domain controller, the KRBTGT reset is blocked and no password changes.
 - The Tier 0 report lists each planted weakness: an account with pre-authentication off, unconstrained delegation on a member server, `SIDHistory`, replication rights granted to an ordinary account, a DnsAdmins member, a Group Policy Preferences file with a `cpassword`, and a password in a description field. Neither password appears in the report, the log or the manifest.
 - On a patched domain controller, Tier 0 reports Netlogon enforcement as on whatever `FullSecureChannelProtection` says; on one missing the update, it is reported for patching; a planted allow-list entry is reported.
 - With unsigned-bind logging on, a lab client's unsigned LDAP bind is listed in the LDAP signing plan; when that client is a scored service, the change is blocked.

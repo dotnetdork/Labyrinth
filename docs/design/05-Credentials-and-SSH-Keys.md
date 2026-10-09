@@ -25,7 +25,7 @@
   3. Acknowledge that it is recorded.
   4. Only then close the old session.
 - **User-level accounts:** manual checklist only, following the notification process.
-- **Crown jewels** (domain admin, KRBTGT) rotate at set checkpoints, not continuously. KRBTGT needs two resets with a replication wait and is manual-only.
+- **Crown jewels** (domain admin, KRBTGT) rotate at set checkpoints, not continuously. KRBTGT needs two resets with a replication check between them; it is an approval item that Labyrinth carries out (design 11, section 5.1).
 
 ### 2.1 Application admin credentials
 
@@ -33,7 +33,7 @@ Operating system passwords are not the only default credentials. Red Teams repor
 
 - **Inventory (Tier 0).** For each scored app in the profile, list its admin accounts, using the app's own tools where present (for example `wp user list --role=administrator`, or a read-only query of the database's user table), and the configuration files that store a password the app uses to reach its database.
 - **Rotate (Tier 3, approve then act).** Each account is shown with what depends on it. Once a person approves, Labyrinth sets a new password, updates every listed configuration file that stores it (backed up first), runs the app's syntax check and probes under a revert timer, and shows the new password once for the offline record.
-- **Never automatic**, because an app password can be stored in places the inventory misses, and the scoring engine may log in to the app. An account the packet names as used by scoring or employees is in the protected set and never offered.
+- **Never automatic**, because an app password can be stored in places the inventory misses, and the scoring engine may log in to the app. An account the packet names as used by scoring or employees is in the protected set and never offered. Each account is an item in category `default-app-password`, which the module lets a pre-approval rule cover: a known default password is never one the scoring engine relies on keeping. An account a rule names counts as approved, so a first-minute run rotates it without a prompt (design 01, section 6.3; Conventions, section 3.1).
 - **Appliances** (firewall and router admin logins) stay in their runbooks (design 16).
 
 ### 2.2 Password and lockout policy
@@ -182,7 +182,7 @@ Administrator rights can hide in places a simple group listing misses. The inven
 | Unexpected *domain* account or group member | Printed on the domain checklist (design 11, section 5) | 3, person-run |
 | Expected account | Unchanged | — |
 
-Locking means: on Linux, `usermod -L` and an expiry date in the past, with the login shell left as it is (Rule 5.6.5 names shell changes); on Windows, the account disabled. Both are recorded in the run manifest and undone by `rollback`. Re-enabling a locked account raises an alert (Windows event 4722; an auditd rule on Linux; design 10).
+Locking means: on Linux, `usermod -L` and an expiry date in the past, with the login shell left as it is (a design choice: Rule 5.6.5's example is setting *all* user shells to `/bin/false`, and leaving the shell alone keeps rollback simple and avoids any resemblance to it); on Windows, the account disabled. Both are recorded in the run manifest and undone by `rollback`. Re-enabling a locked account raises an alert (Windows event 4722; an auditd rule on Linux; design 10).
 
 ### 6.4 Delete once confirmed
 

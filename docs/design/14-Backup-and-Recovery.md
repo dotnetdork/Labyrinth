@@ -34,6 +34,7 @@ The list of what to back up comes from the profile. Paths are templates filled f
 
 ## 4. When
 
+- **Straight after the first-minute bundle**, for every scored service on the host, before the Red Team's later takedowns (design 01, section 6, step 5).
 - **Before patching** a service (design 15).
 - **Before the first Tier 2 change** on a host (design 01).
 - **On demand** through `labyrinth backup <service>`, and as a prompt in the checkpoint summary, which shows the time since each service's last backup (design 13).

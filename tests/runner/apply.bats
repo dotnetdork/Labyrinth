@@ -364,6 +364,61 @@ fp() { printf '%s' "$1" | sha256sum | cut -c1-12; }
   [[ "$timer" != *approve* ]]
 }
 
+@test "approval: a pre-approval rule approves an item without asking; the prompt asks for the rest" {
+  profile observe.ask
+  # 'other' is not in the module's pre_approvable list; lockout.elsewhere is
+  # for other hosts.
+  printf '# rules\nobserve.ask sample item-a\nobserve.ask other *\nlockout.elsewhere sample item-a\n' > "$ETC/pre-approved"
+  plan
+  [ "$status" -eq 10 ]
+  grep -qx '  Note:      pre-approved, so applied without asking: item-a' <<< "$output"
+  grep -qx 'Pre-approval ignored: observe.ask does not let category other be pre-approved: observe.ask other \*' <<< "$output"
+  [[ "$output" != *lockout.elsewhere* ]]
+  answers root ring1 item-b keep
+  apply
+  [ "$status" -eq 0 ]
+  [ "$(cat "$LAB/APPROVED_ITEMS")" = "$(printf 'item-a\nitem-b')" ]
+  grep -qx '  Approved:  item-a (pre-approved)' <<< "$output"
+  grep -qx '  Approved:  item-a (pre-approved), item-b' <<< "$output"
+  grep -q "\"note\":\"risk approval, approved item-a@$(fp item-a) item-b@$(fp item-b), pre-approved item-a@$(fp item-a)\"" <<< "$(manifest)"
+}
+
+@test "approval: when every item is pre-approved, nothing is asked" {
+  profile observe.ask
+  sed -i '/item-c/d' "$LAB/phases/observe/modules/ask/plan.sh"
+  printf 'observe.ask sample *\n' > "$ETC/pre-approved"
+  answers root ring1 keep
+  apply
+  [ "$status" -eq 0 ]
+  [[ "$output" != *'Type the ids'* ]]
+  [ "$(cat "$LAB/APPROVED_ITEMS")" = "$(printf 'item-a\nitem-b')" ]
+  grep -qx '  Approved:  item-a (pre-approved), item-b (pre-approved)' <<< "$output"
+}
+
+@test "approval: pre-approval rules and --approve entries add up" {
+  profile observe.ask
+  printf 'observe.ask sample item-b\n' > "$ETC/pre-approved"
+  answers no
+  apply --break-glass root --confirm-group ring1 --approve "observe.ask:item-c@$(fp item-c)"
+  [ "$status" -eq 0 ]
+  [[ "$output" != *'Type the ids'* ]]
+  [ "$(cat "$LAB/APPROVED_ITEMS")" = "$(printf 'item-b\nitem-c')" ]
+}
+
+@test "approval: a malformed pre-approved file is an error, and a module.yml may not misuse pre_approvable" {
+  profile observe.ask
+  printf 'observe.ask sample\n' > "$ETC/pre-approved"
+  plan
+  [ "$status" -eq 40 ]
+  [[ "$output" == *'pre-approved is malformed'*':1: expected: module-id category item-id (or * for every item)'* ]]
+  rm "$ETC/pre-approved"
+  profile observe.toggle
+  printf 'pre_approvable: [sample]\n' >> "$LAB/phases/observe/modules/toggle/module.yml"
+  plan
+  [ "$status" -eq 40 ]
+  [[ "$output" == *'pre_approvable is only for approval modules'* ]]
+}
+
 @test "approval: an approval plan with a malformed item line is an ERROR" {
   profile observe.ask
   printf '#!/usr/bin/env bash\nprintf "item\\tBad Id\\tsample\\t%%s\\tx\\n" 2a2c17aaaf66\nexit 10\n' \

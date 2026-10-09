@@ -14,6 +14,7 @@ Turn repeated hostile touches into automatic, expiring blocks, and keep the bloc
 | Active responses such as TCP resets are allowed, and anything that interferes with the scoring engine is the team's responsibility (NCCDC, 2025, Rule 4.11). | A ban may cut a connection already open to the banned address. The scoring engine and the host's outbound dependencies can never be banned (section 4), and automatic bans are refused when the host cannot tell sources apart (section 5). |
 | Tools must not deliberately break expected functionality; indiscriminately ending all outbound connections is given as an example (NCCDC, 2025, Rule 5.6.5). | Blocking one hostile address is targeted, not indiscriminate. Bans are per address and expiring. There is no "block everything" mode, and an outbound ban never covers a range (section 6.1). |
 | Team tools may not use outside resources apart from DNS (NCCDC, 2025, Rule 5.6.4). | Offenders are never reported to or checked against an outside reputation service. |
+| Officials make manual scoring checks, and traffic generators send ordinary user traffic, and suspicious traffic, from random source addresses; anything that interferes with the scoring engine or manual scoring checks is the team's responsibility (Midwest Collegiate Cyber Defense Competition [MWCCDC], 2025, Competition Rules 5, 6 and 14; *Verified* 2026-10-09). | Not every legitimate client of a scored service comes from the scoring engine's address, and a simulated user may fail a login. So failed logins on a scored service's login only raise an alert (section 3). A trap port, the planted key and a honey-account stay instant bans, because no legitimate check touches them. |
 
 ## 3. Triggers
 
@@ -22,7 +23,8 @@ Turn repeated hostile touches into automatic, expiring blocks, and keep the bloc
 | Any packet to a trap port | Firewall deny log (Blueprint §4.1) | Ban at once |
 | Use of the planted SSH key | sshd fingerprint log (Blueprint §4.4) | Ban at once |
 | Any logon attempt on a honey-account | Trip log (design 09) | Ban at once and raise an incident (design 02) |
-| Repeated failed logins | Authentication log | Ban after a threshold within a time window |
+| Repeated failed logins on a login path that is not scored, such as admin SSH on a host where SSH is not a scored service | Authentication log | Ban after a threshold within a time window |
+| Repeated failed logins on a scored service's login (for example SSH, mail or FTP where scored, or a scored web app's login page) | Authentication log | Alert only, never a ban; the alert names the address and account so a person can judge it |
 | Repeat offender | Ban history | Longer ban |
 | A host connecting out to a likely command-and-control address | Unusual-outbound search (design 10, section 5) | Alert; an outbound ban only after a person approves it (section 6.1) |
 
@@ -61,7 +63,7 @@ The refusal is exit code 20 (blocked by a safety gate, design 00) with a message
 - The set is matched on the `INPUT` chain by source and on the `OUTPUT` chain by destination. On hosts running Docker it is also matched on `DOCKER-USER` by source and by destination, because container traffic bypasses `INPUT` and `OUTPUT` (Blueprint §3.3).
 - The match rules come before the rule that accepts established connections. So a new ban also stops a session or a reverse shell already open to that address: an active response, which the rules allow (NCCDC, 2025, Rule 4.11).
 - **The watcher** is a small native Labyrinth watcher, in bash, on every Linux host. It tails the logs above and adds addresses to the set. Most triggers in section 3 (trap ports, the planted key, honey-accounts) are not things fail2ban handles out of the box, so they would need custom rules either way.
-- **fail2ban.** Labyrinth never installs or vendors fail2ban. It needs python3, which a minimal host may lack, and on RHEL-family hosts it comes from EPEL rather than the base repositories. Installing it at the event would pull in an interpreter and libraries the scored services did not have before. On some distributions it also starts at once with an SSH ban rule on, before the never-ban list is in place. Where fail2ban is already installed and running, Labyrinth leaves it running and adds the never-ban list to its `ignoreip` setting through a drop-in file in `jail.d`, so it cannot ban the scoring engine. The native watcher still handles Labyrinth's own triggers.
+- **fail2ban.** Where the host's repositories offer it, the `packages` module installs it after the lockdown and keeps it stopped (design 20, section 4), because on some distributions it starts at once with an SSH ban rule on, before the never-ban list is in place. Labyrinth never adds a repository for it, so a RHEL-family host without EPEL relies on the native watcher alone. This module then adds the never-ban list to fail2ban's `ignoreip` setting through a drop-in file in `jail.d`, so it cannot ban the scoring engine, turns off every jail for a scored service's login in the same drop-in (section 3), and only then starts it. A fail2ban that was already running is handled the same way. The native watcher still handles Labyrinth's own triggers.
 
 **Windows.** Optional and off by default. A scheduled task reads the relevant events and keeps two block rules in the rule group `Labyrinth`, one inbound and one outbound, with the same address list, expiring entries. Windows Firewall block rules take precedence over allow rules, so the ban holds whatever else is allowed. Blocking is often better done at the perimeter (Blueprint §3.5), through the appliance runbook (design 16).
 
@@ -120,7 +122,12 @@ An outbound ban is always one address, never a range or a port on its own. An ad
 - On a Docker host, a container cannot connect out to a banned address.
 - On Windows, a banned address is blocked both inbound and outbound, even when an allow rule covers it.
 - On a host that already runs fail2ban, the never-ban list appears in its `ignoreip`, and a failed-login burst from the lab scoring engine's address is not banned by either watcher.
+- On a host where SSH is scored, a failed-login burst from a lab address that is on no list raises an alert and no ban, from either watcher, and the scoring-style SSH probe still passes.
+- On a host where SSH is not scored, the same burst against admin SSH bans the address.
+- A trap-port hit from that same lab address is banned at once.
 
 ## References
+
+Midwest Collegiate Cyber Defense Competition. (2025). *2025 Midwest Collegiate Cyber Defense Competition qualifier team packet* [PDF]. https://brazil.minnesota.edu/ccdc/ccdc-2025/2025MWCCDCQTeamPack.pdf
 
 National Collegiate Cyber Defense Competition. (2025, December 10). *Rules and requirements*. Retrieved September 29, 2026, from https://www.nationalccdc.org/rules.html
