@@ -114,7 +114,7 @@ flowchart TD
 
 - The **control node** is the one machine the team runs Labyrinth from. It sends every change to the other hosts over the team's admin connection.
 - The **SIEM** (Security Information and Event Management system; Splunk in the reference setup) collects logs from every host, so the evidence survives even if a host is wiped.
-- Nothing in the diagram talks to the internet. The competition rules forbid team tools from using outside resources other than DNS lookups (see [section 5](#5-the-competition-rules-that-shape-everything)).
+- Nothing in the diagram sends data to an outside service. The competition rules forbid team tools from using outside resources other than DNS lookups, and give cloud services as the example (see [section 5](#5-the-competition-rules-that-shape-everything)). The only outside traffic is installing public software from the hosts' own software sources, after the lockdown ([design 20](design/20-Packages-and-Third-Party-Tools.md)).
 
 ---
 
@@ -192,7 +192,7 @@ Each subsection answers four questions: what the part does, why it exists, how i
 
 **First-minute runs.** The team reviews the plan before the event. At the start, one command per host, started on every host at once, gives all the answers up front, so nobody types a confirmation while the Red Team is moving. The revert timer, the checks before and after, and the protected set still apply.
 
-**How it works.** The obvious version, "reset everything, lock everything, block everything, everywhere, at once", is exactly what the rules forbid, because it breaks things the scoring engine checks. So the panic button keeps the speed but adds guard rails:
+**How it works.** The obvious version, "reset everything, lock everything, block everything, everywhere, at once", would break things the scoring engine checks, and the rules forbid breaking what the network is expected to do. So the panic button keeps the speed but adds guard rails:
 
 - **The protected set.** Before anything else, the operator loads a list of accounts that must never be touched: the officials' accounts, the accounts the scoring engine logs in with, the team's own accounts, the emergency accounts and system accounts. If the list is missing or empty, the run stops.
 - **Safety gates.** Six checks must all pass before any change: the protected set is loaded, the scoring engine is allowed through every firewall plan, the operator has confirmed that the emergency login works at the host's own console, backups exist, the operator has reviewed the plan and confirmed the target group's name (typed, or given in the command for a first-minute run), and a revert timer is ready for risky changes.
@@ -388,7 +388,7 @@ Some outside repositories are kept as **reference only** ([design 08](design/08-
 
 **Other guard rails.** A **never-ban list** (the scoring engine, the officials, the team's own machines, the SIEM) is loaded first; a trigger from one of those raises an alert instead. Bans expire. Ban thresholds are settings the team can adjust during the event without changing the frozen code. Labyrinth uses its own small watcher; where the system's own software sources offer fail2ban, it is installed after the lockdown and given the never-ban list before it starts. Failed logins on a scored service never cause a ban, only an alert, because officials checking the service and simulated users can come from any address and may get a password wrong. Traps, the planted key and the fake accounts still ban at once.
 
-**What it will never do.** Strike back at, scan or report the attacker to anyone. A ban only blocks traffic coming into the team's own host.
+**What it will never do.** Strike back at, scan or report the attacker to anyone. A ban only drops traffic on the team's own host: traffic coming in from that address, and traffic going out to it, so a planted program cannot call back to an attacker who is already banned. Banning an address only for outgoing traffic, when a host seems to be calling out to the attacker, waits for a person's approval.
 
 ### 4.13 🟩 Health monitor and checkpoints
 
@@ -463,6 +463,16 @@ Some outside repositories are kept as **reference only** ([design 08](design/08-
 **How it works.** Labyrinth reads the system's own update data, the versions of scored web apps and plugins on disk, and on Windows the updates that are missing. It also scans the team's own machines (never anyone else's) for the software versions they show the network, which catches programs installed by hand. All matching happens on the team's machines; nothing is sent out to be looked up. Flaws are ranked: the domain controller first, then scored services, then anything reachable from the network that is known to be exploited.
 
 **Closing a flaw.** An unscored service with a flaw is simply turned off. A scored service is never turned off. Instead, Labyrinth closes the flaw while the service keeps running: first with a tested setting or firewall rule from its catalog where one exists (for example, removing a dangerous permission from a helper program nothing uses), then with the security update once a person approves it. Each flaw is tracked as open, mitigated, patched or accepted, and every checkpoint shows what is still open.
+
+### 4.20 🟥 Installing the team's tools
+
+**What it does.** Installs the extra tools each kind of host needs, such as auditd, fail2ban and file-integrity and malware scanners, straight after the first-minute lockdown ([design 20](design/20-Packages-and-Third-Party-Tools.md)).
+
+**Why it exists.** Typing install commands host by host under pressure is slow and error-prone, and a tool installed before the lockdown could start doing things before its settings are in place.
+
+**How it works.** Tools come only from public sources every team can reach: the system's own software sources, a mirror or proxy the event provides, or a public download whose exact file is fixed in the release. Before installing, Labyrinth checks that the install would not remove or replace anything already there. New services stay switched off until their own part of Labyrinth sets them up. Every install is recorded. If no source can be reached, the installs are skipped and the lockdown stands.
+
+**What it will never do.** Upgrade the whole system, add a new software source, use a private server, or install a container system.
 
 ---
 
