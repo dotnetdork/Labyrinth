@@ -60,7 +60,7 @@ ufw_host() {
 
 @test "firewall: every function but restore is refused when the backend is not known" {
   local fact fn
-  for fact in none conflict unknown; do
+  for fact in conflict unknown; do
     LAB_FACT_firewall="$fact"
     for fn in snapshot 'allow tcp 22 any' default_deny_in state; do
       run lab_fw $fn
@@ -70,6 +70,22 @@ ufw_host() {
   done
   [ -z "$(calls)" ]
   [ ! -e "$(lab_manifest_file)" ]
+}
+
+@test "firewall: with no active firewall, an installed nft is used, then iptables, else refused" {
+  LAB_FACT_firewall=none
+  run lab_fw snapshot
+  [ "$status" -eq 20 ]
+  [[ "$output" == *"neither nft nor iptables is installed"* ]]
+  [ ! -e "$(lab_manifest_file)" ]
+  stub iptables-save 'echo "*filter"'
+  stub ip6tables-save 'echo "*filter"'
+  stub iptables 'exit 0'
+  lab_fw snapshot
+  [ "$(cat "$(lab_json_get "$(grep firewall_snapshot "$(lab_manifest_file)")" backup)/backend")" = iptables ]
+  stub nft 'exit 0'
+  lab_fw snapshot
+  [ "$(lab_json_get "$(grep firewall_snapshot "$(lab_manifest_file)" | tail -n 1)" target)" = nftables ]
 }
 
 @test "firewall: allow and default deny need a snapshot first" {
