@@ -241,7 +241,8 @@ Describe 'labyrinth.ps1 console output' {
         Write-TestProfile $t @('observe.toggle')
         $r = Invoke-TestApply $t @('labadmin', 'ring1', 'keep')
         $r.Code | Should -Be 0
-        $lines = Get-TestLine $r
+        # A copy with no release list warns first (design 07, section 5.1).
+        $lines = @(Get-TestLine $r | Where-Object { $_ -notlike 'labyrinth: warning: *' })
         $lines[0] | Should -Match '^labyrinth \S+: APPLY observe, profile test$'
         $lines[1] | Should -Match '^run \d{8}T\d{6}Z-[0-9a-f]{4} on host .+, group ring1$'
         $lines[2] | Should -BeExactly 'First Labyrinth plans; nothing changes until you confirm.'
@@ -478,7 +479,8 @@ Describe 'labyrinth.ps1 console output' {
         $id = Get-TestRunId $r.Output
         $k = Invoke-TestRunCommand $t 'rollback' $id
         $k.Code | Should -Be 0
-        $lines = Get-TestLine $k
+        # A copy with no release list warns first (design 07, section 5.1).
+        $lines = @(Get-TestLine $k | Where-Object { $_ -notlike 'labyrinth: warning: *' })
         $lines[0] | Should -Match "^labyrinth \S+: rollback run $id$"
         ($lines -ccontains 'OK       Toggle setting sample (observe.toggle)') | Should -BeTrue
         $lines[-3] | Should -BeExactly 'Summary: 1 module: 1 OK.'

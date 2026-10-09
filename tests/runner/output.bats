@@ -213,6 +213,8 @@ LABELS='Found|Will do|Did|Why|Risk|Problem|Cause|Fix|Undo|Note|Log|Script|It sai
   answers root ring1 keep
   apply
   [ "$status" -eq 0 ]
+  # A copy with no release list warns first (design 07, section 5.1).
+  mapfile -t lines < <(grep -v -e '^labyrinth: warning: ' -e '^$' <<< "$output")
   [[ "${lines[0]}" =~ ^labyrinth\ [^\ ]+:\ APPLY\ observe,\ profile\ test$ ]]
   [[ "${lines[1]}" =~ ^run\ [0-9]{8}T[0-9]{6}Z-[0-9a-f]{4}\ on\ host\ .+,\ group\ ring1$ ]]
   [ "${lines[2]}" = 'First Labyrinth plans; nothing changes until you confirm.' ]
@@ -438,6 +440,8 @@ LABELS='Found|Will do|Did|Why|Risk|Problem|Cause|Fix|Undo|Note|Log|Script|It sai
   id="$(run_id)"
   run bash "$LAB/labyrinth.sh" --root "$ROOT" --config "$ETC" rollback "$id"
   [ "$status" -eq 0 ]
+  # A copy with no release list warns first (design 07, section 5.1).
+  mapfile -t lines < <(grep -v -e '^labyrinth: warning: ' -e '^$' <<< "$output")
   [ "${lines[0]}" = "labyrinth $(sed -n "s/^readonly LAB_VERSION='\(.*\)'$/\1/p" "$LAB/labyrinth.sh"): rollback run $id" ]
   grep -qx 'OK       Toggle setting sample (observe.toggle)' <<< "$output"
   [ "${lines[${#lines[@]}-3]}" = 'Summary: 1 module: 1 OK.' ]
