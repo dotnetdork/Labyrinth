@@ -46,7 +46,8 @@ lab_lock_acquire() {
       continue
     fi
     if (( waited >= wait )); then
-      printf 'another Labyrinth run (pid %s) holds %s\n' "${pid:-unknown}" "$lock" >&2
+      printf 'labyrinth: another Labyrinth run (pid %s) holds %s\n' "${pid:-unknown}" "$lock" >&2
+      printf 'Wait for it to finish. If no Labyrinth run is going, delete %s, then run the same command again.\n' "$lock" >&2
       return 1
     fi
     sleep 1

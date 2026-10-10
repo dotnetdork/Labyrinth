@@ -9,11 +9,15 @@
 # A file that is missing, or holds no entries, gives $null (the caller
 # decides whether that blocks the run, exit 20).
 
-# Get-LabConfigLine PATH: the data lines of a file, as objects with No and Text.
+# Get-LabConfigLine PATH: the data lines of a file, as objects with No and
+# Text. A file that cannot be read throws, so it is never taken for an empty one.
 function Get-LabConfigLine {
     param([Parameter(Mandatory)] [string] $Path)
     $n = 0
-    foreach ($raw in [IO.File]::ReadAllLines($Path)) {
+    $all = $null
+    try { $all = [IO.File]::ReadAllLines($Path) }
+    catch [UnauthorizedAccessException] { throw "${Path}: cannot be read; it needs an elevated Administrator session" }
+    foreach ($raw in $all) {
         $n++
         $line = ($raw -replace '#.*$', '').Trim()
         if ($line -ne '') { [pscustomobject]@{ No = $n; Text = $line } }
@@ -111,7 +115,9 @@ function Read-LabPreApproved {
 }
 
 # Read-LabServiceList: the scored-service list as objects with Name, Proto,
-# Target, Port and Expect; an empty array if the file has no entries.
+# Target, Port and Expect. Missing or empty: $null, because an empty list is
+# one nobody filled in, and a module that touches scored services is blocked
+# without one (docs/Conventions.md section 3.1).
 function Read-LabServiceList {
     $protos = @('http', 'https', 'dns', 'smtp', 'pop3', 'ftp', 'tcp')
     $file = Join-Path $env:LAB_CONFIG_DIR 'services'
@@ -134,6 +140,7 @@ function Read-LabServiceList {
         if (@($list | Where-Object { $_.Name -ceq $svc.Name }).Count -gt 0) { throw "${where}: duplicate service name $($svc.Name)" }
         $list += $svc
     }
+    if ($list.Count -eq 0) { return $null }
     return , $list
 }
 

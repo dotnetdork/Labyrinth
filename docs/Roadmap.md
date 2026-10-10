@@ -1,14 +1,31 @@
 # Labyrinth Roadmap
 
-This is the build order for the rest of Labyrinth. The design specs in `docs/design/` say *what* each part does; this page says *in what order* the parts are built and what each branch must deliver. It holds no dates or event details.
+This is the build order for the rest of Labyrinth, highest priority first. The design specs in `docs/design/` say *what* each part does; this page says *in what order* the parts are built and what each branch must deliver. It holds no dates or event details.
+
+## Priority order
+
+Work goes top to bottom. A stage starts when the one above it is merged, except where a row says otherwise.
+
+| # | Work | Why it comes here |
+|---|---|---|
+| 1 | **Framework hardening** (`phase-3/framework-hardening`, audit issues 31 to 37) | Every module runs inside the core and the runners. A flaw there repeats in every module, so the framework is made sound before any module is built. |
+| 2 | **P0 lockout modules** (stage 4) | They take control back in the first minutes. Everything else assumes the attacker has been locked out. |
+| 3 | **Remote mode** (stage 5) | A first-minute run on every host at once needs it. Built as soon as the lockout works on one host. |
+| 4 | **Observe and checkpoints** (stage 6) | Without logging, the later traps and checks cannot be seen. Checkpoints guard the scored services from here on. |
+| 5 | **Sustain and hardening** (stage 7) | Service packs, patching and the flaw tracker keep scored services up and close known holes. |
+| 6 | **Reporting and cleanup** (stage 8) | Incident reports earn points, and cleanup must work before the tool is used at an event. |
+| 7 | **Deceive and extras** (stage 9) | Traps need the logging from priority 4 to be worth anything. |
+| — | **Appliance runbooks** | Templates only, with no code dependency. Done whenever a person has time. |
 
 ## 1. Where it stands
 
 **Built:**
-- the core library in bash and PowerShell: logging, the run manifest with backup and restore, safety gates, the protected set, break-glass, the run lock, revert timers, and the http, dns and banner probes;
+- the core library in bash and PowerShell: logging, the run manifest with backup and restore, safety gates, the protected set, break-glass, the run lock, revert timers, the release check, and the http, dns and banner probes;
 - both runners, with `plan`, `apply`, `keep`, `rollback`, `runs`, `probe`, `help` and `version`;
 - from stage 3: platform facts, the firewall adapter, the quarantine helper, approval items with `--approve` / `-Approve` and pre-approval rules (`pre-approved`), the six shipped profiles (empty until their modules are built), and new passwords shown once for the offline record;
 - the operator manual, the compatibility suite and CI.
+
+**Being finished (priority 1):** the framework hardening branch. It keeps changes that only take access away once they verify, checks Labyrinth's own files against the release before running them, makes configuration errors and recovery hints say exactly what to do, keeps every prompt within 78 columns, and makes the docs easier to read.
 
 **Not built:**
 - real modules (`phases/*/modules` holds only placeholders);
@@ -28,9 +45,9 @@ This is the build order for the rest of Labyrinth. The design specs in `docs/des
 
 The build stages are numbered on from the stages already done: 0 (foundations), 1 (the core) and 2 (the command line). Branches are named `phase-<stage>/<name>`. A build stage is not a run phase: the run phases are lockout, observe, deceive and sustain, the word in `labyrinth plan <phase>`, and modules of one run phase are built across several stages.
 
-### Stage 3: groundwork that modules need
+### Stage 3: groundwork that modules need (done)
 
-Built on one branch, `phase-3/groundwork`, one commit per part. The parts are listed by the branch name each would have had.
+Built on one branch, `phase-3/groundwork`, one commit per part, and hardened on `phase-3/framework-hardening`. The parts are listed by the branch name each would have had.
 
 | Branch | Spec | Delivers | Done when |
 |---|---|---|---|
@@ -59,7 +76,7 @@ Each module ships its read-only `check` and `plan` first. The branches are liste
 | `phase-4/accounts` | 05 §6 | Locking accounts from a list; deletion only after approval and a passing checkpoint |
 | `phase-4/win-base` | 11 §3, §3.3 | Windows protocol and credential settings, including SMBv1 and Print Spooler |
 | `phase-4/ad-readonly` | 11 §3.1, §3.2 | Domain read-only checks and the printed domain checklist |
-| `phase-4/first-minute` | 01 §6, §6.3 | The first-minute bundle in its order (lock down, install, sweep, reopen outbound), first-minute runs with every answer on the command line, ring order and canary hosts |
+| `phase-4/first-minute` | 01 §6, §6.3 | The first-minute bundle in its order (lock down, install, sweep, reopen outbound), first-minute runs with every answer on the command line, ring order and test hosts |
 
 ### Stage 5: remote mode
 
@@ -97,7 +114,7 @@ Built right after the P0 lockout works locally, so the lockout reaches every hos
 | Branch | Spec | Delivers |
 |---|---|---|
 | `phase-8/report` | 02 | The incident report builder, fed by quarantine evidence, integrity findings and the tracker's closed flaws |
-| `phase-8/cleanup-integrity` | 07 | Cleanup, and checking the release before a run |
+| `phase-8/cleanup-integrity` | 07 | Cleanup, and the signature check on the control node. Each host's own release check (07 §5.1) is part of the framework hardening |
 
 ### Stage 9: deceive and extras (P2)
 
@@ -141,17 +158,11 @@ Built right after the P0 lockout works locally, so the lockout reaches every hos
 
 ## 5. Open: questions for competition officials
 
-**Run-time configuration.** Design 00, section 6 assumes that run-time configuration is not part of the frozen submission (NCCDC, 2025, Rule 5.6.2). Labyrinth is designed so that the answer cannot change what the tool does: configuration holds only facts about the event, and a profile override can only choose among modules the release already ships. The question still needs an official answer before the event. Suggested wording:
+Short questions, each answerable in a line. The team sends them with the tool's declaration and records each answer in the design review log.
 
-> Our team tool is frozen and submitted before the event. At run time it reads a configuration folder that we fill in at the event with values from the team packet: scoring engine addresses, host names, account names, and the list of hosts. These files hold no code and cannot add features; they only tell the frozen tool where things are. Is filling in these values after the freeze allowed under Rule 5.6.2?
-
-When the answer arrives, record it in the design review log and remove the *Provisional* label from design 00, section 6 and the matching sentence from Conventions, section 2.2.
-
-**Installing public software.** Name the install feature in the tool's declaration (design 20, section 2), and ask:
-
-> After securing a host, our tool installs a fixed list of public, open-source packages (for example auditd and fail2ban) using the host's own package manager and its configured repositories, or the event's mirror or proxy. It never uses a private server, never sends host data anywhere, and processes nothing outside the competition environment. Is this allowed under Rules 5.1, 5.2 and 5.6.4?
-
-**A daily vulnerability database.** Trivy's database changes daily and cannot be pinned by hash (design 21, section 6). Ask whether downloading that public data file at the event is allowed, given that all matching runs on the team's own hosts. Until the answer arrives, Trivy stays out of the shipped profiles.
+1. **Configuration after the freeze.** The frozen tool reads a folder of event facts that we fill in at the event: scoring engine addresses, host names, account names and the list of hosts. The files hold no code and cannot add features. Is filling them in after the freeze allowed (NCCDC, 2025, Rule 5.6.2)? Design 00, section 6 and Conventions, section 2.2 are labeled *Provisional* until the answer arrives.
+2. **Public packages.** After locking a host down, the tool installs a fixed list of free, public packages, such as auditd, from the host's own repositories or the event's mirror or proxy. Please confirm this is allowed (Rules 5.1, 5.2 and 5.6.4). The install feature is named in the declaration (design 20, section 2).
+3. **A public vulnerability database.** Trivy's database is a public file that changes daily, so it cannot be pinned by hash. All matching runs on the team's own hosts. May it be downloaded at the event? Until the answer arrives, Trivy stays out of the shipped profiles (design 21, section 6).
 
 ## References
 

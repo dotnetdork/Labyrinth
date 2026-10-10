@@ -26,7 +26,7 @@ The original idea ran against every reachable host in one pass, resetting creden
 
 1. **Protect first.** Load the protected set before doing anything else. If it is missing or empty, stop.
 2. **Plan before apply.** Plan mode is the default. Apply needs a confirmation naming the target group, typed, or given on the command line in a first-minute run (section 6.3).
-3. **Small blast radius.** Apply in rings, one canary host first, except in a first-minute run, where speed matters more and each host's revert timer is the safety net (section 6.3).
+3. **Small blast radius.** Apply in rings, one test host first, except in a first-minute run, where speed matters more and each host's revert timer is the safety net (section 6.3).
 4. **Reversible.** Every change is backed up and recorded in the run manifest.
 5. **Verify like the scoring engine.** After each module, run probes and compare with the probes taken before.
 6. **Fail toward access.** On any doubt, abort and leave the host as it was.
@@ -90,9 +90,9 @@ flowchart LR
 
 Steps 4 to 7 run ring by ring in a normal run, and on every host at once in a first-minute run (section 6.3). Each host's steps 4 to 7 run under its own revert timer, re-armed before each module.
 
-**Rings.** Ring 0 holds one low-impact host per platform, for example one Linux host and one Windows workstation, because a change that works on one platform proves little about another. Ring 1 is the next group. Later rings follow, never more than a set share of hosts at once. A failed verify stops the run. The bundle takes seconds on the canary, so the rings delay the rest of the network very little.
+**Rings.** Ring 0 holds one low-impact host per platform, for example one Linux host and one Windows workstation, because a change that works on one platform proves little about another. Ring 1 is the next group. Later rings follow, never more than a set share of hosts at once. In the hosts file and on the command line a ring is called a *group* (docs/Conventions.md, section 2). A failed verify stops the run. The bundle takes seconds on the test host, so the rings delay the rest of the network very little.
 
-**Hosts with no canary.** A host that is the only one of its kind, such as the domain controller or the only mail server, has no canary that tested the change on the same software first. It goes in the last ring, and its Tier 2 changes rely on the revert timer and the before-and-after probes alone.
+**Hosts with no test host.** A host that is the only one of its kind, such as the domain controller or the only mail server, has no test host that tried the change on the same software first. It goes in the last ring, and its Tier 2 changes rely on the revert timer and the before-and-after probes alone.
 
 ### 6.1 The first-minute bundle
 
@@ -104,7 +104,7 @@ Red Teams report planting persistence within the first 30 seconds of an event (*
 4. **Default-deny inbound** (Tier 2), allowing the scoring engine, the scored ports, any official sources named in the event packet, ICMP and the admin path. A scored port stays open to every source, never only to the scoring engine's address, because officials' manual scoring checks and simulated users come from other addresses (MWCCDC, 2025, Competition Rules 6 and 14).
 5. **Default-deny outbound** (Tier 2), allowing replies on established connections, loopback, ICMP, the DNS resolvers and NTP servers in the run-time configuration, the SIEM, the admin path, the package mirror or proxy (design 20), and every address a scored service connects out to, from `services` and the run-time `outbound-allow` list. On a Windows domain member, the domain controllers are allowed too.
 
-**Why this order.** Sessions are ended after passwords and keys change, so the attacker cannot simply log back in. The firewall closes before the persistence sweep, not after it: anything planted before the bundle is still on disk, but nobody can reach it from outside and its callbacks fail, so the sweep in step 6 can take the time it needs. A planted job that reopens a port or drops the rules is caught by the drift check (design 13, section 4.1) and by the sweep. One revert timer covers the whole bundle on each host.
+**Why this order.** Sessions are ended after passwords and keys change, so the attacker cannot simply log back in. The firewall closes before the persistence sweep, not after it: anything planted before the bundle is still on disk, but nobody can reach it from outside and its callbacks fail, so the sweep in step 6 can take the time it needs. A planted job that reopens a port or drops the rules is caught by the drift check (design 13, section 4.1) and by the sweep. One revert timer covers the whole bundle on each host. The steps that only take access away (the new passwords, the removed keys, the ended sessions) are kept as soon as each verifies with no scored service worse, so the timer undoes only the firewall and SSH settings, the steps that can lock the team out (design 00, section 4, rule 9).
 
 **Why outbound.** Scoring checks connect in, and their replies leave on connections the scoring engine opened, so an outbound default deny does not stop them. It does stop beacons, reverse shells and downloads of second-stage tools. This is targeted blocking from an explicit allowlist, not the indiscriminate ending of all outbound connections that the rules give as an example of breakage (NCCDC, 2025, Rule 5.6.5).
 
@@ -179,7 +179,7 @@ The break-glass answer is still the operator's word for each host (section 7). I
 ## 8. Preventing self-lockout
 
 - **Two-session rule.** Keep one session open while testing from a fresh one.
-- **Dead-man revert.** Before any change that is not `read-only`, such as a firewall or SSH change, arm a timer that rolls the whole run back unless the operator keeps it after verify. It runs `labyrinth rollback <run>` (`docs/Conventions.md`, section 3.1).
+- **Dead-man revert.** Before any change that is not `read-only`, such as a firewall or SSH change, arm a timer that rolls the run back unless the operator keeps it after verify. It runs `labyrinth rollback <run>` (`docs/Conventions.md`, section 3.1). A module that only takes access away from an intruder is kept once it verifies with no scored service worse, so the timer never hands an intruder their access back (design 00, section 4, rule 9). When the timer rolls a run back, every logged-in terminal or session on the host gets a notice.
   - Linux: a transient systemd timer, `lab-revert-<run>-<n>` (`systemd-run --on-active=<minutes>m --unit=lab-revert-<run>-<n> ...`), cancelled with `systemctl stop lab-revert-<run>-<n>.timer`.
   - Windows: a one-time scheduled task, `\Labyrinth\lab-revert-<run>-<n>`, running as SYSTEM, unregistered when the run is kept.
   - `labyrinth runs` shows which runs still have a timer armed, and when each one fires.

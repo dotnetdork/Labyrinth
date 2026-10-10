@@ -8,7 +8,8 @@
 #   - the revert timer is recorded in $LAB_ROOT/timer.log instead of armed;
 #   - a probe fails if its host is listed as "<host> fail" in
 #     $LAB_ROOT/probe-state, and passes otherwise.
-#   - the terminal is two files, $LAB_ROOT/tty.out and tty.in (below).
+#   - the terminal is two files, $LAB_ROOT/tty.out and tty.in (below);
+#   - a notice to every terminal is appended to $LAB_ROOT/notice.log.
 
 lab_is_admin() { [[ ! -e "$LAB_ROOT/NOT_ADMIN" ]]; }
 
@@ -41,6 +42,8 @@ lab_timer_cancel() {
   rm -f -- "$LAB_STATE_DIR/runs/$1/timer" "$LAB_STATE_DIR/runs/$1/timer-due"
   printf 'cancel %s\n' "$1" >> "$LAB_ROOT/timer.log"
 }
+
+lab_notify_all() { printf '%s\n' "$1" >> "$LAB_ROOT/notice.log"; }
 
 lab_probe_service() {
   if grep -qx "$2 fail" "$LAB_ROOT/probe-state" 2> /dev/null; then

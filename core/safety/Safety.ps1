@@ -50,7 +50,8 @@ function Enter-LabLock {
                 continue
             }
             if ($waited -ge $WaitSeconds) {
-                [Console]::Error.WriteLine("another Labyrinth run (pid $holder) holds $lock")
+                [Console]::Error.WriteLine("labyrinth: another Labyrinth run (pid $holder) holds $lock")
+                [Console]::Error.WriteLine("Wait for it to finish. If no Labyrinth run is going, delete $lock, then run the same command again.")
                 return $false
             }
             Start-Sleep -Seconds 1

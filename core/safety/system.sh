@@ -157,3 +157,12 @@ lab_timer_live() {
   systemctl is-active --quiet "$unit.service" 2> /dev/null && return 0
   return 1
 }
+
+# lab_notify_all MESSAGE: write MESSAGE to every terminal logged in on this
+# host, so the team learns that a run was rolled back even when no one is
+# watching the revert timer. Best effort: returns 1 when wall is missing or
+# fails, and the caller goes on.
+lab_notify_all() {
+  command -v wall > /dev/null 2>&1 || return 1
+  printf '%s\n' "$1" | wall > /dev/null 2>&1
+}

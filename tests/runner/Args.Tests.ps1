@@ -23,7 +23,7 @@ Describe 'labyrinth.ps1 command line' {
             if ($line -eq '' -or $line.StartsWith('#')) { continue }
             $code, $stream, $text, $words = $line -split '\|', 4
             $words = $words.Replace('@ROOT@', $t.Root).Replace('@ETC@', $t.Etc)
-            $text = $text.Replace('@SELF@', 'labyrinth.ps1')
+            $text = $text.Replace('@SELF@', $t.Self)
             $argv = @($words -split ' ' | Where-Object { $_ -ne '' })
             $r = Invoke-TestLabCapture $t $argv
             $got = $r.Out
@@ -71,7 +71,7 @@ Describe 'labyrinth.ps1 command line' {
         New-Item -ItemType File -Path (Join-Path $t.Lab 'NOT_ADMIN') | Out-Null
         $r = Invoke-TestLabCapture $t @('rollback', '-Root', $t.Root, '-Config', $t.Etc)
         $r.Code | Should -Be 40
-        $r.Err | Should -Match ([regex]::Escape("As Administrator, 'labyrinth.ps1 runs' lists them."))
+        $r.Err | Should -Match ([regex]::Escape("As Administrator, '$($t.Self) runs' lists them."))
     }
 
     It '/? is pointed to help' {

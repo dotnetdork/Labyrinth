@@ -1,6 +1,6 @@
 # Labyrinth Coding Conventions
 
-**Status:** Draft · reviewed 2026-10-05
+**Status:** Draft · reviewed 2026-10-09
 
 These conventions turn the design specs into code that every module writes the same way. The specs say *what* a part must do; this page says *how* the code is shaped. If the two disagree, the spec wins and this page is corrected.
 
@@ -49,7 +49,7 @@ Configuration is **data, never code**. It is never `source`d in bash or dot-sour
 | `never-ban` | one address or CIDR per line | Addresses that bans must never touch (design 12) |
 | `outbound-allow` | `address proto port` per line; proto `tcp` or `udp`, port a number or `any` | Outbound destinations the first-minute default deny keeps open, beyond the scored services (design 01, section 6.1) |
 | `services` | `name proto host port expect` per line; no value begins with `-` except an `expect` of `-` alone, meaning no expected text | Scored services and what their probe expects |
-| `hosts` | `host group profile platform` per line | Which hosts exist, their ring group, profile and platform |
+| `hosts` | `host group profile platform` per line | Which hosts exist, and each one's group (its ring, design 01), profile and platform |
 | `profiles/<name>.profile` | one module id per line | Optional override of a shipped profile |
 | `pre-approved` | `module-id category item` per line; `item` is an item id, or `*` for every item of the category | Approval items the team approved before the event (section 3.1). Optional: when it is missing, nothing is approved in advance |
 
@@ -97,18 +97,22 @@ Both runners share one vocabulary. In this section `labyrinth` stands for the in
 labyrinth <command> [<phase> | <run>] [options]
 ```
 
+#### Commands
+
 | Command | Does |
 |---|---|
 | `plan <phase>` | Every module of the phase reports what it would change. Nothing is written, not even logs |
 | `apply <phase>` | Plan, then apply behind the gates below |
-| `keep [<run>]` | Keep a run's changes: cancel its revert timer, then record the keep. Without `<run>`, it takes the one run whose timer is armed; if several are armed, it lists them and keeps nothing (`40`) |
-| `rollback <run>` | Undo what a run applied, newest module first. The revert timer runs exactly this. `<run>` is always needed: without it, the runs are listed (`40`) |
+| `keep [<run>]` | Keep a run's changes: cancel its revert timer, then record the keep. Without `<run>`, it takes the one run whose timer is armed; with none armed there is nothing to keep (`0`); if several are armed, it lists them and keeps nothing (`40`) |
+| `rollback <run>` | Undo what a run applied, newest module first, except the modules kept once they verified (`keep_on_verify`, below); `--all` undoes those too. The revert timer runs exactly `rollback <run>`. `<run>` is always needed: without it, the runs are listed (`40`). When it undid anything, it writes a notice to every terminal or session logged in on the host (`wall` on Linux, `msg` on Windows; best effort), so the team learns of a rollback no one was watching |
 | `runs` | List this host's runs, oldest first: ID, phase, start time (UTC) and state, which is `armed` (with the time it rolls back; on Linux, `armed: timer lost (restart?)` when systemd no longer has the transient timer, while a Windows scheduled task survives a restart and runs when it can), `kept`, `rolled back`, `rolled back with errors`, or `not kept, no timer`. Changes nothing; needs root or Administrator (`20`) |
 | `probe` | Probe every scored service once; exit `30` if one fails. Changes nothing |
 | `help [<topic>]` | Help for every command, or for one; also `-h` and `--help` (`-Help`). The topic `basics` explains the ideas in plain words, and a module ID prints that module's help page (design 00, section 4) |
-| `version` | Print the version; also `-V` and `--version` (`-Version`) |
+| `version` | Print the version, the runner, and the release hash (`Release: <sha256>`, or `not checked`); also `-V` and `--version` (`-Version`) |
 
 `<phase>` is `lockout`, `observe`, `deceive` or `sustain`. `<run>` is a run ID (`20261002T140301Z-4f2a`) or its last four characters (`4f2a`). A run that does not exist, or four characters that match more than one run, is an error (`40`) that points to `runs`. Commands, phases, option names and run IDs ignore case; other values do not.
+
+#### Options
 
 **Options** may come before or after the command and its word. A value is given as `--name value`, `--name=value`, `-Name value` or `-Name:value`, and `--` ends the options. Each option has one name in both runners: bash help writes it `--break-glass`, PowerShell help writes it `-BreakGlass`, and both runners accept both spellings, because long names ignore case and dashes. The short flags `-h`, `-?` and `-V` are matched exactly, so `-v` is an error. PowerShell takes an unquoted `-?` for itself before the script runs, so the Windows help and manual offer `-h` instead.
 
@@ -120,18 +124,23 @@ labyrinth <command> [<phase> | <run>] [options]
 | `--break-glass` | `-BreakGlass` | NAME: answers the break-glass prompt without typing | `apply` |
 | `--confirm-group` | `-ConfirmGroup` | GROUP: answers the confirmation prompt without typing | `apply` |
 | `--approve` | `-Approve` | LIST: approves items without the approval prompt (Approval items, below) | `apply` |
+| `--all` | `-All` | none: also undo the modules kept once they verified | `rollback` |
 | `-h`, `-?`, `--help` | `-h`, `-Help` | none | all |
 | `-V`, `--version` | `-V`, `-Version` | none | all |
 
 PowerShell avoids the name `-Confirm`, which it reserves.
 
-**Usage errors** exit `40`. They print one line, `labyrinth: <what is wrong>`, an optional line saying how to fix it, then `Try 'labyrinth help[ <command>]' for more information.`, all to standard error. The line names the word at fault and, for a near miss, suggests the right one (`did you mean 'observe'?`; `/?` gets `did you mean 'help'?`). The `Try` line names the command the line gives, even when the error is in an option, so `keep 4f2a --bogus` points to `help keep`. A line with no command prints `labyrinth: no command given`, three numbered steps to start with (`help basics`, `plan lockout`, `help`), then the short usage. These are errors too:
+#### Usage errors
+
+**Usage errors** exit `40`. They print one line, `labyrinth: <what is wrong>`, an optional line saying how to fix it, then `Try 'labyrinth help[ <command>]' for more information.`, all to standard error. The line names the word at fault and, for a near miss, suggests the right one (`did you mean 'observe'?`; `/?` gets `did you mean 'help'?`). A near miss is the only word it begins, or else the nearest within 2 edits, or 1 edit for a word of 3 letters or fewer, so `--foo` gets no suggestion. Everyday words get the command they mean: `undo` and `revert` get `rollback`, `status` and `list` get `runs`, `check` and `test` get `probe`, and `dry-run` gets `plan`, as a command or as an option. `--yes` and `--force` get `--confirm-group`. The `Try` line names the command the line gives, even when the error is in an option, so `keep 4f2a --bogus` points to `help keep`. A line with no command prints `labyrinth: no command given`, three numbered steps to start with (`help basics`, `plan lockout`, `help`), then the short usage. These are errors too:
 
 - an option given twice;
 - an option whose value is missing, or looks like another option (`--profile needs a value, but got '--root'`);
-- a command that conflicts with its options, such as `apply probe` or `--apply` with `keep`.
+- a command that conflicts with its options, such as `apply probe`, `--apply` with `keep`, or `--all` with anything but `rollback`.
 
 The whole line must parse before help or the version is shown. A value option that the command does not use, such as `--profile` with `probe`, gives a warning, not an error. The warning is printed once the command has passed its own checks, so it never comes before an error.
+
+#### Compatibility forms
 
 **Compatibility forms** stay accepted for good. Operators have learned them, and an armed revert timer runs its stored command line even after the runner that armed it has been replaced. They are:
 
@@ -142,17 +151,25 @@ The whole line must parse before help or the version is shown. A value option th
 
 `tests/runner/compat.bats` and `tests/runner/Compat.Tests.ps1` hold every such form (section 9).
 
+#### Host checks
+
 **Host checks** run for `plan`, `apply` and `probe` only:
 
-- A `--config` folder that does not exist is an error (`40`).
+- A `--config` folder that does not exist is an error (`40`), and so is a missing `<root>/etc` when `--config` is not given.
+- Every file in the configuration folder must be readable. One that is not is refused with "needs root (or an elevated Administrator session) to read <file>" (`20`), because a file that cannot be read would otherwise look missing or empty and could quietly weaken a gate.
+- A `services` file that is malformed is an error (`40`) in `plan` as in `apply`, before anything is asked. A `services` file with no service in it counts as missing.
 - This host's line in `hosts` must name a platform the runner serves: `ubuntu` (the whole Debian family) or `rhel-family` (Fedora, RHEL, Rocky, Oracle Linux, AlmaLinux) for `labyrinth.sh`, `windows` for `labyrinth.ps1`. Otherwise the run is blocked (`20`).
 - An `appliance` is never changed (design 16).
 
 `keep`, `rollback` and `runs` skip these checks, so a stored revert-timer command still works after the configuration changes.
 
-**Profile.** `--profile` names it; otherwise it is this host's line in the `hosts` file. On apply the host must be listed (else `20`), a given `--profile` must match its line (else `40`), and a host in the `manual` group is refused (`20`).
+#### Profile and module order
+
+**Profile.** `--profile` names it; otherwise it is this host's line in the `hosts` file. On apply the host must be listed (else `20`), a given `--profile` must match its line (else `40`), and a host in the `manual` group is refused (`20`). So the `Next:` line of a plan suggests `apply` only when that apply would get past these checks; otherwise it says what to change in `hosts` first.
 
 **Modules run by priority** (`P0` first), and in profile order within a priority. A `reversible`, `service-affecting` or `approval` module must have `check`, `apply`, `verify` and `rollback`, or it is invalid (`40`).
+
+#### The order of an apply
 
 **Apply order.** A failed step stops the run before anything changes, unless the step says otherwise:
 
@@ -160,8 +177,8 @@ The whole line must parse before help or the version is shown. A value option th
 2. The run lock, `<state>/lock`, holding the process id. A live holder blocks the run (`20`); a lock whose process is gone is taken over. The check is only that a process with that id exists, so if the id is reused after a crash, the lock stays held; when no Labyrinth run is going, delete `<state>/lock` by hand.
 3. Every module is planned, after the `pre-approved` file is read (a malformed one is `40`). Any `40` means nothing is applied. If nothing needs applying, the run ends with no prompts.
 4. **Break-glass** (design 01, section 7): the operator logs in at the console with a `breakglass`-class account and types its name. It is asked once per host and kept in `<state>/breakglass` as `<timestamp><TAB><account>`.
-5. **Confirmation:** the operator types the host's group name.
-6. From here, changes are made and recorded: the run's manifest starts (`run_start`, `breakglass_verified`), and the scored services are probed if a `services` file exists (otherwise a warning).
+5. **Confirmation:** the recap lists what will change and the release hash (`Release:`), and the operator types the host's group name.
+6. From here, changes are made and recorded: the run's manifest starts (`run_start`, `breakglass_verified`), and the scored services are probed if the `services` file lists any (otherwise a warning). A run folder or manifest that cannot be written is an error (`40`).
 7. Each module that needs a change, in order:
    - `manual-only`: never applied; its plan is the checklist.
    - `touches_scored: true`: blocked (`20`) without a non-empty `scoring-allowlist` and a `services` file; the run continues.
@@ -173,15 +190,22 @@ The whole line must parse before help or the version is shown. A value option th
    - `verify`: a failure rolls the module back and stops the run (`30`, or `40` for an exit code other than `30`).
    - Probes again: a scored service that passed before and fails now rolls the module back and stops the run (`30`). An `unknown` result is never a regression.
    - `cleanup`, if present.
-8. The lock is released. The operator checks that a new login still works, then types `keep`. Anything else leaves the timer armed, and when it fires it runs `rollback <run>`. Until then, `keep <run>` keeps the run, or `keep` alone when only one timer is armed. Keeping after a rollback is refused as too late (`20`).
+   - `keep_on_verify: true` (design 00, section 4, rule 9): when a `services` file was probed, the module is kept, `module_kept` is recorded and a `Did:` line says so; the revert timer and `rollback <run>` then leave it alone. With no `services` file, or if the manifest cannot be written, it is not kept early, a `Note:` line says why, and the timer still covers it.
+8. The lock is released. If every module the run changed was kept once verified, the run is kept at once, as `keep` would, and no prompt is asked. Otherwise the operator checks that a new login still works, then types `keep`. Anything else leaves the timer armed, and when it fires it runs `rollback <run>`. Until then, `keep <run>` keeps the run, or `keep` alone when only one timer is armed. Keeping after a rollback is refused as too late (`20`).
+
+#### The revert timer
 
 **The revert timer** is a transient systemd timer `lab-revert-<run>-<n>` on Linux and a one-time scheduled task `\Labyrinth\lab-revert-<run>-<n>` running as SYSTEM on Windows. Re-arming creates the new timer first and only then removes the earlier one, so a failed re-arm leaves the run covered. A transient systemd timer does not survive a restart; `runs` then shows the run as `armed: timer lost (restart?)`. A scheduled task does survive one, and runs as soon as it can if its time passed while the host was off. `rollback` waits ten seconds for the run lock. If a live run still holds it, hung or waiting at a prompt, `rollback` stops that run and the entry points it started (TERM, then KILL after 30 seconds) and then rolls back, so the timer never undoes a run that is still changing the host and about to report success. Only if that run cannot be stopped does `rollback` go on without the lock, with a warning.
-
-**Who can change the code.** `apply`, `keep` and `rollback` first check that only root (Linux) or administrators (Windows) can change the program folder, the configuration folder, the data root, anything in them and every folder above them (`lab_tree_trusted`, `Find-LabUntrustedItem`; design 07, section 5). If another account could, the command refuses with `20` and changes nothing, because the revert timer would later run that code as root or SYSTEM. The check only reads. On Linux the timer's command line uses real paths, with links resolved.
 
 The time a timer will fire is kept in `<state>/runs/<run>/timer-due` (UTC, `YYYY-MM-DDTHH:MM:SSZ`), for `runs` and the keep prompt. The file is advisory: if it is missing, the time is shown as unknown.
 
 Cancelling a timer checks that it is really gone. If it is still armed, `keep` records nothing, says so, and exits `40`.
+
+#### Trusted code
+
+**Who can change the code.** `apply`, `keep` and `rollback` first check that only root (Linux) or administrators (Windows) can change the program folder, the configuration folder, the data root, anything in them and every folder above them (`lab_tree_trusted`, `Find-LabUntrustedItem`; design 07, section 5). If another account could, the command refuses with `20` and changes nothing, because the revert timer would later run that code as root or SYSTEM. The check only reads. On Linux the timer's command line uses real paths, with links resolved.
+
+**What the code is.** Before it loads the rest of the core, each runner checks every file of its folder against `release.sha256` (`lab_release_check`, `Test-LabRelease`; design 07, section 5.1), for every command. A file that is changed, missing or not in the list refuses the command with `20`, the revert timer's `rollback` included, which also sends a notice. With no list, `apply`, `keep` and `rollback` warn, and the release hash reads `not checked`.
 
 #### Approval items
 
@@ -195,6 +219,10 @@ Decided in the 2026-10-05 review.
 - **Changed since the plan.** An `--approve` entry whose fingerprint differs from this run's plan is left out, recorded as `approval_refused` and shown as a `Found:` line. `apply` then recomputes each approved item's fingerprint before changing it, with `lab_approved ID FINGERPRINT` / `Test-LabApproved`: `0` approved and unchanged, `1` not approved, `2` changed since the plan, which records `approval_refused` and leaves the item alone. None of these makes the run fail.
 - **Recorded.** The module's `apply_start` entry notes the approved items, then `pre-approved` and those a rule approved.
 - **Never stored.** Approvals are not written into a revert timer's command line, and `rollback` never needs them.
+
+#### Kept once verified
+
+**Why some changes are kept once verified.** The revert timer is there for a change that locks the team out or cuts off scoring. A change that only takes access away from an intruder, such as a rotated admin password or a removed planted key, cannot do either; undoing it would give the intruder their access back and leave the team's offline record wrong. Such a module sets `keep_on_verify: true`, and is kept as soon as it verifies with no scored service worse than before. A person who must undo it anyway runs `rollback <run> --all`. After a rollback that undid a password rotation, the old password is back: rotate it again and correct the offline record.
 
 ### 3.2 Console output
 
@@ -234,10 +262,12 @@ What the runners print is part of the contract: operators read it under time pre
   - `Next:`, the one command to run next, when there is one. A command too long for the line goes on the next line, indented 2 spaces, so it can be copied whole;
   - `<mode> finished: exit N (<meaning>)`.
 - **probe** follows the same contract: a one-line header, then one line per service, `OK` (pass), `FAIL` or `WARN` (could not be checked) with the service name in brackets, then `Summary:`, `Next:` when a service failed, and `probe finished: exit 0 (no service failed)` or `exit 30`.
-- **rollback** says how many modules it undoes, gives each a `CHANGE` line and then `OK` or `ERROR`, and ends with `Summary:`, `Log:` and `rollback finished: exit 0 (rolled back)`, or `exit 40 (error)` with a `Next:` line when a module could not be undone.
-- **Recaps.** Before the group-name prompt: the host, the group, one line per module (`Will change:`, `Blocked:` or `Manual:`), that a revert timer will be armed, and, when a change may interrupt a service and the operator is connected remotely, to keep a second session open. Before the keep prompt: when the revert timer rolls the run back, in UTC and in minutes from now.
-- **Messages** say what failed, why, and how to recover, in one sentence each. An error that stops the runner (exit `20` or `40`) is one line on stderr, `labyrinth: <what failed>: <why>`, and, unless the fix is already in that line, a second line saying how to recover. A failure that leaves changes in place always says how to keep them and how to undo them.
-- **Text.** Fixed text is at most 78 columns, plain ASCII, with no colour. A line may be longer only by the length of a path it names, and the path comes last.
+- **rollback** first lists the modules it leaves in place because they were kept once verified (`Kept once verified, so left in place (add --all to undo these too):`, one module per line), says how many modules it undoes, gives each a `CHANGE` line and then `OK` or `ERROR`, and ends with `Summary:`, `Log:` and `rollback finished: exit 0 (rolled back)`, or `exit 40 (error)` with a `Next:` line when a module could not be undone.
+- **Recaps.** Before the group-name prompt: the host, the group, one line per module (`Will change:`, `Blocked:` or `Manual:`), that a revert timer will be armed, that changes which only take access away are kept once they verify (when the run has any), and, when a change may interrupt a service and the operator is connected remotely, to keep a second session open. Before the keep prompt: when the revert timer rolls the run back, in UTC and in minutes from now.
+- **Messages** say what failed, why, and how to recover, in one sentence each. An error that stops the runner (exit `20` or `40`) is one line on stderr, `labyrinth: <what failed>: <why>`, and, unless the fix is already in that line, a second line saying how to recover. A failure that leaves changes in place always says how to undo them and how to keep them, in that order, and that if in doubt, undo them. A warning is one line on stderr, `labyrinth: warning: <what>`. Core helpers that refuse, such as a held run lock, follow the same form. An apply whose plan has errors still ends with `Summary:` and `apply finished:`.
+- **Text.** Fixed text is at most 78 columns, plain ASCII, with no colour. That includes prompts: what a prompt asks for goes on the lines above it, and the prompt itself is short (`Break-glass account name: `, `Items to approve (Enter for none): `). A line may be longer only by the length of a path it names, and the path comes last, or by the length of the command in a hint.
+- **Hints** name the command the way the operator started it, so it can be copied and run. On Linux that is the path as typed (`./labyrinth.sh`, `/opt/labyrinth/labyrinth.sh`), with `./` added to a bare name that is not on the `PATH`, quoted if it needs it, and `sudo` in front when `SUDO_USER` is set. On Windows it is `.\labyrinth.ps1` when the current folder is Labyrinth's, and its full path otherwise, after `&` and in quotes when the path needs them. Help, usage errors, `Next:` lines and recovery steps all use it.
+- **Help.** Each help topic is at most 18 lines (`basics` 24), with one `Exit:` line and one `Example:` line. Option lists are headed `Options:`. A topic says when its command must run as root or an Administrator, and `apply`, `keep` and `rollback` follow their `Exit:` line with a `Blocked:` line naming the causes of `20`. The general page says where the options are (`help <command>`, or `-h` after a command) and where the manual is: the platform's parts of `docs/manual/labyrinth.md` in Labyrinth's folder. `version` names the runner as well as the version.
 
 For module authors: when an entry point exits `20`, `30` or `40`, its last line of output is a `problem:` line. An entry point never leaves a background process holding standard output, because the runner waits for it to close.
 
@@ -254,7 +284,7 @@ Every apply, keep and rollback writes `<state>/runs/<run>/output.log`, readable 
 ## 4. Bash style
 
 - Start every script with `#!/usr/bin/env bash` and `set -Eeuo pipefail`. Handle expected non-zero results explicitly (`if cmd; then`), never by turning `-e` off for a whole script.
-- The runner installs an `ERR` trap that reports an unexpected failure as an internal error (`40`), with what is known about the run: whether anything changed, and how to keep or undo it. The trap does not fire inside a function called from `if` or `||`, so failures there are checked by hand.
+- The runner installs an `ERR` trap that reports an unexpected failure as an internal error (`40`), with what is known about the run: whether anything changed, and how to undo or keep it. The trap does not fire inside a function called from `if` or `||`, so failures there are checked by hand.
 - Never write a bare `(( expr ))` statement that can evaluate to 0: under `set -e` it ends the script. Use `x=$(( expr ))`, or `(( expr ))` inside an `if`.
 - Quote every expansion. Use `local` in functions. Use `[[ ]]` for tests and `$(...)` for substitution.
 - Core functions are prefixed `lab_` (for example `lab_log_info`, `lab_manifest_record`). Module-internal functions use a short module prefix.
@@ -298,7 +328,7 @@ The manifest is `<state>/runs/<run>/manifest.jsonl`, one JSON object per line, e
 | Action | Meaning |
 |---|---|
 | `run_start`, `breakglass_verified`, `run_kept`, `run_rolled_back` | The run itself (empty `module`). `breakglass_verified` records the operator's confirmation, not a proof; its `note` is the console session found for the account (`console session <id>`), `no console session found`, `console sessions could not be listed`, or `confirmed earlier`. The name stays as it is so older manifests read the same |
-| `apply_start` | A module's `apply` is about to run; `rollback <run>` undoes every module with one |
+| `apply_start` | A module's `apply` is about to run; `rollback <run>` undoes every module with one, except one kept once verified (`module_kept`) |
 | `file` | A file is about to change; `backup` holds its copy, `<backup>/<run>/<module>/<seq>-<name>` |
 | `file_created` | A file that did not exist is about to be created |
 | `firewall_snapshot` | The firewall adapter saved the ruleset; `target` is the backend and `backup` the snapshot folder. Rollback restores it (design 19, section 5) |
@@ -307,6 +337,7 @@ The manifest is `<state>/runs/<run>/manifest.jsonl`, one JSON object per line, e
 | `package_install` | The `packages` module installed a package; `target` is the package and `note` its version. Rollback stops and disables any service it brought and leaves the package installed (design 20, section 4) |
 | `finding_state` | A known flaw changed state in the vulnerability tracker; `target` is the flaw and host, `note` the new state and how. Nothing to undo; the change that closed it has its own entry (design 21, section 4) |
 | `approval_refused` | An approved item was left alone because it changed since the plan; `target` is the item id (section 3.1). Nothing to undo |
+| `module_kept` | The module verified and no scored service got worse, so it is kept: `rollback <run>` and the revert timer leave it alone until it is applied again; `rollback <run> --all` undoes it (design 00, section 4, rule 9) |
 | `rolled_back` | The module was rolled back |
 
 Restoring a `file` entry writes the backup over the file in place, then restores its owner and permissions (and, on Linux, its SELinux label where `restorecon` exists). A created file is never deleted: rollback moves it into the backup folder as `rolled-back-<seq>-<name>`. Restoring is safe to repeat.

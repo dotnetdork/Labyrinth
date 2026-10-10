@@ -58,8 +58,9 @@ streams() {
   [[ "$(grep "^$c " <<< "$output")" == "$c observe "*" rolled back" ]]
   [[ "$(grep "^$a " <<< "$output")" == *" ${a:0:4}-${a:4:2}-${a:6:2} ${a:9:2}:${a:11:2} "* ]]
   printf '%s\n' "${lines[@]:1:3}" | LC_ALL=C sort -c
-  [[ "$output" == *"like 'labyrinth.sh keep ${a: -4}'"* ]]
-  [ "$(awk '{ if (length > w) w = length } END { print w }' <<< "$output")" -le 78 ]
+  [[ "$output" == *"like '$SELF keep ${a: -4}'"* ]]
+  # A hint may be longer by the length of the command in it.
+  [ "$(awk '{ if (length > w) w = length } END { print w }' <<< "${output//$SELF/labyrinth.sh}")" -le 78 ]
 }
 
 @test "an armed run shows when its timer was due, or that the time is unknown" {
@@ -117,10 +118,10 @@ streams() {
   [[ "$output" == *"kept: the revert timer for run $a is cancelled"* ]]
 }
 
-@test "keep without a run refuses when no run, or more than one, is armed" {
+@test "keep without a run: nothing to keep is not an error; more than one armed is refused" {
   lab keep
-  [ "$status" -eq 40 ]
-  [[ "$output" == *"nothing to keep"* ]]
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"There is nothing to keep: no run on this host has an armed revert timer."* ]]
   local a b
   a="$(armed_run)"
   b="$(armed_run)"

@@ -5,15 +5,15 @@
 
 .DESCRIPTION
     Commands:
-      labyrinth.ps1 plan <phase>       show what would change; changes nothing
-      labyrinth.ps1 apply <phase>      plan, confirm, then make the changes
-      labyrinth.ps1 keep [<run>]       keep a run: cancel its revert timer
-      labyrinth.ps1 rollback <run>     undo a run, newest change first
-      labyrinth.ps1 runs               list this host's runs and their state
-      labyrinth.ps1 probe              test every scored service once
-      labyrinth.ps1 help [<topic>]     help on a command, 'basics' or a
+      .\labyrinth.ps1 plan <phase>     show what would change; changes nothing
+      .\labyrinth.ps1 apply <phase>    plan, confirm, then make the changes
+      .\labyrinth.ps1 keep [<run>]     keep a run: cancel its revert timer
+      .\labyrinth.ps1 rollback <run>   undo a run, newest change first
+      .\labyrinth.ps1 runs             list this host's runs and their state
+      .\labyrinth.ps1 probe            test every scored service once
+      .\labyrinth.ps1 help [<topic>]   help on a command, 'basics' or a
                                        module; also -Help or -h
-      labyrinth.ps1 version            the version; also -Version or -V
+      .\labyrinth.ps1 version          the version; also -Version or -V
 
     A phase is lockout, observe, deceive or sustain. A run is a run ID, or
     its last 4 characters.
@@ -24,14 +24,20 @@
       -Config DIR          the configuration folder (default <root>\etc)
       -BreakGlass NAME     answer the break-glass prompt (apply only)
       -ConfirmGroup GROUP  answer the group-name prompt (apply only)
+      -Approve LIST        approve items without the prompt (apply only)
+      -All                 also undo changes kept once verified (rollback)
+      -Apply               the older form of apply: a phase with -Apply
+      -Help, -h            show help
+      -Version, -V         show the version
 
-    Exit codes: 0 done or nothing to do, 10 change needed, 20 blocked,
-    30 a check failed (probe: a service failed), 40 error.
+    Exit codes: 0 done or nothing to do, 10 change needed, 20 blocked
+    (not an Administrator, another run, or a safety check), 30 a check
+    after a change failed (probe: a service failed), 40 error.
 
-    New to Labyrinth? 'labyrinth.ps1 help basics' explains the ideas in
-    plain words. 'labyrinth.ps1 help <command>' explains one command, and
-    'labyrinth.ps1 help <module-id>' one module. The operator manual is
-    the Windows edition of the Labyrinth manual.
+    New to Labyrinth? '.\labyrinth.ps1 help basics' explains the ideas in
+    plain words. '.\labyrinth.ps1 help <command>' explains one command, and
+    '.\labyrinth.ps1 help <module-id>' one module. The operator manual is
+    the Windows parts of docs\manual\labyrinth.md in Labyrinth's folder.
 
 .EXAMPLE
     .\labyrinth.ps1 plan lockout
@@ -68,7 +74,7 @@ $ErrorActionPreference = 'Stop'
 
 $LabVersion = '0.1.0-dev'
 $Phases = @('lockout', 'observe', 'deceive', 'sustain')
-$ModuleKeys = @('id', 'title', 'phase', 'priority', 'platforms', 'risk', 'touches_scored', 'requires', 'outputs', 'spec', 'pre_approvable')
+$ModuleKeys = @('id', 'title', 'phase', 'priority', 'platforms', 'risk', 'touches_scored', 'requires', 'outputs', 'spec', 'pre_approvable', 'keep_on_verify')
 $RequiredKeys = @('id', 'title', 'phase', 'priority', 'platforms', 'risk', 'touches_scored')
 $Risks = @('read-only', 'reversible', 'service-affecting', 'approval', 'manual-only')
 $Platforms = @('ubuntu', 'rhel-family', 'windows', 'appliance')
@@ -79,7 +85,14 @@ $ReModuleId = '^(lockout|observe|deceive|sustain)\.[a-z0-9_-]+$'
 $ReItem = "^item`t([a-z0-9-]+)`t([a-z0-9-]+)`t([0-9a-f]{12})`t(.*)$"
 $ReApprove = '^(lockout|observe|deceive|sustain)\.[a-z0-9_-]+:[a-z0-9-]+@[0-9a-f]{12}$'
 $Commands = @('plan', 'apply', 'keep', 'rollback', 'runs', 'probe', 'help', 'version')
-$Self = 'labyrinth.ps1'          # the program's name, for hints
+# How the operator started this program, so a hint can be pasted and run
+# (docs/Conventions.md section 3.2): .\labyrinth.ps1 from its own folder,
+# else its full path, after & and in quotes when the path needs them.
+$Self = '.\labyrinth.ps1'
+if ((Get-Location).ProviderPath.TrimEnd('\') -ne $PSScriptRoot.TrimEnd('\')) {
+    $Self = $PSCommandPath
+    if ($Self -notmatch '^[A-Za-z0-9_.:\\/~-]+$') { $Self = "& '" + $Self.Replace("'", "''") + "'" }
+}
 
 # The options, one row each (docs/Conventions.md section 3.1): the canonical
 # name, how it is shown, the keys it is matched by (lower case, no dashes),
@@ -92,6 +105,7 @@ $script:LabOptions = @(
     @{ Name = 'confirm-group'; Show = '-ConfirmGroup'; Keys = @('confirmgroup', 'confirm'); Value = $true }
     @{ Name = 'approve'; Show = '-Approve'; Keys = @('approve'); Value = $true }
     @{ Name = 'apply'; Show = '-Apply'; Keys = @('apply'); Value = $false }
+    @{ Name = 'all'; Show = '-All'; Keys = @('all'); Value = $false }
     @{ Name = 'help'; Show = '-Help'; Keys = @('help'); Value = $false }
     @{ Name = 'version'; Show = '-Version'; Keys = @('version'); Value = $false }
 )
@@ -121,8 +135,10 @@ $script:Protected = @{}
 $script:Settings = @{}
 $script:Before = @()
 $script:HaveServices = $false
+$script:HostEntry = $null        # this host's line in hosts, for plan's Next line
 $script:BreakGlassAccount = ''
 $script:BreakGlassNote = 'confirmed earlier'   # what the console check found
+$script:BreakGlassNew = $false   # true when this run asked, so the answer is recorded
 $script:GivenBreakGlass = ''     # -BreakGlass, read inside functions
 $script:GivenGroup = ''          # -ConfirmGroup, read inside functions
 $script:DataRoot = ''            # the data root (-Root)
@@ -141,12 +157,13 @@ $LogCap = 500                    # the most lines of one entry point in the log
 $Labels = @('found', 'will do', 'did', 'why', 'risk', 'problem', 'cause', 'fix', 'undo')
 
 # Show-LabHelp [COMMAND]: the help for every command, or for one, on stdout.
-# Each topic is at most 15 lines of at most 78 columns, with one Exit line
-# and one Example line (docs/Conventions.md section 3.2).
+# Each topic is at most 18 lines (basics 24) of at most 78 columns, not
+# counting the command in hints, with one Exit line and one Example line
+# (docs/Conventions.md section 3.2).
 function Show-LabHelp {
     param([string] $Topic = '')
     $where = @"
-Where:
+Options:
   -Root DIR              data root (default C:\ProgramData\Labyrinth)
   -Config DIR            configuration folder (default <root>\etc)
 "@
@@ -165,16 +182,18 @@ New to Labyrinth? Start with '$Self help basics'.
   version           print the version
 
 Phases: lockout, observe, deceive, sustain. <run>: an ID or its last 4.
+Options: '$Self help <command>' lists them; so does <command> -h.
 Exit: 0 ok, 10 change needed, 20 blocked, 30 check failed, 40 error.
 Example: $Self plan lockout
-Manual: Get-Help about_Labyrinth once installed; docs\manual in the release.
+Manual: the Windows parts of $(Join-Path $PSScriptRoot 'docs\manual\labyrinth.md')
 "@ }
         'plan' { @"
 Usage: $Self plan <phase> [options]
 
 Show what every module of the phase would change on this host.
 Nothing is changed and nothing is written. <phase> is lockout,
-observe, deceive or sustain.
+observe, deceive or sustain. Needs an Administrator to read the
+configuration.
 
 $where
   -Profile NAME          use this profile, not the one in the hosts file
@@ -186,7 +205,9 @@ Compatibility: '$Self <phase>' also plans.
         'apply' { @"
 Usage: $Self apply <phase> [options]
 
-Plan, confirm, then change; a revert timer undoes it unless kept.
+Plan, then ask you to name the break-glass account (first apply only)
+and to type this host's group name. Then change, checking each change;
+a revert timer undoes the run unless you keep it. Needs an Administrator.
 
 $where
   -Profile NAME          must match this host's line in the hosts file
@@ -195,6 +216,7 @@ $where
   -Approve LIST          approve without asking: module:item@fingerprint,...
 
 Exit: 0 done, 10 manual steps left, 20 blocked, 30 check failed, 40 error.
+Blocked: not an Administrator, another run, host not in hosts, or a gate.
 Example: $Self apply lockout
 Compatibility: '$Self <phase> -Apply' also applies.
 "@ }
@@ -203,31 +225,37 @@ Usage: $Self keep [<run>] [options]
 
 Keep a run's changes: cancel its revert timer, then record the keep.
 Without <run>, keep the one run whose timer is armed. <run> is a run
-ID or its last 4 characters; '$Self runs' lists them.
+ID or its last 4 characters; '$Self runs' lists them. Needs an
+Administrator.
 
 $where
 
-Exit: 0 kept, 20 not an Administrator or too late (rolled back), 40 error.
+Exit: 0 kept or none armed, 20 blocked, 40 error.
+Blocked: not an Administrator, a file another account can change, or too
+late (the run was already rolled back).
 Example: $Self keep 4f2a
 "@ }
         'rollback' { @"
 Usage: $Self rollback <run> [options]
 
-Undo everything the run changed, newest change first. This is what
-the revert timer runs. Safe to run twice. <run> is a run ID or its
-last 4 characters; '$Self runs' lists them.
+Undo what the run changed, newest change first. This is what the
+revert timer runs. Safe to run twice. <run> is a run ID or its last
+4 characters; '$Self runs' lists them. Needs an Administrator.
 
 $where
+  -All                   also undo changes kept once they verified
 
-Exit: 0 rolled back, 20 not an Administrator, 40 error.
+Exit: 0 rolled back, 20 blocked, 40 error.
+Blocked: not an Administrator, or a file another account can change.
 Example: $Self rollback 4f2a
 "@ }
         'runs' { @"
 Usage: $Self runs [options]
 
 List this host's runs, oldest first: run ID, phase, start time (UTC)
-and state (armed, kept, rolled back, or not kept, no timer).
-Changes nothing; needs an Administrator.
+and state: armed (and when it rolls back), kept, rolled back,
+rolled back with errors, or not kept, no timer. Changes nothing;
+needs an Administrator.
 
 $where
 
@@ -238,7 +266,8 @@ Example: $Self runs
 Usage: $Self probe [options]
 
 Test every scored service once, the way the scoring engine would,
-and print one line per service. Changes nothing.
+and print one line per service. Changes nothing. Needs an
+Administrator to read the configuration.
 
 $where
 
@@ -266,8 +295,9 @@ modules. A module does one small job, such as turning off SMB version 1.
 
 1. Plan: '$Self plan lockout' shows what each module would change.
    It changes nothing, so run it as often as you like.
-2. Apply: '$Self apply lockout' plans again, asks you to type this
-   host's group name, then makes the changes and checks each one.
+2. Apply: '$Self apply lockout' plans again, has you name the
+   break-glass account the first time, asks you to type this host's
+   group name, then makes the changes and checks each one.
 3. Keep: an apply is a run, named by an ID; its last 4 characters are
    enough. A revert timer undoes the run after a few minutes unless you
    keep it, so a change that locks you out undoes itself. Log in from
@@ -284,7 +314,8 @@ Example: $Self help basics
         'version' { @"
 Usage: $Self version
 
-Print the version of Labyrinth. '-V' and '-Version' do the same.
+Print the version of Labyrinth and which program printed it.
+'-V' and '-Version' do the same.
 
 Exit: 0 printed.
 Example: $Self version
@@ -333,10 +364,15 @@ function Show-LabModuleHelp {
     $file = Join-Path $dir 'module.yml'
     $script:YmlErr = @()
     if (-not (Read-LabModuleYml $file) -or -not (Test-LabModule $file $Id $phase)) {
+        # Each error is "FILE: message" or "FILE:LINE: message", and the
+        # message may hold ': ' itself, so the known file name comes off first.
         $err = $script:YmlErr[0]
-        $at = $err.LastIndexOf(': ')
-        [Console]::Error.WriteLine("labyrinth: the module.yml of $Id is not valid: $($err.Substring($at + 2))")
-        [Console]::Error.WriteLine("Report the module to its author, or correct $($err.Substring(0, $at))")
+        $where = $file
+        if ($err.StartsWith($file)) { $err = $err.Substring($file.Length) }
+        if ($err -match '^:([0-9]+):') { $where = "${file}:$($Matches[1])"; $err = $err.Substring($Matches[1].Length + 1) }
+        if ($err.StartsWith(': ')) { $err = $err.Substring(2) }
+        [Console]::Error.WriteLine("labyrinth: the module.yml of $Id is not valid: $err")
+        [Console]::Error.WriteLine("Report the module to its author, or correct $where")
         exit 40
     }
     $m = $script:Mod
@@ -348,6 +384,10 @@ function Show-LabModuleHelp {
         Write-LabLine 'Scored services: it can affect one, so they are tested after it.'
     } else {
         Write-LabLine 'Scored services: it does not touch them.'
+    }
+    if ($m.ContainsKey('keep_on_verify') -and $m['keep_on_verify'] -ceq 'true') {
+        Write-LabLine 'Kept once it verifies and no scored service got worse; the revert'
+        Write-LabLine 'timer then leaves it alone.'
     }
     Write-LabLine ('Runs on: {0}.' -f ((Get-LabListItem $m['platforms']) -join ', '))
     Write-LabLine "Folder: $dir"
@@ -398,7 +438,8 @@ function Measure-LabEditDistance {
 
 # Get-LabSuggestion WORD CANDIDATES: the candidate WORD most likely meant:
 # the only one it is a prefix of, else the nearest within an edit distance
-# of 2. Returns '' when there is none.
+# of 2, or of 1 for a word of 3 letters or fewer. Returns '' when there is
+# none.
 function Get-LabSuggestion {
     param([string] $Word, [string[]] $Candidates)
     if ($Word -eq '') { return '' }
@@ -406,11 +447,22 @@ function Get-LabSuggestion {
     if ($prefix.Count -eq 1) { return $prefix[0] }
     $best = ''
     $bestd = 3
+    if ($Word.Length -lt 4) { $bestd = 2 }
     foreach ($c in $Candidates) {
         $d = Measure-LabEditDistance $Word $c
         if ($d -lt $bestd) { $bestd = $d; $best = $c }
     }
     return $best
+}
+
+# Get-LabSynonym WORD: the command an everyday word for it means, or ''.
+function Get-LabSynonym {
+    param([string] $Word)
+    if ($Word -ceq 'undo' -or $Word -ceq 'revert') { return 'rollback' }
+    if ($Word -ceq 'status' -or $Word -ceq 'list') { return 'runs' }
+    if ($Word -ceq 'check' -or $Word -ceq 'test') { return 'probe' }
+    if ($Word -ceq 'dry-run' -or $Word -ceq 'dryrun') { return 'plan' }
+    return ''
 }
 
 # Find-LabOption KEY: the row of the option matched by KEY (lower case, no
@@ -441,7 +493,9 @@ function Read-LabArgument {
         $a = $Arguments[$i]; $i++
         if ($a -isnot [string]) {
             # In a PowerShell session, 0123 arrives as the number 123.
-            Exit-LabUsage "'$a' was read as a number: put it in quotes, like '0123'"
+            # Reported with the rest, so the Try line names the command.
+            Add-LabParseError "'$a' was read as a number: put it in quotes, like '0123'"
+            continue
         }
         $w = [string] $a
         if ($ended -or $w -notlike '-?*') { $words.Add($w); continue }
@@ -459,6 +513,9 @@ function Read-LabArgument {
         $shown = ($w -split '[=:]', 2)[0]
         $o = Find-LabOption ($key.ToLowerInvariant().Replace('-', ''))
         if ($null -eq $o) {
+            $lk = $key.ToLowerInvariant().Replace('-', '')
+            if ($lk -ceq 'dryrun') { Add-LabParseError "unknown option '$shown' (did you mean the command 'plan'?)"; continue }
+            if ($lk -ceq 'yes' -or $lk -ceq 'force') { Add-LabParseError "unknown option '$shown' (did you mean '-ConfirmGroup'?)"; continue }
             # One candidate per option, its first key, so a prefix of two
             # keys of the same option still counts as one.
             $hint = Get-LabSuggestion ($key.ToLowerInvariant().Replace('-', '')) @($script:LabOptions | ForEach-Object { $_.Keys[0] })
@@ -475,7 +532,10 @@ function Read-LabArgument {
                 if ($i -ge $Arguments.Count) { Add-LabParseError "$($o.Show) needs a value"; continue }
                 $next = $Arguments[$i]
                 if ($next -is [string] -and $next -like '-?*') { Add-LabParseError "$($o.Show) needs a value, but got '$next'"; continue }
-                $val = [string] $next; $i++
+                # In a PowerShell session, a,b arrives as an array: it
+                # means the comma-separated list it was typed as.
+                if ($next -is [Collections.IList]) { $val = (@($next) | ForEach-Object { [string] $_ }) -join ',' } else { $val = [string] $next }
+                $i++
             }
             if ($val -eq '') { Add-LabParseError "$($o.Show) needs a value"; continue }
         } elseif ($sep -ne '') {
@@ -530,9 +590,34 @@ function Exit-Lab {
     exit $Code
 }
 
+# Write-LabVersion: the version, the runner, and the release hash to
+# compare with the team's offline record (design 07, section 5).
+function Write-LabVersion {
+    Write-LabLine "labyrinth $LabVersion (labyrinth.ps1, for Windows)"
+    $release = 'not checked (no release.sha256)'
+    if ($script:Release.Status -eq 'ok') { $release = $script:Release.Hash }
+    Write-LabLine "Release: $release"
+}
+
+# Exit-LabRelease: a file differs from the release list. A refused
+# rollback leaves the changes in place, so whoever is logged in learns
+# that, as from the revert timer (best effort); the core, which has
+# Send-LabNotice, is not loaded, because it may be the file that differs.
+function Exit-LabRelease {
+    if ($script:Arguments -contains 'rollback') {
+        $exe = Join-Path $env:SystemRoot 'System32\msg.exe'
+        if (Test-Path -LiteralPath $exe -PathType Leaf) {
+            try { $null = & $exe '*' '/TIME:900' "Labyrinth did not roll back on ${env:COMPUTERNAME}: its files differ from the release, so the changes are still in place." 2>$null } catch { $null = $_ }
+        }
+    }
+    Exit-Lab "$($script:Release.Problem), so Labyrinth will not run" 20 "Copy Labyrinth here again from the team's copy, as manual section 11 says."
+}
+
 # How to get the rights a command needs, and how to mend a bad line.
 $FixAdmin = "Run it again in PowerShell opened with 'Run as administrator'."
 $FixLine = 'Correct that line, then run the same command again.'
+$FixData = 'Check that the data folder is not full or read-only, then run the same command again.'
+$FixServices = 'List the scored services there, one "name proto host port expect" per line.'
 
 # Get-LabProfileName: the profiles this host can use, comma-separated.
 function Get-LabProfileName {
@@ -581,9 +666,11 @@ function Write-LabDetail {
 }
 
 # Write-LabMore ID: the last line of a WARN, BLOCKED, FAIL or ERROR block.
+# It is a command to paste, so it is never wrapped, however long the path
+# to the runner (docs/Conventions.md section 3.2).
 function Write-LabMore {
     param([string] $Id)
-    Write-LabDetail 'More' "$Self help $Id"
+    Write-LabLine ('  ' + 'More:'.PadRight(11) + "$Self help $Id")
 }
 
 # Write-LabLogPath: the run log's path, under a FAIL or ERROR line.
@@ -785,7 +872,7 @@ function Write-LabNextStep {
     param([string] $Mode, [int] $Code, [string] $Phase)
     $short = $env:LAB_RUN_ID.Substring($env:LAB_RUN_ID.Length - 4)
     if ($Mode -ceq 'apply' -and $script:Stopped) {
-        Write-LabLine 'Next: keep the earlier changes or undo them, with the commands above.'
+        Write-LabLine 'Next: undo the earlier changes, or keep them, with the commands above.'
     } elseif ($Mode -ceq 'apply' -and $script:Applied -and (Test-LabRevertTimer -RunId $env:LAB_RUN_ID)) {
         Write-LabLine "Next: check you can log in from a NEW session, then '$Self keep $short'."
     } elseif ($Code -eq 40) {
@@ -798,8 +885,15 @@ function Write-LabNextStep {
         Write-LabLine 'Next: clear what blocked it above, then run the same command again.'
     } elseif ($Code -eq 10) {
         $other = @($script:Run | Where-Object { $_.Rc -eq 10 -and $_.Risk -ne 'manual-only' }).Count
+        $hostsFile = Join-Path $env:LAB_CONFIG_DIR 'hosts'
         if ($other -eq 0) {
             Write-LabLine 'Next: a person carries out the manual steps above; apply changes nothing.'
+        } elseif ($null -eq $script:HostEntry) {
+            Write-LabLine 'Next: list this host in the hosts file, with its group and profile;'
+            Write-LabLine "  apply needs it there: $hostsFile"
+        } elseif ($script:Given.ContainsKey('profile') -and $script:Given['profile'] -cne $script:HostEntry.Profile) {
+            Write-LabLine "Next: apply uses this host's profile in the hosts file, $($script:HostEntry.Profile)."
+            Write-LabLine "  To apply $($script:Given['profile']), change that line first: $hostsFile"
         } else {
             $opts = ''
             if ($script:Given.ContainsKey('profile')) { $opts += " -Profile $($script:Given['profile'])" }
@@ -827,7 +921,7 @@ function Exit-LabRun {
     elseif ($Mode -ceq 'apply' -and $Code -eq 0) { $what = 'done' }
     elseif ($Mode -ceq 'apply' -and $Code -eq 10) { $what = 'manual steps needed' }
     elseif ($Code -eq 20) { $what = 'blocked' }
-    elseif ($Code -eq 30) { $what = 'a check failed, and that change was undone' }
+    elseif ($Code -eq 30) { $what = 'a check failed; that change was undone' }
     Write-LabLine ''
     if ($Mode -ceq 'plan' -or -not $script:Applied) {
         Write-LabSummary 'plan'
@@ -855,8 +949,9 @@ function Get-LabRunStopped {
     $when = Get-LabDueWord $env:LAB_RUN_ID
     if ($when -ne '') { "The revert timer rolls this run back $when." }
     $short = $env:LAB_RUN_ID.Substring($env:LAB_RUN_ID.Length - 4)
-    "To keep them now: $Self keep $short"
     "To undo them now: $Self rollback $short"
+    "To keep them now: $Self keep $short"
+    'If in doubt, undo them.'
 }
 
 # Get-LabDueWord RUN: when the run's revert timer fires, as 'at HH:MM UTC,
@@ -967,6 +1062,12 @@ function Test-LabModule {
             if ($c -cnotmatch '^[a-z0-9-]+$') { Write-YmlError $File "not a category: $c"; return $false }
         }
     }
+    if ($m.ContainsKey('keep_on_verify')) {
+        if (@('true', 'false') -cnotcontains $m['keep_on_verify']) { Write-YmlError $File 'keep_on_verify must be true or false'; return $false }
+        if ($m['keep_on_verify'] -ceq 'true' -and @('reversible', 'service-affecting', 'approval') -cnotcontains $m['risk']) {
+            Write-YmlError $File 'keep_on_verify is only for a module that changes something'; return $false
+        }
+    }
     return $true
 }
 
@@ -989,7 +1090,7 @@ function Read-LabProfile {
         $n++
         $line = ($raw -replace '#.*$', '').Trim()
         if ($line -eq '') { continue }
-        if ($line -cnotmatch $ReModuleId) { Exit-Lab "${file}:${n}: not a module id: $line" }
+        if ($line -cnotmatch $ReModuleId) { Exit-Lab "${file}:${n}: not a module id: $line" 40 'Each line is one module ID, such as lockout.ssh-config. Correct it, then run the same command again.' }
         $ids += $line
     }
     $script:ProfileIds = $ids
@@ -1127,7 +1228,7 @@ function Import-LabRunModule {
         $found += [pscustomobject]@{
             Id = $id; Dir = $dir; Risk = $script:Mod['risk']; Scored = ($script:Mod['touches_scored'] -eq 'true')
             Requires = $requires; Priority = $script:Mod['priority']; Rc = 0; State = 'planned'; Items = @()
-            PreOk = $preOk
+            PreOk = $preOk; Keep = ($script:Mod.ContainsKey('keep_on_verify') -and $script:Mod['keep_on_verify'] -ceq 'true')
         }
     }
     $ordered = @()
@@ -1305,6 +1406,9 @@ function Invoke-LabPlanAll {
 # configuration and its data root, because they run as SYSTEM, later too,
 # by the revert timer (design 07, section 5).
 function Assert-LabTrustedTree {
+    if ($script:Release.Status -eq 'missing') {
+        $script:PendingWarnings += "no release.sha256, so Labyrinth's files were not checked"
+    }
     $bad = Find-LabUntrustedItem -Path @($env:LAB_ROOT, $env:LAB_CONFIG_DIR, $script:DataRoot)
     if ($null -ne $bad) {
         Exit-Lab "$bad can be changed by an account that is not an administrator, so Labyrinth will not run as SYSTEM from it" 20 `
@@ -1353,14 +1457,20 @@ function Assert-LabBreakGlass {
             $account = $script:GivenBreakGlass
         } else {
             Write-LabLine 'Before any change, check you can still get in if remote logins break.'
-            if (-not (Read-LabAnswer "Break-glass check: log in at this host's console with the break-glass account, then type its name: ")) {
-                Exit-Lab 'no answer: break-glass not confirmed; nothing was changed' 20
+            Write-LabLine "Break-glass check: log in at this host's console with the break-glass"
+            Write-LabLine 'account, then type its name here.'
+            if (-not (Read-LabAnswer 'Break-glass account name: ')) {
+                Exit-Lab 'no answer: break-glass not confirmed; nothing was changed' 20 'Run apply again and answer the prompt, or name the account with -BreakGlass NAME.'
             }
             $account = $script:Answer
         }
-        try { Save-LabBreakGlass -Protected $script:Protected -Account $account }
-        catch { Write-LabErrorLine $_.Exception.Message; Exit-Lab 'break-glass not confirmed; nothing was changed' 20 }
-        Write-LabLine "Break-glass account ${account}: confirmed and recorded."
+        if (-not $script:Protected.ContainsKey($account) -or $script:Protected[$account] -cne 'breakglass') {
+            Exit-Lab "break-glass not confirmed: '$(Get-LabSafeText $account)' is not listed with class breakglass in $(Join-Path $env:LAB_CONFIG_DIR 'protected-accounts'); nothing was changed" 20 'Name the account you logged in with at the console; that file lists it as "NAME breakglass".'
+        }
+        # Recorded only once the plan is confirmed (Assert-LabPlanConfirmed),
+        # so a run that stops at the group prompt leaves nothing behind.
+        $script:BreakGlassNew = $true
+        Write-LabLine "Break-glass account ${account}: confirmed."
         # The answer is the operator's word. A session for the account at
         # the console backs it up; without one, the run goes on with a
         # warning, and the manifest says which it was.
@@ -1385,7 +1495,14 @@ function Assert-LabPlanConfirmed {
         [void](Read-LabAnswer "Type the group name ($Group) to apply this plan: ")
         $typed = $script:Answer
     }
-    if ($typed -cne $Group) { Exit-Lab 'the plan was not confirmed; nothing was changed' 20 }
+    if ($typed -cne $Group) {
+        if ($typed -eq '') { $what = 'no group name was typed' } else { $what = "'$(Get-LabSafeText $typed)' was typed, not $Group" }
+        Exit-Lab "the plan was not confirmed: $what; nothing was changed" 20 "Run apply again and type $Group at the prompt, or give it with -ConfirmGroup $Group."
+    }
+    if ($script:BreakGlassNew) {
+        try { Save-LabBreakGlass -Protected $script:Protected -Account $script:BreakGlassAccount }
+        catch { Write-LabErrorLine $_.Exception.Message; Exit-Lab 'the break-glass answer could not be recorded; nothing was changed' 40 $FixData }
+    }
 }
 
 # A manifest entry on a module's behalf.
@@ -1558,8 +1675,9 @@ function Select-LabItem {
         Write-LabLine "$name changes only the items you approve:"
         if ($script:Pre.Count -gt 0) { Write-LabDetail 'Approved' "$(Get-LabItemList $script:Pre) (pre-approved)" }
         foreach ($i in $rest) { Write-LabDetail 'Item' (Get-LabItemWord $i.Id $i.Category $i.Fingerprint $i.Reason) }
-        Write-LabLine 'To approve every item of a category, type category: and its name.'
-        if (-not (Read-LabAnswer 'Type the ids of the items to approve, separated by spaces, or press Enter for none: ')) { $script:Answer = '' }
+        Write-LabLine 'Type the ids of the items to approve, separated by spaces. To approve'
+        Write-LabLine 'every item of a category, type category: and its name.'
+        if (-not (Read-LabAnswer 'Items to approve (Enter for none): ')) { $script:Answer = '' }
         $words = @($script:Answer -split '\s+' | Where-Object { $_ -ne '' })
         foreach ($tok in $words) {
             if ($tok -cnotmatch '^(category:)?[a-z0-9-]+$') {
@@ -1686,11 +1804,11 @@ function Invoke-LabApplyOne {
         $M.State = 'done'; return 0
     }
     if ($M.Risk -ne 'read-only') {
-        $exe = (Get-Process -Id $PID).Path
-        $arg = '-NoProfile -NonInteractive -ExecutionPolicy Bypass -File {0} rollback {1} -Root {2} -Config {3}' -f `
-            (ConvertTo-LabCommandLineArgument (Join-Path $env:LAB_ROOT 'labyrinth.ps1')), $env:LAB_RUN_ID,
-            (ConvertTo-LabCommandLineArgument $script:DataRoot), (ConvertTo-LabCommandLineArgument $env:LAB_CONFIG_DIR)
         try {
+            $exe = (Get-Process -Id $PID).Path
+            $arg = '-NoProfile -NonInteractive -ExecutionPolicy Bypass -File {0} rollback {1} -Root {2} -Config {3}' -f `
+                (ConvertTo-LabCommandLineArgument (Join-Path $env:LAB_ROOT 'labyrinth.ps1')), $env:LAB_RUN_ID,
+                (ConvertTo-LabCommandLineArgument $script:DataRoot), (ConvertTo-LabCommandLineArgument $env:LAB_CONFIG_DIR)
             Register-LabRevertTimer -Seconds ($script:Settings['REVERT_MINUTES'] * 60) -RunId $env:LAB_RUN_ID -Execute $exe -Argument $arg
         } catch {
             Write-LabErrorLine $_.Exception.Message
@@ -1782,8 +1900,39 @@ function Invoke-LabApplyOne {
     Write-LabStatus 'OK' $name
     Write-LabDetail 'Did' 'applied and verified'
     Write-LabLogFor $id 'info' 'applied' 'applied and verified'
+    if ($M.Keep) { Save-LabModuleKept $id }
     $M.State = 'done'
     return 0
+}
+
+# Save-LabModuleKept ID: keep a keep_on_verify module that verified, so the
+# revert timer leaves it alone (docs\Conventions.md section 3.1). Only when
+# the scored services were tested, so that none is known to have got worse.
+# A failure leaves the module under the timer, which is the safe side.
+function Save-LabModuleKept {
+    param([string] $Id)
+    if (-not $script:HaveServices) {
+        Write-LabDetail 'Note' 'not kept yet: with no service list, nothing shows that no scored service got worse, so the revert timer still covers it'
+        return
+    }
+    try {
+        Add-LabEntryFor $Id 'module_kept' '' 'verified; no scored service got worse'
+    } catch {
+        Write-LabDetail 'Note' 'not kept yet: the manifest cannot be written, so the revert timer still covers it'
+        return
+    }
+    Write-LabDetail 'Did' 'kept: it verified and no scored service got worse, so the revert timer leaves it alone'
+    Write-LabLogFor $Id 'info' 'module_kept' 'kept once verified'
+}
+
+# Get-LabUnkeptModule: the modules of the current run that a rollback
+# started by the revert timer would still undo.
+function Get-LabUnkeptModule {
+    # The manifest readers return their list as one array, so it is taken
+    # as it comes: @() around the call would wrap it in a second array.
+    $kept = Get-LabKeptModule -RunId $env:LAB_RUN_ID
+    $applied = Get-LabAppliedModule -RunId $env:LAB_RUN_ID
+    return @($applied | Where-Object { $kept -cnotcontains $_ })
 }
 
 function Read-LabSetting {
@@ -1802,6 +1951,7 @@ function Assert-LabThisHost {
     if ($Config -ne '' -and -not (Test-Path -LiteralPath $Config -PathType Container)) {
         Exit-Lab "the -Config folder does not exist: $Config" 40 $fix
     }
+    Assert-LabConfigReadable
     $entry = Find-LabThisHost
     if ($null -eq $entry) { return }    # not listed: plan may still run
     $hostName = Get-LabHostName
@@ -1813,8 +1963,45 @@ function Assert-LabThisHost {
     }
 }
 
+# Assert-LabConfigReadable: the configuration folder must exist, and it and
+# every file in it must be readable. Without rights, Test-Path calls a file
+# missing, which would make a gate look unset instead of unread.
+function Assert-LabConfigReadable {
+    $dir = $env:LAB_CONFIG_DIR
+    $entries = $null
+    try { $entries = [IO.Directory]::GetFileSystemEntries($dir) }
+    catch [IO.DirectoryNotFoundException] {
+        Exit-Lab "the configuration folder does not exist: $dir" 40 'Check -Root, or give the folder with the hosts file with -Config.'
+    } catch {
+        Exit-Lab "needs an elevated Administrator session to read $dir" 20 $FixAdmin
+    }
+    $profiles = Join-Path $dir 'profiles'
+    if ([IO.Directory]::Exists($profiles)) {
+        try { $entries = @($entries) + @([IO.Directory]::GetFileSystemEntries($profiles)) }
+        catch { Exit-Lab "needs an elevated Administrator session to read $profiles" 20 $FixAdmin }
+    }
+    foreach ($f in @($entries)) {
+        if ([IO.Directory]::Exists($f)) { continue }
+        try { [IO.File]::OpenRead($f).Dispose() }
+        catch { Exit-Lab "needs an elevated Administrator session to read $f" 20 $FixAdmin }
+    }
+}
+
 function Find-LabThisHost {
-    try { return Find-LabHost -Name (Get-LabHostName) } catch { Exit-Lab "the hosts file is malformed: $($_.Exception.Message)" 40 'Each line is: host group profile platform. Correct it, then retry.' }
+    try { return Find-LabHost -Name (Get-LabHostName) } catch { Exit-Lab "the hosts file is malformed: $($_.Exception.Message)" 40 'Each line is: host group profile platform. Correct it, then run the same command again.' }
+}
+
+# Get-LabServiceMissing: why there is no service list, for a message.
+function Get-LabServiceMissing {
+    $file = Join-Path $env:LAB_CONFIG_DIR 'services'
+    if (Test-Path -LiteralPath $file -PathType Leaf) { return "$file lists no service" }
+    return "no service list at $file"
+}
+
+# Assert-LabServiceList: a malformed service list is an error before
+# anything is asked, in plan and apply alike; a missing or empty one is not.
+function Assert-LabServiceList {
+    try { [void](Read-LabServiceList) } catch { Exit-Lab "the service list is malformed: $($_.Exception.Message)" 40 $FixLine }
 }
 
 function Invoke-LabPlanCommand {
@@ -1825,9 +2012,11 @@ function Invoke-LabPlanCommand {
         if ($null -eq $entry) { Exit-Lab "no profile: give -Profile, or list this host ($(Get-LabHostName)) in $(Join-Path $env:LAB_CONFIG_DIR 'hosts')" }
         $script:ProfileName = $entry.Profile
     }
+    $script:HostEntry = $entry
     Read-LabProfile $script:ProfileName
     Read-LabSetting
     Read-LabPreRule
+    Assert-LabServiceList
     Assert-LabProtectedSet
     Write-LabPendingWarning
     Write-LabLine ('labyrinth {0}: plan {1}, profile {2}' -f $LabVersion, $Phase, $script:ProfileName)
@@ -1866,16 +2055,28 @@ function Write-LabPlanIntro {
 function Write-LabRecap {
     param([string] $HostName, [string] $Group)
     $remote = $false
+    $kept = $false
     Write-LabLine ''
     Write-LabLine "About to apply on host $HostName, group ${Group}:"
+    $release = 'not checked (no release.sha256)'
+    if ($script:Release.Status -eq 'ok') { $release = $script:Release.Hash }
+    Write-LabLine "Release: $release"
     foreach ($m in $script:Run) {
         $what = ''
         if ($m.Rc -eq 10 -and $m.Risk -eq 'manual-only') { $what = 'Manual:' }
-        elseif ($m.Rc -eq 10) { $what = 'Will change:'; if ($m.Risk -eq 'service-affecting') { $remote = $true } }
+        elseif ($m.Rc -eq 10) {
+            $what = 'Will change:'
+            if ($m.Risk -eq 'service-affecting') { $remote = $true }
+            if ($m.Keep) { $kept = $true }
+        }
         elseif ($m.Rc -eq 20) { $what = 'Blocked:' }
         if ($what -ne '') { Write-LabLine ('  {0}{1}' -f $what.PadRight(13), (Get-LabModuleName $m.Id)) }
     }
-    Write-LabLine "A revert timer undoes this whole run in $($script:Settings['REVERT_MINUTES']) minutes unless you keep it."
+    Write-LabLine "A revert timer undoes this run in $($script:Settings['REVERT_MINUTES']) minutes unless you keep it."
+    if ($kept) {
+        Write-LabLine 'A change that only takes access away is kept once it verifies; the timer'
+        Write-LabLine 'then leaves it alone.'
+    }
     if ($remote) {
         if ("$env:SSH_CONNECTION$env:SSH_CLIENT$env:SSH_TTY" -ne '') {
             Write-LabLine 'You are connected over SSH, and a change may interrupt a service.'
@@ -1897,16 +2098,18 @@ function Invoke-LabApplyCommand {
     try { Protect-LabDataRoot -Path $script:DataRoot } catch { Exit-Lab "$($_.Exception.Message); nothing was changed" 20 }
     Assert-LabTrustedTree
     $entry = Find-LabThisHost
-    if ($null -eq $entry) { Exit-Lab 'this host is not in the hosts file, so its ring group is unknown' 20 "Add the line '$hostName <group> <profile> <platform>' to $(Join-Path $env:LAB_CONFIG_DIR 'hosts')" }
+    if ($null -eq $entry) { Exit-Lab 'this host is not in the hosts file, so its group is unknown' 20 "Add the line '$hostName <group> <profile> <platform>' to $(Join-Path $env:LAB_CONFIG_DIR 'hosts')" }
     $group = $entry.Group
     if ($group -eq 'manual') { Exit-Lab 'this host is in the manual group: Labyrinth never changes it' 20 'Configure it by hand, from its runbook.' }
     if ($script:ProfileName -ne '' -and $script:ProfileName -cne $entry.Profile) {
-        Exit-Lab "the hosts file gives this host profile $($entry.Profile), not $($script:ProfileName)"
+        Exit-Lab "the hosts file gives this host profile $($entry.Profile), not $($script:ProfileName)" 40 "Leave out -Profile, or change this host's line in $(Join-Path $env:LAB_CONFIG_DIR 'hosts')."
     }
+    $script:HostEntry = $entry
     $script:ProfileName = $entry.Profile
     Read-LabProfile $script:ProfileName
     Read-LabSetting
     Read-LabPreRule
+    Assert-LabServiceList
     Assert-LabProtectedSet
     if (-not (Enter-LabLock -WaitSeconds 0)) { exit 20 }
     try {
@@ -1918,7 +2121,11 @@ function Invoke-LabApplyCommand {
         Write-LabLine "run $env:LAB_RUN_ID on host $hostName, group $group"
         Write-LabPlanIntro 'apply' $Phase $entry
         $worst = Invoke-LabPlanAll $Phase
-        if ($worst -ge 40) { Exit-Lab 'the plan has errors; nothing was changed' }
+        if ($worst -ge 40) {
+            Write-LabLine ''
+            Write-LabLine 'The plan has errors, so apply stops here.'
+            Exit-LabRun 'apply' $worst $Phase
+        }
         if ($script:Given.ContainsKey('approve')) { Write-LabApproveUnmatched }
         $todo = @($script:Run | Where-Object { $_.Rc -eq 10 -and $_.Risk -ne 'manual-only' }).Count
         if ($todo -eq 0) {
@@ -1935,20 +2142,20 @@ function Invoke-LabApplyCommand {
         $script:DryRun = '0'; $env:LAB_DRY_RUN = '0'
         try {
             New-Item -ItemType Directory -Force -Path (Get-LabRunDir $env:LAB_RUN_ID), (Join-Path $env:LAB_BACKUP_DIR $env:LAB_RUN_ID) | Out-Null
-        } catch { Exit-Lab 'the run and backup folders cannot be created; nothing was changed' 20 }
+        } catch { Exit-Lab 'the run and backup folders cannot be created; nothing was changed' 40 }
         try {
             Add-LabEntryFor '' 'run_start' $hostName "phase $Phase, profile $($script:ProfileName), group $group"
             Add-LabEntryFor '' 'breakglass_verified' $script:BreakGlassAccount $script:BreakGlassNote
         } catch {
             Write-LabErrorLine $_.Exception.Message
-            Exit-Lab 'the run manifest cannot be written; nothing was changed'
+            Exit-Lab 'the run manifest cannot be written; nothing was changed' 40 $FixData
         }
         $script:RunOpen = $true
         $script:Applied = $true
         Open-LabRunLog "apply $Phase, run $env:LAB_RUN_ID, host $hostName"
         Write-LabLog -Level info -EventName run_start -Message "apply $Phase, profile $($script:ProfileName), group $group"
         $services = $null
-        try { $services = Read-LabServiceList } catch { Exit-Lab "the service list is malformed; nothing was changed: $($_.Exception.Message)" }
+        try { $services = Read-LabServiceList } catch { Exit-Lab "the service list is malformed; nothing was changed: $($_.Exception.Message)" 40 $FixLine }
         Write-LabLine ''
         if ($null -ne $services) {
             $script:HaveServices = $true
@@ -1957,7 +2164,7 @@ function Invoke-LabApplyCommand {
             Write-LabLine 'Scored services before any change:'
             Write-LabProbeLine $script:Before
         } else {
-            Write-LabLine "No scored service is tested: there is no list at $(Join-Path $env:LAB_CONFIG_DIR 'services')"
+            Write-LabLine "No scored service is tested: $(Get-LabServiceMissing)"
         }
         Write-LabLine ''
 
@@ -1978,12 +2185,17 @@ function Invoke-LabApplyCommand {
     Write-LabLine ''
     if ($stopped) {
         foreach ($l in (Get-LabRunStopped)) { Write-LabLine $l }
+    } elseif ((Test-LabRevertTimer -RunId $env:LAB_RUN_ID) -and @(Get-LabUnkeptModule).Count -eq 0) {
+        # Every change was kept once verified: the timer has nothing to undo.
+        Write-LabLine 'All changes are applied, verified and kept.'
+        $rc = Invoke-LabKeep
+        if ($rc -gt $worst) { $worst = $rc }
     } elseif (Test-LabRevertTimer -RunId $env:LAB_RUN_ID) {
         Write-LabLine 'All changes are applied and verified.'
         Write-LabLine 'From a NEW session, check that you can still log in.'
         $when = Get-LabDueWord $env:LAB_RUN_ID
         if ($when -ne '') { Write-LabLine "The revert timer rolls this run back $when." }
-        $ok = Read-LabAnswer "Type keep to keep the changes; anything else leaves the revert timer to undo them in $($script:Settings['REVERT_MINUTES']) minutes: "
+        $ok = Read-LabAnswer 'Type keep to keep the changes, or press Enter to leave them to the timer: '
         if ($ok -and $script:Answer -ceq 'keep') {
             $rc = Invoke-LabKeep
             if ($rc -gt $worst) { $worst = $rc }
@@ -2006,7 +2218,8 @@ function Invoke-LabKeep {
     if (-not (Enter-LabLock -WaitSeconds 10)) { return 20 }
     try {
         if (Test-LabRunRolledBack) {
-            Write-LabLine "too late: run $env:LAB_RUN_ID was already rolled back"
+            Write-LabErrorLine "labyrinth: too late: run $env:LAB_RUN_ID was already rolled back"
+            Write-LabErrorLine 'Its changes are gone. Plan and apply again if you still want them.'
             return 20
         }
         try {
@@ -2145,7 +2358,10 @@ function Invoke-LabKeepCommand {
     if ($Ref -eq '') {
         # Without a run, keep the one run whose timer is armed (section 3.1).
         $armed = @(Get-LabArmedRun)
-        if ($armed.Count -eq 0) { Exit-LabUsage 'no run on this host has an armed revert timer' 'keep' 'There is nothing to keep.' }
+        if ($armed.Count -eq 0) {
+            Write-LabLine 'There is nothing to keep: no run on this host has an armed revert timer.'
+            exit 0
+        }
         if ($armed.Count -gt 1) {
             foreach ($l in (Get-LabRunTable $armed)) { [Console]::Error.WriteLine($l) }
             Exit-LabUsage 'more than one run has an armed revert timer' 'keep' "Name one, like '$Self keep $($armed[0].Substring($armed[0].Length - 4))'."
@@ -2156,7 +2372,7 @@ function Invoke-LabKeepCommand {
         $env:LAB_RUN_ID = Resolve-LabRunId 'keep' $Ref
     }
     $script:RunRef = $env:LAB_RUN_ID
-    if (-not (Test-Path -LiteralPath (Get-LabManifestPath) -PathType Leaf)) { Exit-Lab "no run $env:LAB_RUN_ID on this host" }
+    if (-not (Test-Path -LiteralPath (Get-LabManifestPath) -PathType Leaf)) { Exit-Lab "no run $env:LAB_RUN_ID on this host" 40 "'$Self runs' lists them." }
     Write-LabPendingWarning
     Open-LabRunLog "keep run $env:LAB_RUN_ID"
     $rc = Invoke-LabKeep
@@ -2180,7 +2396,7 @@ function Invoke-LabRollbackCommand {
     Assert-LabTrustedTree
     $env:LAB_RUN_ID = Resolve-LabRunId 'rollback' $Ref
     $script:RunRef = $env:LAB_RUN_ID
-    if (-not (Test-Path -LiteralPath (Get-LabManifestPath) -PathType Leaf)) { Exit-Lab "no run $env:LAB_RUN_ID on this host" }
+    if (-not (Test-Path -LiteralPath (Get-LabManifestPath) -PathType Leaf)) { Exit-Lab "no run $env:LAB_RUN_ID on this host" 40 "'$Self runs' lists them." }
     Write-LabPendingWarning
     # The revert timer must work even if a run still holds the lock, hung or
     # waiting at a prompt. That run is stopped first: rolling back beside it
@@ -2190,17 +2406,32 @@ function Invoke-LabRollbackCommand {
         [void](Close-LabLockHolder -WaitSeconds 30)
         $locked = Enter-LabLock -WaitSeconds 10
     }
-    if (-not $locked) { [Console]::Error.WriteLine('warning: rolling back without the run lock') }
+    if (-not $locked) { [Console]::Error.WriteLine('labyrinth: warning: rolling back without the run lock') }
     try {
         $rc = 0
         $ok = 0
         $bad = 0
-        $mods = @(Get-LabAppliedModule -RunId $env:LAB_RUN_ID)
+        $mods = Get-LabAppliedModule -RunId $env:LAB_RUN_ID
+        # Modules kept once verified stay, unless -All (section 3.1).
+        $left = @()
+        if (-not $script:Given.ContainsKey('all')) {
+            $kept = Get-LabKeptModule -RunId $env:LAB_RUN_ID
+            $left = @($mods | Where-Object { $kept -ccontains $_ })
+            $mods = @($mods | Where-Object { $kept -cnotcontains $_ })
+        }
         # A rollback started by the revert timer is logged too, though no
         # one watches it.
         Open-LabRunLog "rollback run $env:LAB_RUN_ID"
         Write-LabLine "labyrinth ${LabVersion}: rollback run $env:LAB_RUN_ID"
-        if ($mods.Count -eq 0) { Write-LabLine 'This run changed nothing that needs undoing.' }
+        if ($left.Count -gt 0) {
+            Write-LabLine 'Kept once verified, so left in place (add -All to undo these too):'
+            foreach ($id in $left) {
+                Import-LabModuleTitle $id
+                Write-LabLine "  $(Get-LabModuleName $id)"
+            }
+        }
+        if ($mods.Count -eq 0 -and $left.Count -gt 0) { Write-LabLine 'Nothing else needs undoing.' }
+        elseif ($mods.Count -eq 0) { Write-LabLine 'This run changed nothing that needs undoing.' }
         elseif ($mods.Count -eq 1) { Write-LabLine 'Undoing 1 module.' }
         else { Write-LabLine "Undoing $($mods.Count) modules, newest change first." }
         Write-LabLine ''
@@ -2219,7 +2450,7 @@ function Invoke-LabRollbackCommand {
             Unregister-LabRevertTimer -RunId $env:LAB_RUN_ID
         } catch {
             Write-LabErrorLine $_.Exception.Message
-            Write-LabErrorLine "warning: the revert timer for run $env:LAB_RUN_ID could not be removed"
+            Write-LabErrorLine "labyrinth: warning: the revert timer for run $env:LAB_RUN_ID could not be removed"
             Write-LabErrorLine 'When it fires, it repeats this rollback, which is safe.'
         }
         try {
@@ -2230,6 +2461,10 @@ function Invoke-LabRollbackCommand {
             $rc = 40
         }
         Write-LabLogFor '' 'warn' 'run_rolled_back' "run rolled back, exit $rc"
+        if ($ok + $bad -gt 0) {
+            # Whoever is logged in learns that changes were undone; best effort.
+            [void](Send-LabNotice -Message "Labyrinth rolled back run $env:LAB_RUN_ID on $(Get-LabHostName): its changes are undone. See '$Self runs'.")
+        }
         Write-LabLine ''
         $parts = @()
         if ($ok -gt 0) { $parts += "$ok OK" }
@@ -2256,8 +2491,9 @@ function Invoke-LabProbeCommand {
     $script:DryRun = '1'; $env:LAB_DRY_RUN = '1'
     Read-LabSetting
     $out = $null
-    try { $out = Get-LabProbeResult -Timeout $script:Settings['PROBE_TIMEOUT'] } catch { Exit-Lab "the service list is malformed: $($_.Exception.Message)" 40 $FixLine }
-    if ($null -eq $out) { Exit-Lab "no service list at $(Join-Path $env:LAB_CONFIG_DIR 'services')" 20 'List the scored services there, one "name proto host port expect" per line.' }
+    Assert-LabServiceList
+    if ($null -eq (Read-LabServiceList)) { Exit-Lab (Get-LabServiceMissing) 20 $FixServices }
+    $out = Get-LabProbeResult -Timeout $script:Settings['PROBE_TIMEOUT']
     Write-LabPendingWarning
     Write-LabProbeReport @($out)
 }
@@ -2298,6 +2534,14 @@ function Write-LabProbeReport {
 }
 
 try {
+    # The release check (design 07, section 5) comes before any of the
+    # core is loaded, so a changed core file never runs. A file that
+    # differs from release.sha256 stops every command, the revert timer's
+    # rollback included; with no release.sha256, apply, keep and rollback
+    # warn.
+    . (Join-Path $PSScriptRoot 'core\safety\Release.ps1')
+    $script:Release = Test-LabRelease -Root $PSScriptRoot
+    if ($script:Release.Status -eq 'problem') { Exit-LabRelease }
     Read-LabArgument $script:Arguments
     $words = $script:Words
     if ($script:ParseError -ne '') {
@@ -2325,7 +2569,8 @@ try {
             $cmd = 'plan'                     # compatibility: a phase alone
             $rest = @($words)
         } else {
-            $hint = Get-LabSuggestion $first ($Commands + $Phases)
+            $hint = Get-LabSynonym $first
+            if ($hint -eq '') { $hint = Get-LabSuggestion $first ($Commands + $Phases) }
             if ($words[0] -ceq '/?') { $hint = 'help' }
             if ($hint -ne '') { Exit-LabUsage "unknown command '$($words[0])' (did you mean '$hint'?)" }
             Exit-LabUsage "unknown command '$($words[0])'"
@@ -2342,6 +2587,9 @@ try {
             default { Exit-LabUsage "-Apply cannot be used with $cmd" $cmd }
         }
     }
+    if ($script:Given.ContainsKey('all') -and $cmd -ne '' -and $cmd -cne 'rollback' -and $cmd -cne 'help') {
+        Exit-LabUsage "-All is only for rollback, not $cmd" $cmd
+    }
     # The whole line must parse before help or the version is shown.
     $helping = $script:Given.ContainsKey('help') -or $script:Given.ContainsKey('version')
     $used = @()
@@ -2350,7 +2598,7 @@ try {
     switch ($cmd) {
         '' {
             if ($script:Given.ContainsKey('help')) { Show-LabHelp ''; exit 0 }
-            if ($script:Given.ContainsKey('version')) { Write-LabLine "labyrinth $LabVersion"; exit 0 }
+            if ($script:Given.ContainsKey('version')) { Write-LabVersion; exit 0 }
             [Console]::Error.WriteLine('labyrinth: no command given')
             [Console]::Error.WriteLine('Start here:')
             [Console]::Error.WriteLine("  1. $Self help basics    what Labyrinth does, in plain words")
@@ -2370,7 +2618,8 @@ try {
             if ($topic -ceq 'basics') { Show-LabHelp 'basics'; exit 0 }
             if ($topic.Contains('.')) { Show-LabModuleHelp $topic; exit 0 }
             if ($topic -ne '' -and $Commands -cnotcontains $topic) {
-                $hint = Get-LabSuggestion $topic (@('basics') + $Commands)
+                $hint = Get-LabSynonym $topic
+                if ($hint -eq '') { $hint = Get-LabSuggestion $topic (@('basics') + $Commands) }
                 if ($hint -ne '') { Exit-LabUsage "no help for '$($rest[0])' (did you mean '$hint'?)" }
                 Exit-LabUsage "no help for '$($rest[0])'"
             }
@@ -2415,7 +2664,7 @@ try {
         }
     }
     if ($script:Given.ContainsKey('help')) { Show-LabHelp $cmd; exit 0 }
-    if ($script:Given.ContainsKey('version') -or $cmd -ceq 'version') { Write-LabLine "labyrinth $LabVersion"; exit 0 }
+    if ($script:Given.ContainsKey('version') -or $cmd -ceq 'version') { Write-LabVersion; exit 0 }
 
     $profileName = ''
     if ($script:Given.ContainsKey('profile')) { $profileName = $script:Given['profile'] }
@@ -2460,7 +2709,11 @@ try {
 } catch {
     # An unexpected failure (docs/Conventions.md section 4): say what is
     # known about the run instead of only the exception.
-    [Console]::Error.WriteLine("labyrinth: internal error at line $($_.InvocationInfo.ScriptLineNumber): $($_.Exception.Message)")
+    $what = $_.Exception.Message
+    if ($what.Length -gt 60) { $what = $what.Substring(0, 57) + '...' }
+    $at = Split-Path -Leaf ([string] $_.InvocationInfo.ScriptName)
+    if ($at -eq '') { $at = 'labyrinth.ps1' }
+    [Console]::Error.WriteLine("labyrinth: internal error at ${at}:$($_.InvocationInfo.ScriptLineNumber) ($what), exit 40")
     try {
         foreach ($l in (Get-LabRecovery)) { [Console]::Error.WriteLine($l) }
     } catch {

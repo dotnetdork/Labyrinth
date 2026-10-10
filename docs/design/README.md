@@ -96,46 +96,413 @@ Each diagram is a Mermaid block inside the document it illustrates, with a one-s
 
 ## Review log
 
-| Date | Change |
-|---|---|
-| 2026-09-29 | Independent review. Fixed: VyOS commit-confirm reboot default (01); account locks moved from Tier 1 to Tier 2 and domain locks to Tier 3 (01); incident-report rule wording (02); `sfc /verifyonly` (04); materials rules 4.4 and 8.5 (07); banner decoys limited to unscored services (09). Removed event-specific topology, hostnames and timings from the public documents. |
-| 2026-09-29 | Formatting and readability pass, no change to facts: consistent status lines without draft numbers, GitHub alert blocks for existing warnings and caveats, long paragraphs split into lists and tables, sentences reworded for clarity, acronyms expanded on first use, US spelling. |
-| 2026-09-29 | Diagrams: grouped the layout, lifecycle, lockout and incident-pipeline diagrams into labeled subgraphs with no change to nodes or edges; added diagrams for the order of work and the trip log (hardening reference), credential rotation (05) and the decoy lifecycle (09). |
-| 2026-09-29 | Renamed `docs/Hardening-Reference.md` to `docs/Blueprint.md` (title: Labyrinth Implementation Blueprint), because it covers doctrine, invariants, a per-platform capability map, a trap catalog and a reference implementation. All links updated. |
-| 2026-09-29 | References: VyOS entry moved into alphabetical order (01); the first citation in each document now gives the full author name with its abbreviation (00, 04, README); the README gained a reference list. |
-| 2026-09-29 | Color: the four phases have one color each (🟥 lock out, 🟦 observe, 🟪 deceive, 🟩 sustain) in tables, status lines and every diagram; diagrams also use amber for steps a person does and a dashed red outline for stops; the Blueprint priority scorecard is color-coded by priority. Nodes, edges and text unchanged apart from a color sentence added to each caption. |
-| 2026-09-29 | Added `docs/Overview.md`, a plain-language tour of every part of the system for non-expert readers, with three diagrams. It adds no new facts: each statement summarizes the Blueprint or a design spec. |
-| 2026-09-29 | Added designs 10 to 16 to close gaps found in a coverage review: log forwarding and detection (10), Windows and AD hardening (11), dynamic bans (12), health monitor and checkpoints (13), backup and recovery (14), patching and service reduction (15) and network appliance runbooks (16). Each turns an existing Blueprint capability into a spec; tool-specific details that were not re-checked are labeled *Background*, and open questions are pinned. Cross-links added in the Blueprint and designs 00, 01, 04, 06 and 08; `health` added to the log categories (00). |
-| 2026-10-02 | Rules wording audit: every rule citation re-checked against the 2026 rules web page, including list positions. Fixed: the 5.6.5 examples (all user shells; *indiscriminately* ending outbound connections) (01, Blueprint); disabling accounts wholesale no longer attributed to the rule's examples (Blueprint); Rule 4.1 is access on request, not retained access (Blueprint); Rule 4.11 permits active response such as TCP resets, so it is no longer cited for "never contact the source" (Blueprint); Rule 4.11 makes interference the team's responsibility, which is not the same as a ban, and constraint 4 now says so (README); Rule 11.4 wording (02). Design choices stricter than the rules, such as never installing packages, are now labeled as design, not rule. |
-| 2026-10-02 | Break-glass and official access clarified so the break-glass path cannot become a backdoor: it is the rotated password of an existing admin-class account, sealed on paper and verified at the console; no new account, and the `breakglass` SSH key role is removed (05). Official accounts are never changed without the White Team's permission but are now watched (01, 05), with a matching saved search (10). |
-| 2026-10-02 | Secrets and notes are no longer assumed to be on paper. A new term, the *offline record*, means kept out of the repository and off the competition hosts, on paper or in a local unsynced file on an operator's own machine (Rule 5.2), shared only through the official team chat or in person, with credentials rotated after the event because chat may be logged (Rule 5.5) (05, section 2). References updated in designs 01, 03, 05 and 07, the Blueprint, the Overview (with a glossary entry) and the README. |
-| 2026-10-02 | Design audit of all specs; 06, 08, 14 and 16 needed no change. Fixes for real risk: an admin-class account that a service or scheduled task logs on with is not rotated automatically (01, 05); the domain Administrator is rotated by hand (11); honey-accounts cannot log in and any attempt alerts, and domain ones are created by hand (09, 10, 11, 12); decoy ports are checked against scored and listening ports, not the scoring allowlist, which holds addresses (03, 09); the report template carries every Rule 11.4 field and warns about missing ones (02); a copy or hash of each baseline is kept off the host (04); the manifest hash is in the offline record and checked on every host, while the `ssh-keygen -Y` signature is checked only on the control node, because older OpenSSH cannot (07); one canary host per platform, and hosts with no canary go last (01); the operator confirms break-glass at the console once per host, and rotation is tested with `su -` or `runas` (01, 05); default-deny also allows official sources from the event packet (01, 11). Fixes for accuracy: local and remote modes described and the Ansible question resolved as native scripts; the freeze reading marked as needing confirmation; all host paths under one root, with `etc` added and admin-only access (00); domain controller Kerberos and NTLM events, auditd `-e 2` and `-f 2` never set, and a SIEM input that is TCP and limited to managed hosts (10); fail2ban is never installed or vendored, and a host's existing fail2ban gets the never-ban list (12); Windows patches ranked by exposure only (15); the login gap in probes and an optional hand-made test mailbox (13); cleanup deletes only accounts Labyrinth created (07); Rule 4.1 effect reworded (11, constraint 5). Blueprint, Overview and `config/hosts.example` updated to match. |
-| 2026-10-02 | Assume breach and defend scored services. New designs 17 (persistence sweep: high-confidence footholds quarantined automatically, the rest after approval, nothing deleted) and 18 (service packs for common scored apps, with automatic, approval and runbook classes, and a `sysctl` library). The lockout now starts with a first-minute bundle per host: rotate, remove keys and check the SSH configuration, end intruder sessions (never console, operator, admin-source or protected sessions), quarantine persistence, then default-deny (01). Tier 3 is now "approve, then act", with a short person-run list, and modules gain an `approval` risk value (00, 01). SSH: planted add-on files and `Match` blocks quarantined, effective settings checked with `sshd -T`, every key source swept, and key-only login with a password exception for scoring accounts where SSH is scored (05). Accounts: an expected-user rule, hidden-admin checks, unexpected local admins locked automatically, and deletion offered after approval once services pass, with evidence saved first (05, 11). Sealed baseline with `--seal` and `--reseal` (04, 13). SIEM host hardening and watched abused tools (10). Windows protocol settings, a scoring-engine exception where RDP or WinRM is scored, and domain traffic always allowed to the domain controller (11). Old plain-text services on the Linux candidate list (15). Quarantine kept as evidence (02, 07). |
-| 2026-10-02 | Red Team review against regional packets and Red Team writeups. Default-deny now always allows ICMP, which a regional packet asks teams to keep working (01). A new protected class, employee accounts, covers accounts that simulated employees use, because failed employee access can cost points; they keep password SSH, and where the packet does not name them, every non-admin account keeps it until officials confirm (01, 05). The persistence sweep also looks at web server and PHP modules, `auto_prepend_file`, IIS modules, unsigned DLLs in service folders (report only) and added CMS plugins (17). |
-| 2026-10-02 | Red Team destruction and takedown review. Firewall drift is re-applied automatically from the sealed rule set, with probes, a revert timer and an alert (13). `labyrinth restore` restores a service, its database or its start state after approval, keeping the damaged state as evidence; off-host copies of restore points are now required; domain controller restores and rescuing an unbootable host are person-run, from printed runbooks (14). Boot-critical files are watched and copied off the host (04). App admin credentials are inventoried and rotated after approval (05). Searches for boot-critical changes, ZeroLogon, DCSync and unusual outbound traffic, plus a log-only outbound rule; outbound filtering after approval (10). Ending a SYSTEM process after approval, through a one-time scheduled task, and KRBTGT reset after any DCSync sign (11). Domain controller flaws rank first, and web apps and plugins are inventoried for patching (15). Person-run list updated (00, 01). A reference to a private planning document removed (04). |
-| 2026-10-02 | Phase 0 foundations. The exit codes of `check` and `plan` are now stated: `10` when a change is needed, `0` when not (00, section 4); the runner reports the highest code from any module (docs/Conventions.md, section 3). Stray blank lines removed from the module-author rules (00). |
-| 2026-10-02 | Phase 1 core. The layout gains `core/config/` (run-time configuration readers) and the loaders `core/lib.sh` and `core/Lab.ps1` (00, section 3). The local commands are named: plan, `--apply`, `probe`, `keep` and `rollback` (00, section 5). The scoring-allowlist gate applies to modules that touch scored services, and the break-glass answer must name a `breakglass`-class account, is kept in Labyrinth's state for later runs on the host and is recorded in every run's manifest (01, section 7). docs/Conventions.md gains the order of an apply, the gates and the revert timer (section 3.1), `LAB_ENTRY` and `LAB_APPROVED` (section 3), the log file location (section 6) and the manifest format (section 7). Stray blank lines removed (01, this log). |
-| 2026-10-02 | Command-line vocabulary. Both runners get one Linux-style grammar, *verb, object, options*: `plan`, `apply`, `keep [<run>]`, `rollback <run>`, `runs`, `probe`, `help [<command>]` and `version`. Options may come anywhere, with one name in both runners (`--break-glass` / `-BreakGlass`, `--confirm-group` / `-ConfirmGroup`). Usage errors exit `40` with one line and a pointer to help, and a repeated option is an error. A run can be named by its last four characters. Every form that works today stays accepted, because stored revert-timer command lines must keep working; a compatibility suite holds them (docs/Conventions.md, sections 3.1 and 9). Added: the console output contract (status words, indented module output, summary and next step; docs/Conventions.md, section 3.2); `timer-due`, and a keep that refuses to report success while the timer is still armed (section 3.1); the bash `ERR` trap and the `labyrinth.ps1` help-block rule (sections 4 and 5). `labyrinth.ps1` drops its `param` block for the shared parser, so PowerShell's own shortcuts stop working: abbreviated names such as `-Prof` and `-Conf`, the internal `-RunId`, `-Rest` and `-Command`, and the common parameters such as `-Verbose`; each is now a usage error that names the right option. Planned commands renamed to the same grammar: `seal` and `reseal --reason` (04), `remote plan|apply <phase> --group <group>` (00); `checkpoint`, `backup` and `restore` keep their names. Design 00 lists the commands, removes the phase entry scripts that were never built, and defers to Conventions for the order of an apply. Design 01: the revert timer is armed before every change that is not `read-only`, and its name, `lab-revert-<run>-<n>`, matches the code; the backup gate describes the manifest's backup copies. Overview: glossary entries for exit code, priority, restore, revert timer, rollback, run ID and tier, and a broken glossary table fixed. The runners follow in later branches. |
-| 2026-10-02 | Operator manual. One plain-language source, `docs/manual/labyrinth.md`, builds a separate Linux and Windows manual, so an operator reads only their own platform: two PDFs, a man page and a Windows help topic, built in CI. CLI changes update the manual in the same commit, and a test checks each manual has every command, option and exit code and nothing from the other platform (docs/Conventions.md, section 9). |
-| 2026-10-03 | Module help pages. `module.yml` gains a required `title`, the plain name an operator reads first (at most 40 characters), and each module gains `about.txt`, its help page: what it checks and changes, why, what can go wrong, how to undo it, and what to do when it fails (00, section 4). `labyrinth help <module-id>` prints a summary of `module.yml` in plain words, then `about.txt`; `labyrinth help basics` explains the ideas on one screen; and a line with no command prints three steps to start with (docs/Conventions.md, section 3.1). |
-| 2026-10-03 | Beginner-first output and run logs. Each module result names the module by its title and ID, and everything under it is a labelled line, such as `Found:`, `Problem:`, `Fix:` and `More:`; modules print `key: text` lines and end a failure with a `problem:` line, and a failure with no reason says so and names the script. Every `WARN`, `BLOCKED`, `FAIL` and `ERROR` says what to do next and ends with the module's help page. Plan says it changes nothing; the recap warns a remote operator before a change that may interrupt a service; the revert-timer time is given in minutes too. Apply, keep and rollback, including a rollback by the revert timer, write `output.log` in the run folder, readable by administrators only, and `runs` lists the logs of runs that had problems (00, section 4; docs/Conventions.md, section 3.2). |
-| 2026-10-05 | Coverage review against another team's public CCDC scripts, which found host settings and checks no spec planned. Password and lockout policy: rules for new passwords are automatic, PAM files are never edited directly (a stack change uses the distribution's own tool, after approval), lockout always needs approval because the Red Team can lock scoring accounts on purpose, password age is never set, and the domain policy is on the domain checklist (05, section 2.2; 01; 11). Windows credential settings, each after approval: LSA protection, staged for the next reboot because Labyrinth never reboots; automatic logon off, with its stored password removed and never copied to the manifest; UAC and remote UAC filtering for local accounts (11). Domain controller settings: Netlogon secure-channel enforcement is automatic, an allow list is reported, unsigned LDAP binds are logged, and LDAP signing needs approval and is blocked when a scored client binds unsigned (11, section 3.1). Domain read-only checks for AS-REP roasting, delegation, `SIDHistory`, replication rights, DnsAdmins, Group Policy Preferences passwords and passwords in description fields, reported without printing any secret (11, section 3.2). PowerShell script block logging (event 4104) with a saved search, and the PowerShell 2.0 engine reported (10, 11). Remote-access and tunnel tools are watched and swept, but never quarantined on their name alone (10, 17). Fixed a conflict: design 18 made a Windows DNS zone setting automatic while design 11 kept every DNS change on the domain controller with a person. DNS on a domain controller, and every Active Directory-integrated zone, is now person-run, because zone settings replicate to every domain controller; the Windows DNS pack applies only to a server that is not a domain controller (18; 11, section 5; wording in 00, 01, this README, the Blueprint and the Overview). |
-| 2026-10-05 | Roadmap and open decisions. `docs/Roadmap.md` sets the build order: groundwork, P0 lockout, remote mode, observe, sustain, reporting, then deceive. Approvals (Conventions, section 3.1): each approval item has an id, a category and a fingerprint of its state; the prompt also takes `category:<name>` on one host; the planned `--approve` / `-Approve` option passes fingerprinted items without the prompt for remote mode; an item changed since the plan is refused. Windows log shipping resolved (00, section 9; 10, section 4): the Splunk universal forwarder already on the host, otherwise a PowerShell script posting to the HTTP Event Collector with a pinned certificate; Windows Event Forwarding is not used. Remote mode is built right after the P0 lockout. Real-host tests run on CI runners (Ubuntu, Windows Server, a single domain controller) and in a local lab before each release (Conventions, section 9; new `docs/lab/README.md`). Run-time configuration holds only event facts, and a profile override may only choose shipped modules (00, section 6; Conventions, section 2.2); the question for officials is drafted in the roadmap. Windows values checked against Microsoft's documentation (11, new section 3.3): Netlogon enforcement becomes report-only, because patched domain controllers enforce it whatever `FullSecureChannelProtection` says; LSA protection uses `RunAsPPL` 2 where supported, or 1 only with Secure Boot off, and otherwise goes on the checklist (new item 11), because value 1 with Secure Boot writes a UEFI variable rollback cannot remove; Windows Server 2025's LDAP and SMB signing defaults are reported; the PowerShell 2.0 engine is gone from Windows 11 24H2 and Windows Server 2025 (10, section 3.2); Netlogon events 5827, 5828, 5830 and 5831 added to the event baseline and the ZeroLogon search, and event 4662 needs directory service access auditing on the domain controller (10). Three new design 10 acceptance tests and two changed design 11 tests. |
-| 2026-10-05 | New design 19, Platform facts and adapters, for build stage 3. It covers the read-only facts every module may ask for: OS family, init system, package database, active firewall, SELinux, and on Windows the role, Secure Boot, the ActiveDirectory module and the Splunk forwarder. It also covers the firewall adapter interface. Two active Linux firewalls are a `conflict` that blocks the firewall modules; a fact that cannot be learned is `unknown` and blocks the module that needs it. The layout gains `core/platform/` and `platform/linux/firewall/` (00, section 3). The hosts platform `ubuntu` covers the Debian family (Conventions, section 3.1). The roadmap calls its milestones build stages, so they are not confused with the four run phases. |
-| 2026-10-05 | Firewall adapter (19, section 5). The Linux functions are called through one dispatcher, `lab_fw`, which picks the backend from the `firewall` fact and refuses (`20`) on `none`, `conflict` or `unknown`; `restore` uses the backend saved with the snapshot. iptables is a fifth backend, alongside UFW, firewalld, nftables and Windows Firewall. The adapter enforces the order: no change without a snapshot by the same module in the same run, none in plan mode, and no default deny until every scoring-allowlist address has an allow. Return codes 0, 20, 30 (restore did not give back the saved state) and 40. Three new manifest actions, `firewall_snapshot`, `firewall_allow` and `firewall_default_deny` (Conventions, section 7), with `lab_fw_rollback` / `Undo-LabFirewallChange` for a module's rollback. Each backend's method is listed, with its known limits: firewalld restores only the permanent configuration, an nftables accept cannot override another table's drop, a Windows block rule and Group Policy win over local allows, and nftables and iptables changes last until the next reload. A host with no active firewall is reported for a person, because the adapter never turns one on; on Windows, `default_deny_in` turns the profiles on. Five new acceptance tests. |
-| 2026-10-05 | Quarantine helper (17, new section 5.1). Quarantine is a core helper, `core/quarantine/`, so every module removes a foothold the same way; the module judges the item and the helper keeps the reason. It names the functions for files, cron lines, systemd units, scheduled tasks, services, registry values, WMI bindings and processes, and eight new manifest actions (Conventions, section 7). A file goes to `<backup>/quarantine/<run>/<seq>/<path>`, so the same path quarantined twice in one run never collides. A cron line is uncommented in place on restore, keeping later edits to the file. A unit file outside `/etc` is never quarantined. A WMI subscription is stopped by removing only its binding. Ending a process cannot be undone, so it is recorded and the item that started it is restored. Winlogon's `Userinit` and `Shell` are never removed, because no one could log on; a person sets them back to the default. A file is restored only if its SHA-256 still matches, and a file found at the original path is moved aside. Three new acceptance tests. The layout gains `core/quarantine/` (00, section 3). |
-| 2026-10-05 | Approval items built (Conventions, sections 3.1, 3.2 and 7). The section loses "planned". The core gains `core/approval/`: `lab_item` / `Write-LabItem` print an item line, `lab_item_fingerprint` / `Get-LabItemFingerprint` compute a fingerprint, and `lab_approved` / `Test-LabApproved` tell `apply` whether an item is approved and unchanged. Decided while building: a malformed item line, or an id listed twice, makes the module an `ERROR`, because approving from a list the runner cannot read is unsafe; items are shown as `Item:` lines, `<id>@<fingerprint> (<category>): <reason>`, so the fingerprint can be copied into `--approve`; a typed word that is neither an id nor `category:<name>` blocks the module, as a malformed answer did before; the runner also compares each `--approve` fingerprint with this run's plan and leaves out a changed item, so a module that forgets to check cannot change it; that refusal is a new manifest action, `approval_refused`; `apply_start` notes the approved items; and the runner labels gain `Item` and `Approved`. The `apply` help drops its "Apply only" heading to stay within 15 lines. |
-| 2026-10-05 | Profiles shipped (Conventions, section 2.3). The six profiles of Blueprint section 6.3 ship empty: a module id is added to a profile in the same commit as the module (design 00, section 8), because the runner treats a listed module that is missing as an `ERROR`. `tests/profiles/` checks that each shipped profile lists only modules the release has, each listed once, that fit the profile's platform, and that the `appliance` profile lists only `manual-only` modules (design 16). This replaces the roadmap's "every listed module id exists by the time its stage ends" with a check that holds after every commit. |
-| 2026-10-05 | Design 05, new section 2.3: how a new password reaches the offline record. Section 2 said only that it is "shown once" and never written down, but a module's output goes to the run log and its input is empty, so it could not be shown or acknowledged. The core gains `core/secret/`: a generator (cryptographic source, 20 characters by default, no characters easily mistaken by hand), a terminal check made before any change, and a helper that writes to the terminal directly (`/dev/tty`; the Windows console through `CONOUT$` and `CONIN$`), waits for `recorded`, then clears the screen. Without a terminal a rotation is blocked; if the terminal goes before `recorded`, the module puts the old password back. Remote mode must give each host a terminal for these modules. A new acceptance test searches the whole data root for the password. |
-| 2026-10-08 | Security audit of the stage 3 merge (repository issues 16 to 25). Module risk is enforced (00, section 4): a `read-only` or `manual-only` module that ships `apply`, `rollback` or `cleanup` is refused when it loads, because the runner skipped the revert timer for `read-only` modules yet still ran their `apply`. The manifest keeps control characters, escaped, instead of refusing them, and a quarantine helper returns `20` for an item it cannot move; a module lists that item for a person and goes on, because a tab in a cron line or a file name could otherwise stop the whole sweep and roll back what it had quarantined (17, section 5.1). Every labelled line and every raw line in `output.log` shows a tab as a space and any other control character as `?`, so module or service output cannot forge a status line (Conventions, section 3.2). The default-deny gate checks ports, not only addresses: each scored service on this host, found by name, address or a DNS lookup, needs an allow on its port from every scoring address or from `any`, because an allow for SSH alone let the deny block the scored ports and no probe from the host can see it (19, section 5). A Linux host with no active firewall now gets the nftables or iptables it already has, instead of being reported for a person, because that is the default on fresh installs and the lockout would otherwise do nothing where it matters most; nothing is installed, and UFW is not turned on because its restore could not turn it off again (19, sections 5 and 6). When the revert timer's `rollback` finds a live run holding the lock, it stops that run and its entry points (TERM, then KILL) before rolling back, instead of waiting two minutes and then rolling back beside it; the old way undid earlier modules while the run went on and reported success. An operator who leaves a prompt open past the revert time loses the run, the new password included (Conventions, section 3.1; manual, section 7). Part of the integrity control comes forward from design 07, section 5: `apply`, `keep` and `rollback` refuse (20) when an account other than root, or other than an administrator on Windows, could change the code, the configuration, the data root or a folder above them, since the revert timer runs them later as root or SYSTEM. The check reads only; the timer runs from real paths. The file-hash and signature checks stay with the integrity stage. Whether a package installed a systemd unit is asked of the package database, not read from the unit's path, so an intruder's unit in `/usr/lib` or `/run` is quarantined; a transient unit is stopped and recorded, and a package unit's added drop-ins are quarantined while the unit waits for approval (17, section 5.1). The break-glass gate is a confirmation, not a proof, and the docs now say "confirmed": when the answer is given, Labyrinth looks for the account's session at the console and records what it found in the manifest's `breakglass_verified` note (the action keeps its name so older manifests read the same); with none, it warns and goes on (01, section 7; Conventions, section 7). Lesser findings: the host name comes from the system (`uname -n`, `[Environment]::MachineName`), not from `HOSTNAME` or `COMPUTERNAME`, which the caller can set; Windows entry points get no standard input, as on Linux (00, rule 8); the Windows lock folder is never deleted recursively, so a junction in it is not followed; the unused password helpers are removed; on Windows the default deny is refused (20) when Group Policy turns off local firewall rules, since Labyrinth's allow rules would do nothing (19, section 5); the iptables backend warns that IPv6 stays open when `ip6tables` is missing; IPv6 addresses are parsed in full, and no service value may begin with `-` (Conventions, section 2); `runs` shows a Linux run whose transient timer a restart dropped as `armed: timer lost (restart?)`, while Windows tasks survive a restart; the manual says that tmux, screen and transcripts keep a shown password, and how to clear a lock held by a reused process id; CI pins its actions by commit and its test modules by version. |
-| 2026-10-08 | Rule numbers checked against the rules page. The page has no sections 6 or 7, so Professional Conduct is section 9, Questions, Disputes, and Disclosures is 10, and Scoring is 11; the docs had numbered the later sections in sequence. Misleading the scoring engine is Rule 11.3 (cited as 9.3, which is the alcohol rule), incident report content is Rule 11.4 (cited as 9.4), and materials staying in the competition area is Rule 10.5 (cited as 8.5). Every citation is corrected in CLAUDE.md, the Blueprint, the Overview and designs 01, 02, 03, 07, 09, 13, 14, 17 and 18; earlier review-log entries are left as written. The Blueprint's note on how the page numbers its items is updated: it numbers them, and no longer letters them. |
-| 2026-10-08 | Outbound bans (12, sections 2, 4, 6 and 6.1; 01; Blueprint §3.5). Design 12 said bans were inbound only and cited Rules 4.10 and 5.6.5 for it, but neither rule says so: 4.10 forbids offensive activity outside the team's network, and dropping traffic is not offensive; 5.6.5 gives *indiscriminately* ending *all* outbound connections as its example, not blocking one address. The inbound-only limit left a known callback address unblockable, and a reverse shell to a banned attacker still worked. Now every ban drops the address in both directions, matched before the established-connection accept so an open session to it is cut (an active response, Rule 4.11); an address from the unusual-outbound search is banned outbound on its own only after a person approves it (Tier 3), one address at a time, never a range. The never-ban list gains the host's outbound dependencies (DNS resolvers, NTP servers, any proxy or mirror, and what scored services connect out to), and `config/never-ban.example` says so. |
-| 2026-10-09 | Rules review of installs and the first minutes (01, 05, 10, 12, 14, 15, new 20; CLAUDE.md, Conventions, Blueprint, Overview). Rule 5.6.4's text bans tools that use resources outside the competition environment and gives cloud services and cloud processing as its example, while Rules 5.1 and 5.2 allow public software sources and ban only private staging areas; the docs had read 5.6.4 as forbidding any install. The 2027 rules are not yet published (checked 2026-10-09), and the Midwest qualifier follows the national rules plus its packet. New design 20: a `packages` module installs the profile's packages after the lockdown, from vendored copies, the host's repositories, an event proxy or mirror (`PROXY`, `MIRROR` in `event.conf`), or downloads pinned by SHA-256; it never adds a repository, upgrades the whole system or removes a package, keeps new services stopped until configured, and skips installs when no source answers. It also holds a catalog of public tools with licenses read from their repositories. The first-minute bundle (01, section 6.1) now uses only what the host has: rotate, keys, sessions, default-deny inbound, then default-deny outbound from the services file and a new `outbound-allow` list (Tier 2; was Tier 3 in 10); installs, restore points of scored services (14), the persistence sweep and the rest of Tier 2 follow behind it, then outbound is reopened to the normal allowlist. Persistence quarantine moves out of the bundle, because closing the network first stops callbacks while the sweep runs. A first-minute run (01, section 6.3) gives every answer on the command line with the existing `--confirm-group`, `--break-glass` and `--approve` options and starts every host at once; the scoring allowlist first, revert timers, probes with rollback and the protected set stay. Approved Linux security updates are now applied by Labyrinth, one package at a time after a restore point, instead of printed for a person (15); Windows patching stays a checklist. |
-| 2026-10-09 | Vulnerability tracker (new 21; 01, 13, 15, 18, 20; Blueprint §3.6; Overview). Labyrinth found and ranked flaws (15, section 4) but forgot each finding once ranked, closed a flaw only by patching, could not see software installed outside a package manager, and on Windows ranked by exposure alone. Design 21 now owns finding and ranking: package data, web apps on disk, WES-NG offline on Windows, Trivy where allowed, and an nmap version scan of the team's own hosts only. It keeps one record per flaw per host (`open`, `mitigated`, `patched`, `accepted`), shown at every checkpoint (13), and a mitigation catalog that points to settings owned by 11, 17 and 18 rather than redefining them. A scored service with a flaw is never stopped to close it (Rule 5.6.5): it is mitigated in place, then patched in place, and a profile may pre-approve security updates for named scored packages in a first-minute run. Design 15 keeps patching and service reduction and points to 21 for the ranking. Design 18 gains the `pkexec` setting and web application firewall rules, and its wording on modules now allows one the `packages` module installed (20). The nmap `vulners` script and online vulnerability APIs are rejected, since they send versions out for matching (Rule 5.6.4). A stray blank line that split the checkpoint table in 13 is removed. |
-| 2026-10-09 | Rule labels (01, 05, 10, 11; Blueprint §1 and §4.6). Several design choices were cited as if a rule required them. Design 10 said blocking abused tools would be a blanket action under Rule 5.6.5; blocking one tool on a host that does not use it breaks nothing, so watching is now the default and a per-host outbound block of one tool on Windows is offered as a Tier 3 item. Design 11 said Group Policy is the "indiscriminate" pattern of Rule 5.6.5, and that Rule 4.11 makes DNS on the domain controller manual; both are now design choices, made for blast radius and replication, with the rules cited for what they say. The Blueprint's candidate-list and DNS notes, design 01's "the rules prohibit" the one-pass sweep, and design 05's "Rule 5.6.5 names shell changes" are reworded the same way. No other behavior changes. |
-| 2026-10-09 | Officials and simulated users (01, 12; Blueprint §3.5; Overview). The 2025 Midwest packet was read in full: officials need access on request and reach every host through the event's virtual lab console, so the break-glass login is the access path and no standing network path is needed; officials also make manual scoring checks, and traffic generators send user traffic from random addresses (Competition Rules 5, 6 and 14; Competition Topology). So a failed-login burst on a scored service's login now raises an alert only, in both watchers, while traps, the planted key and honey-accounts still ban at once; and default-deny keeps each scored port open to every source, never only the scoring engine. Midwest Rule 14 (ICMP) is now *Verified*. The Overview no longer says fail2ban is never installed. |
-| 2026-10-09 | Consistency pass before merging (00; CLAUDE.md; Overview; lab README). CLAUDE.md hard rule 4 and design 00's apply outline still said every apply needs a typed confirmation and runs in rings; both now allow the first-minute run of design 01, section 6.3. The Overview still said a ban blocks only incoming traffic, that nothing talks to the internet, and that the rules name the all-at-once lockout; it now matches designs 12 and 20 and the rule labels, and gains a section on installing tools (4.20). The lab gains a package mirror and the planted flaws design 21 tests against. The operator manual describes only what the runners do today, and no command or option changed, so it is unchanged. |
-| 2026-10-09 | Pre-approval and more automation (00 §4, §5, §6, §9; 01 §5, §6.3; 05 §2.1; 10; 11 §3, §5.1, §7; 13 §5; 15 §4; 18 §4; 21 §5.2; Conventions §2.2, §3.1; Blueprint; Overview; CLAUDE.md). Design 01 said `--approve` carries a profile's pre-approved items, but `--approve` takes only items with a fingerprint from a plan, which nobody has before the event. A module now lists the categories that are safe to approve unseen (`pre_approvable`), and the run-time `pre-approved` file names the items or categories the team approved in advance; each is still checked against this run's plan, the probes and the revert timer, and a rule for any other category is ignored with a line saying so. Both runners and both test suites implement it. Security updates for named packages, default application passwords, and settings that are approval-class only because the version was untested are the pre-approvable categories; settings that change what scoring sees are not. Remote mode now keeps a host's run only when the admin login and every scored probe pass, scheduled checkpoints alert once on each new finding, and the KRBTGT reset is an approval item Labyrinth carries out, with a replication check between the two resets; it is the one domain controller change rollback cannot undo, and the first reset breaks nothing. Deleting accounts, restores, ordinary users' passwords, Group Policy, DNS on the domain controller, appliances, medium-confidence outbound bans and app settings that change what scoring sees stay with a person. |
+Newest last. Each entry names what changed and where.
+
+### 2026-09-29: Independent review
+
+- Fixed: VyOS commit-confirm reboot default (01); account locks moved from Tier 1 to Tier 2 and domain locks to Tier 3 (01); incident-report rule wording (02); `sfc /verifyonly` (04); materials rules 4.4 and 8.5 (07); banner decoys limited to unscored services (09).
+- Removed event-specific topology, hostnames and timings from the public documents.
+
+### 2026-09-29: Formatting and readability pass, no change to facts
+
+- Consistent status lines without draft numbers, GitHub alert blocks for existing warnings and caveats, long paragraphs split into lists and tables, sentences reworded for clarity, acronyms expanded on first use, US spelling.
+
+### 2026-09-29: Diagrams
+
+- Grouped the layout, lifecycle, lockout and incident-pipeline diagrams into labeled subgraphs with no change to nodes or edges; added diagrams for the order of work and the trip log (hardening reference), credential rotation (05) and the decoy lifecycle (09).
+
+### 2026-09-29: Renamed `docs/Hardening-Reference.md` to `docs/Blueprint.md`
+
+- Its title is now Labyrinth Implementation Blueprint, because it covers doctrine, invariants, a per-platform capability map, a trap catalog and a reference implementation.
+- All links updated.
+
+### 2026-09-29: References
+
+- VyOS entry moved into alphabetical order (01); the first citation in each document now gives the full author name with its abbreviation (00, 04, README); the README gained a reference list.
+
+### 2026-09-29: Color
+
+- The four phases have one color each (🟥 lock out, 🟦 observe, 🟪 deceive, 🟩 sustain) in tables, status lines and every diagram; diagrams also use amber for steps a person does and a dashed red outline for stops; the Blueprint priority scorecard is color-coded by priority.
+- Nodes, edges and text unchanged apart from a color sentence added to each caption.
+
+### 2026-09-29: Overview
+
+- Added `docs/Overview.md`, a plain-language tour of every part of the system for non-expert readers, with three diagrams.
+- It adds no new facts: each statement summarizes the Blueprint or a design spec.
+
+### 2026-09-29: Added designs 10 to 16 to close gaps found in a coverage review
+
+- Log forwarding and detection (10), Windows and AD hardening (11), dynamic bans (12), health monitor and checkpoints (13), backup and recovery (14), patching and service reduction (15) and network appliance runbooks (16).
+- Each turns an existing Blueprint capability into a spec; tool-specific details that were not re-checked are labeled *Background*, and open questions are pinned.
+- Cross-links added in the Blueprint and designs 00, 01, 04, 06 and 08; `health` added to the log categories (00).
+
+### 2026-10-02: Rules wording audit
+
+- Every rule citation re-checked against the 2026 rules web page, including list positions.
+- Fixed: the 5.6.5 examples (all user shells; *indiscriminately* ending outbound connections) (01, Blueprint); disabling accounts wholesale no longer attributed to the rule's examples (Blueprint); Rule 4.1 is access on request, not retained access (Blueprint); Rule 4.11 permits active response such as TCP resets, so it is no longer cited for "never contact the source" (Blueprint); Rule 4.11 makes interference the team's responsibility, which is not the same as a ban, and constraint 4 now says so (README); Rule 11.4 wording (02).
+- Design choices stricter than the rules, such as never installing packages, are now labeled as design, not rule.
+
+### 2026-10-02: Break-glass and official access clarified so the break-glass path cannot become a backdoor
+
+- It is the rotated password of an existing admin-class account, sealed on paper and verified at the console; no new account, and the `breakglass` SSH key role is removed (05).
+- Official accounts are never changed without the White Team's permission but are now watched (01, 05), with a matching saved search (10).
+
+### 2026-10-02: Secrets and notes are no longer assumed to be on paper
+
+- A new term, the *offline record*, means kept out of the repository and off the competition hosts, on paper or in a local unsynced file on an operator's own machine (Rule 5.2), shared only through the official team chat or in person, with credentials rotated after the event because chat may be logged (Rule 5.5) (05, section 2).
+- References updated in designs 01, 03, 05 and 07, the Blueprint, the Overview (with a glossary entry) and the README.
+
+### 2026-10-02: Design audit of all specs; 06, 08, 14 and 16 needed no change
+
+- Fixes for real risk: an admin-class account that a service or scheduled task logs on with is not rotated automatically (01, 05); the domain Administrator is rotated by hand (11); honey-accounts cannot log in and any attempt alerts, and domain ones are created by hand (09, 10, 11, 12); decoy ports are checked against scored and listening ports, not the scoring allowlist, which holds addresses (03, 09); the report template carries every Rule 11.4 field and warns about missing ones (02); a copy or hash of each baseline is kept off the host (04); the manifest hash is in the offline record and checked on every host, while the `ssh-keygen -Y` signature is checked only on the control node, because older OpenSSH cannot (07); one canary host per platform, and hosts with no canary go last (01); the operator confirms break-glass at the console once per host, and rotation is tested with `su -` or `runas` (01, 05); default-deny also allows official sources from the event packet (01, 11).
+- Fixes for accuracy: local and remote modes described and the Ansible question resolved as native scripts; the freeze reading marked as needing confirmation; all host paths under one root, with `etc` added and admin-only access (00); domain controller Kerberos and NTLM events, auditd `-e 2` and `-f 2` never set, and a SIEM input that is TCP and limited to managed hosts (10); fail2ban is never installed or vendored, and a host's existing fail2ban gets the never-ban list (12); Windows patches ranked by exposure only (15); the login gap in probes and an optional hand-made test mailbox (13); cleanup deletes only accounts Labyrinth created (07); Rule 4.1 effect reworded (11, constraint 5).
+- Blueprint, Overview and `config/hosts.example` updated to match.
+
+### 2026-10-02: Assume breach and defend scored services
+
+- New designs 17 (persistence sweep: high-confidence footholds quarantined automatically, the rest after approval, nothing deleted) and 18 (service packs for common scored apps, with automatic, approval and runbook classes, and a `sysctl` library).
+- The lockout now starts with a first-minute bundle per host: rotate, remove keys and check the SSH configuration, end intruder sessions (never console, operator, admin-source or protected sessions), quarantine persistence, then default-deny (01).
+- Tier 3 is now "approve, then act", with a short person-run list, and modules gain an `approval` risk value (00, 01).
+- SSH: planted add-on files and `Match` blocks quarantined, effective settings checked with `sshd -T`, every key source swept, and key-only login with a password exception for scoring accounts where SSH is scored (05).
+- Accounts: an expected-user rule, hidden-admin checks, unexpected local admins locked automatically, and deletion offered after approval once services pass, with evidence saved first (05, 11).
+- Sealed baseline with `--seal` and `--reseal` (04, 13).
+- SIEM host hardening and watched abused tools (10).
+- Windows protocol settings, a scoring-engine exception where RDP or WinRM is scored, and domain traffic always allowed to the domain controller (11).
+- Old plain-text services on the Linux candidate list (15).
+- Quarantine kept as evidence (02, 07).
+
+### 2026-10-02: Red Team review against regional packets and Red Team writeups
+
+- Default-deny now always allows ICMP, which a regional packet asks teams to keep working (01).
+- A new protected class, employee accounts, covers accounts that simulated employees use, because failed employee access can cost points; they keep password SSH, and where the packet does not name them, every non-admin account keeps it until officials confirm (01, 05).
+- The persistence sweep also looks at web server and PHP modules, `auto_prepend_file`, IIS modules, unsigned DLLs in service folders (report only) and added CMS plugins (17).
+
+### 2026-10-02: Red Team destruction and takedown review
+
+- Firewall drift is re-applied automatically from the sealed rule set, with probes, a revert timer and an alert (13).
+- `labyrinth restore` restores a service, its database or its start state after approval, keeping the damaged state as evidence; off-host copies of restore points are now required; domain controller restores and rescuing an unbootable host are person-run, from printed runbooks (14).
+- Boot-critical files are watched and copied off the host (04).
+- App admin credentials are inventoried and rotated after approval (05).
+- Searches for boot-critical changes, ZeroLogon, DCSync and unusual outbound traffic, plus a log-only outbound rule; outbound filtering after approval (10).
+- Ending a SYSTEM process after approval, through a one-time scheduled task, and KRBTGT reset after any DCSync sign (11).
+- Domain controller flaws rank first, and web apps and plugins are inventoried for patching (15).
+- Person-run list updated (00, 01).
+- A reference to a private planning document removed (04).
+
+### 2026-10-02: Phase 0 foundations
+
+- The exit codes of `check` and `plan` are now stated: `10` when a change is needed, `0` when not (00, section 4); the runner reports the highest code from any module (docs/Conventions.md, section 3).
+- Stray blank lines removed from the module-author rules (00).
+
+### 2026-10-02: Phase 1 core
+
+- The layout gains `core/config/` (run-time configuration readers) and the loaders `core/lib.sh` and `core/Lab.ps1` (00, section 3).
+- The local commands are named: plan, `--apply`, `probe`, `keep` and `rollback` (00, section 5).
+- The scoring-allowlist gate applies to modules that touch scored services, and the break-glass answer must name a `breakglass`-class account, is kept in Labyrinth's state for later runs on the host and is recorded in every run's manifest (01, section 7). docs/Conventions.md gains the order of an apply, the gates and the revert timer (section 3.1), `LAB_ENTRY` and `LAB_APPROVED` (section 3), the log file location (section 6) and the manifest format (section 7).
+- Stray blank lines removed (01, this log).
+
+### 2026-10-02: Command-line vocabulary
+
+- Both runners get one Linux-style grammar, *verb, object, options*: `plan`, `apply`, `keep [<run>]`, `rollback <run>`, `runs`, `probe`, `help [<command>]` and `version`.
+- Options may come anywhere, with one name in both runners (`--break-glass` / `-BreakGlass`, `--confirm-group` / `-ConfirmGroup`).
+- Usage errors exit `40` with one line and a pointer to help, and a repeated option is an error.
+- A run can be named by its last four characters.
+- Every form that works today stays accepted, because stored revert-timer command lines must keep working; a compatibility suite holds them (docs/Conventions.md, sections 3.1 and 9).
+- Added: the console output contract (status words, indented module output, summary and next step; docs/Conventions.md, section 3.2); `timer-due`, and a keep that refuses to report success while the timer is still armed (section 3.1); the bash `ERR` trap and the `labyrinth.ps1` help-block rule (sections 4 and 5).
+- `labyrinth.ps1` drops its `param` block for the shared parser, so PowerShell's own shortcuts stop working: abbreviated names such as `-Prof` and `-Conf`, the internal `-RunId`, `-Rest` and `-Command`, and the common parameters such as `-Verbose`; each is now a usage error that names the right option.
+- Planned commands renamed to the same grammar: `seal` and `reseal --reason` (04), `remote plan|apply <phase> --group <group>` (00); `checkpoint`, `backup` and `restore` keep their names.
+- Design 00 lists the commands, removes the phase entry scripts that were never built, and defers to Conventions for the order of an apply.
+- Design 01: the revert timer is armed before every change that is not `read-only`, and its name, `lab-revert-<run>-<n>`, matches the code; the backup gate describes the manifest's backup copies.
+- Overview: glossary entries for exit code, priority, restore, revert timer, rollback, run ID and tier, and a broken glossary table fixed.
+- The runners follow in later branches.
+
+### 2026-10-02: Operator manual
+
+- One plain-language source, `docs/manual/labyrinth.md`, builds a separate Linux and Windows manual, so an operator reads only their own platform: two PDFs, a man page and a Windows help topic, built in CI.
+- CLI changes update the manual in the same commit, and a test checks each manual has every command, option and exit code and nothing from the other platform (docs/Conventions.md, section 9).
+
+### 2026-10-03: Module help pages
+
+- `module.yml` gains a required `title`, the plain name an operator reads first (at most 40 characters), and each module gains `about.txt`, its help page: what it checks and changes, why, what can go wrong, how to undo it, and what to do when it fails (00, section 4).
+- `labyrinth help <module-id>` prints a summary of `module.yml` in plain words, then `about.txt`; `labyrinth help basics` explains the ideas on one screen; and a line with no command prints three steps to start with (docs/Conventions.md, section 3.1).
+
+### 2026-10-03: Beginner-first output and run logs
+
+- Each module result names the module by its title and ID, and everything under it is a labelled line, such as `Found:`, `Problem:`, `Fix:` and `More:`; modules print `key: text` lines and end a failure with a `problem:` line, and a failure with no reason says so and names the script.
+- Every `WARN`, `BLOCKED`, `FAIL` and `ERROR` says what to do next and ends with the module's help page.
+- Plan says it changes nothing; the recap warns a remote operator before a change that may interrupt a service; the revert-timer time is given in minutes too.
+- Apply, keep and rollback, including a rollback by the revert timer, write `output.log` in the run folder, readable by administrators only, and `runs` lists the logs of runs that had problems (00, section 4; docs/Conventions.md, section 3.2).
+
+### 2026-10-05: Coverage review
+
+- Coverage review against another team's public CCDC scripts, which found host settings and checks no spec planned.
+- Password and lockout policy: rules for new passwords are automatic, PAM files are never edited directly (a stack change uses the distribution's own tool, after approval), lockout always needs approval because the Red Team can lock scoring accounts on purpose, password age is never set, and the domain policy is on the domain checklist (05, section 2.2; 01; 11).
+- Windows credential settings, each after approval: LSA protection, staged for the next reboot because Labyrinth never reboots; automatic logon off, with its stored password removed and never copied to the manifest; UAC and remote UAC filtering for local accounts (11).
+- Domain controller settings: Netlogon secure-channel enforcement is automatic, an allow list is reported, unsigned LDAP binds are logged, and LDAP signing needs approval and is blocked when a scored client binds unsigned (11, section 3.1).
+- Domain read-only checks for AS-REP roasting, delegation, `SIDHistory`, replication rights, DnsAdmins, Group Policy Preferences passwords and passwords in description fields, reported without printing any secret (11, section 3.2).
+- PowerShell script block logging (event 4104) with a saved search, and the PowerShell 2.0 engine reported (10, 11).
+- Remote-access and tunnel tools are watched and swept, but never quarantined on their name alone (10, 17).
+- Fixed a conflict: design 18 made a Windows DNS zone setting automatic while design 11 kept every DNS change on the domain controller with a person.
+- DNS on a domain controller, and every Active Directory-integrated zone, is now person-run, because zone settings replicate to every domain controller; the Windows DNS pack applies only to a server that is not a domain controller (18; 11, section 5; wording in 00, 01, this README, the Blueprint and the Overview).
+
+### 2026-10-05: Roadmap and open decisions
+
+- `docs/Roadmap.md` sets the build order: groundwork, P0 lockout, remote mode, observe, sustain, reporting, then deceive.
+- Approvals (Conventions, section 3.1): each approval item has an id, a category and a fingerprint of its state; the prompt also takes `category:<name>` on one host; the planned `--approve` / `-Approve` option passes fingerprinted items without the prompt for remote mode; an item changed since the plan is refused.
+- Windows log shipping resolved (00, section 9; 10, section 4): the Splunk universal forwarder already on the host, otherwise a PowerShell script posting to the HTTP Event Collector with a pinned certificate; Windows Event Forwarding is not used.
+- Remote mode is built right after the P0 lockout.
+- Real-host tests run on CI runners (Ubuntu, Windows Server, a single domain controller) and in a local lab before each release (Conventions, section 9; new `docs/lab/README.md`).
+- Run-time configuration holds only event facts, and a profile override may only choose shipped modules (00, section 6; Conventions, section 2.2); the question for officials is drafted in the roadmap.
+- Windows values checked against Microsoft's documentation (11, new section 3.3): Netlogon enforcement becomes report-only, because patched domain controllers enforce it whatever `FullSecureChannelProtection` says; LSA protection uses `RunAsPPL` 2 where supported, or 1 only with Secure Boot off, and otherwise goes on the checklist (new item 11), because value 1 with Secure Boot writes a UEFI variable rollback cannot remove; Windows Server 2025's LDAP and SMB signing defaults are reported; the PowerShell 2.0 engine is gone from Windows 11 24H2 and Windows Server 2025 (10, section 3.2); Netlogon events 5827, 5828, 5830 and 5831 added to the event baseline and the ZeroLogon search, and event 4662 needs directory service access auditing on the domain controller (10).
+- Three new design 10 acceptance tests and two changed design 11 tests.
+
+### 2026-10-05: New design 19, Platform facts and adapters, for build stage 3
+
+- It covers the read-only facts every module may ask for: OS family, init system, package database, active firewall, SELinux, and on Windows the role, Secure Boot, the ActiveDirectory module and the Splunk forwarder.
+- It also covers the firewall adapter interface.
+- Two active Linux firewalls are a `conflict` that blocks the firewall modules; a fact that cannot be learned is `unknown` and blocks the module that needs it.
+- The layout gains `core/platform/` and `platform/linux/firewall/` (00, section 3).
+- The hosts platform `ubuntu` covers the Debian family (Conventions, section 3.1).
+- The roadmap calls its milestones build stages, so they are not confused with the four run phases.
+
+### 2026-10-05: Firewall adapter
+
+Where: 19, section 5.
+
+- The Linux functions are called through one dispatcher, `lab_fw`, which picks the backend from the `firewall` fact and refuses (`20`) on `none`, `conflict` or `unknown`; `restore` uses the backend saved with the snapshot. iptables is a fifth backend, alongside UFW, firewalld, nftables and Windows Firewall.
+- The adapter enforces the order: no change without a snapshot by the same module in the same run, none in plan mode, and no default deny until every scoring-allowlist address has an allow.
+- Return codes 0, 20, 30 (restore did not give back the saved state) and 40.
+- Three new manifest actions, `firewall_snapshot`, `firewall_allow` and `firewall_default_deny` (Conventions, section 7), with `lab_fw_rollback` / `Undo-LabFirewallChange` for a module's rollback.
+- Each backend's method is listed, with its known limits: firewalld restores only the permanent configuration, an nftables accept cannot override another table's drop, a Windows block rule and Group Policy win over local allows, and nftables and iptables changes last until the next reload.
+- A host with no active firewall is reported for a person, because the adapter never turns one on; on Windows, `default_deny_in` turns the profiles on.
+- Five new acceptance tests.
+
+### 2026-10-05: Quarantine helper
+
+Where: 17, new section 5.1.
+
+- Quarantine is a core helper, `core/quarantine/`, so every module removes a foothold the same way; the module judges the item and the helper keeps the reason.
+- It names the functions for files, cron lines, systemd units, scheduled tasks, services, registry values, WMI bindings and processes, and eight new manifest actions (Conventions, section 7).
+- A file goes to `<backup>/quarantine/<run>/<seq>/<path>`, so the same path quarantined twice in one run never collides.
+- A cron line is uncommented in place on restore, keeping later edits to the file.
+- A unit file outside `/etc` is never quarantined.
+- A WMI subscription is stopped by removing only its binding.
+- Ending a process cannot be undone, so it is recorded and the item that started it is restored.
+- Winlogon's `Userinit` and `Shell` are never removed, because no one could log on; a person sets them back to the default.
+- A file is restored only if its SHA-256 still matches, and a file found at the original path is moved aside.
+- Three new acceptance tests.
+- The layout gains `core/quarantine/` (00, section 3).
+
+### 2026-10-05: Approval items built
+
+Where: Conventions, sections 3.1, 3.2 and 7.
+
+- The section loses "planned".
+- The core gains `core/approval/`: `lab_item` / `Write-LabItem` print an item line, `lab_item_fingerprint` / `Get-LabItemFingerprint` compute a fingerprint, and `lab_approved` / `Test-LabApproved` tell `apply` whether an item is approved and unchanged.
+- Decided while building: a malformed item line, or an id listed twice, makes the module an `ERROR`, because approving from a list the runner cannot read is unsafe; items are shown as `Item:` lines, `<id>@<fingerprint> (<category>): <reason>`, so the fingerprint can be copied into `--approve`; a typed word that is neither an id nor `category:<name>` blocks the module, as a malformed answer did before; the runner also compares each `--approve` fingerprint with this run's plan and leaves out a changed item, so a module that forgets to check cannot change it; that refusal is a new manifest action, `approval_refused`; `apply_start` notes the approved items; and the runner labels gain `Item` and `Approved`.
+- The `apply` help drops its "Apply only" heading to stay within 15 lines.
+
+### 2026-10-05: Profiles shipped
+
+Where: Conventions, section 2.3.
+
+- The six profiles of Blueprint section 6.3 ship empty: a module id is added to a profile in the same commit as the module (design 00, section 8), because the runner treats a listed module that is missing as an `ERROR`.
+- `tests/profiles/` checks that each shipped profile lists only modules the release has, each listed once, that fit the profile's platform, and that the `appliance` profile lists only `manual-only` modules (design 16).
+- This replaces the roadmap's "every listed module id exists by the time its stage ends" with a check that holds after every commit.
+
+### 2026-10-05: New passwords
+
+Where: 05, new section 2.3.
+
+- How a new password reaches the offline record.
+- Section 2 said only that it is "shown once" and never written down, but a module's output goes to the run log and its input is empty, so it could not be shown or acknowledged.
+- The core gains `core/secret/`: a generator (cryptographic source, 20 characters by default, no characters easily mistaken by hand), a terminal check made before any change, and a helper that writes to the terminal directly (`/dev/tty`; the Windows console through `CONOUT$` and `CONIN$`), waits for `recorded`, then clears the screen.
+- Without a terminal a rotation is blocked; if the terminal goes before `recorded`, the module puts the old password back.
+- Remote mode must give each host a terminal for these modules.
+- A new acceptance test searches the whole data root for the password.
+
+### 2026-10-08: Security audit of the stage 3 merge
+
+Where: repository issues 16 to 25.
+
+- Module risk is enforced (00, section 4): a `read-only` or `manual-only` module that ships `apply`, `rollback` or `cleanup` is refused when it loads, because the runner skipped the revert timer for `read-only` modules yet still ran their `apply`.
+- The manifest keeps control characters, escaped, instead of refusing them, and a quarantine helper returns `20` for an item it cannot move; a module lists that item for a person and goes on, because a tab in a cron line or a file name could otherwise stop the whole sweep and roll back what it had quarantined (17, section 5.1).
+- Every labelled line and every raw line in `output.log` shows a tab as a space and any other control character as `?`, so module or service output cannot forge a status line (Conventions, section 3.2).
+- The default-deny gate checks ports, not only addresses: each scored service on this host, found by name, address or a DNS lookup, needs an allow on its port from every scoring address or from `any`, because an allow for SSH alone let the deny block the scored ports and no probe from the host can see it (19, section 5).
+- A Linux host with no active firewall now gets the nftables or iptables it already has, instead of being reported for a person, because that is the default on fresh installs and the lockout would otherwise do nothing where it matters most; nothing is installed, and UFW is not turned on because its restore could not turn it off again (19, sections 5 and 6).
+- When the revert timer's `rollback` finds a live run holding the lock, it stops that run and its entry points (TERM, then KILL) before rolling back, instead of waiting two minutes and then rolling back beside it; the old way undid earlier modules while the run went on and reported success.
+- An operator who leaves a prompt open past the revert time loses the run, the new password included (Conventions, section 3.1; manual, section 7).
+- Part of the integrity control comes forward from design 07, section 5: `apply`, `keep` and `rollback` refuse (20) when an account other than root, or other than an administrator on Windows, could change the code, the configuration, the data root or a folder above them, since the revert timer runs them later as root or SYSTEM.
+- The check reads only; the timer runs from real paths.
+- The file-hash and signature checks stay with the integrity stage.
+- Whether a package installed a systemd unit is asked of the package database, not read from the unit's path, so an intruder's unit in `/usr/lib` or `/run` is quarantined; a transient unit is stopped and recorded, and a package unit's added drop-ins are quarantined while the unit waits for approval (17, section 5.1).
+- The break-glass gate is a confirmation, not a proof, and the docs now say "confirmed": when the answer is given, Labyrinth looks for the account's session at the console and records what it found in the manifest's `breakglass_verified` note (the action keeps its name so older manifests read the same); with none, it warns and goes on (01, section 7; Conventions, section 7).
+- Lesser findings: the host name comes from the system (`uname -n`, `[Environment]::MachineName`), not from `HOSTNAME` or `COMPUTERNAME`, which the caller can set; Windows entry points get no standard input, as on Linux (00, rule 8); the Windows lock folder is never deleted recursively, so a junction in it is not followed; the unused password helpers are removed; on Windows the default deny is refused (20) when Group Policy turns off local firewall rules, since Labyrinth's allow rules would do nothing (19, section 5); the iptables backend warns that IPv6 stays open when `ip6tables` is missing; IPv6 addresses are parsed in full, and no service value may begin with `-` (Conventions, section 2); `runs` shows a Linux run whose transient timer a restart dropped as `armed: timer lost (restart?)`, while Windows tasks survive a restart; the manual says that tmux, screen and transcripts keep a shown password, and how to clear a lock held by a reused process id; CI pins its actions by commit and its test modules by version.
+
+### 2026-10-08: Rule numbers checked against the rules page
+
+- The page has no sections 6 or 7, so Professional Conduct is section 9, Questions, Disputes, and Disclosures is 10, and Scoring is 11; the docs had numbered the later sections in sequence.
+- Misleading the scoring engine is Rule 11.3 (cited as 9.3, which is the alcohol rule), incident report content is Rule 11.4 (cited as 9.4), and materials staying in the competition area is Rule 10.5 (cited as 8.5).
+- Every citation is corrected in CLAUDE.md, the Blueprint, the Overview and designs 01, 02, 03, 07, 09, 13, 14, 17 and 18; earlier review-log entries are left as written.
+- The Blueprint's note on how the page numbers its items is updated: it numbers them, and no longer letters them.
+
+### 2026-10-08: Outbound bans
+
+Where: 12, sections 2, 4, 6 and 6.1; 01; Blueprint §3.5.
+
+- Design 12 said bans were inbound only and cited Rules 4.10 and 5.6.5 for it, but neither rule says so: 4.10 forbids offensive activity outside the team's network, and dropping traffic is not offensive; 5.6.5 gives *indiscriminately* ending *all* outbound connections as its example, not blocking one address.
+- The inbound-only limit left a known callback address unblockable, and a reverse shell to a banned attacker still worked.
+- Now every ban drops the address in both directions, matched before the established-connection accept so an open session to it is cut (an active response, Rule 4.11); an address from the unusual-outbound search is banned outbound on its own only after a person approves it (Tier 3), one address at a time, never a range.
+- The never-ban list gains the host's outbound dependencies (DNS resolvers, NTP servers, any proxy or mirror, and what scored services connect out to), and `config/never-ban.example` says so.
+
+### 2026-10-09: Rules review of installs and the first minutes
+
+Where: 01, 05, 10, 12, 14, 15, new 20; CLAUDE.md, Conventions, Blueprint, Overview.
+
+- Rule 5.6.4's text bans tools that use resources outside the competition environment and gives cloud services and cloud processing as its example, while Rules 5.1 and 5.2 allow public software sources and ban only private staging areas; the docs had read 5.6.4 as forbidding any install.
+- The 2027 rules are not yet published (checked 2026-10-09), and the Midwest qualifier follows the national rules plus its packet.
+- New design 20: a `packages` module installs the profile's packages after the lockdown, from vendored copies, the host's repositories, an event proxy or mirror (`PROXY`, `MIRROR` in `event.conf`), or downloads pinned by SHA-256; it never adds a repository, upgrades the whole system or removes a package, keeps new services stopped until configured, and skips installs when no source answers.
+- It also holds a catalog of public tools with licenses read from their repositories.
+- The first-minute bundle (01, section 6.1) now uses only what the host has: rotate, keys, sessions, default-deny inbound, then default-deny outbound from the services file and a new `outbound-allow` list (Tier 2; was Tier 3 in 10); installs, restore points of scored services (14), the persistence sweep and the rest of Tier 2 follow behind it, then outbound is reopened to the normal allowlist.
+- Persistence quarantine moves out of the bundle, because closing the network first stops callbacks while the sweep runs.
+- A first-minute run (01, section 6.3) gives every answer on the command line with the existing `--confirm-group`, `--break-glass` and `--approve` options and starts every host at once; the scoring allowlist first, revert timers, probes with rollback and the protected set stay.
+- Approved Linux security updates are now applied by Labyrinth, one package at a time after a restore point, instead of printed for a person (15); Windows patching stays a checklist.
+
+### 2026-10-09: Vulnerability tracker
+
+Where: new 21; 01, 13, 15, 18, 20; Blueprint §3.6; Overview.
+
+- Labyrinth found and ranked flaws (15, section 4) but forgot each finding once ranked, closed a flaw only by patching, could not see software installed outside a package manager, and on Windows ranked by exposure alone.
+- Design 21 now owns finding and ranking: package data, web apps on disk, WES-NG offline on Windows, Trivy where allowed, and an nmap version scan of the team's own hosts only.
+- It keeps one record per flaw per host (`open`, `mitigated`, `patched`, `accepted`), shown at every checkpoint (13), and a mitigation catalog that points to settings owned by 11, 17 and 18 rather than redefining them.
+- A scored service with a flaw is never stopped to close it (Rule 5.6.5): it is mitigated in place, then patched in place, and a profile may pre-approve security updates for named scored packages in a first-minute run.
+- Design 15 keeps patching and service reduction and points to 21 for the ranking.
+- Design 18 gains the `pkexec` setting and web application firewall rules, and its wording on modules now allows one the `packages` module installed (20).
+- The nmap `vulners` script and online vulnerability APIs are rejected, since they send versions out for matching (Rule 5.6.4).
+- A stray blank line that split the checkpoint table in 13 is removed.
+
+### 2026-10-09: Rule labels
+
+Where: 01, 05, 10, 11; Blueprint §1 and §4.6.
+
+- Several design choices were cited as if a rule required them.
+- Design 10 said blocking abused tools would be a blanket action under Rule 5.6.5; blocking one tool on a host that does not use it breaks nothing, so watching is now the default and a per-host outbound block of one tool on Windows is offered as a Tier 3 item.
+- Design 11 said Group Policy is the "indiscriminate" pattern of Rule 5.6.5, and that Rule 4.11 makes DNS on the domain controller manual; both are now design choices, made for blast radius and replication, with the rules cited for what they say.
+- The Blueprint's candidate-list and DNS notes, design 01's "the rules prohibit" the one-pass sweep, and design 05's "Rule 5.6.5 names shell changes" are reworded the same way.
+- No other behavior changes.
+
+### 2026-10-09: Officials and simulated users
+
+Where: 01, 12; Blueprint §3.5; Overview.
+
+- The 2025 Midwest packet was read in full: officials need access on request and reach every host through the event's virtual lab console, so the break-glass login is the access path and no standing network path is needed; officials also make manual scoring checks, and traffic generators send user traffic from random addresses (Competition Rules 5, 6 and 14; Competition Topology).
+- So a failed-login burst on a scored service's login now raises an alert only, in both watchers, while traps, the planted key and honey-accounts still ban at once; and default-deny keeps each scored port open to every source, never only the scoring engine.
+- Midwest Rule 14 (ICMP) is now *Verified*.
+- The Overview no longer says fail2ban is never installed.
+
+### 2026-10-09: Consistency pass before merging
+
+Where: 00; CLAUDE.md; Overview; lab README.
+
+- CLAUDE.md hard rule 4 and design 00's apply outline still said every apply needs a typed confirmation and runs in rings; both now allow the first-minute run of design 01, section 6.3.
+- The Overview still said a ban blocks only incoming traffic, that nothing talks to the internet, and that the rules name the all-at-once lockout; it now matches designs 12 and 20 and the rule labels, and gains a section on installing tools (4.20).
+- The lab gains a package mirror and the planted flaws design 21 tests against.
+- The operator manual describes only what the runners do today, and no command or option changed, so it is unchanged.
+
+### 2026-10-09: Pre-approval and more automation
+
+Where: 00 §4, §5, §6, §9; 01 §5, §6.3; 05 §2.1; 10; 11 §3, §5.1, §7; 13 §5; 15 §4; 18 §4; 21 §5.2; Conventions §2.2, §3.1; Blueprint; Overview; CLAUDE.md.
+
+- Design 01 said `--approve` carries a profile's pre-approved items, but `--approve` takes only items with a fingerprint from a plan, which nobody has before the event.
+- A module now lists the categories that are safe to approve unseen (`pre_approvable`), and the run-time `pre-approved` file names the items or categories the team approved in advance; each is still checked against this run's plan, the probes and the revert timer, and a rule for any other category is ignored with a line saying so.
+- Both runners and both test suites implement it.
+- Security updates for named packages, default application passwords, and settings that are approval-class only because the version was untested are the pre-approvable categories; settings that change what scoring sees are not.
+- Remote mode now keeps a host's run only when the admin login and every scored probe pass, scheduled checkpoints alert once on each new finding, and the KRBTGT reset is an approval item Labyrinth carries out, with a replication check between the two resets; it is the one domain controller change rollback cannot undo, and the first reset breaks nothing.
+- Deleting accounts, restores, ordinary users' passwords, Group Policy, DNS on the domain controller, appliances, medium-confidence outbound bans and app settings that change what scoring sees stay with a person.
+
+### 2026-10-09: Kept once verified
+
+Where: 00, section 4, rule 9 and the `keep_on_verify` field; 01; 05; Conventions, sections 3.1, 3.2 and 7; Overview; manual.
+
+- The revert timer undid a whole run, so a rollback after a lockout also undid the new admin passwords, the removed planted keys and the ended sessions: it handed the intruder their access back and left the offline record wrong.
+- A module that only takes access away now sets `keep_on_verify: true`; once its `verify` passes and no scored service that passed before fails, the runner records `module_kept`, and `rollback <run>` and the timer leave it alone.
+- Without a `services` file nothing is kept early.
+- A run whose changes were all kept is kept without a prompt.
+- `rollback <run> --all` (`-All`) undoes kept modules too.
+- Firewall, SSH and remote-admin settings and stopped services never set it, so the timer still covers every change that can lock the team out.
+- Every rollback that undoes anything sends a notice to every logged-in terminal or session (`wall`, `msg`; best effort), so a rollback no one watched is seen.
+- The control node's remote keep rule is now "no scored service that passed before fails after", matching the local apply, instead of "every scored service works", which a service down before the run could never meet.
+
+### 2026-10-09: Configuration errors
+
+Where: Conventions, section 3.1; manual.
+
+- An empty `services` file counted as a service list, so a module that touches scored services ran with no probe before or after it; it now counts as missing, and `probe` exits `20`.
+- A configuration file the operator cannot read was taken for a missing or empty one, which could turn a gate off unseen; `plan`, `apply` and `probe` now refuse (`20`) with "needs root (or an elevated Administrator session) to read" the file.
+- A missing `<root>/etc` is named (`40`) instead of showing up as a missing hosts or protected-accounts file.
+- A malformed `services` file is found by `plan`, and by `apply` before anything is asked.
+- The plan's `Next:` line no longer suggests an `apply` that the host checks would refuse.
+- `keep` with no armed run has nothing to do and exits `0`; a run folder that cannot be created is `40`, like a manifest that cannot be written.
+- Fatal messages that lacked one gained a fix line, and the confirmation error says what was typed.
+- `help <module-id>` no longer cuts a module.yml error at the wrong `: `.
+- On Windows, `-Approve a,b` typed in a session is read as the list it was typed as, a word read as a number is reported with the command's help, the revert timer's command line is built inside the step that reports a failure as `BLOCKED`, and `probe` calls only a malformed service list malformed.
+
+### 2026-10-09: Recovery wording
+
+Where: Conventions, sections 3.2 and 4; manual, section 11.
+
+- A run that stops now offers undo before keep, and says "If in doubt, undo them"; its `Next:` line and the exit-30 meaning say that earlier changes stay.
+- The held-lock message, warnings and "too late" have the `labyrinth:` prefix and a fix line, on stderr; "no run", "the run manifest cannot be written" and an unreadable runs folder gained fix lines.
+- An apply whose plan has errors ends with `Summary:` and `apply finished:` like any other.
+- The manual's "You are locked out" step names the run to undo (`runs`, then `rollback` with its last four characters) instead of a bare `rollback`, which only lists runs; the "rollback FAILED" entry, a message no runner prints, describes the `ERROR` line that is printed; and section 11 now opens with being locked out, a stopped run and a failed rollback.
+
+### 2026-10-09: Runnable hints and fuller help
+
+Where: Conventions, sections 3.1 and 3.2; design 00; manual, sections 5 and 6.
+
+- Hints named the runner by its bare file name, which cannot be run as typed: they now name it the way the operator started it, with `sudo` on Linux when `SUDO_USER` is set and `.\labyrinth.ps1` or the full path on Windows; `labyrinth.sh` is committed executable, as the manual's `./labyrinth.sh` needs.
+- The general help says where the options are and points to the manual in Labyrinth's folder instead of a man page or help topic that is never installed.
+- Each command's help says when it needs root or an Administrator, names the causes of exit `20` on a `Blocked:` line, and heads its options `Options:`; `apply` and `basics` describe the break-glass prompt, and `runs` lists every state, including Linux's `armed: timer lost`.
+- `version` names the runner.
+- Everyday words (`undo`, `revert`, `status`, `list`, `check`, `test`, `dry-run`, `--yes`, `--force`) get the command or option they mean, and a word of 3 letters or fewer is suggested only within 1 edit.
+- The Windows comment-based help lists every option.
+- The manual describes the hints, the older `--apply` form for each platform, and run IDs such as `4e21` that PowerShell reads as numbers.
+- Design 00 names the help form `help [<topic>]`.
+- Help topics may have up to 18 lines.
+
+### 2026-10-09: Prompts
+
+Where: Conventions, section 3.2; manual, section 7.
+
+- The break-glass, approval and keep prompts were 85 to 100 columns and wrapped on an 80-column console.
+- Each is now a short prompt with what it asks for on the lines above, all within 78 columns, and the keep prompt no longer repeats a fixed number of minutes after the line that gives the real time.
+- The break-glass answer is saved only after the group name is confirmed, so a run that stops at the group prompt has changed and saved nothing, as it says, and asks again next time.
+- The output tests now hold the prompts, read from the run log, to 78 columns.
+
+### 2026-10-09: Release check
+
+Where: design 07, section 5.1; design 17, section 3; Conventions, section 3.1; manual, sections 2, 5, 7, 10 and 11.
+
+- The code was checked only for who could change it, so an intruder with root could change a core file and have the next apply, or a revert timer, run it; the release check was planned late.
+- Each runner now checks every file of its folder against `release.sha256` before it loads any of the core, for every command, and refuses with `20` a file that is changed, missing or not in the list; a refused rollback also sends a notice.
+- With no list, `apply`, `keep` and `rollback` warn.
+- `version` and the apply recap print the list's SHA-256, which the operator compares by eye with the hash the captain recorded in the team's notes.
+- `tools/release/manifest.sh` and `manifest.ps1` write the list.
+- The design and the manual say what the check cannot do, and how to check a copy with the host's own tools.
+- The persistence sweep reports unexplained files in Labyrinth's data root without quarantining them, and lists look-alike `lab-revert-*` timers and `\Labyrinth\` tasks that no run names.
+- The broken table in design 07, section 5, is mended.
+
+### 2026-10-09: Readability
+
+Where: README; Overview; 01; Conventions, sections 2.2 and 3.1; manual, section 3; Blueprint; Roadmap; this log.
+
+- This log is now dated sections with short bullets instead of one table.
+- The README opens in plain words and no longer points at private material.
+- Overview: section 4 headings name their phase in words; the module figure says a person confirms once per run; the safety gates are a numbered list; the long Tier 3 cell moved under the table.
+- A host group is defined where it is first used, in the Overview and the manual; "ring" is kept as the specs' word for it, and the first host of each kind is a *test host*, because "canary" also names bait files (01, Blueprint, Roadmap).
+- The runners say "group", not "ring group", when this host is not in the hosts file.
+- Conventions section 3.1 is split into sub-sections, and the revert timer's paragraphs are together.
+- The PDF manuals open with a contents list.
 
 ## References
 

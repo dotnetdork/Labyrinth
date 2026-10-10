@@ -78,6 +78,9 @@ Describe 'core library' {
             Write-TestFile $svc $bad
             { Read-LabServiceList } | Should -Throw
         }
+        # An empty list, or one with only comments, counts as missing.
+        Write-TestFile $svc @('# nothing yet')
+        Read-LabServiceList | Should -Be $null
     }
 
     It 'config: event.conf defaults and range checks' {

@@ -245,3 +245,19 @@ function Test-LabRevertTimer {
     param([Parameter(Mandatory)] [string] $RunId)
     return (Test-Path -LiteralPath (Join-Path (Get-LabRunDir $RunId) 'timer'))
 }
+
+# Send-LabNotice -Message TEXT: show TEXT in every session logged in on this
+# host, so the team learns that a run was rolled back even when no one is
+# watching the revert timer. Best effort: returns $false when msg.exe is
+# missing or fails, and the caller goes on.
+function Send-LabNotice {
+    param([Parameter(Mandatory)] [string] $Message)
+    $exe = Join-Path $env:SystemRoot 'System32\msg.exe'
+    if (-not (Test-Path -LiteralPath $exe -PathType Leaf)) { return $false }
+    try {
+        $null = & $exe '*' '/TIME:900' $Message 2>$null
+        return ($LASTEXITCODE -eq 0)
+    } catch {
+        return $false
+    }
+}

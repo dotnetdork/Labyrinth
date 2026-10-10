@@ -1,6 +1,6 @@
 # 00. Module Contract and Repository Layout
 
-**Status:** Draft · reviewed 2026-10-05
+**Status:** Draft · reviewed 2026-10-09
 
 ## 1. Goal
 
@@ -127,6 +127,7 @@ Every module is a folder containing a metadata file, a help page and up to six e
 | `touches_scored` | `true` if it can affect a scored service or account |
 | `requires` | Other modules or facts that must exist first |
 | `outputs` | Files and state it creates, so cleanup can find them |
+| `keep_on_verify` | Optional, `true` or `false` (the default), for a module that changes something (`reversible`, `service-affecting` or `approval`). `true` means the change is kept as soon as it verifies and no scored service got worse, so the revert timer no longer undoes it (rule 9 below). It is only for a change that takes access away from someone other than the team and cannot lock the team out or cut off scoring |
 | `pre_approvable` | Optional, for an `approval` module only: the item categories a pre-approval rule may approve (Conventions, section 3.1). A category belongs here only if an item of it is safe to change without a person seeing it: the module checks the item fully, and the change can be undone or breaks nothing. Examples are a security update for a named package (design 15, section 4), a known default application password (design 05, section 2.1) and a setting that is approval-class only because the installed version was not tested in the lab (design 18, section 4) |
 
 `about.txt` is the module's help page, printed by `labyrinth help <module-id>` under a summary of `module.yml` in plain words. It is plain text, at most 78 columns, and fits one screen. It answers, in this order and in short sentences: what the module checks, what it changes, why, what can go wrong and what Labyrinth does about it, how to undo it, and what to do when it fails. Every module in a release has one; a module without it still runs, and its help page says the page is missing.
@@ -189,6 +190,7 @@ Rules for module authors:
 6. No module deletes a file. Anything removed is quarantined (design 17, section 5). An account is deleted only by the account module, after approval (design 05, section 6).
 7. A module writes its output for a beginner, as `key: text` lines with a key from `found`, `will do`, `did`, `why`, `risk`, `problem`, `cause`, `fix` and `undo`: `found: password logins are on`, `will do: turn them off`. Any other line is shown as a note. An entry point that exits `20`, `30` or `40` prints a `problem:` line last, saying what stopped it; without one, the operator sees only that the script gave no reason. The runner adds the module's title, its status and a pointer to its help page (docs/Conventions.md, section 3.2).
 8. An entry point never reads standard input. The runner gives it none (`/dev/null` on Linux, an empty, closed input on Windows), so a module can never take an answer the operator typed for Labyrinth.
+9. **Kept once verified.** The revert timer exists to undo a change that locks the team out or cuts off scoring. Undoing a change that only takes access away from an intruder does the opposite: it gives the intruder their access back, and it can leave the team's offline record wrong, because an old password returns. So a module whose change only takes access away sets `keep_on_verify: true`. Examples are rotating an admin password the team keeps in the offline record, removing an SSH key the key registry does not list, ending an intruder's session, quarantining a high-confidence persistence item and locking an unexpected local account. The runner keeps such a module (`module_kept` in the run manifest) once its `verify` passes and the scored services were probed with none worse than before. The revert timer and `rollback <run>` then leave it alone, and only `rollback <run> --all` undoes it. Without a service list nothing is kept early, and the timer still covers the change. A firewall change, an SSH or remote-administration setting, a stopped service and anything else that can lock the team out never sets it, whatever its risk class; the design review of each module checks this. The runner refuses `keep_on_verify` on a `read-only` or `manual-only` module, which has nothing to keep (`40`).
 
 ## 5. Execution model
 
@@ -196,7 +198,7 @@ Labyrinth runs in two modes that share the same modules:
 
 - **Local mode.** `labyrinth.sh` or `labyrinth.ps1` runs on the host it changes. This is the base: it needs nothing but the host itself, and it is the fallback when remote access is lost.
 - **Remote mode.** `labyrinth remote plan <phase> --group <group>` or `labyrinth remote apply <phase> --group <group>` runs on a control node. For each target it copies the release, checks it (design 07, section 5), runs the *same* local command over SSH (Linux) or PowerShell remoting or OpenSSH (Windows), and brings back the logs and the run manifest. It must cope with being cut off, because the lockout rotates the very credentials and SSH settings it connects with.
-- **Keeping a run in remote mode.** A local apply ends by asking the operator to type `keep`. In remote mode the control node answers for each host, from what it can check itself: it keeps the host's run (`keep <run>`) only when, after the run, it can still log in to the host over the admin path with a new connection, and every scored service on that host passes its probe from the control node. Otherwise it keeps nothing, and the revert timer rolls the host back. Either way the control node prints and records which hosts it kept and why. The break-glass check at the console still follows the run (design 01, section 6.3); an operator who cannot log in there runs `rollback` for that host.
+- **Keeping a run in remote mode.** A local apply ends by asking the operator to type `keep`. In remote mode the control node answers for each host, from what it can check itself: it keeps the host's run (`keep <run>`) only when, after the run, it can still log in to the host over the admin path with a new connection, and no scored service on that host that passed its probe from the control node before the run fails it after. This is the same rule as the checks after each module: a service the Red Team had already broken does not undo the team's changes. Otherwise it keeps nothing, and the revert timer rolls the host back, except the modules already kept once they verified (section 4, rule 9). Either way the control node prints and records which hosts it kept and why. The break-glass check at the console still follows the run (design 01, section 6.3); an operator who cannot log in there runs `rollback` for that host.
 
 Either way, one run does this:
 
@@ -221,7 +223,7 @@ The steps above are the outline; `docs/Conventions.md` section 3.1 gives the exa
 | `plan <phase>`, `apply <phase>` | Plan a phase, or apply it behind the gates | Conventions 3.1 |
 | `keep [<run>]`, `rollback <run>`, `runs` | Keep or undo a run, or list the runs and their revert timers | Conventions 3.1 |
 | `probe` | Probe every scored service once | Conventions 3.1 |
-| `help [<command>]`, `version` | Help and the version | Conventions 3.1 |
+| `help [<topic>]`, `version` | Help on a command, `basics` or a module, and the version | Conventions 3.1 |
 | `remote plan <phase> --group <group>`, `remote apply <phase> --group <group>` | Run the local command on every host of a group from a control node | This section |
 | `seal`, `reseal --reason <text>` | Seal the baseline, or reseal it after an approved change | Design 04 |
 | `checkpoint` | Print the read-only health summary | Design 13 |
