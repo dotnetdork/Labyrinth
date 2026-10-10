@@ -72,6 +72,20 @@ stub() {
     run lab_services_load
     [ "$status" -eq 1 ] || { echo "accepted: $bad"; return 1; }
   done
+  # An empty list, or one with only comments, counts as missing.
+  printf '# nothing yet\n' > "$LAB_CONFIG_DIR/services"
+  run lab_services_load
+  [ "$status" -eq 2 ]
+}
+
+@test "config: a file that cannot be read is an error, not an empty file" {
+  [[ "$(id -u)" != 0 ]] || skip 'root reads every file'
+  printf 'web http h 80 -\n' > "$LAB_CONFIG_DIR/services"
+  chmod 000 "$LAB_CONFIG_DIR/services"
+  run lab_services_load
+  chmod 600 "$LAB_CONFIG_DIR/services"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"cannot be read"* ]]
 }
 
 @test "config: event.conf defaults and range checks" {

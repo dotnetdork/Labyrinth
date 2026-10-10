@@ -48,6 +48,7 @@ You need:
 - **Labyrinth's folder on the host,** normally `C:\ProgramData\Labyrinth`. The program is `labyrinth.ps1` in its `bin` folder, so run the commands from there: `cd C:\ProgramData\Labyrinth\bin`.
 - **Permission to run the script.** If Windows refuses to run it because of the execution policy, start it like this instead, for this window only: `powershell -ExecutionPolicy Bypass -File .\labyrinth.ps1 plan lockout`.
 <!-- end -->
+- **The release hash,** in the team's notes kept off the hosts. When the team makes a release, the captain records the SHA-256 of its release list, `release.sha256`. Before it runs, Labyrinth checks each of its own files against that list, and it prints the list's hash on the `Release:` line of `version` and of every apply. Compare the two by eye. If they differ, stop: this copy is not the release the team checked. A copy taken straight from the repository has no list, and its `Release:` line says `not checked`.
 - **The event's configuration,** in the `etc` folder under the data root (section 10). The team prepares these files before the event. The two that matter most:
   - `hosts` lists every host Labyrinth may act on, with its **group** (which wave of hosts it belongs to), its profile and its platform.
   - `protected-accounts` is the **protected set**: accounts Labyrinth must never touch, such as the officials' accounts and the accounts the scoring engine logs in with. If this file is missing or empty, Labyrinth refuses to run.
@@ -58,12 +59,14 @@ You need:
 |---|---|
 | Phase | A stage of defense. There are four, run in order: `lockout`, `observe`, `deceive` and `sustain`. |
 | Module | One small job in a phase, such as turning off password logins. Each has a plain name and an ID, such as `lockout.firewall`: the phase, a dot, then its short name. `@CMD@ help <module-id>` explains it. |
+| Host group | A set of hosts that Labyrinth changes together, such as `ring1`. The team's hosts file gives each host its group; the first group holds one test host of each kind, so a mistake shows up there before it reaches the rest. `apply` asks you to type the group's name before it changes anything. |
 | Run | One use of `plan` or `apply` on one host. |
 | Run ID | The name of a run, such as `20261002T140301Z-4f2a`: the start time in UTC and four random characters. Wherever a command asks for a run, the last four characters (`4f2a`) are enough. |
 | Plan | A dry run: each module reports what it would change. Nothing is changed and nothing is written. |
 | Apply | A real run: Labyrinth plans, asks you to confirm, then makes the changes. |
-| Revert timer | A timer started before a risky change. If nobody **keeps** the run in time, the timer undoes the whole run by itself. It protects you if a change locks you out. |
+| Revert timer | A timer started before a risky change. If nobody **keeps** the run in time, the timer undoes the run by itself. It protects you if a change locks you out. |
 | Keep | Telling Labyrinth that a run's changes are good: the revert timer is cancelled and the changes stay. |
+| Kept once verified | A change that only takes access away from an intruder, such as a new admin password or a removed planted key, cannot lock you out. Labyrinth keeps it as soon as its check passes and no scored service got worse, so the revert timer does not hand the intruder their access back. |
 | Rollback | Undoing what a run changed, newest first. The revert timer starts one automatically; you can start one too. |
 | Break-glass account | The emergency login, kept in the team's offline record, used only when normal access fails. Labyrinth asks you to confirm it works before changing anything. |
 | Scored service | A service the scoring engine checks, such as a website, email or DNS. Labyrinth tests them before and after each change. |
@@ -113,27 +116,38 @@ Commands, phases, option names and run IDs can be typed in any mix of upper and 
 
 ## plan *phase*
 
-Shows what every module of the phase would change on this host. Nothing is changed, and nothing is written, not even a log. Run it as often as you like.
+Shows what every module of the phase would change on this host. Nothing is changed, and nothing is written, not even a log. Run it as often as you like. Run it as @ADMIN@: only @ADMIN@ can read the configuration.
 
-Ends with 0 when nothing needs changing, 10 when something does, 20 when a safety check blocks a module, and 40 on an error.
+Ends with 0 when nothing needs changing, 10 when something does, 20 when a safety check blocks a module or the configuration cannot be read, and 40 on an error.
 
 ## apply *phase*
 
-Plans, then makes the changes behind the safety checks described in section 7. You are asked to confirm before anything changes.
+Plans, then makes the changes behind the safety checks described in section 7. It must be run as @ADMIN@. Before anything changes, it asks you to name the break-glass account (the first apply on a host only) and to type this host's group name.
 
-Ends with 0 when every change was made and checked, or the highest problem code otherwise: 20 blocked, 30 a check after a change failed, 40 an error.
+Ends with 0 when every change was made and checked, or the highest problem code otherwise: 20 blocked, 30 a check after a change failed, 40 an error. An apply is blocked when it is not run as @ADMIN@, when another Labyrinth run holds the lock, when this host is not in the `hosts` file, or when a safety check fails.
 
 ## keep [*run*]
 
-Keeps a run's changes: cancels its revert timer, then records that the run was kept. Without a run, it keeps the only run whose timer is armed; if more than one is armed, it lists them and keeps nothing.
+Keeps a run's changes: cancels its revert timer, then records that the run was kept. Without a run, it keeps the only run whose timer is armed. If none is armed, there is nothing to keep, and it says so and ends with 0. If more than one is armed, it lists them and keeps nothing.
 
-Ends with 0 when the run is kept, 20 when it is not run as @ADMIN@ or it is too late because the run was already rolled back, and 40 when the timer could not be cancelled or the keep could not be recorded. If the timer could not be cancelled, the run is **not** kept and the timer will still undo it: Labyrinth says when, and gives the command to try again.
+Ends with 0 when the run is kept, 20 when it is not run as @ADMIN@, when Labyrinth's files could be changed by another account (section 11), or when it is too late because the run was already rolled back, and 40 when the timer could not be cancelled or the keep could not be recorded. If the timer could not be cancelled, the run is **not** kept and the timer will still undo it: Labyrinth says when, and gives the command to try again.
 
 ## rollback *run*
 
-Undoes everything the run changed, newest change first. This is exactly what the revert timer does when it fires. You must name the run. Without one, it changes nothing and ends with 40; run as @ADMIN@, it also lists the runs to choose from. Running it twice is safe.
+Undoes what the run changed, newest change first. This is exactly what the revert timer does when it fires. You must name the run. Without one, it changes nothing and ends with 40; run as @ADMIN@, it also lists the runs to choose from. Running it twice is safe.
 
-Ends with 0 when the run is rolled back, 20 when not run as @ADMIN@, and 40 on an error.
+Changes that were kept once verified stay: rollback lists them first and leaves them in place. To undo them too, add
+<!-- linux -->
+`--all`.
+<!-- end -->
+<!-- windows -->
+`-All`.
+<!-- end -->
+If that undoes a password change, the old password is back: change it again and correct the offline record.
+
+When rollback undoes anything, it also shows a short notice on every terminal logged in to the host, so the team knows, even when nobody was watching the revert timer.
+
+Ends with 0 when the run is rolled back, 20 when not run as @ADMIN@ or when Labyrinth's files could be changed by another account (section 11), and 40 on an error.
 
 ## runs
 
@@ -152,7 +166,7 @@ Below the list, it shows how to name a run by its last four characters. Then it 
 
 ## probe
 
-Tests every scored service once, the way the scoring engine would, and prints the result for each. Changes nothing. Ends with 0 when every service passes, 20 when there is no list of scored services, 30 when any service fails, and 40 on an error.
+Tests every scored service once, the way the scoring engine would, and prints the result for each. Changes nothing. Run it as @ADMIN@, so it can read the configuration. Ends with 0 when every service passes, 20 when there is no list of scored services or the list names none, 30 when any service fails, and 40 on an error.
 
 ## help [*topic*]
 
@@ -170,9 +184,26 @@ After any command,
 <!-- end -->
 does the same, once the rest of the line is correct.
 
+Commands in help and in hints are printed the way you started Labyrinth, so you can copy and run them:
+<!-- linux -->
+the path you typed, such as `./labyrinth.sh` or `/opt/labyrinth/labyrinth.sh`, with `sudo` in front when you used sudo.
+<!-- end -->
+<!-- windows -->
+`.\labyrinth.ps1` when you are in Labyrinth's folder, and its full path otherwise.
+<!-- end -->
+
+The general help ends with where to find this manual: the
+<!-- linux -->
+Linux
+<!-- end -->
+<!-- windows -->
+Windows
+<!-- end -->
+parts of `docs/manual/labyrinth.md` in Labyrinth's folder.
+
 ## version
 
-Prints Labyrinth's version.
+Prints Labyrinth's version, which program printed it, and the release hash on a `Release:` line (section 2).
 <!-- linux -->
 `-V` or `--version`
 <!-- end -->
@@ -201,6 +232,8 @@ all work.
 | `--break-glass NAME` | Answers the break-glass prompt without typing. | apply |
 | `--confirm-group GROUP` | Answers the group-name prompt without typing. | apply |
 | `--approve LIST` | Approves items without the approval prompt; see section 7. | apply |
+| `--all` | Also undoes the changes that were kept once verified. | rollback |
+| `--apply` | The older form of apply: a phase with `--apply` applies it. | a phase |
 | `-h`, `-?`, `--help` | Show help. | all |
 | `-V`, `--version` | Show the version. | all |
 
@@ -215,6 +248,8 @@ Example: `sudo ./labyrinth.sh apply lockout --root /srv/labyrinth`
 | `-BreakGlass NAME` | Answers the break-glass prompt without typing. | apply |
 | `-ConfirmGroup GROUP` | Answers the group-name prompt without typing. | apply |
 | `-Approve LIST` | Approves items without the approval prompt; see section 7. | apply |
+| `-All` | Also undoes the changes that were kept once verified. | rollback |
+| `-Apply` | The older form of apply: a phase with `-Apply` applies it. | a phase |
 | `-h`, `-Help` | Show help. | all |
 | `-V`, `-Version` | Show the version. | all |
 
@@ -222,12 +257,19 @@ Example: `.\labyrinth.ps1 apply lockout -Root D:\Labyrinth`
 
 Use `-h` for help, not `-?`: PowerShell takes `-?` for itself and shows its own page. PowerShell's common parameters, such as `-Verbose`, are not supported.
 
-Run IDs that are all digits, such as `0123`, must be put in quotes, or PowerShell turns them into a number: `.\labyrinth.ps1 keep '0123'`.
+A run ID that PowerShell can read as a number must be put in quotes, or PowerShell turns it into one: all digits, such as `0123`, but also forms such as `4e21` (4 times 10 to the 21st) and `12d`. Labyrinth says so when it happens. If in doubt, quote it: `.\labyrinth.ps1 keep '4e21'`.
 <!-- end -->
 
-An option given twice, an option with no value, or a word Labyrinth does not know is an error (exit 40). Labyrinth says which word is wrong and, for a near miss, suggests the right one.
+An option given twice, an option with no value, or a word Labyrinth does not know is an error (exit 40). Labyrinth says which word is wrong and, for a near miss, suggests the right one. It also knows a few everyday words: `undo` and `revert` point to `rollback`, `status` and `list` to `runs`, `check` and `test` to `probe`, and a dry-run option to `plan`, which never changes anything.
 
-**Older forms still work.** A phase on its own (`@CMD@ lockout`) means `plan lockout`, and `--apply` with a phase means `apply`. They are kept because a revert timer that is already armed still uses them.
+**Older forms still work.** A phase on its own (`@CMD@ lockout`) means `plan lockout`, and
+<!-- linux -->
+`--apply`
+<!-- end -->
+<!-- windows -->
+`-Apply`
+<!-- end -->
+with a phase means `apply`. They are kept because a revert timer that is already armed still uses them.
 
 # 7. What happens during an apply
 
@@ -236,14 +278,15 @@ An apply goes through a fixed series of safety checks. If one fails, the run sto
 1. **You are @ADMIN@,** the host is listed in `hosts`, and the protected set is loaded.
 2. **No other run is in progress** on this host. Only one run at a time may change a host.
 3. **Every module is planned.** If any plan has an error, nothing is applied. If nothing needs changing, the run ends here without asking you anything.
-4. **Break-glass check.** Log in at the host's own console with the break-glass account and type its name. Labyrinth asks this once per host. It takes your word for it, then looks for that account's session at the console and records what it found in the run's manifest. If it finds none, it warns `no session for NAME was found at this host's console` and goes on: stop there and check the login yourself if you did not just use it.
-5. **Confirmation.** Labyrinth shows what each module will do, then asks you to type the host's group name. Anything else stops the run.
+4. **Break-glass check.** Log in at the host's own console with the break-glass account, then type its name at the `Break-glass account name:` prompt. Labyrinth asks this once per host. It takes your word for it, then looks for that account's session at the console. Your answer is saved only once you confirm the plan in step 5, so a run that stops before then asks again next time; the run's manifest records what the console check found. If it finds none, it warns `no session for NAME was found at this host's console` and goes on: stop there and check the login yourself if you did not just use it.
+5. **Confirmation.** Labyrinth shows what each module will do and the release hash on its `Release:` line, which you compare with the team's notes (section 2), then asks you to type the host's group name. Anything else stops the run, and nothing is changed or saved.
 6. **Changes start.** For each module that needs a change, in order:
    - the revert timer is armed (or moved later), unless the module only reads;
    - the change is made;
    - the module checks its own work; if the check fails, that module is undone and the run stops;
-   - the scored services are tested again; if one that worked before now fails, that module is undone and the run stops.
-7. **Keep or not.** Check that a new login works, then type `keep`. Anything else leaves the timer armed.
+   - the scored services are tested again; if one that worked before now fails, that module is undone and the run stops;
+   - a change that only takes access away is kept now, if the scored services were tested, and the timer leaves it alone.
+7. **Keep or not.** If every change was kept once verified, the run is kept and nothing is asked. Otherwise, check that a new login works, then type `keep`. Pressing Enter, or typing anything else, leaves the timer armed.
 
 Some modules never change anything on their own: they print a checklist for a person to follow, or ask you which items to change.
 
@@ -251,7 +294,7 @@ Some modules never change anything on their own: they print a checklist for a pe
 
 - Type the ids you approve, separated by spaces, for example `cron-3f1a cron-77b0`.
 - Type `category:cron` to approve every item of that category in this plan.
-- Press Enter to approve nothing. Nothing is then changed.
+- Press Enter at the `Items to approve` prompt to approve nothing. Nothing is then changed.
 
 An id that is not in the plan is ignored, and Labyrinth says so. If anything else is typed, the module is blocked and changes nothing.
 
@@ -356,7 +399,7 @@ Next: bring the failed service back, then run '@CMD@ probe' again.
 probe finished: exit 30 (a service failed)
 ```
 
-`WARN` means a service could not be checked, for example because a tool is missing. A `rollback` says how many modules it undoes, shows each as `CHANGE` and then `OK` or `ERROR`, and ends with `rollback finished: exit 0 (rolled back)`, or `exit 40 (error)` if a module could not be undone.
+`WARN` means a service could not be checked, for example because a tool is missing. A `rollback` first lists the modules it leaves in place because they were kept once verified, then says how many modules it undoes, shows each as `CHANGE` and then `OK` or `ERROR`, and ends with `rollback finished: exit 0 (rolled back)`, or `exit 40 (error)` if a module could not be undone.
 
 An apply also recaps twice. Before it asks for the group name, it lists what each module will do and says that a revert timer will be armed. If you are connected over the network, it also reminds you to keep a second session open. Before it asks whether to keep the changes, it gives the time, in UTC and in minutes from now, at which the revert timer will undo them.
 
@@ -369,7 +412,7 @@ Every command ends with one of these numbers. Scripts can test it; people can re
 | 0 | Done, or nothing to do. |
 | 10 | A change is needed (plan), or only steps a person must carry out are left (apply). |
 | 20 | Blocked by a safety check. The blocked part changed nothing. |
-| 30 | A check after a change failed, and that change was undone. For probe: a scored service failed. |
+| 30 | A check after a change failed, and that change was undone. The changes made before it stay, and the revert timer is still armed. For probe: a scored service failed. |
 | 40 | An error, including a mistyped command. Read the message. |
 
 # 10. Files
@@ -379,7 +422,7 @@ Everything Labyrinth keeps is under one folder, the **data root**: `@ROOT@` unle
 <!-- linux -->
 | Folder | Holds |
 |---|---|
-| `<root>/bin` | The program. |
+| `<root>/bin` | The program, and `release.sha256`, the hash of each of its files. |
 | `<root>/etc` | The event's configuration: `hosts`, `protected-accounts`, `event.conf`, `services`, `scoring-allowlist`, `never-ban`, `outbound-allow`, `pre-approved`. |
 | `<root>/state` | Run records: one folder per run under `state/runs`, with the run's change record (`manifest.jsonl`), its timer, and its log (`output.log`). |
 | `<root>/logs` | Logs, one folder per kind. |
@@ -390,7 +433,7 @@ Only root can read `etc`, `state` and `backup`. Only root may be able to change 
 <!-- windows -->
 | Folder | Holds |
 |---|---|
-| `<root>\bin` | The program. |
+| `<root>\bin` | The program, and `release.sha256`, the hash of each of its files. |
 | `<root>\etc` | The event's configuration: `hosts`, `protected-accounts`, `event.conf`, `services`, `scoring-allowlist`, `never-ban`, `outbound-allow`, `pre-approved`. |
 | `<root>\state` | Run records: one folder per run under `state\runs`, with the run's change record (`manifest.jsonl`), its timer, and its log (`output.log`). |
 | `<root>\logs` | Logs, one folder per kind. |
@@ -410,11 +453,17 @@ Each revert timer is a scheduled task named `\Labyrinth\lab-revert-<run>-<n>`, r
 
 # 11. When something goes wrong
 
-**"another Labyrinth run (pid N) holds ... lock".** A run is already in progress on this host. Wait for it to finish. If that process has ended, run the command again: a lock left by a process that is gone is taken over. Rarely, after a crash, another program gets the same process number and the lock stays held. If no Labyrinth run is going, delete the `lock` folder in the data root's `state` folder, then run the command again.
-
 Most errors that stop Labyrinth are two lines: what failed and why, then how to recover. Do what the second line says, then run the same command again.
 
 **Read the run log.** Every apply, keep and rollback writes a log of the run: everything you saw, your answers to the questions, and every line the modules printed, with the time each started and how it ended. A `FAIL` or `ERROR` shows its path on a `Log:` line, and so does the end of the run. `runs` lists the logs of the runs that had problems. Only @ADMIN@ can read the log; open it with any text viewer. A plan writes no log: its output is all there is.
+
+**You are locked out.** Do nothing: when the revert timer fires, it undoes the run, and every terminal logged in to the host shows a notice. It leaves the changes that were kept once verified, such as a new admin password, because they cannot lock you out; the new password is in the offline record. If you cannot wait, log in at the console with the break-glass account and run `@CMD@ runs`. The run that is `armed` is the one to undo; its ID is also on the second line of the apply. Then run `@CMD@ rollback` with the last four characters of that ID, for example `@CMD@ rollback 4f2a`.
+
+**"The run stopped".** A module failed partway through a run. The changes made before it are still in place, and the revert timer is still armed; Labyrinth says when it fires and prints the commands to undo or keep the changes, undo first. If in doubt, undo them: the timer would do the same, only later.
+
+**An `ERROR` line during a rollback ("its rollback stopped").** Labyrinth could not undo one module of the run. The `Problem:` line says that its rollback stopped and the change may still be in place, and the `Fix:` line names the backup folder that holds the module's files as they were before the run. The other modules are still undone, the rollback ends with exit code 40, and `runs` shows the run as `rolled back with errors`. Restore that module's files by hand from the backup folder and check the service it affects, then run the same rollback again: it is safe to repeat.
+
+**"another Labyrinth run (pid N) holds ... lock".** A run is already in progress on this host. Wait for it to finish. If that process has ended, run the command again: a lock left by a process that is gone is taken over. Rarely, after a crash, another program gets the same process number and the lock stays held. If no Labyrinth run is going, delete the `lock` folder in the data root's `state` folder, then run the command again.
 
 **A module's `Problem:` line** says what stopped it. If the module gave no reason, Labyrinth says so, names the module's script on a `Script:` line, and in a plan shows the script's last lines as `It said:` lines. The `More:` line gives the command that explains the module.
 
@@ -426,11 +475,29 @@ Most errors that stop Labyrinth are two lines: what failed and why, then how to 
 <!-- end -->
 
 <!-- linux -->
+**"needs root to read".** A file in the configuration folder, or the folder itself, can be read only with full rights; after the first `apply` that is normal. `plan` and `probe` refuse rather than treat the file as missing, which could turn off a safety check without anyone noticing. Run the command again as @ADMIN@.
+<!-- end -->
+<!-- windows -->
+**"needs an elevated Administrator session to read".** A file in the configuration folder, or the folder itself, can be read only with full rights; after the first `apply` that is normal. `plan` and `probe` refuse rather than treat the file as missing, which could turn off a safety check without anyone noticing. Run the command again as @ADMIN@.
+<!-- end -->
+
+<!-- linux -->
 **"... can be changed by an account other than root".** Labyrinth runs its program, its configuration and its run records as root, and the revert timer runs them again later. So `apply`, `keep` and `rollback` refuse if any other account could change them: the program folder, the configuration folder, the data root, anything in them, or any folder above them. The line names the first one found. Keep Labyrinth in `/opt/labyrinth`, owned by root and not writable by group or others: `sudo chown -R root: /opt/labyrinth` and `sudo chmod -R go-w /opt/labyrinth`. A copy unpacked in a home folder or under `/tmp` is refused.
 <!-- end -->
 <!-- windows -->
 **"... can be changed by an account that is not an administrator".** Labyrinth runs its program, its configuration and its run records as an administrator, and the revert timer runs them again later as SYSTEM. So `apply`, `keep` and `rollback` refuse if any other account could change them: the program folder, the configuration folder, the data root, anything in them, or any folder above them. The line names the first one found. Keep Labyrinth in `C:\ProgramData\Labyrinth`, where `apply` makes the data root private to administrators. A copy unpacked in a user's own folder, or one that gives Users or Authenticated Users the right to change it, is refused.
 <!-- end -->
+
+**"... differs from the release", "is not in the release" or "is missing".** Before it runs anything, Labyrinth checks each of its own files against `release.sha256`, and one was changed, added or removed. Every command refuses, the revert timer's rollback too, which also shows a notice on every terminal: the changes of an armed run stay in place until this is mended. Until you know otherwise, treat it as a sign of an intruder. Note the line, copy Labyrinth here again from the team's copy, and check the copy with the host's own tools, which do not depend on Labyrinth's code. In Labyrinth's folder:
+<!-- linux -->
+`sha256sum release.sha256` must print the hash in the team's notes, and `sha256sum -c --quiet release.sha256` must print nothing.
+<!-- end -->
+<!-- windows -->
+`(Get-FileHash .\release.sha256).Hash.ToLower()` must print the hash in the team's notes, and `Get-Content .\release.sha256 | ForEach-Object { $h, $f = $_ -split '  ', 2; if ((Get-FileHash $f).Hash -ne $h) { $f } }` must print nothing.
+<!-- end -->
+Then run the command again. Labyrinth's own check finds a changed, added or missing file. It cannot find an intruder who changed the check as well, who could make it print the expected hash; the commands above can.
+
+**"no release.sha256, so Labyrinth's files were not checked".** This copy has no release list, so Labyrinth could not check its files, and `Release:` says `not checked`. A copy taken straight from the repository has none. Go on only if the team's notes say this copy is the one to run.
 
 **"the protected set is not loaded".** The line ends with the reason: there is no `protected-accounts` file in the configuration folder, or it lists no accounts. Labyrinth will not change anything without it. Copy in the team's prepared file.
 
@@ -438,7 +505,13 @@ Most errors that stop Labyrinth are two lines: what failed and why, then how to 
 
 **"no profile named".** No profile file has that name. The next line lists the profiles there are; check the name for a typing mistake.
 
-**"folder does not exist" or "is a file, not a folder".** The path given with the configuration option is not a folder. Give the folder that holds the `hosts` file, or leave the option out to use the one under the data root. `keep` and `rollback` still work without it.
+**"folder does not exist" or "is a file, not a folder".** The path given with the configuration option is not a folder, or, without that option, there is no `etc` folder under the data root. Check the data root option for a typing mistake, or give the folder that holds the `hosts` file. `keep` and `rollback` still work without it.
+
+**"lists no service".** The `services` file is there but names no scored service, so nothing can show that a change left the services working. `probe` stops, and an `apply` blocks every module that can affect a scored service. List the scored services, one per line.
+
+**"the plan was not confirmed".** The group name typed at the prompt was not this host's group; the line says what was typed. Nothing was changed. Run `apply` again and type the group name shown in the prompt.
+
+**"break-glass not confirmed".** The name typed at the break-glass prompt is not listed with the class `breakglass` in `protected-accounts`, or nothing was typed. Nothing was changed. Log in at the console with the break-glass account, run `apply` again and type that account's name.
 
 **"does not serve this host's platform".** This host's line in `hosts` names a platform this program does not serve, so `plan`, `apply` and `probe` refuse to run here. Correct the line, or use the Labyrinth runner for that platform on the host. `keep` and `rollback` still work, so a run can always be undone.
 
@@ -450,13 +523,7 @@ Most errors that stop Labyrinth are two lines: what failed and why, then how to 
 
 **"the keep could not be recorded".** `keep` cancelled the revert timer, so the changes stay, but the run's record could not be written. `runs` may not show the run as `kept`. Check that the data folder is not full or read-only.
 
-**"The run stopped".** A module failed partway through a run. The changes made before it are still in place, and the revert timer is still armed; Labyrinth says when it fires and prints the commands to keep or undo the changes. If in doubt, roll back.
-
-**"internal error".** Something failed that Labyrinth did not expect, such as a full disk or a damaged file. The line says where, and the next line says what it means for the run: "Nothing was changed.", "The run stopped." with the commands to keep or undo it, or the command to repeat. Exit code 40.
-
-**"rollback FAILED".** Labyrinth could not undo one module of the run. The line names the module and the backup folder that holds its files as they were before the run. The other modules are still undone, and `runs` shows the run as `rolled back with errors`. Restore that module's files by hand from the backup folder, then check the service it affects.
-
-**You are locked out.** Do nothing: when the revert timer fires, it undoes the run. If you cannot wait, log in at the console with the break-glass account and run `rollback`.
+**"internal error".** Something failed that Labyrinth did not expect, such as a full disk or a damaged file. The line says where, and the next line says what it means for the run: "Nothing was changed.", "The run stopped." with the commands to undo or keep it, or the command to repeat. Exit code 40.
 
 # 12. See also
 

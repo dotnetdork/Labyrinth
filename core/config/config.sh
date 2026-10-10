@@ -44,11 +44,16 @@ lab_in_list() {
 lab_cfg_error() { printf '%s:%s: %s\n' "$1" "$2" "$3" >&2; return 1; }
 
 # lab_config_lines FILE: load the data lines of FILE into LAB_CFG_LINES,
-# with their line numbers in LAB_CFG_NOS.
+# with their line numbers in LAB_CFG_NOS. Returns 1 if FILE cannot be read,
+# so an unreadable file is never taken for an empty one.
 lab_config_lines() {
   local file="$1" raw line n=0
   LAB_CFG_LINES=()
   LAB_CFG_NOS=()
+  if [[ ! -r "$file" ]]; then
+    printf '%s: cannot be read; it needs root\n' "$file" >&2
+    return 1
+  fi
   while IFS= read -r raw || [[ -n "$raw" ]]; do
     n=$((n + 1))
     line="$(lab_trim "${raw%%#*}")"
@@ -65,7 +70,7 @@ lab_event_load() {
   local file="$LAB_CONFIG_DIR/event.conf" i line
   LAB_EVENT=([REVERT_MINUTES]=5 [RING_MAX_HOSTS]=3 [PROBE_TIMEOUT]=5)
   [[ -f "$file" ]] || return 0
-  lab_config_lines "$file"
+  lab_config_lines "$file" || return 1
   for ((i = 0; i < ${#LAB_CFG_LINES[@]}; i++)); do
     line="${LAB_CFG_LINES[i]}"
     [[ "$line" =~ ^([A-Z][A-Z0-9_]*)=(.*)$ ]] \
@@ -99,7 +104,7 @@ lab_protected_load() {
     printf 'protected set: %s not found\n' "$file" >&2
     return 2
   fi
-  lab_config_lines "$file"
+  lab_config_lines "$file" || return 1
   for ((i = 0; i < ${#LAB_CFG_LINES[@]}; i++)); do
     line="${LAB_CFG_LINES[i]}"
     [[ "$line" =~ ^(.*[^[:space:]])[[:space:]]+([a-z]+)$ ]] \
@@ -189,7 +194,7 @@ lab_addrs_load() {
   local file="$LAB_CONFIG_DIR/$1" i
   LAB_ADDRS=()
   [[ -f "$file" ]] || return 2
-  lab_config_lines "$file"
+  lab_config_lines "$file" || return 1
   for ((i = 0; i < ${#LAB_CFG_LINES[@]}; i++)); do
     lab_addr_valid "${LAB_CFG_LINES[i]}" \
       || { lab_cfg_error "$file" "${LAB_CFG_NOS[i]}" "not an address or CIDR: ${LAB_CFG_LINES[i]}"; return 1; }
@@ -207,7 +212,7 @@ lab_preapproved_load() {
   local re='^((lockout|observe|deceive|sustain)\.[a-z0-9_-]+)[[:space:]]+([a-z0-9-]+)[[:space:]]+([a-z0-9-]+|\*)$'
   LAB_PRE_RULES=()
   [[ -f "$file" ]] || return 2
-  lab_config_lines "$file"
+  lab_config_lines "$file" || return 1
   for ((i = 0; i < ${#LAB_CFG_LINES[@]}; i++)); do
     [[ "${LAB_CFG_LINES[i]}" =~ $re ]] \
       || { lab_cfg_error "$file" "${LAB_CFG_NOS[i]}" 'expected: module-id category item-id (or * for every item)'; return 1; }
@@ -217,13 +222,15 @@ lab_preapproved_load() {
 }
 
 # lab_services_load: read the scored-service list into the LAB_SVC_* arrays.
-# Each line is "name proto host port expect".
+# Each line is "name proto host port expect". Missing or empty: return 2,
+# because an empty list is one nobody filled in, and a module that touches
+# scored services is blocked without one (docs/Conventions.md section 3.1).
 lab_services_load() {
   local file="$LAB_CONFIG_DIR/services" i n line
   local re='^([A-Za-z0-9_.-]+)[[:space:]]+([a-z0-9]+)[[:space:]]+([A-Za-z0-9.:_-]+)[[:space:]]+([0-9]{1,5})[[:space:]]+([^[:space:]]+)$'
   LAB_SVC_NAME=() LAB_SVC_PROTO=() LAB_SVC_HOST=() LAB_SVC_PORT=() LAB_SVC_EXPECT=()
   [[ -f "$file" ]] || return 2
-  lab_config_lines "$file"
+  lab_config_lines "$file" || return 1
   for ((i = 0; i < ${#LAB_CFG_LINES[@]}; i++)); do
     line="${LAB_CFG_LINES[i]}"
     n="${LAB_CFG_NOS[i]}"
@@ -252,6 +259,7 @@ lab_services_load() {
     LAB_SVC_PORT+=("$((10#${BASH_REMATCH[4]}))")
     LAB_SVC_EXPECT+=("${BASH_REMATCH[5]}")
   done
+  (( ${#LAB_SVC_NAME[@]} > 0 )) || return 2
 }
 
 # lab_host_lookup HOST: find HOST (case-insensitive) in the hosts file and
@@ -263,7 +271,7 @@ lab_host_lookup() {
   local re='^([A-Za-z0-9_.-]+)[[:space:]]+(ring[0-9]+|manual)[[:space:]]+([a-z0-9-]+)[[:space:]]+([a-z-]+)$'
   LAB_HOST_GROUP='' LAB_HOST_PROFILE='' LAB_HOST_PLATFORM=''
   [[ -f "$file" ]] || return 2
-  lab_config_lines "$file"
+  lab_config_lines "$file" || return 1
   for ((i = 0; i < ${#LAB_CFG_LINES[@]}; i++)); do
     line="${LAB_CFG_LINES[i]}"
     [[ "$line" =~ $re ]] \

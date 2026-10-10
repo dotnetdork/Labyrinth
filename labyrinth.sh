@@ -12,7 +12,7 @@
 #                                    also -h and --help
 #   labyrinth.sh version             the version; also -V and --version
 #
-# Options may come anywhere; 'labyrinth.sh help' lists them.
+# Options may come anywhere; 'labyrinth.sh help <command>' lists them.
 # Exit codes (design 00, section 4); the highest code from any module wins:
 #   0 nothing to do or success, 10 change needed, 20 blocked,
 #   30 verify failed or a scored service regressed, 40 error
@@ -36,7 +36,7 @@ trap 'on_internal_error "$?" "${BASH_SOURCE[0]##*/}" "$LINENO" "$BASH_COMMAND"' 
 
 readonly LAB_VERSION='0.1.0-dev'
 readonly PHASES='lockout observe deceive sustain'
-readonly MODULE_KEYS='id title phase priority platforms risk touches_scored requires outputs spec pre_approvable'
+readonly MODULE_KEYS='id title phase priority platforms risk touches_scored requires outputs spec pre_approvable keep_on_verify'
 readonly -a REQUIRED_KEYS=(id title phase priority platforms risk touches_scored)
 readonly RISKS='read-only reversible service-affecting approval manual-only'
 readonly PLATFORMS='ubuntu rhel-family windows appliance'
@@ -51,6 +51,28 @@ readonly RE_APPROVE='^(lockout|observe|deceive|sustain)\.[a-z0-9_-]+:[a-z0-9-]+@
 # as root, so it must name the folder lab_tree_trusted checks.
 LAB_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 export LAB_ROOT
+# The release check (design 07, section 5) comes before the rest of the
+# core is loaded, so a changed core file never runs. A file that differs
+# from release.sha256 stops every command, the revert timer's rollback
+# included; with no release.sha256, apply, keep and rollback warn.
+# shellcheck source=core/safety/release.sh
+source "$LAB_ROOT/core/safety/release.sh"
+LAB_RELEASE=0              # 0 checked, 1 no release list, 2 a file differs
+lab_release_check "$LAB_ROOT" || LAB_RELEASE=$?
+if (( LAB_RELEASE == 2 )); then
+  printf 'labyrinth: %s, so Labyrinth will not run\n' "$LAB_RELEASE_PROBLEM" >&2
+  printf '%s\n' "Copy Labyrinth here again from the team's copy, as manual section 11 says." >&2
+  for a in "$@"; do
+    # A refused rollback leaves the changes in place: whoever is logged
+    # in must learn that, as from the revert timer. Best effort.
+    if [[ "$a" == rollback ]] && command -v wall > /dev/null 2>&1; then
+      printf '%s\n' "Labyrinth did not roll back on $(uname -n): its files differ from the release, so the changes are still in place." \
+        | wall > /dev/null 2>&1 || true
+      break
+    fi
+  done
+  exit 20
+fi
 # shellcheck source=core/lib.sh
 source "$LAB_ROOT/core/lib.sh"
 
@@ -69,15 +91,22 @@ OPT_PROFILE='' OPT_BREAKGLASS='' OPT_CONFIRM=''
 RUN_REF=''                 # the run keep or rollback acts on
 CMD=''                     # the command being run, for on_internal_error
 RUN_OPEN=0                 # 1 once an apply has recorded run_start
-SELF="${0##*/}"            # how the operator started this program, for hints
+# How the operator started this program, so a hint can be pasted and run
+# (docs/Conventions.md section 3.2): the path as typed, './' added when it
+# was a bare name not on the PATH, quoted if it needs it, and 'sudo' in
+# front when sudo started it.
+SELF="$0"
+if [[ "$SELF" != */* ]] && ! command -v -- "$SELF" > /dev/null 2>&1; then SELF="./$SELF"; fi
+if [[ ! "$SELF" =~ ^[A-Za-z0-9_./+-]+$ ]]; then SELF="$(printf '%q' "$SELF")"; fi
+if [[ -n "${SUDO_USER:-}" ]]; then SELF="sudo $SELF"; fi
 readonly COMMANDS='plan apply keep rollback runs probe help version'
 
 # The options, one row each (docs/Conventions.md section 3.1): the canonical
 # name, the keys it is matched by (lower case, no dashes), and whether it
 # takes a value.
-readonly -a OPT_NAMES=(profile root config break-glass confirm-group approve apply help version)
-readonly -a OPT_KEYS=('profile profilename' root config breakglass 'confirmgroup confirm' approve apply help version)
-readonly -a OPT_VALUE=(1 1 1 1 1 1 0 0 0)
+readonly -a OPT_NAMES=(profile root config break-glass confirm-group approve apply all help version)
+readonly -a OPT_KEYS=('profile profilename' root config breakglass 'confirmgroup confirm' approve apply all help version)
+readonly -a OPT_VALUE=(1 1 1 1 1 1 0 0 0 0)
 declare -A GIVEN=()        # canonical option name -> value given
 declare -a WORDS=()        # the words that are not options, in order
 PARSE_ERR=""                # the first option error, reported by main
@@ -93,15 +122,17 @@ readonly LOG_CAP=500       # most lines logged from one entry point
 
 # The modules of this run, in run order, one array element per module.
 # RUN_ITEMS holds the items an approval module's plan listed, one
-# 'id<TAB>category<TAB>fingerprint<TAB>reason' line each, and RUN_PREOK
-# the categories its module.yml lets a pre-approval rule approve.
-declare -a RUN_IDS=() RUN_DIR=() RUN_RISK=() RUN_SCORED=() RUN_REQUIRES=() RUN_RC=() RUN_STATE=() RUN_ITEMS=() RUN_PREOK=()
+# 'id<TAB>category<TAB>fingerprint<TAB>reason' line each, RUN_PREOK the
+# categories its module.yml lets a pre-approval rule approve, and RUN_KEEP
+# its keep_on_verify (true or false).
+declare -a RUN_IDS=() RUN_DIR=() RUN_RISK=() RUN_SCORED=() RUN_REQUIRES=() RUN_RC=() RUN_STATE=() RUN_ITEMS=() RUN_PREOK=() RUN_KEEP=()
 
 # cmd_help [COMMAND]: the help for every command, or for one, on stdout.
-# Each topic is at most 15 lines of at most 78 columns, with one Exit line
-# and one Example line (docs/Conventions.md section 3.2).
+# Each topic is at most 18 lines (basics 24) of at most 78 columns, not
+# counting the command in hints, with one Exit line and one Example line
+# (docs/Conventions.md section 3.2).
 cmd_help() {
-  local where="Where:
+  local where="Options:
   --root DIR             data root (default /opt/labyrinth)
   --config DIR           configuration folder (default <root>/etc)"
   case "${1:-}" in
@@ -119,9 +150,10 @@ New to Labyrinth? Start with '$SELF help basics'.
   version           print the version
 
 Phases: lockout, observe, deceive, sustain. <run>: an ID or its last 4.
+Options: '$SELF help <command>' lists them; so does <command> -h.
 Exit: 0 ok, 10 change needed, 20 blocked, 30 check failed, 40 error.
 Example: $SELF plan lockout
-Manual: 'man labyrinth' once installed; docs/manual in the release.
+Manual: the Linux parts of $LAB_ROOT/docs/manual/labyrinth.md
 EOF
     ;;
     plan) cat <<EOF
@@ -129,7 +161,7 @@ Usage: $SELF plan <phase> [options]
 
 Show what every module of the phase would change on this host.
 Nothing is changed and nothing is written. <phase> is lockout,
-observe, deceive or sustain.
+observe, deceive or sustain. Needs root to read the configuration.
 
 $where
   --profile NAME         use this profile, not the one in the hosts file
@@ -142,7 +174,9 @@ EOF
     apply) cat <<EOF
 Usage: $SELF apply <phase> [options]
 
-Plan, confirm, then change; a revert timer undoes it unless kept.
+Plan, then ask you to name the break-glass account (first apply only)
+and to type this host's group name. Then change, checking each change;
+a revert timer undoes the run unless you keep it. Needs root.
 
 $where
   --profile NAME         must match this host's line in the hosts file
@@ -151,6 +185,7 @@ $where
   --approve LIST         approve without asking: module:item@fingerprint,...
 
 Exit: 0 done, 10 manual steps left, 20 blocked, 30 check failed, 40 error.
+Blocked: not root, another run, host not in hosts, or a safety gate.
 Example: $SELF apply lockout
 Compatibility: '$SELF <phase> --apply' also applies.
 EOF
@@ -160,24 +195,28 @@ Usage: $SELF keep [<run>] [options]
 
 Keep a run's changes: cancel its revert timer, then record the keep.
 Without <run>, keep the one run whose timer is armed. <run> is a run
-ID or its last 4 characters; '$SELF runs' lists them.
+ID or its last 4 characters; '$SELF runs' lists them. Needs root.
 
 $where
 
-Exit: 0 kept, 20 not root or too late (rolled back), 40 error.
+Exit: 0 kept or none armed, 20 blocked, 40 error.
+Blocked: not root, a file another account can change, or too late
+(the run was already rolled back).
 Example: $SELF keep 4f2a
 EOF
     ;;
     rollback) cat <<EOF
 Usage: $SELF rollback <run> [options]
 
-Undo everything the run changed, newest change first. This is what
-the revert timer runs. Safe to run twice. <run> is a run ID or its
-last 4 characters; '$SELF runs' lists them.
+Undo what the run changed, newest change first. This is what the
+revert timer runs. Safe to run twice. <run> is a run ID or its last
+4 characters; '$SELF runs' lists them. Needs root.
 
 $where
+  --all                  also undo changes kept once they verified
 
-Exit: 0 rolled back, 20 not root, 40 error.
+Exit: 0 rolled back, 20 blocked, 40 error.
+Blocked: not root, or a file another account can change.
 Example: $SELF rollback 4f2a
 EOF
     ;;
@@ -185,8 +224,10 @@ EOF
 Usage: $SELF runs [options]
 
 List this host's runs, oldest first: run ID, phase, start time (UTC)
-and state (armed, kept, rolled back, or not kept, no timer).
-Changes nothing; needs root.
+and state: armed (and when it rolls back), kept, rolled back,
+rolled back with errors, or not kept, no timer. 'armed: timer lost'
+means the host restarted and nothing will undo the run by itself:
+keep it or roll it back. Changes nothing; needs root.
 
 $where
 
@@ -198,7 +239,8 @@ EOF
 Usage: $SELF probe [options]
 
 Test every scored service once, the way the scoring engine would,
-and print one line per service. Changes nothing.
+and print one line per service. Changes nothing. Needs root to read
+the configuration.
 
 $where
 
@@ -228,8 +270,9 @@ logins. '$SELF help <module-id>' explains any module.
 
 1. Plan: '$SELF plan lockout' shows what each module would change.
    It changes nothing, so run it as often as you like.
-2. Apply: '$SELF apply lockout' plans again, asks you to type this
-   host's group name, then makes the changes and checks each one.
+2. Apply: '$SELF apply lockout' plans again, has you name the
+   break-glass account the first time, asks you to type this host's
+   group name, then makes the changes and checks each one.
 3. Keep: an apply is a run, named by an ID; its last 4 characters are
    enough. A revert timer undoes the run after a few minutes unless you
    keep it, so a change that locks you out undoes itself. Log in from
@@ -247,7 +290,8 @@ EOF
     version) cat <<EOF
 Usage: $SELF version
 
-Print the version of Labyrinth. '-V' and '--version' do the same.
+Print the version of Labyrinth and which program printed it.
+'-V' and '--version' do the same.
 
 Exit: 0 printed.
 Example: $SELF version
@@ -256,7 +300,13 @@ EOF
   esac
 }
 
-cmd_version() { printf 'labyrinth %s\n' "$LAB_VERSION"; }
+# cmd_version: the version, the runner, and the release hash to compare
+# with the team's offline record (design 07, section 5).
+cmd_version() {
+  printf 'labyrinth %s (labyrinth.sh, for Linux)\n' "$LAB_VERSION"
+  if (( LAB_RELEASE == 0 )); then printf 'Release: %s\n' "$LAB_RELEASE_HASH"
+  else printf 'Release: not checked (no release.sha256)\n'; fi
+}
 
 # risk_words RISK: what a module's risk means, in plain words.
 risk_words() {
@@ -292,9 +342,14 @@ cmd_help_module() {
   fi
   YML_ERR=''
   if ! read_module_yml "$dir/module.yml" || ! validate_module "$dir/module.yml" "$id" "$phase"; then
+    # Each error is "FILE: message" or "FILE:LINE: message", and the message
+    # may hold ": " itself, so the known file name is taken off the front.
     items="${YML_ERR%%$'\n'*}"
-    die "the module.yml of $id is not valid: ${items##*: }" 40 \
-      "Report the module to its author, or correct ${items%: *}"
+    items="${items#"$dir/module.yml"}"
+    hint=''
+    if [[ "$items" =~ ^:([0-9]+): ]]; then hint=":${BASH_REMATCH[1]}"; items="${items#:"${BASH_REMATCH[1]}"}"; fi
+    die "the module.yml of $id is not valid: ${items#: }" 40 \
+      "Report the module to its author, or correct $dir/module.yml$hint"
   fi
   items="$(list_items "${MOD[platforms]}")"
   printf '%s (%s)\n\n' "${MOD[title]}" "$id"
@@ -304,6 +359,10 @@ cmd_help_module() {
     printf 'Scored services: it can affect one, so they are tested after it.\n'
   else
     printf 'Scored services: it does not touch them.\n'
+  fi
+  if [[ "${MOD[keep_on_verify]:-false}" == true ]]; then
+    printf 'Kept once it verifies and no scored service got worse; the revert\n'
+    printf 'timer then leaves it alone.\n'
   fi
   printf 'Runs on: %s.\n' "${items// /, }"
   printf 'Folder: %s\n\n' "$dir"
@@ -325,6 +384,8 @@ die() {
 # How to get the rights a command needs.
 FIX_ADMIN='Run it again as root, for example with sudo.'
 FIX_LINE='Correct that line, then run the same command again.'
+FIX_DATA='Check that the data folder is not full or read-only, then run the same command again.'
+FIX_SERVICES='List the scored services there, one "name proto host port expect" per line.'
 
 # load_reason LOADER [ARG...]: the first error line a configuration loader
 # prints, run in a subshell so that nothing it sets is kept.
@@ -402,8 +463,9 @@ run_stopped() {
   if when="$(due_words "$LAB_RUN_ID")"; then
     out "The revert timer rolls this run back $when."
   fi
-  out "To keep them now: $SELF keep ${LAB_RUN_ID: -4}"
   out "To undo them now: $SELF rollback ${LAB_RUN_ID: -4}"
+  out "To keep them now: $SELF keep ${LAB_RUN_ID: -4}"
+  out 'If in doubt, undo them.'
 }
 
 # due_words RUN: when the run's revert timer fires, as 'at HH:MM UTC, in N
@@ -486,8 +548,14 @@ detail() {
   printf -v l '  %-11s%s' "$label" "$text"; out "$l"
 }
 
-# more ID: the last line of a WARN, BLOCKED, FAIL or ERROR block.
-more() { detail More "$SELF help $1"; }
+# more ID: the last line of a WARN, BLOCKED, FAIL or ERROR block. It is a
+# command to paste, so it is never wrapped, however long the path to the
+# runner (docs/Conventions.md section 3.2).
+more() {
+  local l
+  printf -v l '  %-11s%s' More: "$SELF help $1"
+  out "$l"
+}
 
 # log_ref: the run log's path, under a FAIL or ERROR line.
 log_ref() { if [[ -n "$LOG_FILE" ]]; then detail Log "$LOG_FILE"; fi; }
@@ -633,7 +701,7 @@ shell_word() {
 next_step() {
   local mode="$1" code="$2" phase="$3" i manual=0 other=0 opts=''
   if [[ "$mode" == apply ]] && (( STOPPED )); then
-    out 'Next: keep the earlier changes or undo them, with the commands above.'
+    out 'Next: undo the earlier changes, or keep them, with the commands above.'
   elif [[ "$mode" == apply ]] && lab_timer_armed "$LAB_RUN_ID"; then
     out "Next: check you can log in from a NEW session, then '$SELF keep ${LAB_RUN_ID: -4}'."
   elif (( code == 40 )); then
@@ -651,6 +719,12 @@ next_step() {
     done
     if (( other == 0 )); then
       out 'Next: a person carries out the manual steps above; apply changes nothing.'
+    elif [[ -z "${LAB_HOST_GROUP:-}" ]]; then
+      out 'Next: list this host in the hosts file, with its group and profile;'
+      out "  apply needs it there: $LAB_CONFIG_DIR/hosts"
+    elif [[ -n "${GIVEN[profile]:-}" && "${GIVEN[profile]}" != "$LAB_HOST_PROFILE" ]]; then
+      out "Next: apply uses this host's profile in the hosts file, $LAB_HOST_PROFILE."
+      out "  To apply ${GIVEN[profile]}, change that line first: $LAB_CONFIG_DIR/hosts"
     else
       if [[ -n "${GIVEN[profile]:-}" ]]; then opts+=" --profile ${GIVEN[profile]}"; fi
       if [[ -n "${GIVEN[root]:-}" ]]; then opts+=" --root $(shell_word "${GIVEN[root]}")"; fi
@@ -677,7 +751,7 @@ finish() {
     apply:0) what='done' ;;
     apply:10) what='manual steps needed' ;;
     *:20) what='blocked' ;;
-    *:30) what='a check failed, and that change was undone' ;;
+    *:30) what='a check failed; that change was undone' ;;
     *) what='error' ;;
   esac
   out ''
@@ -724,13 +798,14 @@ edit_distance() {
 }
 
 # suggest WORD CANDIDATE...: the candidate WORD most likely meant: the only
-# one it is a prefix of, else the nearest within an edit distance of 2.
-# Prints nothing when there is none.
+# one it is a prefix of, else the nearest within an edit distance of 2, or
+# of 1 for a word of 3 letters or fewer. Prints nothing when there is none.
 suggest() {
   local word="$1" c best='' bestd=3 d
   local -a prefix=()
   shift
   [[ -n "$word" ]] || return 0
+  if (( ${#word} < 4 )); then bestd=2; fi
   for c in "$@"; do
     if [[ "$c" == "$word"* ]]; then prefix+=("$c"); fi
   done
@@ -740,6 +815,16 @@ suggest() {
     if (( d < bestd )); then bestd=$d; best="$c"; fi
   done
   if [[ -n "$best" ]]; then printf '%s\n' "$best"; fi
+}
+
+# synonym WORD: the command an everyday word for it means, or nothing.
+synonym() {
+  case "$1" in
+    undo | revert) printf 'rollback\n' ;;
+    status | list) printf 'runs\n' ;;
+    check | test) printf 'probe\n' ;;
+    dry-run | dryrun) printf 'plan\n' ;;
+  esac
 }
 
 # opt_lookup KEY: the row of the option matched by KEY (lower case, no
@@ -775,6 +860,10 @@ parse_args() {
     fi
     key="${key,,}"; key="${key//-/}"
     if ! opt_lookup "$key"; then
+      case "$key" in
+        dryrun) parse_fail "unknown option '${w%%[=:]*}' (did you mean the command 'plan'?)"; continue ;;
+        yes | force) parse_fail "unknown option '${w%%[=:]*}' (did you mean '--confirm-group'?)"; continue ;;
+      esac
       keys=()
       # One candidate per option, its first key, so a prefix of two keys
       # of the same option still counts as one.
@@ -895,6 +984,12 @@ validate_module() {
       [[ "$p" =~ ^[a-z0-9-]+$ ]] || { yml_error "$file" "not a category: $p"; return 1; }
     done
   fi
+  if [[ -n "${MOD[keep_on_verify]:-}" ]]; then
+    lab_in_list "${MOD[keep_on_verify]}" 'true false' || { yml_error "$file" 'keep_on_verify must be true or false'; return 1; }
+    if [[ "${MOD[keep_on_verify]}" == true ]] && ! lab_in_list "${MOD[risk]}" 'reversible service-affecting approval'; then
+      yml_error "$file" 'keep_on_verify is only for a module that changes something'; return 1
+    fi
+  fi
 }
 
 # Read a profile into PROFILE_IDS: one module id per line. A run-time
@@ -916,7 +1011,8 @@ read_profile() {
     n=$((n + 1))
     line="$(lab_trim "${raw%%#*}")"
     if [[ -z "$line" ]]; then continue; fi
-    [[ "$line" =~ $RE_MODULE_ID ]] || die "$file:$n: not a module id: $line"
+    [[ "$line" =~ $RE_MODULE_ID ]] || die "$file:$n: not a module id: $line" 40 \
+      'Each line is one module ID, such as lockout.ssh-config. Correct it, then run the same command again.'
     PROFILE_IDS+=("$line")
   done < "$file"
 }
@@ -1005,7 +1101,7 @@ explain() {
 # within a priority. Returns 40 if any module is invalid.
 load_modules() {
   local phase="$1" id name dir worst=0 p i entry needed line
-  local -a ids=() dirs=() risks=() scored=() reqs=() prios=() preok=()
+  local -a ids=() dirs=() risks=() scored=() reqs=() prios=() preok=() keeps=()
   PHASE_COUNT=0 LOAD_ERRORS=0 LOAD_SKIPPED=0
   for id in "${PROFILE_IDS[@]+"${PROFILE_IDS[@]}"}"; do
     if [[ "${id%%.*}" != "$phase" ]]; then continue; fi
@@ -1063,15 +1159,15 @@ load_modules() {
     fi
     ids+=("$id"); dirs+=("$dir"); risks+=("${MOD[risk]}"); scored+=("${MOD[touches_scored]}")
     reqs+=("$(list_items "${MOD[requires]:-[]}")"); prios+=("${MOD[priority]}")
-    preok+=("$(list_items "${MOD[pre_approvable]:-[]}")")
+    preok+=("$(list_items "${MOD[pre_approvable]:-[]}")"); keeps+=("${MOD[keep_on_verify]:-false}")
   done
-  RUN_IDS=() RUN_DIR=() RUN_RISK=() RUN_SCORED=() RUN_REQUIRES=() RUN_RC=() RUN_STATE=() RUN_ITEMS=() RUN_PREOK=()
+  RUN_IDS=() RUN_DIR=() RUN_RISK=() RUN_SCORED=() RUN_REQUIRES=() RUN_RC=() RUN_STATE=() RUN_ITEMS=() RUN_PREOK=() RUN_KEEP=()
   for p in P0 P1 P2 P3; do
     for ((i = 0; i < ${#ids[@]}; i++)); do
       if [[ "${prios[i]}" != "$p" ]]; then continue; fi
       RUN_IDS+=("${ids[i]}"); RUN_DIR+=("${dirs[i]}"); RUN_RISK+=("${risks[i]}")
       RUN_SCORED+=("${scored[i]}"); RUN_REQUIRES+=("${reqs[i]}"); RUN_RC+=(0); RUN_STATE+=(planned); RUN_ITEMS+=('')
-      RUN_PREOK+=("${preok[i]}")
+      RUN_PREOK+=("${preok[i]}"); RUN_KEEP+=("${keeps[i]}")
     done
   done
   return "$worst"
@@ -1249,6 +1345,9 @@ plan_all() {
 # the revert timer (design 07, section 5).
 gate_trusted() {
   local bad
+  if (( LAB_RELEASE == 1 )); then
+    PENDING_WARNINGS+=("no release.sha256, so Labyrinth's files were not checked")
+  fi
   bad="$(lab_tree_trusted "$LAB_ROOT" "$LAB_CONFIG_DIR" "$DATA_ROOT")" && return 0
   die "$bad can be changed by an account other than root, so Labyrinth will not run as root from it" 20 \
     "Keep Labyrinth's folders owned by root and not writable by others ('chown -R root:' and 'chmod -R go-w'), in folders only root can change."
@@ -1297,23 +1396,32 @@ gate_breakglass() {
       account="$OPT_BREAKGLASS"
     else
       out 'Before any change, check you can still get in if remote logins break.'
-      ask 'Break-glass check: log in at this host'"'"'s console with the break-glass account, then type its name: ' \
-        || die 'no answer: break-glass not confirmed; nothing was changed' 20
+      out "Break-glass check: log in at this host's console with the break-glass"
+      out 'account, then type its name here.'
+      ask 'Break-glass account name: ' \
+        || die 'no answer: break-glass not confirmed; nothing was changed' 20 \
+          'Run apply again and answer the prompt, or name the account with --break-glass NAME.'
       account="$ANSWER"
     fi
-    lab_breakglass_record "$account" || die 'break-glass not confirmed; nothing was changed' 20
+    if [[ "$(lab_protected_class "$account" || true)" != breakglass ]]; then
+      die "break-glass not confirmed: '$(safe_text "$account")' is not listed with class breakglass in $LAB_CONFIG_DIR/protected-accounts; nothing was changed" 20 \
+        'Name the account you logged in with at the console; that file lists it as "NAME breakglass".'
+    fi
+    # Recorded only once the plan is confirmed (gate_confirm), so a run
+    # that stops at the group prompt leaves nothing behind.
+    BREAKGLASS_NEW=1
     # The answer is the operator's word. A session for the account at the
     # console backs it up; without one, the run goes on with a warning, and
     # the manifest says which it was.
     rc=0; sid="$(lab_console_session "$account")" || rc=$?
     case "$rc" in
       0) BREAKGLASS_NOTE="console session $sid"
-         out "Break-glass account $account: confirmed and recorded." ;;
+         out "Break-glass account $account: confirmed." ;;
       1) BREAKGLASS_NOTE='no console session found'
-         out "Break-glass account $account: confirmed and recorded."
+         out "Break-glass account $account: confirmed."
          warn "no session for $account was found at this host's console; check that the break-glass login works before relying on it" ;;
       *) BREAKGLASS_NOTE='console sessions could not be listed'
-         out "Break-glass account $account: confirmed and recorded."
+         out "Break-glass account $account: confirmed."
          warn "this host cannot list console sessions, so the break-glass answer was not checked against one" ;;
     esac
   fi
@@ -1321,6 +1429,7 @@ gate_breakglass() {
 }
 BREAKGLASS=''
 BREAKGLASS_NOTE='confirmed earlier'
+BREAKGLASS_NEW=0           # 1 when this run asked, so the answer is recorded
 
 gate_confirm() {
   local group="$1" typed
@@ -1330,7 +1439,35 @@ gate_confirm() {
     ask "Type the group name ($group) to apply this plan: " || typed=''
     typed="$ANSWER"
   fi
-  [[ "$typed" == "$group" ]] || die 'the plan was not confirmed; nothing was changed' 20
+  if [[ "$typed" != "$group" ]]; then
+    if [[ -z "$typed" ]]; then typed='no group name was typed'; else typed="'$(safe_text "$typed")' was typed, not $group"; fi
+    die "the plan was not confirmed: $typed; nothing was changed" 20 \
+      "Run apply again and type $group at the prompt, or give it with --confirm-group $group."
+  fi
+  if (( BREAKGLASS_NEW )); then
+    lab_breakglass_record "$BREAKGLASS" \
+      || die 'the break-glass answer could not be recorded; nothing was changed' 40 "$FIX_DATA"
+  fi
+}
+
+# services_missing: why there is no service list, for a message.
+services_missing() {
+  if [[ -f "$LAB_CONFIG_DIR/services" ]]; then
+    printf '%s lists no service' "$LAB_CONFIG_DIR/services"
+  else
+    printf 'no service list at %s' "$LAB_CONFIG_DIR/services"
+  fi
+}
+
+# check_services: a malformed service list is an error before anything is
+# asked, in plan and apply alike; a missing or empty one is not.
+check_services() {
+  local rc=0
+  lab_services_load 2> /dev/null || rc=$?
+  if (( rc == 1 )); then
+    die "the service list is malformed: $(load_reason lab_services_load)" 40 "$FIX_LINE"
+  fi
+  return 0
 }
 
 # probe_now: probe every scored service; print the results.
@@ -1462,8 +1599,9 @@ choose_items() {
       if [[ -z "$iid" || "$chosen" == *" $iid@"* ]]; then continue; fi
       detail Item "$(item_words "$iid" "$cat" "$fp" "$reason")"
     done <<< "${RUN_ITEMS[i]}"
-    out 'To approve every item of a category, type category: and its name.'
-    ask "Type the ids of the items to approve, separated by spaces, or press Enter for none: " || ANSWER=''
+    out 'Type the ids of the items to approve, separated by spaces. To approve'
+    out 'every item of a category, type category: and its name.'
+    ask 'Items to approve (Enter for none): ' || ANSWER=''
     read -ra words <<< "$ANSWER"
     for tok in ${words[@]+"${words[@]}"}; do
       if [[ ! "$tok" =~ ^(category:)?[a-z0-9-]+$ ]]; then
@@ -1686,8 +1824,38 @@ apply_one() {
   say OK "$name"
   detail Did 'applied and verified'
   LAB_MODULE_ID="$id" lab_log_info applied "applied and verified"
+  if [[ "${RUN_KEEP[i]}" == true ]]; then keep_module "$id"; fi
   RUN_STATE[i]='done'
   return 0
+}
+
+# keep_module ID: keep a keep_on_verify module that verified, so the revert
+# timer leaves it alone (docs/Conventions.md section 3.1). Only when the
+# scored services were tested, so that none is known to have got worse.
+# A failure leaves the module under the timer, which is the safe side.
+keep_module() {
+  local id="$1"
+  if (( ! HAVE_SERVICES )); then
+    detail Note 'not kept yet: with no service list, nothing shows that no scored service got worse, so the revert timer still covers it'
+    return 0
+  fi
+  if ! record_for "$id" module_kept '' 'verified; no scored service got worse'; then
+    detail Note 'not kept yet: the manifest cannot be written, so the revert timer still covers it'
+    return 0
+  fi
+  detail Did 'kept: it verified and no scored service got worse, so the revert timer leaves it alone'
+  LAB_MODULE_ID="$id" lab_log_info module_kept "kept once verified"
+}
+
+# unkept_modules: the modules of the current run that a rollback started
+# by the revert timer would still undo.
+unkept_modules() {
+  local applied kept m
+  applied="$(lab_manifest_applied "$LAB_RUN_ID")" || return 1
+  kept="$(lab_manifest_kept "$LAB_RUN_ID")" || return 1
+  for m in $applied; do
+    lab_in_list "$m" "${kept//$'\n'/ }" || printf '%s\n' "$m"
+  done
 }
 
 # check_host: the host checks for plan, apply and probe (docs/Conventions.md
@@ -1702,6 +1870,11 @@ check_host() {
   if [[ -n "${GIVEN[config]:-}" && ! -d "${GIVEN[config]}" ]]; then
     die "the --config folder does not exist: ${GIVEN[config]}" 40 "$fix"
   fi
+  if [[ ! -d "$LAB_CONFIG_DIR" ]]; then
+    die "the configuration folder does not exist: $LAB_CONFIG_DIR" 40 \
+      'Check --root, or give the folder with the hosts file with --config.'
+  fi
+  check_readable
   host="$(lab_host)" || host=''
   host_lookup "$host" || rc=$?
   (( rc == 0 )) || return 0           # not listed: plan may still run
@@ -1712,6 +1885,21 @@ check_host() {
     *) die "this runner does not serve this host's platform, $LAB_HOST_PLATFORM" 20 \
          "Use the runner for $LAB_HOST_PLATFORM, or correct this host's line in $LAB_CONFIG_DIR/hosts" ;;
   esac
+}
+
+# check_readable: every configuration file must be readable. One that is
+# not would otherwise look missing or empty, which can quietly weaken a gate.
+check_readable() {
+  local f
+  if [[ ! -r "$LAB_CONFIG_DIR" || ! -x "$LAB_CONFIG_DIR" ]]; then
+    die "needs root to read $LAB_CONFIG_DIR" 20 "$FIX_ADMIN"
+  fi
+  for f in "$LAB_CONFIG_DIR"/* "$LAB_CONFIG_DIR"/profiles "$LAB_CONFIG_DIR"/profiles/*; do
+    [[ -e "$f" ]] || continue
+    if [[ ! -r "$f" ]] || [[ -d "$f" && ! -x "$f" ]]; then
+      die "needs root to read $f" 20 "$FIX_ADMIN"
+    fi
+  done
 }
 
 # resolve_profile: --profile, or this host's line in the hosts file.
@@ -1730,6 +1918,7 @@ cmd_plan() {
   read_profile "$OPT_PROFILE"
   lab_event_load 2>/dev/null || die "event.conf is malformed: $(load_reason lab_event_load)" 40 "$FIX_LINE"
   load_preapproved
+  check_services
   gate_protected
   flush_warnings
   out "labyrinth $LAB_VERSION: plan $phase, profile $OPT_PROFILE"
@@ -1767,21 +1956,28 @@ plan_intro() {
 
 # recap HOST GROUP: what apply is about to do, before the group-name prompt.
 recap() {
-  local i what l remote=0
+  local i what l remote=0 kept=0
   out ''
   out "About to apply on host $1, group $2:"
+  if (( LAB_RELEASE == 0 )); then out "Release: $LAB_RELEASE_HASH"
+  else out 'Release: not checked (no release.sha256)'; fi
   for ((i = 0; i < ${#RUN_IDS[@]}; i++)); do
     case "${RUN_RC[i]}" in
       10) what='Will change:'
           if [[ "${RUN_RISK[i]}" == manual-only ]]; then what='Manual:'; fi
-          if [[ "${RUN_RISK[i]}" == service-affecting ]]; then remote=1; fi ;;
+          if [[ "${RUN_RISK[i]}" == service-affecting ]]; then remote=1; fi
+          if [[ "${RUN_KEEP[i]}" == true ]]; then kept=1; fi ;;
       20) what='Blocked:' ;;
       *) continue ;;
     esac
     printf -v l '  %-13s%s' "$what" "$(module_name "${RUN_IDS[i]}")"
     out "$l"
   done
-  out "A revert timer undoes this whole run in ${LAB_EVENT[REVERT_MINUTES]} minutes unless you keep it."
+  out "A revert timer undoes this run in ${LAB_EVENT[REVERT_MINUTES]} minutes unless you keep it."
+  if (( kept )); then
+    out 'A change that only takes access away is kept once it verifies; the timer'
+    out 'then leaves it alone.'
+  fi
   if (( remote )) && [[ -n "${SSH_CONNECTION:-}${SSH_CLIENT:-}${SSH_TTY:-}" ]]; then
     out 'You are connected over SSH, and a change may interrupt a service.'
     out 'Keep a second session open until you have checked you can log in.'
@@ -1790,25 +1986,27 @@ recap() {
 }
 
 cmd_apply() {
-  local phase="$1" host group worst=0 rc i todo=0 stopped=0 when
+  local phase="$1" host group worst=0 rc i todo=0 stopped=0 when unkept
   export LAB_DRY_RUN=1
   umask 077
   host="$(lab_host)"
   lab_is_admin || die 'apply needs root' 20 "$FIX_ADMIN"
   gate_trusted
   rc=0; host_lookup "$host" || rc=$?
-  (( rc == 0 )) || die "this host is not in the hosts file, so its ring group is unknown" 20 \
+  (( rc == 0 )) || die "this host is not in the hosts file, so its group is unknown" 20 \
     "Add the line '$host <group> <profile> <platform>' to $LAB_CONFIG_DIR/hosts"
   group="$LAB_HOST_GROUP"
   [[ "$group" != manual ]] || die "this host is in the manual group: Labyrinth never changes it" 20 \
     'Configure it by hand, from its runbook.'
   if [[ -n "$OPT_PROFILE" && "$OPT_PROFILE" != "$LAB_HOST_PROFILE" ]]; then
-    die "the hosts file gives this host profile $LAB_HOST_PROFILE, not $OPT_PROFILE"
+    die "the hosts file gives this host profile $LAB_HOST_PROFILE, not $OPT_PROFILE" 40 \
+      "Leave out --profile, or change this host's line in $LAB_CONFIG_DIR/hosts."
   fi
   OPT_PROFILE="$LAB_HOST_PROFILE"
   read_profile "$OPT_PROFILE"
   lab_event_load 2>/dev/null || die "event.conf is malformed: $(load_reason lab_event_load)" 40 "$FIX_LINE"
   load_preapproved
+  check_services
   gate_protected
   lab_lock_acquire 0 || exit 20
   trap 'lab_lock_release' EXIT
@@ -1821,7 +2019,11 @@ cmd_apply() {
   out "run $LAB_RUN_ID on host $host, group $group"
   plan_intro apply "$phase"
   plan_all "$phase" || worst=$?
-  (( worst < 40 )) || die 'the plan has errors; nothing was changed'
+  if (( worst >= 40 )); then
+    out ''
+    out 'The plan has errors, so apply stops here.'
+    finish apply "$worst" "$phase"
+  fi
   if [[ -n "${GIVEN[approve]+set}" ]]; then approve_unmatched; fi
   for ((i = 0; i < ${#RUN_IDS[@]}; i++)); do
     if [[ "${RUN_RC[i]}" == 10 && "${RUN_RISK[i]}" != manual-only ]]; then todo=$((todo + 1)); fi
@@ -1839,16 +2041,16 @@ cmd_apply() {
   # From here on, changes are made: everything is recorded first.
   export LAB_DRY_RUN=0
   mkdir -p "$LAB_STATE_DIR/runs/$LAB_RUN_ID" "$LAB_BACKUP_DIR/$LAB_RUN_ID" \
-    || die 'the run and backup folders cannot be created; nothing was changed' 20
+    || die 'the run and backup folders cannot be created; nothing was changed' 40
   if ! record_for '' run_start "$host" "phase $phase, profile $OPT_PROFILE, group $group" \
       || ! record_for '' breakglass_verified "$BREAKGLASS" "$BREAKGLASS_NOTE"; then
-    die 'the run manifest cannot be written; nothing was changed'
+    die 'the run manifest cannot be written; nothing was changed' 40 "$FIX_DATA"
   fi
   RUN_OPEN=1 APPLIED=1
   log_open "apply $phase, run $LAB_RUN_ID, host $host"
   lab_log_info run_start "apply $phase, profile $OPT_PROFILE, group $group"
-  rc=0; lab_services_load || rc=$?
-  (( rc != 1 )) || die 'the service list is malformed; nothing was changed'
+  rc=0; lab_services_load 2> /dev/null || rc=$?
+  (( rc != 1 )) || die "the service list is malformed; nothing was changed: $(load_reason lab_services_load)" 40 "$FIX_LINE"
   if (( rc == 0 )); then
     HAVE_SERVICES=1
     BEFORE="$(probe_now)"
@@ -1858,7 +2060,7 @@ cmd_apply() {
     probe_lines "$BEFORE"
   else
     out ''
-    out "No scored service is tested: there is no list at $LAB_CONFIG_DIR/services"
+    out "No scored service is tested: $(services_missing)"
   fi
   out ''
 
@@ -1877,13 +2079,17 @@ cmd_apply() {
   out ''
   if (( stopped )); then
     run_stopped
+  elif lab_timer_armed "$LAB_RUN_ID" && unkept="$(unkept_modules)" && [[ -z "$unkept" ]]; then
+    # Every change was kept once verified: the timer has nothing to undo.
+    out 'All changes are applied, verified and kept.'
+    keep_run || worst=$?
   elif lab_timer_armed "$LAB_RUN_ID"; then
     out 'All changes are applied and verified.'
     out 'From a NEW session, check that you can still log in.'
     if when="$(due_words "$LAB_RUN_ID")"; then
       out "The revert timer rolls this run back $when."
     fi
-    if ask "Type keep to keep the changes; anything else leaves the revert timer to undo them in ${LAB_EVENT[REVERT_MINUTES]} minutes: " \
+    if ask 'Type keep to keep the changes, or press Enter to leave them to the timer: ' \
         && [[ "$ANSWER" == keep ]]; then
       keep_run || worst=$?
     else
@@ -1904,7 +2110,8 @@ keep_run() {
   lab_lock_acquire 10 || return 20
   if run_rolled_back; then
     lab_lock_release
-    out "too late: run $LAB_RUN_ID was already rolled back"
+    err "labyrinth: too late: run $LAB_RUN_ID was already rolled back"
+    err 'Its changes are gone. Plan and apply again if you still want them.'
     return 20
   fi
   # Checked by hand: errexit is off inside a function called with ||.
@@ -1993,7 +2200,7 @@ cmd_runs() {
   local -a runs=()
   local list
   lab_is_admin || die 'runs needs root' 20 "$FIX_ADMIN"
-  list="$(list_runs)" || die "the runs in $LAB_STATE_DIR/runs cannot be read"
+  list="$(list_runs)" || die "the runs in $LAB_STATE_DIR/runs cannot be read" 40 "$FIX_DATA"
   flush_warnings
   if [[ -n "$list" ]]; then mapfile -t runs <<< "$list"; fi
   if (( ${#runs[@]} == 0 )); then
@@ -2030,7 +2237,7 @@ resolve_run() {
       || usage_error "no run $2 on this host" "$cmd" "'$SELF runs' lists them."
     RUN_REF="$2"; return 0
   fi
-  list="$(list_runs)" || die "the runs in $LAB_STATE_DIR/runs cannot be read"
+  list="$(list_runs)" || die "the runs in $LAB_STATE_DIR/runs cannot be read" 40 "$FIX_DATA"
   for id in $list; do
     if [[ "${id: -4}" == "$ref" ]]; then hits+=("$id"); fi
   done
@@ -2059,10 +2266,11 @@ cmd_keep() {
   gate_trusted
   if [[ -z "$1" ]]; then
     # Without a run, keep the one run whose timer is armed (section 3.1).
-    list="$(armed_runs)" || die "the runs in $LAB_STATE_DIR/runs cannot be read"
+    list="$(armed_runs)" || die "the runs in $LAB_STATE_DIR/runs cannot be read" 40 "$FIX_DATA"
     if [[ -n "$list" ]]; then mapfile -t armed <<< "$list"; fi
     case "${#armed[@]}" in
-      0) usage_error 'no run on this host has an armed revert timer' keep 'There is nothing to keep.' ;;
+      0) out 'There is nothing to keep: no run on this host has an armed revert timer.'
+         exit 0 ;;
       1) RUN_REF="${armed[0]}"
          printf 'using run %s\n' "$RUN_REF" ;;
       *) print_runs "${armed[@]}" >&2
@@ -2072,7 +2280,7 @@ cmd_keep() {
     resolve_run keep "$1"
   fi
   export LAB_RUN_ID="$RUN_REF"
-  [[ -f "$(lab_manifest_file)" ]] || die "no run $LAB_RUN_ID on this host"
+  [[ -f "$(lab_manifest_file)" ]] || die "no run $LAB_RUN_ID on this host" 40 "'$SELF runs' lists them."
   flush_warnings
   umask 077
   log_open "keep run $LAB_RUN_ID"
@@ -2082,8 +2290,8 @@ cmd_keep() {
 }
 
 cmd_rollback() {
-  local id rc=0 i list ok=0 bad=0 parts
-  local -a mods=() runs=()
+  local id rc=0 i list ok=0 bad=0 parts kept=''
+  local -a mods=() runs=() left=() rest=()
   export LAB_DRY_RUN=0
   umask 077
   if [[ -z "$1" ]]; then
@@ -2102,7 +2310,7 @@ cmd_rollback() {
   gate_trusted
   resolve_run rollback "$1"
   export LAB_RUN_ID="$RUN_REF"
-  [[ -f "$(lab_manifest_file)" ]] || die "no run $LAB_RUN_ID on this host"
+  [[ -f "$(lab_manifest_file)" ]] || die "no run $LAB_RUN_ID on this host" 40 "'$SELF runs' lists them."
   flush_warnings
   # The revert timer must work even if a run still holds the lock, hung or
   # waiting at a prompt. That run is stopped first: rolling back beside it
@@ -2115,16 +2323,32 @@ cmd_rollback() {
   if (( locked )); then
     trap 'lab_lock_release' EXIT
   else
-    printf 'warning: rolling back without the run lock\n' >&2
+    warn 'rolling back without the run lock'
   fi
   # Captured, not read from a process substitution, so a failure is seen.
   list="$(lab_manifest_applied "$LAB_RUN_ID")" || die "the manifest of run $LAB_RUN_ID cannot be read" 40 'Nothing was rolled back.'
   if [[ -n "$list" ]]; then mapfile -t mods <<< "$list"; fi
+  # Modules kept once verified stay, unless --all (section 3.1).
+  if [[ -z "${GIVEN[all]+set}" ]]; then
+    kept="$(lab_manifest_kept "$LAB_RUN_ID")" || die "the manifest of run $LAB_RUN_ID cannot be read" 40 'Nothing was rolled back.'
+    for id in "${mods[@]+"${mods[@]}"}"; do
+      if lab_in_list "$id" "${kept//$'\n'/ }"; then left+=("$id"); else rest+=("$id"); fi
+    done
+    mods=("${rest[@]+"${rest[@]}"}")
+  fi
   # A rollback started by the revert timer is logged too, though no one watches it.
   log_open "rollback run $LAB_RUN_ID"
   out "labyrinth $LAB_VERSION: rollback run $LAB_RUN_ID"
+  if (( ${#left[@]} > 0 )); then
+    out 'Kept once verified, so left in place (add --all to undo these too):'
+    for id in "${left[@]}"; do
+      load_title "$id"
+      out "  $(module_name "$id")"
+    done
+  fi
   case "${#mods[@]}" in
-    0) out 'This run changed nothing that needs undoing.' ;;
+    0) if (( ${#left[@]} > 0 )); then out 'Nothing else needs undoing.'
+       else out 'This run changed nothing that needs undoing.'; fi ;;
     1) out 'Undoing 1 module.' ;;
     *) out "Undoing ${#mods[@]} modules, newest change first." ;;
   esac
@@ -2141,7 +2365,7 @@ cmd_rollback() {
   done
   # A timer left armed runs this rollback again, which is safe.
   if ! lab_timer_cancel "$LAB_RUN_ID"; then
-    err "warning: the revert timer for run $LAB_RUN_ID could not be removed"
+    err "labyrinth: warning: the revert timer for run $LAB_RUN_ID could not be removed"
     err 'When it fires, it repeats this rollback, which is safe.'
   fi
   if ! record_for '' run_rolled_back '' "exit $rc"; then
@@ -2149,6 +2373,10 @@ cmd_rollback() {
     rc=40
   fi
   lab_log_warn run_rolled_back "run rolled back, exit $rc" 2> /dev/null
+  if (( ok + bad > 0 )); then
+    # Whoever is logged in learns that changes were undone; best effort.
+    lab_notify_all "Labyrinth rolled back run $LAB_RUN_ID on $(lab_host): its changes are undone. See '$SELF runs'." || true
+  fi
   out ''
   parts=''
   if (( ok > 0 )); then parts="$ok OK"; fi
@@ -2179,8 +2407,7 @@ cmd_probe() {
   if (( rc == 0 )); then out="$(lab_probe_all)" || rc=$?; fi
   case "$rc" in
     0) ;;
-    2) die "no service list at $LAB_CONFIG_DIR/services" 20 \
-         'List the scored services there, one "name proto host port expect" per line.' ;;
+    2) die "$(services_missing)" 20 "$FIX_SERVICES" ;;
     *) die "the service list is malformed: $(load_reason lab_services_load)" 40 \
          "$FIX_LINE" ;;
   esac
@@ -2241,7 +2468,8 @@ main() {
       cmd=plan                        # compatibility: a phase alone
     else
       local hint
-      hint="$(suggest "$lc" $COMMANDS $PHASES)"
+      hint="$(synonym "$lc")"
+      if [[ -z "$hint" ]]; then hint="$(suggest "$lc" $COMMANDS $PHASES)"; fi
       if [[ "$1" == '/?' ]]; then hint=help; fi
       usage_error "unknown command '$1'${hint:+ (did you mean '$hint'?)}"
     fi
@@ -2254,6 +2482,9 @@ main() {
       '') usage_error '--apply needs a phase' apply ;;
       *) usage_error "--apply cannot be used with $cmd" "$cmd" ;;
     esac
+  fi
+  if [[ -n "${GIVEN[all]+set}" && -n "$cmd" && "$cmd" != rollback && "$cmd" != help ]]; then
+    usage_error "--all is only for rollback, not $cmd" "$cmd"
   fi
   # The whole line must parse before help or the version is shown.
   local helping=0
@@ -2284,7 +2515,8 @@ main() {
       if [[ "$word" == *.* ]]; then cmd_help_module "$word"; exit 0; fi
       if [[ -n "$word" ]] && ! lab_in_list "$word" "$COMMANDS"; then
         local hint
-        hint="$(suggest "$word" basics $COMMANDS)"
+        hint="$(synonym "$word")"
+        if [[ -z "$hint" ]]; then hint="$(suggest "$word" basics $COMMANDS)"; fi
         usage_error "no help for '$1'${hint:+ (did you mean '$hint'?)}"
       fi
       # 'help plan --help' is help on plan; 'help --help' is help on help.

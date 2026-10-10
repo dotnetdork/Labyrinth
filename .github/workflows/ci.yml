@@ -3,9 +3,10 @@
 # itself never installs anything (docs/Conventions.md section 1).
 name: CI
 
+# Every push runs CI once, on any branch. A pull request adds no second run
+# of the same commit: its branch's push run is the one to read.
 on:
   push:
-  pull_request:
 
 # A newer push to a working branch cancels the run it replaces, so runners
 # test only the latest commit. Runs on main always finish.

@@ -68,8 +68,9 @@ Describe 'labyrinth.ps1 runs' {
         @($lines | Where-Object { $_.StartsWith("$c ") })[0] | Should -BeLike "$c observe * rolled back"
         ($lines[1..3] -join ',') | Should -BeExactly ((@($lines[1..3]) | Sort-Object -CaseSensitive) -join ',')
         $lineA | Should -BeLike ('* {0}-{1}-{2} {3}:{4} *' -f $a.Substring(0, 4), $a.Substring(4, 2), $a.Substring(6, 2), $a.Substring(9, 2), $a.Substring(11, 2))
-        $r.Out | Should -Match ([regex]::Escape("like 'labyrinth.ps1 keep $(Get-TestSuffix $a)'"))
-        ($lines | Measure-Object -Property Length -Maximum).Maximum | Should -BeLessOrEqual 78
+        $r.Out | Should -Match ([regex]::Escape("like '$($t.Self) keep $(Get-TestSuffix $a)'"))
+        # A hint may be longer by the length of the command in it.
+        ($lines | ForEach-Object { $_.Replace($t.Self, 'labyrinth.ps1') } | Measure-Object -Property Length -Maximum).Maximum | Should -BeLessOrEqual 78
     }
 
     It 'an armed run shows when its timer was due, or that the time is unknown' {
@@ -109,10 +110,10 @@ Describe 'labyrinth.ps1 runs' {
         $r.Out | Should -Match "kept: the revert timer for run $a is cancelled"
     }
 
-    It 'keep without a run refuses when no run, or more than one, is armed' {
+    It 'keep without a run: nothing to keep is not an error; more than one armed is refused' {
         $r = Invoke-TestLabRun $t @('keep')
-        $r.Code | Should -Be 40
-        $r.Err | Should -Match 'nothing to keep'
+        $r.Code | Should -Be 0
+        $r.Out | Should -Match ([regex]::Escape('There is nothing to keep: no run on this host has an armed revert timer.'))
         $a = Get-TestArmedRun $t
         $b = Get-TestArmedRun $t
         $r = Invoke-TestLabRun $t @('keep')

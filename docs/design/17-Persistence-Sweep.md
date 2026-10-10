@@ -26,6 +26,7 @@ This spec finds those footholds and removes them as early as is safe, without br
 | Both | Remote-access and tunnel tools (for example AnyDesk, TeamViewer, ScreenConnect, ngrok, chisel, rclone, plink), found as installed services, running processes or program files and matched against the release's data file (design 10, section 5) |
 | SIEM host | Splunk apps, scripted inputs and alert actions (design 10, section 7) |
 | Scored apps | Files in a web root or application folder that look like web shells, and CMS plugins or themes not in the app's original install (flagged only; section 4) |
+| Labyrinth's own tree | Reported only, never quarantined (section 5.1). Labyrinth's program folder is checked against the release list before every command (design 07, section 5.1); the sweep reports any file under the data root (`state`, `backup`, `logs`, `etc`) that no run record or configuration file explains, such as a script dropped into `state`. A `lab-revert-*` systemd unit or a task under `\Labyrinth\` that no run's `timer` file names is unexplained and listed for approval: Labyrinth's names are public, so an intruder can copy them |
 
 
 ## 4. Classes
@@ -152,6 +153,7 @@ Watching tools often abused for persistence, and blocking one on a single Window
 - Each quarantine step is in the run manifest before it is made, and a module's rollback restores every item it quarantined; restoring twice changes nothing.
 - A file put back is checked against its recorded SHA-256 first; a quarantined copy that changed is not restored, and a file found at the original path is moved aside, not overwritten.
 - A unit in `/usr/lib` or `/run` that no package owns is quarantined; a transient unit is stopped and recorded.
+- A file planted in Labyrinth's `state` folder is reported and never quarantined. A `lab-revert-x-1` timer that no run names is listed for approval.
 - Quarantine is refused in plan mode, for a folder, for a path inside Labyrinth's own tree, for a systemd unit a package installed (its added drop-ins are quarantined) or, with no package database, one outside `/etc` and `/run`, for process 1 and Labyrinth's own processes, and for Winlogon's `Userinit` and `Shell` values.
 
 ## References

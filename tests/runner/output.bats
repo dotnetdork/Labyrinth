@@ -102,7 +102,7 @@ LABELS='Found|Will do|Did|Why|Risk|Problem|Cause|Fix|Undo|Note|Log|Script|It sai
   [ "$(grep -c '^  It said:   line ' <<< "$output")" -eq 10 ]
   grep -qx '  It said:   line 3' <<< "$output"
   ! grep -qx '  It said:   line 2' <<< "$output"
-  [ "$(tail -n 1 <<< "$(grep '^  ' <<< "$output")")" = '  More:      labyrinth.sh help observe.crash' ]
+  [ "$(tail -n 1 <<< "$(grep '^  ' <<< "$output")")" = "  More:      $SELF help observe.crash" ]
 }
 
 @test "a failed entry point that ends with 'problem:' is shown as it said it" {
@@ -128,7 +128,7 @@ LABELS='Found|Will do|Did|Why|Risk|Problem|Cause|Fix|Undo|Note|Log|Script|It sai
     # A block ends at the next status line or at a line that is not a detail.
     if [[ "$l" != '  '* ]]; then
       if [[ "$word" =~ ^(WARN|BLOCKED|ERROR)$ ]]; then
-        [[ "$prev" == '  More:      labyrinth.sh help observe.'* ]] || { echo "no More after: $word"; return 1; }
+        [[ "$prev" == "  More:      $SELF help observe."* ]] || { echo "no More after: $word"; return 1; }
       fi
       word="${l%% *}"
     fi
@@ -154,6 +154,7 @@ LABELS='Found|Will do|Did|Why|Risk|Problem|Cause|Fix|Undo|Note|Log|Script|It sai
 }
 
 @test "plan ends with Summary, Next and the exit code with its meaning" {
+  hosts ring1
   profile observe.clean observe.sample
   plan
   [ "$status" -eq 10 ]
@@ -162,7 +163,7 @@ LABELS='Found|Will do|Did|Why|Risk|Problem|Cause|Fix|Undo|Note|Log|Script|It sai
   [ "${lines[last-3]}" = 'Nothing on this host was changed.' ]
   # Too long for one line with the test's paths, so the command has its own.
   [ "${lines[last-2]}" = 'Next:' ]
-  [ "${lines[last-1]}" = "  labyrinth.sh apply observe --profile test --root $ROOT --config $ETC" ]
+  [ "${lines[last-1]}" = "  $SELF apply observe --profile test --root $ROOT --config $ETC" ]
   [ "${lines[last]}" = 'plan finished: exit 10 (change needed)' ]
 }
 
@@ -182,6 +183,21 @@ LABELS='Found|Will do|Did|Why|Risk|Problem|Cause|Fix|Undo|Note|Log|Script|It sai
   [[ "$output" == *'Next: a person carries out the manual steps above; apply changes nothing.'* ]]
 }
 
+@test "plan's Next line never names an apply that would be refused" {
+  rm "$ETC/hosts"
+  profile observe.sample
+  plan
+  [ "$status" -eq 10 ]
+  [[ "$output" == *'Next: list this host in the hosts file, with its group and profile;'* ]]
+  [[ "$output" != *'labyrinth.sh apply observe'* ]]
+  printf '%s ring1 other ubuntu\n' "$HOST" > "$ETC/hosts"
+  printf 'observe.sample\n' > "$LAB/profiles/other.profile"
+  plan
+  [ "$status" -eq 10 ]
+  [[ "$output" == *"Next: apply uses this host's profile in the hosts file, other."* ]]
+  [[ "$output" != *'labyrinth.sh apply observe'* ]]
+}
+
 @test "plan shows a manual-only module as WARN and counts it as WARN" {
   profile observe.clean observe.manual
   plan
@@ -197,6 +213,8 @@ LABELS='Found|Will do|Did|Why|Risk|Problem|Cause|Fix|Undo|Note|Log|Script|It sai
   answers root ring1 keep
   apply
   [ "$status" -eq 0 ]
+  # A copy with no release list warns first (design 07, section 5.1).
+  mapfile -t lines < <(grep -v -e '^labyrinth: warning: ' -e '^$' <<< "$output")
   [[ "${lines[0]}" =~ ^labyrinth\ [^\ ]+:\ APPLY\ observe,\ profile\ test$ ]]
   [[ "${lines[1]}" =~ ^run\ [0-9]{8}T[0-9]{6}Z-[0-9a-f]{4}\ on\ host\ .+,\ group\ ring1$ ]]
   [ "${lines[2]}" = 'First Labyrinth plans; nothing changes until you confirm.' ]
@@ -222,17 +240,17 @@ LABELS='Found|Will do|Did|Why|Risk|Problem|Cause|Fix|Undo|Note|Log|Script|It sai
   [ "${lines[n+1]}" = "  Script:    $LAB/phases/observe/modules/toggle/verify.sh" ]
   grep -qx '  Did:       rolled back' <<< "$output"
   grep -qx "  Log:       $ROOT/state/runs/$(run_id)/output.log" <<< "$output"
-  grep -qx '  More:      labyrinth.sh help observe.toggle' <<< "$output"
+  grep -qxF "  More:      $SELF help observe.toggle" <<< "$output"
   [[ "$output" == *'Summary: 1 module: 1 FAIL.'* ]]
-  [[ "$output" == *'Next: keep the earlier changes or undo them'* ]]
-  [[ "$output" == *'apply finished: exit 30 (a check failed, and that change was undone)'* ]]
+  [[ "$output" == *'Next: undo the earlier changes, or keep them, with the commands above.'* ]]
+  [[ "$output" == *'apply finished: exit 30 (a check failed; that change was undone)'* ]]
 }
 
 @test "apply: the recap comes after break-glass and before the group prompt" {
   profile observe.toggle observe.blocked observe.manual
   answers root ring1 keep
   apply
-  a="$(line_of 'Break-glass account root: confirmed and recorded.')"
+  a="$(line_of 'Break-glass account root: confirmed.')"
   b="$(line_of 'About to apply on host')"
   c="$(line_of 'Type the group name (ring1)')"
   (( a < b && b <= c ))
@@ -264,14 +282,52 @@ LABELS='Found|Will do|Did|Why|Risk|Problem|Cause|Fix|Undo|Note|Log|Script|It sai
   a="$(line_of "The revert timer rolls this run back at ${due:11:5} UTC, ")"
   b="$(line_of 'Type keep to keep')"
   [ -n "$a" ] && (( a <= b ))
-  [[ "$output" == *"Next: check you can log in from a NEW session, then 'labyrinth.sh keep ${id: -4}'."* ]]
+  [[ "$output" == *"Next: check you can log in from a NEW session, then '$SELF keep ${id: -4}'."* ]]
+}
+
+@test "every prompt fits 78 columns, with what it asks for on the lines above" {
+  profile observe.ask observe.toggle
+  answers root ring1 item-a keep
+  apply
+  [ "$status" -eq 0 ]
+  # The run log holds each prompt with the answer typed after it.
+  local log="$ROOT/state/runs/$(run_id)/output.log" n=0 l
+  while IFS= read -r l; do
+    case "$l" in
+      *': root' | *': ring1' | *': item-a' | *': keep')
+        n=$((n + 1))
+        l="${l% *}"
+        (( ${#l} <= 78 )) || { echo "prompt too long: $l"; return 1; } ;;
+    esac
+  done < "$log"
+  [ "$n" -ge 4 ]
+  grep -qx 'Break-glass account name: root' "$log"
+  grep -qx 'Items to approve (Enter for none): item-a' "$log"
+  grep -qx 'Type keep to keep the changes, or press Enter to leave them to the timer: keep' "$log"
+}
+
+@test "a declined confirmation records no break-glass answer, so the next apply asks again" {
+  profile observe.toggle
+  answers root wrong
+  apply
+  [ "$status" -eq 20 ]
+  [[ "$output" == *'Break-glass account root: confirmed.'* ]]
+  [ ! -e "$ROOT/state/breakglass" ]
+  answers root ring1 keep
+  apply
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'Break-glass check:'* ]]
+  [ -f "$ROOT/state/breakglass" ]
 }
 
 @test "output lines are at most 78 columns, unless they end with a path" {
   profile observe.clean observe.sample observe.manual observe.blocked observe.crash observe.toggle
   plan
   local l
+  # A hint may be longer by the length of the command in it (Conventions,
+  # section 3.2), so the runner is measured as its bare name.
   for l in "${lines[@]}"; do
+    l="${l//$SELF/labyrinth.sh}"
     (( ${#l} <= 78 )) || [[ "${l##* }" == /* ]] || { echo "too long: $l"; return 1; }
   done
   touch "$LAB/FAIL_VERIFY"
@@ -279,6 +335,7 @@ LABELS='Found|Will do|Did|Why|Risk|Problem|Cause|Fix|Undo|Note|Log|Script|It sai
   # The prompts end without a newline, so they are answered by options here.
   apply --break-glass root --confirm-group ring1
   for l in "${lines[@]}"; do
+    l="${l//$SELF/labyrinth.sh}"
     (( ${#l} <= 78 )) || [[ "${l##* }" == /* ]] || { echo "too long: $l"; return 1; }
   done
 }
@@ -354,7 +411,7 @@ LABELS='Found|Will do|Did|Why|Risk|Problem|Cause|Fix|Undo|Note|Log|Script|It sai
   [ "$status" -eq 30 ]
   [ "${lines[1]}" = 'FAIL     [web] fail: fake probe' ]
   [ "${lines[3]}" = 'Summary: 2 FAIL' ]
-  [ "${lines[4]}" = "Next: bring the failed services back, then run 'labyrinth.sh probe' again." ]
+  [ "${lines[4]}" = "Next: bring the failed services back, then run '$SELF probe' again." ]
   [ "${lines[5]}" = 'probe finished: exit 30 (2 services failed)' ]
 }
 
@@ -383,6 +440,8 @@ LABELS='Found|Will do|Did|Why|Risk|Problem|Cause|Fix|Undo|Note|Log|Script|It sai
   id="$(run_id)"
   run bash "$LAB/labyrinth.sh" --root "$ROOT" --config "$ETC" rollback "$id"
   [ "$status" -eq 0 ]
+  # A copy with no release list warns first (design 07, section 5.1).
+  mapfile -t lines < <(grep -v -e '^labyrinth: warning: ' -e '^$' <<< "$output")
   [ "${lines[0]}" = "labyrinth $(sed -n "s/^readonly LAB_VERSION='\(.*\)'$/\1/p" "$LAB/labyrinth.sh"): rollback run $id" ]
   grep -qx 'OK       Toggle setting sample (observe.toggle)' <<< "$output"
   [ "${lines[${#lines[@]}-3]}" = 'Summary: 1 module: 1 OK.' ]

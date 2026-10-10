@@ -126,3 +126,16 @@ function Get-LabAppliedModule {
     }
     return , $mods.ToArray()
 }
+
+# Get-LabKeptModule -RunId RUN: the modules of the run that were kept once
+# verified (module_kept) and not applied again or rolled back since, oldest
+# first. rollback leaves them alone unless told -All (Conventions 3.1).
+function Get-LabKeptModule {
+    param([Parameter(Mandatory)] [string] $RunId)
+    $mods = New-Object Collections.Generic.List[string]
+    foreach ($e in @(Get-LabManifestEntry -RunId $RunId)) {
+        if ($e.action -ceq 'module_kept') { if (-not $mods.Contains($e.module)) { $mods.Add($e.module) } }
+        elseif ($e.action -ceq 'apply_start' -or $e.action -ceq 'rolled_back') { [void]$mods.Remove($e.module) }
+    }
+    return , $mods.ToArray()
+}

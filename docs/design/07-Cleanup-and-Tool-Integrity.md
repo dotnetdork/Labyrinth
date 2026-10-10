@@ -37,10 +37,22 @@ The earlier idea was an encrypted folder, decrypted with a shared team password.
 | Manifest | A list of every file with its SHA-256, generated at release time. The manifest's own SHA-256 is kept in the offline record. |
 | Signature | The manifest is signed with a team key, using `ssh-keygen -Y sign`. The public key is kept in the offline record and stored on the control node. |
 | Immutable location | Code sits in a root-owned, read-only directory on each host (`<root>/bin`). The core checks this before every `apply`, `keep` and `rollback`, the revert timer's included: the code folder, the configuration folder and the data root, everything in them, and every folder above them must be changeable only by root (Linux) or by administrators, SYSTEM and TrustedInstaller (Windows). On Linux that means owned by root and not writable by group or others; a folder above may be writable if it is sticky, like `/tmp`. Otherwise the command refuses with 20 and changes nothing. The check only reads: Labyrinth never changes the owner or permissions of its own code. The revert timer runs `labyrinth.sh` from the real path, with links resolved. |
-| Verify before run | The control node checks the manifest signature before every run. Each host then checks the manifest's SHA-256 against the value from the offline record, and every file against the manifest, using tools every host already has (`sha256sum` on Linux, `Get-FileHash` on Windows). A mismatch at either step refuses the run. |
+| Verify before run | The control node checks the manifest signature before every run. On each host, the runner checks every file against the manifest before it loads any of the core (below), and prints the manifest's SHA-256, which the operator compares by eye with the value in the offline record. |
+| Push, run, delete | Code is pushed to a host, run, and removed, unless the module needs a resident component. |
 
 **Why the signature is checked only on the control node.** `ssh-keygen -Y verify` needs OpenSSH 8.1 or later. RHEL 8 ships 8.0, and the OpenSSH bundled with Windows Server 2019 is older still (*Background*), so a host may not be able to check a signature at all. The control node can be chosen to have a recent OpenSSH; hosts only need SHA-256, which they all have. In local mode with no control node, the operator checks the manifest hash by eye against the offline record.
-| Push, run, delete | Code is pushed to a host, run, and removed, unless the module needs a resident component. |
+
+### 5.1 The release check on each host
+
+The manifest is `release.sha256` in Labyrinth's folder: one `<sha256>  <path>` line per file, the format `sha256sum -c` reads, with paths relative to the folder and `/` between folders. It covers `labyrinth.sh`, `labyrinth.ps1` and every file under `core`, `phases`, `platform`, `profiles` and `vendor`. `tools/release/manifest.sh` (or `manifest.ps1`) writes it into the copy that will be deployed and prints its SHA-256, which the team captain records in the offline record. The copy then goes to the hosts byte for byte: a checkout that changes line ends changes the hashes.
+
+- **When.** Every command, before the runner loads the rest of the core: `core/safety/release.sh` and `core/safety/Release.ps1` need nothing else, so a changed core file is found before any of it runs. The revert timer's `rollback` is checked like any other command.
+- **What fails.** A listed file that is missing, is a link or differs; a file under the covered paths that the list does not name, such as one dropped into `phases`; a line that is not in the format, names a path outside the folder, or repeats a path; a list that is empty or is itself a link. The command then refuses with `20`, names the first problem, and changes nothing. A refused `rollback` also sends a notice to whoever is logged in (`wall`, `msg`), because the run's changes stay in place.
+- **No list.** A copy taken straight from the repository has no `release.sha256`. Then `apply`, `keep` and `rollback` warn `no release.sha256, so Labyrinth's files were not checked`, and the hash lines say `not checked`. They do not refuse: the operator decides, from the team's notes, whether this copy is the one to run.
+- **What it shows.** `version` and the recap of every `apply`, just before the group-name prompt, print `Release: <sha256>`. The operator compares it with the offline record by eye.
+- **Its limit.** The check is code in the release. An intruder with root who changes the runner or the check as well can make it print the expected hash. What catches that is a check with the host's own tools, which the manual gives: `sha256sum release.sha256` (or `Get-FileHash`) against the offline record, then `sha256sum -c --quiet release.sha256`. The check on each run catches a changed, planted or missing file, a damaged copy, and a partial update; the host's own tools catch the rest.
+
+The persistence sweep covers what the check does not (design 17, section 3): files in Labyrinth's data root that no run record explains, and look-alike timers and tasks.
 
 Resident components (timers, watchers) are hashed by the integrity check (design 04) like any other critical file.
 
@@ -67,6 +79,8 @@ flowchart TD
 ## 6. Acceptance tests
 
 - A tampered module file makes the pre-run check fail and the run refuse to start.
+- A changed core file makes every command refuse with `20` before any of the core runs, the revert timer's `rollback` included, which also sends a notice. A file added under `core` or `phases`, and a listed file that is missing, are refused the same way.
+- With no `release.sha256`, `apply`, `keep` and `rollback` warn and go on, and the hash lines say `not checked`. With one that matches, `version` and the apply recap print its SHA-256.
 - Code, configuration or a data root that an account other than root (Linux) or an administrator (Windows) can change makes `apply`, `keep` and `rollback` refuse with 20, and nothing changes.
 - A wrong signature is rejected.
 - A manifest whose SHA-256 differs from the offline record's value is rejected on a host with no `ssh-keygen -Y`.
