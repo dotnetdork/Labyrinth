@@ -195,6 +195,7 @@ A locked account can be unlocked again by an attacker with admin rights, so a lo
 - A new password appears on the terminal only: not in the module's output, and nowhere under the data root (logs, manifest, backups). Without a terminal, nothing is rotated; if the terminal goes before `recorded` is typed, the old password is put back.
 - A scoring account is unchanged.
 - An unregistered key is removed and backed up; a registered key stays.
+- An unregistered key removed in a run that is not kept stays removed after the revert timer fires, because its module is kept once verified (design 00, section 4); `rollback --all` puts it back.
 - A key with a wrong source address cannot log in.
 - A bad `sshd` configuration is rejected by the syntax test and does not reload.
 - A dead-man revert restores SSH access when verify is failed on purpose.
