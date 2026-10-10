@@ -504,6 +504,14 @@ Where: README; Overview; 01; Conventions, sections 2.2 and 3.1; manual, section 
 - Conventions section 3.1 is split into sub-sections, and the revert timer's paragraphs are together.
 - The PDF manuals open with a contents list.
 
+### 2026-10-10: Acceptance tests from the keep audit
+
+Where: 00, section 5; 05, section 7; Roadmap; Blueprint.
+
+- Remote mode gains two acceptance tests: a host whose service was already failing is kept, and a host with a regressed service is not, apart from its modules kept once verified. They are written when remote mode is built.
+- Design 05 gains a test that a removed unregistered key stays removed after the revert timer fires, and comes back only with `rollback --all`.
+- The Roadmap's remote-mode rows and the Blueprint use the regression rule of design 00, section 5, instead of "every scored probe passes".
+
 ## References
 
 National Collegiate Cyber Defense Competition. (2025, December 10). *Rules and requirements*. Retrieved October 2, 2026,
