@@ -200,6 +200,10 @@ Labyrinth runs in two modes that share the same modules:
 - **Remote mode.** `labyrinth remote plan <phase> --group <group>` or `labyrinth remote apply <phase> --group <group>` runs on a control node. For each target it copies the release, checks it (design 07, section 5), runs the *same* local command over SSH (Linux) or PowerShell remoting or OpenSSH (Windows), and brings back the logs and the run manifest. It must cope with being cut off, because the lockout rotates the very credentials and SSH settings it connects with.
 - **Keeping a run in remote mode.** A local apply ends by asking the operator to type `keep`. In remote mode the control node answers for each host, from what it can check itself: it keeps the host's run (`keep <run>`) only when, after the run, it can still log in to the host over the admin path with a new connection, and no scored service on that host that passed its probe from the control node before the run fails it after. This is the same rule as the checks after each module: a service the Red Team had already broken does not undo the team's changes. Otherwise it keeps nothing, and the revert timer rolls the host back, except the modules already kept once they verified (section 4, rule 9). Either way the control node prints and records which hosts it kept and why. The break-glass check at the console still follows the run (design 01, section 6.3); an operator who cannot log in there runs `rollback` for that host.
 
+  Acceptance tests for remote mode, written when it is built (Roadmap, stage 5):
+  - A host whose scored service already failed its probe before the run, and still fails after it, is kept when the admin login works with a new connection and no other service regressed. The control node reports the failing service.
+  - A host where a service that passed before the run fails after it is not kept. When the timer fires, it undoes the host's run but leaves the modules kept once they verified.
+
 Either way, one run does this:
 
 ```

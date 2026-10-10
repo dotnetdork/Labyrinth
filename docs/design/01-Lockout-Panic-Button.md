@@ -180,8 +180,8 @@ The break-glass answer is still the operator's word for each host (section 7). I
 
 - **Two-session rule.** Keep one session open while testing from a fresh one.
 - **Dead-man revert.** Before any change that is not `read-only`, such as a firewall or SSH change, arm a timer that rolls the run back unless the operator keeps it after verify. It runs `labyrinth rollback <run>` (`docs/Conventions.md`, section 3.1). A module that only takes access away from an intruder is kept once it verifies with no scored service worse, so the timer never hands an intruder their access back (design 00, section 4, rule 9). When the timer rolls a run back, every logged-in terminal or session on the host gets a notice.
-  - Linux: a transient systemd timer, `lab-revert-<run>-<n>` (`systemd-run --on-active=<minutes>m --unit=lab-revert-<run>-<n> ...`), cancelled with `systemctl stop lab-revert-<run>-<n>.timer`.
-  - Windows: a one-time scheduled task, `\Labyrinth\lab-revert-<run>-<n>`, running as SYSTEM, unregistered when the run is kept.
+  - Linux: an enabled systemd timer and service, `lab-revert-<run>-<n>`, written to `/etc/systemd/system` with `OnCalendar=<due time>`, `Persistent=true` and `OnActiveSec=<minutes>m`. It survives a restart and fires at once if its time passed while the host was off. Keeping or rolling back the run stops and disables it and deletes its two unit files (`docs/Conventions.md`, section 3.1).
+  - Windows: a one-time scheduled task, `\Labyrinth\lab-revert-<run>-<n>`, running as SYSTEM, unregistered when the run is kept. It also survives a restart.
   - `labyrinth runs` shows which runs still have a timer armed, and when each one fires.
   - VyOS: `commit-confirm <minutes>` followed by `confirm`. Read the VyOS warning below first.
 - **Passwords shown once.** New credentials are displayed once, on the operator's screen, for the team's offline record (design 05, section 2). Labyrinth never writes them to disk or logs and never echoes them over an unencrypted channel. Use a cryptographic random source (`/dev/urandom` or .NET `RandomNumberGenerator`), not `Get-Random`.
