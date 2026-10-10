@@ -226,8 +226,8 @@ Usage: $SELF runs [options]
 List this host's runs, oldest first: run ID, phase, start time (UTC)
 and state: armed (and when it rolls back), kept, rolled back,
 rolled back with errors, or not kept, no timer. 'armed: timer lost'
-means the host restarted and nothing will undo the run by itself:
-keep it or roll it back. Changes nothing; needs root.
+means the timer's unit files are gone and nothing will undo the run by
+itself: keep it or roll it back. Changes nothing; needs root.
 
 $where
 
@@ -2158,10 +2158,10 @@ run_state() {
   fi
   if grep -q '"action":"run_kept"' "$f" 2> /dev/null; then printf 'kept\n'; return 0; fi
   if lab_timer_armed "$1"; then
-    # A reboot drops the transient timer; the run stays armed so keep and
-    # rollback still find it, but nothing will roll it back by itself.
+    # Without its unit files systemd has no timer; the run stays armed so
+    # keep and rollback still find it, but nothing will roll it back.
     if lab_timer_live "$1"; then :; elif [[ $? -eq 1 ]]; then
-      printf 'armed: timer lost (restart?)\n'
+      printf 'armed: timer lost\n'
       return 0
     fi
     if ! due="$(lab_timer_due "$1")"; then printf 'armed: rollback time unknown\n'; return 0; fi

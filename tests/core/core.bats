@@ -255,44 +255,73 @@ esac'
   [ "$status" -eq 1 ]
 }
 
-@test "timer: arm and cancel call systemd with a fresh unit each time" {
+@test "timer: arm writes an enabled, persistent timer, and re-arm and cancel delete the units" {
   [ -d /run/systemd/system ] || skip 'no systemd on this machine'
-  stub systemd-run 'printf "%s\n" "$*" >> "$LAB_STATE_DIR/calls"'
+  export LAB_SYSTEMD_DIR="$BATS_TEST_TMPDIR/units"
+  mkdir -p "$LAB_SYSTEMD_DIR" "$LAB_STATE_DIR"
   # A stopped timer is no longer active.
   stub systemctl 'printf "systemctl %s\n" "$*" >> "$LAB_STATE_DIR/calls"; [[ "$1" != is-active ]]'
-  mkdir -p "$LAB_STATE_DIR"
-  lab_timer_arm 300 "$LAB_RUN_ID" /bin/bash /x/labyrinth.sh rollback "$LAB_RUN_ID"
+  lab_timer_arm 300 "$LAB_RUN_ID" /bin/bash '/x/lab folder/labyrinth.sh' rollback "$LAB_RUN_ID"
   lab_timer_armed "$LAB_RUN_ID"
-  lab_timer_arm 300 "$LAB_RUN_ID" /bin/bash /x/labyrinth.sh rollback "$LAB_RUN_ID"
+  u="$LAB_SYSTEMD_DIR/lab-revert-$LAB_RUN_ID-1"
+  grep -qxF "ExecStart=\"/bin/bash\" \"/x/lab folder/labyrinth.sh\" \"rollback\" \"$LAB_RUN_ID\"" "$u.service"
+  grep -qxF 'Persistent=true' "$u.timer"
+  grep -qxF 'OnActiveSec=300s' "$u.timer"
+  grep -qxF 'WantedBy=timers.target' "$u.timer"
+  grep -qE '^OnCalendar=[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}$' "$u.timer"
+  lab_timer_arm 300 "$LAB_RUN_ID" /bin/bash '/x/lab folder/labyrinth.sh' rollback "$LAB_RUN_ID"
+  [ ! -e "$u.timer" ]
+  [ ! -e "$u.service" ]
+  [ -e "$LAB_SYSTEMD_DIR/lab-revert-$LAB_RUN_ID-2.timer" ]
   lab_timer_cancel "$LAB_RUN_ID"
   run lab_timer_armed "$LAB_RUN_ID"
   [ "$status" -ne 0 ]
+  [ -z "$(ls -A "$LAB_SYSTEMD_DIR")" ]
   calls="$(cat "$LAB_STATE_DIR/calls")"
-  [[ "$calls" == *"--unit=lab-revert-$LAB_RUN_ID-1 --on-active=300s"*"/bin/bash /x/labyrinth.sh rollback"* ]]
+  [[ "$calls" == *"systemctl daemon-reload"$'\n'"systemctl enable --quiet lab-revert-$LAB_RUN_ID-1.timer"$'\n'"systemctl start lab-revert-$LAB_RUN_ID-1.timer"* ]]
   [[ "$calls" == *"systemctl stop lab-revert-$LAB_RUN_ID-1.timer"* ]]
-  [[ "$calls" == *"--unit=lab-revert-$LAB_RUN_ID-2"* ]]
-  [[ "$calls" == *"systemctl stop lab-revert-$LAB_RUN_ID-2.timer"* ]]
+  [[ "$calls" == *"systemctl disable --quiet lab-revert-$LAB_RUN_ID-1.timer"* ]]
+  [[ "$calls" == *"systemctl disable --quiet lab-revert-$LAB_RUN_ID-2.timer"* ]]
+  # The service is never stopped: a fired timer's rollback is the caller.
+  run grep -q '\.service' "$LAB_STATE_DIR/calls"
+  [ "$status" -ne 0 ]
 }
 
-@test "timer: a failed re-arm leaves the earlier timer armed" {
+@test "timer: the command is quoted for the unit file, and a line break is refused" {
   [ -d /run/systemd/system ] || skip 'no systemd on this machine'
+  export LAB_SYSTEMD_DIR="$BATS_TEST_TMPDIR/units"
+  mkdir -p "$LAB_SYSTEMD_DIR" "$LAB_STATE_DIR"
+  stub systemctl ':'
+  lab_timer_arm 300 "$LAB_RUN_ID" /bin/echo 'a%b$c"d\e'
+  grep -qxF 'ExecStart="/bin/echo" "a%%b$$c\"d\\e"' "$LAB_SYSTEMD_DIR/lab-revert-$LAB_RUN_ID-1.service"
+  run lab_timer_arm 300 20261002T120000Z-ffff /bin/echo $'two\nlines'
+  [ "$status" -eq 1 ]
+  [[ "$output" == *'line break'* ]]
+  [ ! -e "$LAB_SYSTEMD_DIR/lab-revert-20261002T120000Z-ffff-1.service" ]
+}
+
+@test "timer: a failed re-arm leaves the earlier timer armed and deletes the new units" {
+  [ -d /run/systemd/system ] || skip 'no systemd on this machine'
+  export LAB_SYSTEMD_DIR="$BATS_TEST_TMPDIR/units"
+  mkdir -p "$LAB_SYSTEMD_DIR" "$LAB_STATE_DIR"
   # The second unit, lab-revert-<run>-2, cannot be started.
-  stub systemd-run 'printf "%s\n" "$*" >> "$LAB_STATE_DIR/calls"; [[ "$*" != *"$LAB_RUN_ID-2 "* ]]'
-  stub systemctl 'printf "systemctl %s\n" "$*" >> "$LAB_STATE_DIR/calls"'
-  mkdir -p "$LAB_STATE_DIR"
+  stub systemctl 'printf "systemctl %s\n" "$*" >> "$LAB_STATE_DIR/calls"; [[ "$*" != "start lab-revert-$LAB_RUN_ID-2.timer" && "$1" != is-active ]]'
   lab_timer_arm 300 "$LAB_RUN_ID" /bin/bash /x/labyrinth.sh rollback "$LAB_RUN_ID"
   run lab_timer_arm 300 "$LAB_RUN_ID" /bin/bash /x/labyrinth.sh rollback "$LAB_RUN_ID"
   [ "$status" -eq 1 ]
   [ "$(cat "$LAB_STATE_DIR/runs/$LAB_RUN_ID/timer")" = "lab-revert-$LAB_RUN_ID-1" ]
-  run grep -q '^systemctl stop' "$LAB_STATE_DIR/calls"
+  [ -e "$LAB_SYSTEMD_DIR/lab-revert-$LAB_RUN_ID-1.timer" ]
+  [ ! -e "$LAB_SYSTEMD_DIR/lab-revert-$LAB_RUN_ID-2.timer" ]
+  [ ! -e "$LAB_SYSTEMD_DIR/lab-revert-$LAB_RUN_ID-2.service" ]
+  run grep -q "stop lab-revert-$LAB_RUN_ID-1.timer" "$LAB_STATE_DIR/calls"
   [ "$status" -ne 0 ]
 }
 
 @test "timer: arming records when the timer fires, and cancelling removes it" {
   [ -d /run/systemd/system ] || skip 'no systemd on this machine'
-  stub systemd-run ':'
+  export LAB_SYSTEMD_DIR="$BATS_TEST_TMPDIR/units"
+  mkdir -p "$LAB_SYSTEMD_DIR" "$LAB_STATE_DIR"
   stub systemctl '[[ "$1" != is-active ]]'
-  mkdir -p "$LAB_STATE_DIR"
   before="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   lab_timer_arm 300 "$LAB_RUN_ID" /bin/true
   due="$(lab_timer_due "$LAB_RUN_ID")"
@@ -304,17 +333,33 @@ esac'
   [ "$status" -eq 1 ]
 }
 
-@test "timer: a timer still active after being stopped is not cancelled" {
+@test "timer: a timer still active after being stopped is not cancelled, and keeps its units" {
   [ -d /run/systemd/system ] || skip 'no systemd on this machine'
-  stub systemd-run ':'
+  export LAB_SYSTEMD_DIR="$BATS_TEST_TMPDIR/units"
+  mkdir -p "$LAB_SYSTEMD_DIR" "$LAB_STATE_DIR"
   stub systemctl ':'
-  mkdir -p "$LAB_STATE_DIR"
   lab_timer_arm 300 "$LAB_RUN_ID" /bin/true
   run lab_timer_cancel "$LAB_RUN_ID"
   [ "$status" -eq 1 ]
   [[ "$output" == *"still active"* ]]
   lab_timer_armed "$LAB_RUN_ID"
   lab_timer_due "$LAB_RUN_ID"
+  [ -e "$LAB_SYSTEMD_DIR/lab-revert-$LAB_RUN_ID-1.timer" ]
+}
+
+@test "timer: a unit file that cannot be deleted keeps the run armed" {
+  [ -d /run/systemd/system ] || skip 'no systemd on this machine'
+  [[ "$(id -u)" != 0 ]] || skip 'root can delete the files'
+  export LAB_SYSTEMD_DIR="$BATS_TEST_TMPDIR/units"
+  mkdir -p "$LAB_SYSTEMD_DIR" "$LAB_STATE_DIR"
+  stub systemctl '[[ "$1" != is-active ]]'
+  lab_timer_arm 300 "$LAB_RUN_ID" /bin/true
+  chmod 555 "$LAB_SYSTEMD_DIR"
+  run lab_timer_cancel "$LAB_RUN_ID"
+  chmod 755 "$LAB_SYSTEMD_DIR"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"could not delete the unit files"* ]]
+  lab_timer_armed "$LAB_RUN_ID"
 }
 
 @test "timer: a timer systemd no longer has, as after a reboot, is not live" {
