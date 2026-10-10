@@ -99,8 +99,9 @@ lab_timer_arm() {
       return 1
     fi
     # Quoted for ExecStart=: backslash and quote escaped, and % and $
-    # doubled so systemd does not expand them.
-    q=${a//"$bs"/$bs$bs}; q=${q//"$dq"/$bs$dq}; q=${q//"$pc"/$pc$pc}; q=${q//"$dl"/$dl$dl}
+    # doubled so systemd does not expand them. The replacements are quoted:
+    # bash 5.2 and later treat an unquoted backslash there as an escape.
+    q=${a//"$bs"/"$bs$bs"}; q=${q//"$dq"/"$bs$dq"}; q=${q//"$pc"/"$pc$pc"}; q=${q//"$dl"/"$dl$dl"}
     cmd+="${cmd:+ }\"$q\""
   done
   dir="$LAB_STATE_DIR/runs/$run"
