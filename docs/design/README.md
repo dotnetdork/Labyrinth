@@ -512,6 +512,15 @@ Where: 00, section 5; 05, section 7; Roadmap; Blueprint.
 - Design 05 gains a test that a removed unregistered key stays removed after the revert timer fires, and comes back only with `rollback --all`.
 - The Roadmap's remote-mode rows and the Blueprint use the regression rule of design 00, section 5, instead of "every scored probe passes".
 
+### 2026-10-10: Revert timer survives a restart on Linux
+
+Where: 01, section 8; Conventions, section 3.1; manual, `runs` and section 10.
+
+- The Linux revert timer was a transient systemd timer, which a restart dropped: the run stayed armed and nothing undid it. It is now an enabled timer and service pair in `/etc/systemd/system`. The Windows scheduled task already survived a restart.
+- The timer has `OnCalendar=` with the due time and `Persistent=true`, so it fires as soon as the host starts if its time passed while the host was off. It also has `OnActiveSec=` with the same delay, so a clock change cannot move it.
+- `keep` and `rollback`, the timer's own included, stop and disable the timer and delete its two unit files. Because Labyrinth wrote them, they are the only files it deletes outside its own paths. If they cannot be deleted, `keep` records nothing and exits `40`, as when the timer cannot be stopped.
+- `runs` says `armed: timer lost`, without "(restart?)", when the unit files are missing or damaged.
+
 ## References
 
 National Collegiate Cyber Defense Competition. (2025, December 10). *Rules and requirements*. Retrieved October 2, 2026,

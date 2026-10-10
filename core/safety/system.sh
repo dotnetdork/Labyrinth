@@ -3,10 +3,11 @@
 # Linux: the administrator and ownership checks and the dead-man revert
 # timer (design 01, section 8). Sourced through core/lib.sh.
 #
-# The timer of a run is a transient systemd timer named
-# lab-revert-<run>-<n>. Each re-arm starts a new one, with a new <n>, and
-# only then stops the last, so a failed re-arm leaves the earlier timer
-# armed. The armed timer's name is kept in $LAB_STATE_DIR/runs/<run>/timer,
+# The timer of a run is a systemd timer and service named
+# lab-revert-<run>-<n>, written to /etc/systemd/system and enabled, so it
+# survives a restart and fires at once if its time passed while the host
+# was off. Each re-arm starts a new one, with a new <n>, and only then
+# removes the last, so a failed re-arm leaves the earlier timer armed. The armed timer's name is kept in $LAB_STATE_DIR/runs/<run>/timer,
 # and the time it fires in timer-due (UTC, YYYY-MM-DDTHH:MM:SSZ), which is
 # advisory: it is shown to the operator, and nothing fails without it.
 
@@ -85,12 +86,23 @@ lab_console_session() {
 # lab_timer_arm SECONDS RUN COMMAND [ARG...]: (re)arm the run's revert timer
 # to run COMMAND (an absolute path) after SECONDS, unless cancelled.
 lab_timer_arm() {
-  local secs="$1" run="$2" dir n=1 unit old=''
+  local secs="$1" run="$2" dir n=1 unit old='' udir="${LAB_SYSTEMD_DIR:-/etc/systemd/system}"
+  local cmd='' a q due bs=\\ dq=\" pc=% dl=\$
   shift 2
-  if ! command -v systemd-run > /dev/null 2>&1 || [[ ! -d /run/systemd/system ]]; then
+  if ! command -v systemctl > /dev/null 2>&1 || [[ ! -d /run/systemd/system ]]; then
     printf 'revert timer: systemd is not available on this host, so no timer can be armed\n' >&2
     return 1
   fi
+  for a in "$@"; do
+    if [[ "$a" == *$'\n'* ]]; then
+      printf 'revert timer: the command has a line break, which a unit file cannot hold\n' >&2
+      return 1
+    fi
+    # Quoted for ExecStart=: backslash and quote escaped, and % and $
+    # doubled so systemd does not expand them.
+    q=${a//"$bs"/$bs$bs}; q=${q//"$dq"/$bs$dq}; q=${q//"$pc"/$pc$pc}; q=${q//"$dl"/$dl$dl}
+    cmd+="${cmd:+ }\"$q\""
+  done
   dir="$LAB_STATE_DIR/runs/$run"
   mkdir -p "$dir" || return 1
   if [[ -f "$dir/timer-count" ]]; then
@@ -98,29 +110,59 @@ lab_timer_arm() {
   fi
   if [[ -f "$dir/timer" ]]; then old="$(cat "$dir/timer")"; fi
   unit="lab-revert-$run-$n"
-  systemd-run --quiet --unit="$unit" --on-active="${secs}s" --timer-property=AccuracySec=1s "$@" || return 1
+  # Local time, which is how systemd reads a calendar time with no zone.
+  due="$(date -d "@$(( $(date +%s) + secs ))" '+%Y-%m-%d %H:%M:%S')" || return 1
+  if ! printf '%s\n' '[Unit]' "Description=Labyrinth revert timer for run $run" '' \
+        '[Service]' "ExecStart=$cmd" > "$udir/$unit.service" \
+      || ! printf '%s\n' '[Unit]' "Description=Labyrinth revert timer for run $run" '' \
+        '[Timer]' "OnCalendar=$due" 'Persistent=true' "OnActiveSec=${secs}s" 'AccuracySec=1s' '' \
+        '[Install]' 'WantedBy=timers.target' > "$udir/$unit.timer" \
+      || ! systemctl daemon-reload \
+      || ! systemctl enable --quiet "$unit.timer" \
+      || ! systemctl start "$unit.timer"; then
+    lab_timer_remove "$unit" > /dev/null 2>&1 || true
+    return 1
+  fi
   printf '%s\n' "$n" > "$dir/timer-count"
   printf '%s\n' "$unit" > "$dir/timer"
   lab_timer_due_write "$run" "$secs"
-  # Only now is the earlier timer stopped; it may already have fired.
+  # Only now is the earlier timer removed; it may already have fired.
   if [[ -n "$old" ]]; then
-    systemctl stop "$old.timer" 2> /dev/null || true
+    lab_timer_remove "$old" || true
   fi
 }
 
-# lab_timer_cancel RUN: stop the run's revert timer, if one is armed.
-# Returns 1, keeping the state files, if the timer is still active after
-# being stopped, because the run would still be rolled back.
-lab_timer_cancel() {
-  local dir="$LAB_STATE_DIR/runs/$1" unit
-  [[ -f "$dir/timer" ]] || return 0
-  unit="$(cat "$dir/timer")"
+# lab_timer_remove UNIT: stop and disable a revert timer and delete its two
+# unit files, which Labyrinth wrote; they are the only files it deletes
+# outside its own paths (docs/Conventions.md, section 3.1). The service is
+# never stopped: when the timer has fired, it is the rollback calling this.
+# Returns 1, leaving the files, if the timer is still active after being
+# stopped, and 1 if a file could not be deleted.
+lab_timer_remove() {
+  local unit="$1" udir="${LAB_SYSTEMD_DIR:-/etc/systemd/system}"
   # The timer may already have fired or been stopped by hand.
   systemctl stop "$unit.timer" 2> /dev/null || true
   if systemctl is-active --quiet "$unit.timer" 2> /dev/null; then
     printf 'revert timer: %s.timer is still active after being stopped\n' "$unit" >&2
     return 1
   fi
+  systemctl disable --quiet "$unit.timer" 2> /dev/null || true
+  rm -f -- "$udir/$unit.timer" "$udir/$unit.service" 2> /dev/null || true
+  systemctl daemon-reload 2> /dev/null || true
+  if [[ -e "$udir/$unit.timer" || -e "$udir/$unit.service" ]]; then
+    printf 'revert timer: could not delete the unit files of %s in %s\n' "$unit" "$udir" >&2
+    return 1
+  fi
+}
+
+# lab_timer_cancel RUN: remove the run's revert timer, if one is armed.
+# Returns 1, keeping the state files, if the timer could not be removed,
+# because the run might still be rolled back.
+lab_timer_cancel() {
+  local dir="$LAB_STATE_DIR/runs/$1" unit
+  [[ -f "$dir/timer" ]] || return 0
+  unit="$(cat "$dir/timer")"
+  lab_timer_remove "$unit" || return 1
   rm -f -- "$dir/timer" "$dir/timer-due"
 }
 
@@ -144,9 +186,9 @@ lab_timer_due() {
 # lab_timer_armed RUN: is a revert timer armed for the run?
 lab_timer_armed() { [[ -f "$LAB_STATE_DIR/runs/$1/timer" ]]; }
 
-# lab_timer_live RUN: is the armed timer still waiting in systemd? The timer
-# is transient, so a reboot drops it while its state file stays. Returns 1
-# when systemd no longer has it, and 2 when this cannot be told.
+# lab_timer_live RUN: is the armed timer still waiting in systemd? Its unit
+# files may have been deleted or damaged while its state file stays.
+# Returns 1 when systemd no longer has it, and 2 when this cannot be told.
 lab_timer_live() {
   local f="$LAB_STATE_DIR/runs/$1/timer" unit=''
   [[ -f "$f" ]] || return 1

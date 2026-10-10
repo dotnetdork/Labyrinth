@@ -155,7 +155,7 @@ Lists this host's runs, oldest first, with the run ID, phase, start time (UTC) a
 
 - `armed`: the revert timer is set, with the time it will undo the run. If that time has passed, it says when the timer was due; if Labyrinth cannot tell, it says the time is unknown;
 <!-- linux -->
-- `armed: timer lost (restart?)`: the run is still armed, but systemd no longer has its revert timer, usually because the host restarted. Nothing will undo the run by itself. Keep it or roll it back now;
+- `armed: timer lost`: the run is still armed, but systemd no longer has its revert timer, because its unit files were removed or damaged. Nothing will undo the run by itself. Keep it or roll it back now;
 <!-- end -->
 - `kept`: someone kept the run;
 - `rolled back`: the run was undone;
@@ -445,7 +445,7 @@ Only Administrators, SYSTEM and the account that runs Labyrinth can use the data
 The revert timer's length is `REVERT_MINUTES` in `event.conf` (5 minutes in the example file).
 
 <!-- linux -->
-Each revert timer is a systemd timer named `lab-revert-<run>-<n>`. You do not need to manage it by hand: use `keep` or `rollback`. The timer lives only in memory, so a restart drops it: an armed run is then not undone by itself, and `runs` shows it as `armed: timer lost (restart?)`. After a restart, check `runs` and keep or roll back each armed run.
+Each revert timer is a systemd timer named `lab-revert-<run>-<n>`, with its unit files in `/etc/systemd/system`. You do not need to manage it by hand: use `keep` or `rollback`, which also delete those files. The timer survives a restart; if its time passed while the host was off, it fires as soon as the host starts.
 <!-- end -->
 <!-- windows -->
 Each revert timer is a scheduled task named `\Labyrinth\lab-revert-<run>-<n>`, run as SYSTEM. You do not need to manage it by hand: use `keep` or `rollback`. The task survives a restart; if its time passed while the host was off, it runs as soon as it can.

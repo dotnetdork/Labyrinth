@@ -27,6 +27,28 @@ teardown() {
   sleep 8
   [ -e "$W/fired-a" ]
   [ ! -e "$W/fired-b" ]
+  sudo -n env LAB_ROOT="$REPO" LAB_STATE_DIR="$W/state" bash -c '
+    set -Eeuo pipefail
+    source "$LAB_ROOT/core/lib.sh"
+    lab_timer_cancel 20261002T000000Z-aaaa'
+  run compgen -G '/etc/systemd/system/lab-revert-20261002T000000Z-*'
+  [ "$status" -ne 0 ]
+}
+
+@test "realsystem: the revert timer is enabled and persistent, so it outlives a restart" {
+  sudo -n env LAB_ROOT="$REPO" LAB_STATE_DIR="$W/state" W="$W" bash -c '
+    set -Eeuo pipefail
+    source "$LAB_ROOT/core/lib.sh"
+    u=lab-revert-20261002T000000Z-cccc-1
+    lab_timer_arm 300 20261002T000000Z-cccc /usr/bin/touch "$W/fired-c"
+    systemctl is-enabled --quiet "$u.timer"
+    systemctl is-active --quiet "$u.timer"
+    [ "$(systemctl show -p Persistent --value "$u.timer")" = yes ]
+    lab_timer_cancel 20261002T000000Z-cccc
+    [ ! -e "/etc/systemd/system/$u.timer" ]
+    [ ! -e "/etc/systemd/system/$u.service" ]
+    ! systemctl is-enabled --quiet "$u.timer" 2> /dev/null'
+  [ ! -e "$W/fired-c" ]
 }
 
 @test "realsystem: an apply that is not kept is rolled back by the timer" {
@@ -63,6 +85,9 @@ teardown() {
   done
   rolled_back
   sudo -n grep -qx 'setting=off' "$LAB/toggle.conf"
+  # The rollback the timer ran deleted the timer's unit files.
+  run compgen -G '/etc/systemd/system/lab-revert-*'
+  [ "$status" -ne 0 ]
 }
 
 @test "realsystem: apply refuses code that another account can change" {
