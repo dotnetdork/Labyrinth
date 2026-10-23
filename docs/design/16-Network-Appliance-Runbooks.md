@@ -1,6 +1,6 @@
 # 16. Network Appliance Runbooks
 
-**Status:** Draft · reviewed 2026-10-02 · Phase: 🟥 Lock out · Priority: P0 (credentials, management plane), P1 (the rest)
+**Status:** Draft · reviewed 2026-10-23 · Phase: 🟥 Lock out · Priority: P0 (credentials, management plane), P1 (the rest)
 
 ## 1. Goal
 
@@ -33,9 +33,9 @@ Every vendor runbook follows the same order. Each step says what to do, how to c
 |---|---|---|
 | 0 | **Prepare.** Open a second session (or the console). Export the running configuration as a backup. Learn how this appliance undoes an unconfirmed change, and on VyOS set the confirm action to `reload` first (design 01). | So any mistake can be reversed |
 | 1 | **Credentials.** Change the admin, web, SSH (Secure Shell) and API passwords. Change or disable SNMP (Simple Network Management Protocol) community strings (Blueprint §3.1). | Appliances often ship with well-known defaults |
-| 2 | **Management plane.** Allow management only on an inside interface and only from the admin source. Turn off management services that are not needed, such as plain HTTP or Telnet (Blueprint §3.2). | No administration from the outside |
+| 2 | **Management plane.** Allow management only on an inside interface and only from the admin source. On a flat network, where the operators share a segment with the servers, name the admin hosts or their DHCP range rather than the whole inside interface. Turn off management services that are not needed, such as plain HTTP or Telnet (Blueprint §3.2). Keep ICMP, and never change an interface address, a NAT mapping a scored service uses, or the appliance's host name. | No administration from the outside, and nothing scoring relies on moves |
 | 3 | **Scoring allowlist first.** Add the rules that allow the scoring engine to reach each scored service, before any deny rule (Blueprint §3.3). | Scoring must never be blocked |
-| 4 | **Default-deny from outside.** Allow only the scored services, then deny and log everything else. | Shrink the surface |
+| 4 | **Default-deny from outside.** Allow the scored services from every source, then deny and log everything else. A scored service is never limited by source address (design 01, section 6.1). | Shrink the surface |
 | 5 | **NAT review.** Record which address the inside hosts see for outside traffic. | Feeds the source-address gate for bans (design 12) |
 | 6 | **Logging.** Send the appliance's logs to the SIEM by syslog (design 10). | Edge denies are visible centrally |
 | 7 | **Save and verify.** Commit or save, confirm, export the new configuration as a second backup, and run the scoring-style probes from inside and, where possible, from the scoring engine's side (design 13). | Prove nothing scored broke |

@@ -1,6 +1,6 @@
 # 07. Cleanup and Tool Integrity
 
-**Status:** Draft · reviewed 2026-10-02 · Phase: 🟩 Sustain · Priority: P1
+**Status:** Draft · reviewed 2026-10-23 · Phase: 🟩 Sustain · Priority: P1
 
 ## 1. Two goals
 
@@ -19,7 +19,7 @@
 
 ## 3. Materials handling
 
-Competition materials, including team-generated reports and documents, must stay in the competition area, and nothing may be removed without authorization (National Collegiate Cyber Defense Competition [NCCDC], 2025, Rules 4.4, 10.5). Collect logs for the debrief only as far as those rules and the officials allow.
+Competition materials, including team-generated reports and documents, must stay in the competition area, and nothing may be removed without authorization (National Collegiate Cyber Defense Competition [NCCDC], 2025, Rules 4.4, 8.5). Collect logs for the debrief only as far as those rules and the officials allow.
 
 ## 4. Rejected: encrypted script folder with a shared password
 
@@ -56,6 +56,16 @@ The persistence sweep covers what the check does not (design 17, section 3): fil
 
 Resident components (timers, watchers) are hashed by the integrity check (design 04) like any other critical file.
 
+### 5.2 Getting the release onto a host
+
+Events differ on how a team's code reaches the hosts. Some offer a proxy that reaches the team's declared repository (section 6.1 of the Blueprint); some give each team a console on a machine that reaches the internet while the hosts do not; some allow neither, and the code is typed or pasted in (*Background*). Labyrinth assumes no control node and no internet on the hosts, so the release is a single file the operator can fetch and check with each host's own tools:
+
+- **The file.** Each release publishes a `.tar.gz` (Linux) and a `.zip` (Windows) as release assets, built by `tools/release/manifest.sh` with `release.sha256` inside. The SHA-256 of each archive goes into the offline record with the manifest's.
+- **Fetching.** On a host that can reach the repository: `curl -fsSLO https://github.com/<repository>/releases/download/<tag>/labyrinth-<tag>.tar.gz`, or on Windows `Invoke-WebRequest -UseBasicParsing -Uri <url> -OutFile <file>` after setting TLS 1.2 (`[Net.ServicePointManager]::SecurityProtocol = 'Tls12'`), which older Windows Server releases need. Where only a console reaches the internet, the archive is fetched there and copied in over the admin path.
+- **Checking.** `sha256sum labyrinth-<tag>.tar.gz` (or `Get-FileHash`) is compared by eye with the offline record before anything is unpacked. A mismatch stops the install.
+- **Unpacking.** `tar --no-same-owner -xzf` as root into the code folder, or `Expand-Archive` as an administrator, so the files belong to root or the administrators and pass the immutable-location check (section 5). Then `sha256sum -c --quiet release.sha256` as in section 5.1.
+- **Never.** A pipe from the network into a shell (`curl … | sh`), a download that skips the hash check, or a source that needs an account or fee (NCCDC, 2025, Rule 5.1).
+
 ```mermaid
 flowchart TD
     REL["Tagged release<br/>commit hash in the offline record"] --> MAN["Manifest: SHA-256 of every file"]
@@ -88,6 +98,7 @@ flowchart TD
 - After cleanup, a listing of Labyrinth paths, timers, tasks and rules matches the pre-run inventory except for kept logs.
 - Cleanup run twice gives the same result.
 - Rollback restores the changed files byte for byte.
+- A release archive whose SHA-256 differs from the offline record is refused before it is unpacked, and one unpacked with `tar --no-same-owner` passes the immutable-location check.
 
 ## References
 

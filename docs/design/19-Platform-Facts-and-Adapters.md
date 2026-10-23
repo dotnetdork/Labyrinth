@@ -1,6 +1,6 @@
 # 19. Platform Facts and Adapters
 
-**Status:** Draft · reviewed 2026-10-05 · Priority: P0
+**Status:** Draft · reviewed 2026-10-23 · Priority: P0
 
 ## 1. Goal
 
@@ -94,6 +94,8 @@ Every backend's adapter offers the same functions, so the firewall, ban and egre
 - `default_deny_in` is refused (`20`) until the scoring engine can still reach every scored service on this host. A service in the run-time `services` file is on this host when its host field is this host's short name or one of its addresses, or resolves to one (a simple DNS lookup). For each such service, every `scoring-allowlist` address needs an `allow` on the service's port: TCP, plus UDP for `dns`. An allow from `any` covers every address. When no scored service is on this host, every scoring address still needs some allow, or one from `any`. The refusal lists the missing pairs. The adapter keeps the run's allows in `<state>/runs/<run>/firewall-allows`. No probe can test this, because probes run from the host itself, where an inbound deny does not apply; the firewall module's `verify` therefore reads the live rules for the same pairs.
 - Each change is recorded in the run manifest before it is made (Conventions, section 7): `firewall_snapshot` (target: the backend; backup: DIR) once the snapshot is saved, then `firewall_allow` and `firewall_default_deny`. Rollback restores from the `firewall_snapshot` entries; the other two are the record of what was done.
 - Repeating `allow` with the same arguments in the same run changes nothing.
+- **Scored ports stay open to every source (planned).** Some events penalize filtering a public service by source address (design 01, section 6.1). `allow` on a scored service's port with a SOURCE other than `any` is refused (`20`), and so is any deny the adapter would add on such a port, such as a ban rule scoped to the port rather than to one hostile address (design 12). A ban of one address on every port is not a source filter and stays allowed.
+- **The gate without a scoring allowlist (planned).** When `scoring-allowlist` is empty or missing, `default_deny_in` passes once every scored service on this host has an allow from `any` on its port. With a scoring allowlist, the check above applies as well.
 
 **Backends.**
 
@@ -111,6 +113,7 @@ Every backend's adapter offers the same functions, so the firewall, ban and egre
 - **nftables:** an accept in Labyrinth's table does not override a drop in another table's chain on the same hook. The firewall module's plan lists such drops for a person to review.
 - **Windows Firewall:** a block rule always wins over an allow rule, and Group Policy settings win over local ones. The firewall module's plan lists enabled inbound block rules and policy-set profiles.
 - **iptables without `ip6tables`:** only IPv4 is filtered, so IPv6 stays open after `default_deny_in`, which warns. The firewall module's plan says so.
+- **Docker:** published container ports are forwarded before the host's `INPUT` chain, so an `INPUT` default deny does not filter them, and a ban on `INPUT` alone misses them. Where Docker runs, bans go into `DOCKER-USER` too, and the plan lists every published port for a person to review (design 22, section 7).
 - **nftables and iptables:** the changes last until the ruleset is next reloaded or the host restarts. The health monitor re-applies the sealed rules when they drift (design 13, section 4.1).
 
 ## 6. What it will never do
@@ -130,7 +133,8 @@ Every backend's adapter offers the same functions, so the firewall, ban and egre
 - A Windows domain controller, member server and workstation each report the right `role`, and a host without UEFI reports `secure_boot` as `unsupported`.
 - Reading every fact leaves the host unchanged: on Linux, no file under `/etc` changes; on Windows, no registry value changes.
 - For each adapter on its lab host: `snapshot`, then changes, then `restore` gives the same `state` as before.
-- `default_deny_in` with no scoring allowlist added is refused, and the ruleset is unchanged. The same holds when one scoring-allowlist address has no allow, and when a scored service on this host has no allow on its port from a scoring address: an allow on another port, such as SSH, is not enough. An allow from `any` on the service's port is enough.
+- With an empty `scoring-allowlist` and every scored service on the host allowed from `any`, `default_deny_in` passes; with one scored service lacking that allow, it is refused. An `allow` with a narrower source on a scored port is refused (planned).
+- `default_deny_in` with a scoring allowlist given but not added is refused, and the ruleset is unchanged. The same holds when one scoring-allowlist address has no allow, and when a scored service on this host has no allow on its port from a scoring address: an allow on another port, such as SSH, is not enough. An allow from `any` on the service's port is enough.
 - `allow` and `default_deny_in` before a snapshot, or in plan mode, are refused and change nothing.
 - On Windows, `default_deny_in` is refused (`20`) when Group Policy turns off local firewall rules for a profile, and is `40` when the effective policy cannot be read; neither changes a profile.
 - With iptables and no `ip6tables`, `default_deny_in` warns that IPv6 stays open.
