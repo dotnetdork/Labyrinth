@@ -1,6 +1,6 @@
 # 10. Log Forwarding and Detection
 
-**Status:** Draft · reviewed 2026-10-05 · Phase: 🟦 Observe · Priority: P1
+**Status:** Draft · reviewed 2026-10-23 · Phase: 🟦 Observe · Priority: P1
 
 ## 1. Goal
 
@@ -162,13 +162,14 @@ Opening the forwarding port in a host firewall follows design 01 (Tier 2, with a
 
 ## 7. Hardening the SIEM host
 
-The SIEM is usually already installed on its own host, so Labyrinth does not install it; it hardens it. An attacker who controls the SIEM can blind the team or use it to run code: Splunk often runs as root or SYSTEM, and its scripted inputs and alert actions run commands (*Background*). The free edition of Splunk has no login at all (*Background*), so its web and management ports must be closed to everyone but the team.
+The SIEM is usually already installed on its own host, so Labyrinth does not install it; it hardens it. An attacker who controls the SIEM can blind the team or use it to run code: Splunk often runs as root or SYSTEM, and its scripted inputs and alert actions run commands (*Background*). The free edition of Splunk has no login at all (*Background*), so its web and management ports must be closed to everyone but the team unless they are scored. A scored port stays open to every source (design 01, section 6.1), so a scored SIEM with no login is a finding for a person, not something a firewall rule can fix.
 
 | Step | Tier |
 |---|---|
-| Rotate the SIEM's own admin password, shown once like any other (design 05, section 2) | 1 |
+| Rotate the SIEM's own admin password, shown once like any other (design 05, section 2). Where a scoring check logs in with it, it is a `scored-admin` account and its new password goes into the change list (design 05, section 2.4) | 1 |
 | List SIEM users and roles; lock unexpected ones, as for host accounts (design 05, section 6) | 0, then 2 |
-| Firewall: the web interface (8000) and management port (8089) only from the admin source, plus the scoring engine if the SIEM is scored; the log inputs (9997 and syslog 514) only from the managed hosts | 2 |
+| Firewall: the web interface (8000) and management port (8089) only from the admin source where they are not scored, and open to every source where they are (a check may search through either); the log inputs (9997 and syslog 514) only from the managed hosts | 2 |
+| Run `splunkd` as its own unprivileged user where it runs as root or SYSTEM. File ownership changes and a restart follow, so a person approves it | 3 |
 | Quarantine unknown apps, scripted inputs and alert actions that are not in the profile's known-good list; unexplained ones go to approval (design 17) | 2 or 3 |
 | Back up the SIEM's configuration folder (Splunk `etc`) before any change (design 14) | 1 |
 | Load the SIEM-change search on its `_audit` index (section 5) | 1 |
