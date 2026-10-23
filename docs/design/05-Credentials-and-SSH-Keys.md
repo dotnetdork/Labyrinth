@@ -28,18 +28,6 @@
 - **User-level accounts:** rotated only after approval, from an explicit list, where the event takes a change list (section 2.4). Otherwise a manual checklist, following the event's notification process.
 - **Crown jewels** (domain admin, KRBTGT) rotate at set checkpoints, not continuously. KRBTGT needs two resets with a replication check between them; it is an approval item that Labyrinth carries out (design 11, section 5.1).
 
-### 2.4 The change list
-
-Some events score logins with accounts the team is expected to secure, and take new passwords through a change process of their own, such as a form or an upload of `username,password` lines that the scoring system applies at once (*Background*). Rotating such an account without that step breaks its check until scoring has the new password. So:
-
-- **The class.** The operator lists each such admin account in the protected set with class `scored-admin` (design 01, section 4). It is rotated in the first minute like any admin account, never locked or removed, and its rotation is kept once verified (section 2).
-- **One list, shown once.** At the end of the module, Labyrinth shows every password it set for a `scored-admin` account, and for user-level accounts a person approved, as `username,password` lines on the terminal, through the same helper as any new password (section 2.3). The operator copies them into the event's change process and the offline record, then types `recorded`. The list is never written to disk, the log or the manifest.
-- **One password per name.** A change process that takes a username without naming a host or service applies one password to that name everywhere. A name that exists on several hosts must therefore get the same new password on each, and the plan lists every host it covers. Without a control node to carry the password between hosts, it is derived on each host from the event seed and the account name (design 03, section 3), so every host computes the same value and the team can work out the whole list on its own machine before the event. Without a seed, the operator types the new password once per host, at the terminal.
-- **Submit at once.** A check that logs in with the account fails from the rotation until the event applies the list, so the operator submits it as soon as it is shown. The probes that log in with the account use the new password, held in memory (design 13, section 3).
-- **What it cannot know.** Whether the event applied the list. The next authenticated probe, or the scoreboard, shows it.
-
-User-level accounts on a domain stay on the domain checklist (design 11, section 5): a person resets them, and the same `username,password` format is used for the event's change process.
-
 ### 2.1 Application admin credentials
 
 Operating system passwords are not the only default credentials. Red Teams report default credentials as their most common way in, including on mail servers late in an event (*Background*), and an application's own admin login (a CMS administrator, the database root account, phpMyAdmin, a web app's admin page) is just as useful to them.
@@ -78,6 +66,18 @@ A module's output goes to the run log, and its standard input is empty (Conventi
 A password is held only in a variable of the module's own process. It is never passed on a command line that other users can read (`/proc/<pid>/cmdline`); a module gives it to a tool on standard input (`chpasswd`) or through an API (`Set-LocalUser` with a `SecureString`). The log, the manifest and every backup hold none of it: the manifest records which account changed, not the password, and a backup of a file that stores a password is made before the new one is written. `tests/core/` checks this by running a module that rotates a test password, and searching the whole data root for it afterwards.
 
 Remote mode (design 00, section 5) must give each host a terminal (`ssh -t`, or an interactive remoting session) for rotation modules, or run them locally; otherwise they are blocked, as above.
+
+### 2.4 The change list
+
+Some events score logins with accounts the team is expected to secure, and take new passwords through a change process of their own, such as a form or an upload of `username,password` lines that the scoring system applies at once (*Background*). Rotating such an account without that step breaks its check until scoring has the new password. So:
+
+- **The class.** The operator lists each such admin account in the protected set with class `scored-admin` (design 01, section 4). It is rotated in the first minute like any admin account, never locked or removed, and its rotation is kept once verified (section 2).
+- **One list, shown once.** At the end of the module, Labyrinth shows every password it set for a `scored-admin` account, and for user-level accounts a person approved, as `username,password` lines on the terminal, through the same helper as any new password (section 2.3). The operator copies them into the event's change process and the offline record, then types `recorded`. The list is never written to disk, the log or the manifest.
+- **One password per name.** A change process that takes a username without naming a host or service applies one password to that name everywhere. A name that exists on several hosts must therefore get the same new password on each, and the plan lists every host it covers. Without a control node to carry the password between hosts, it is derived on each host from the event seed and the account name (design 03, section 3), so every host computes the same value and the team can work out the whole list on its own machine before the event. Without a seed, the operator types the new password once per host, at the terminal.
+- **Submit at once.** A check that logs in with the account fails from the rotation until the event applies the list, so the operator submits it as soon as it is shown. The probes that log in with the account use the new password, held in memory (design 13, section 3).
+- **What it cannot know.** Whether the event applied the list. The next authenticated probe, or the scoreboard, shows it.
+
+User-level accounts on a domain stay on the domain checklist (design 11, section 5): a person resets them, and the same `username,password` format is used for the event's change process.
 
 ## 3. Username policy
 

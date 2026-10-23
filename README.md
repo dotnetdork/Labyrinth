@@ -82,7 +82,7 @@ Groundwork stage (reviewed 2026-10-09). The design specs are the blueprint the c
 
 
 > [!IMPORTANT]
-> Competition rules are cited by rule number; all citations must be re-checked when the 2027 rules are published.
+> Competition rules are cited by rule number from the national rules, updated 10 December 2025. Each event's own materials and local competition rules come first and differ from event to event, so every event value is supplied at run time.
 
 Labyrinth is a team-written tool under the national CCDC rules, so it:
 

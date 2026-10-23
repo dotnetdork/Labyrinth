@@ -34,6 +34,8 @@ A **scoring stand-in** runs the probes from the control node against the scored 
 4. Run the module's acceptance tests with `LAB_REALSYSTEM=1`.
 5. Record the result in the matrix below, then restore the snapshots.
 
+Service replacement (design 22) is rehearsed per service: record how long the rebuild, the data copy and the comparison take, and the time from switch to a passing probe, so the team knows before an event whether a rebuild fits the time an inject allows.
+
 ## 3. Results matrix
 
 One row per module, platform and version. A module is not released on a platform that neither CI nor the lab has tested.

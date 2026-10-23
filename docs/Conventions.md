@@ -1,6 +1,6 @@
 # Labyrinth Coding Conventions
 
-**Status:** Draft · reviewed 2026-10-09
+**Status:** Draft · reviewed 2026-10-23
 
 These conventions turn the design specs into code that every module writes the same way. The specs say *what* a part must do; this page says *how* the code is shaped. If the two disagree, the spec wins and this page is corrected.
 
@@ -43,12 +43,13 @@ Configuration is **data, never code**. It is never `source`d in bash or dot-sour
 
 | File | Format | Holds |
 |---|---|---|
-| `event.conf` | `KEY=value`, one per line | Single values: SIEM address, revert-timer minutes, ring size, package proxy and mirror |
-| `protected-accounts` | `account class` per line, optional `# reason`; class is `official`, `scoring`, `employee`, `operator`, `breakglass`, `service` or `builtin` | The protected set (design 01, section 4); the class decides what Labyrinth may do to the account |
-| `scoring-allowlist` | one address or CIDR per line | Scoring engine sources, applied before any deny rule |
+| `event.conf` | `KEY=value`, one per line | Single values: SIEM address, revert-timer minutes, ring size, package proxy and mirror. Planned: `BACKUP_PEER` (design 14, section 5), and `ALLOW_SERVICE_REPLACE` and `ALLOW_CONTAINERS`, each `no` or `yes:<reference>` naming the inject or local rule that allows it (design 22, section 3) |
+| `protected-accounts` | `account class` per line, optional `# reason`; class is `official`, `scoring`, `employee`, `operator`, `breakglass`, `service` or `builtin`, and (planned) `scored-admin`, an admin account a scoring check logs in with, rotated with a change list (design 05, section 2.4) | The protected set (design 01, section 4); the class decides what Labyrinth may do to the account |
+| `scoring-allowlist` | one address or CIDR per line | Scoring engine sources, applied before any deny rule. Planned: optional when every scored service is allowed from any source (design 19, section 5) |
 | `never-ban` | one address or CIDR per line | Addresses that bans must never touch (design 12) |
 | `outbound-allow` | `address proto port` per line; proto `tcp` or `udp`, port a number or `any` | Outbound destinations the first-minute default deny keeps open, beyond the scored services (design 01, section 6.1) |
-| `services` | `name proto host port expect` per line; no value begins with `-` except an `expect` of `-` alone, meaning no expected text | Scored services and what their probe expects |
+| `services` | `name proto host port expect` per line; no value begins with `-` except an `expect` of `-` alone, meaning no expected text | Scored services and what their probe expects. Planned: an `http` path, and the probe kinds that log in (design 13, section 3.1) |
+| `own-ranges` | one address or CIDR per line | Planned: the team's own networks; `probe` run from outside refuses any address not in them (design 13, section 3) |
 | `hosts` | `host group profile platform` per line | Which hosts exist, and each one's group (its ring, design 01), profile and platform |
 | `profiles/<name>.profile` | one module id per line | Optional override of a shipped profile |
 | `pre-approved` | `module-id category item` per line; `item` is an item id, or `*` for every item of the category | Approval items the team approved before the event (section 3.1). Optional: when it is missing, nothing is approved in advance |
@@ -158,7 +159,7 @@ The whole line must parse before help or the version is shown. A value option th
 - A `--config` folder that does not exist is an error (`40`), and so is a missing `<root>/etc` when `--config` is not given.
 - Every file in the configuration folder must be readable. One that is not is refused with "needs root (or an elevated Administrator session) to read <file>" (`20`), because a file that cannot be read would otherwise look missing or empty and could quietly weaken a gate.
 - A `services` file that is malformed is an error (`40`) in `plan` as in `apply`, before anything is asked. A `services` file with no service in it counts as missing.
-- This host's line in `hosts` must name a platform the runner serves: `ubuntu` (the whole Debian family) or `rhel-family` (Fedora, RHEL, Rocky, Oracle Linux, AlmaLinux) for `labyrinth.sh`, `windows` for `labyrinth.ps1`. Otherwise the run is blocked (`20`).
+- This host's line in `hosts` must name a platform the runner serves: `ubuntu` (the whole Debian family; `debian` is a planned alias) or `rhel-family` (Fedora, RHEL, Rocky, Oracle Linux, AlmaLinux) for `labyrinth.sh`, `windows` for `labyrinth.ps1`. Otherwise the run is blocked (`20`).
 - An `appliance` is never changed (design 16).
 
 `keep`, `rollback` and `runs` skip these checks, so a stored revert-timer command still works after the configuration changes.

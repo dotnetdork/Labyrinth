@@ -1,6 +1,6 @@
 # 04. Baseline and Integrity
 
-**Status:** Draft · reviewed 2026-10-02 · Phase: 🟦 Observe · Priority: P0 (first baseline), P1 (continuous)
+**Status:** Draft · reviewed 2026-10-23 · Phase: 🟦 Observe · Priority: P0 (first baseline), P1 (continuous)
 
 ## 1. Goal
 
@@ -79,6 +79,7 @@ Then:
 - Scheduled comparison, and every checkpoint (design 13), compares against the **latest seal**; results go to the `integrity` log category.
 - Findings are ranked: changes to boot-critical files, authentication, SSH, sudoers, accounts and scheduled execution rank highest, and any new persistence item after the seal is high-ranked (design 17, section 7).
 - A change made by Labyrinth itself is recorded in the run manifest and excluded from alerts.
+- **Planted marker files.** Some events place files on the hosts that the Red Team copies, changes or deletes to prove it was there, and score their presence (*Background*). A file the sealed baseline holds that is later changed, renamed or removed is an integrity finding like any other, high-ranked when the operator lists its path as a marker in the run-time configuration. Labyrinth never moves, rewrites or deletes such a file, and never creates one.
 
 ## 7. Rules check
 
@@ -93,6 +94,7 @@ Read-only observation does not affect scored services and needs no special permi
 - After `labyrinth seal`, a cron job planted in the lab is reported at the next checkpoint, while the changes the lockout made are not.
 - `labyrinth reseal` without `--reason` is refused, and each seal is logged.
 - Deleting `/etc/fstab` on a lab host raises a high-ranked alert before any reboot.
+- Changing a file listed as a marker raises a high-ranked finding, and no Labyrinth command changes or removes that file.
 
 
 - Baseline comparison completes within the target time on the lab host.
