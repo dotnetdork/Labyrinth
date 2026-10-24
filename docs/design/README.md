@@ -1,11 +1,11 @@
 # Labyrinth Design Specifications
 
-**Status:** Draft · reviewed 2026-10-09
+**Status:** Draft · reviewed 2026-10-23
 
 These are design documents, not code. They describe what each part must do, how it stays inside the competition rules, and how it is tested. The [implementation blueprint](../Blueprint.md) is the complete overview of what the whole system needs; each spec here is the detailed design and instructions for one part of it. For a plain-language introduction to every part, read the [overview](../Overview.md) first.
 
 > [!NOTE]
-> **Rules basis.** Built on the 2026 national CCDC (Collegiate Cyber Defense Competition) rules and the 2025 Midwest qualifier packet. The 2027 rules are not published yet, so every rule citation here must be re-checked when they arrive. Rule numbers follow the web version of the rules (National Collegiate Cyber Defense Competition [NCCDC], 2025). That page numbers its sections but letters the items within them, so Rule 4.14 appears as item 4(n) and Rule 5.6.1 as 5(f)(i).
+> **Rules basis.** Built on the national CCDC (Collegiate Cyber Defense Competition) rules, updated 10 December 2025, and the public 2025 Midwest qualifier packet. Rule numbers follow the web version of the rules (National Collegiate Cyber Defense Competition [NCCDC], 2025): a rule number is the section number, then the item's place in it, so Rule 4.14 is item 14 of section 4, and Rule 5.6.1 is the first point of item 6 of section 5. The page has ten sections; Scoring is section 9. Each event's own materials and local competition rules come first, and they differ from event to event (NCCDC, 2025, Local Competition Rules section), so every design reads the event's values at run time and assumes none.
 
 **Verification labels.**
 
@@ -41,6 +41,7 @@ Each spec belongs to one phase of the doctrine, and every document uses the same
 | 19 | [Platform facts and adapters](19-Platform-Facts-and-Adapters.md) | All | How does a module learn what host it is on, and change firewalls and other parts that differ by platform? |
 | 20 | [Packages and third-party tools](20-Packages-and-Third-Party-Tools.md) | All | Which public tools does Labyrinth add to a host, from where, and how is each install checked and recorded? |
 | 21 | [Vulnerability tracker and mitigations](21-Vulnerability-Tracker-and-Mitigations.md) | 🟥 Lock out | How do we find the flaws the Red Team will look for, close them first, and keep each one tracked until it is closed? |
+| 22 | [Service replacement and containers](22-Service-Replacement-and-Containers.md) | 🟩 Sustain | Where an event allows it, how do we rebuild or containerize a scored service without losing its data, users or address? Off by default. |
 
 ## Diagrams
 
@@ -74,6 +75,7 @@ Each diagram is a Mermaid block inside the document it illustrates, with a one-s
 | Appliance runbook: prepare, change, confirm or revert | [16, section 4](16-Network-Appliance-Runbooks.md#4-the-runbook-steps) |
 | Persistence item: package, dependency and sign checks decide automatic quarantine or approval | [17, section 4](17-Persistence-Sweep.md#4-classes) |
 | Known flaw: find, rank, track, and close a scored service in place | [21, section 5.2](21-Vulnerability-Tracker-and-Mitigations.md#52-the-mitigation-catalog) |
+| Service replacement: allowed, inventory, build beside, copy data, compare, switch, keep or revert | [22, section 6](22-Service-Replacement-and-Containers.md#6-sequence) |
 
 ## Where things live
 
@@ -88,11 +90,12 @@ Each diagram is a Mermaid block inside the document it illustrates, with a one-s
 1. Public and frozen: code must be safe for rivals and the Red Team to read (NCCDC, 2025, Rules 5.6.2, 5.6.3).
 2. No outside resources at run time other than DNS (Domain Name System) lookups; the rule's example is cloud services and cloud processing (NCCDC, 2025, Rule 5.6.4). Public software from the host's repositories, an event mirror or a pinned download is installed only after the lockdown (design 20).
 3. No deliberate breakage of expected functionality (NCCDC, 2025, Rule 5.6.5).
-4. Never impede the scoring engine: anything that interferes with it is the team's responsibility and lowers the score (NCCDC, 2025, Rules 4.11, 11.3). Never mislead it: that can bring disqualification or penalties (NCCDC, 2025, Rule 11.3).
+4. Never impede the scoring engine: anything that interferes with it is the team's responsibility and lowers the score (NCCDC, 2025, Rules 4.11, 9.3). Never mislead it: that can bring disqualification or penalties (NCCDC, 2025, Rule 9.3).
 5. Officials must be given access immediately when they ask (NCCDC, 2025, Rule 4.1).
-6. No new devices (NCCDC, 2025, Rule 4.2); no containerizing scored services (NCCDC, 2025, Rule 4.14).
+6. No new devices (NCCDC, 2025, Rule 4.2). No migrating or containerizing a scored service unless an inject or the local competition rules allow it (NCCDC, 2025, Rule 4.14); where they do, design 22 governs it, off by default.
 7. Assume breach, and defend scored services rather than avoid them. Scoring rewards controlling and preventing unauthorized access, and successful Red Team penetrations cost points (NCCDC, 2025, Scoring section). Scored services are a primary Red Team target, so leaving them as found is not the safe choice; changing them with probes, backups and a revert timer is.
 8. Confirm, then act. What a person approves, at the prompt or before the event with a pre-approval rule, Labyrinth carries out with the same backups, records and rollback. Only actions too broad or too hard to undo (Group Policy, DNS changes on a domain controller, domain controller restores, rescuing an unbootable host, Windows patching, appliances) stay in a person's hands.
+9. Keep every name and address. No host name, address, scored DNS name or username is changed, and no scored port is filtered by source address: scoring, officials and simulated users reach it from addresses nobody can list (design 01, section 6.1).
 
 ## Review log
 
@@ -139,7 +142,7 @@ Newest last. Each entry names what changed and where.
 ### 2026-10-02: Rules wording audit
 
 - Every rule citation re-checked against the 2026 rules web page, including list positions.
-- Fixed: the 5.6.5 examples (all user shells; *indiscriminately* ending outbound connections) (01, Blueprint); disabling accounts wholesale no longer attributed to the rule's examples (Blueprint); Rule 4.1 is access on request, not retained access (Blueprint); Rule 4.11 permits active response such as TCP resets, so it is no longer cited for "never contact the source" (Blueprint); Rule 4.11 makes interference the team's responsibility, which is not the same as a ban, and constraint 4 now says so (README); Rule 11.4 wording (02).
+- Fixed: the 5.6.5 examples (all user shells; *indiscriminately* ending outbound connections) (01, Blueprint); disabling accounts wholesale no longer attributed to the rule's examples (Blueprint); Rule 4.1 is access on request, not retained access (Blueprint); Rule 4.11 permits active response such as TCP resets, so it is no longer cited for "never contact the source" (Blueprint); Rule 4.11 makes interference the team's responsibility, which is not the same as a ban, and constraint 4 now says so (README); Rule 9.4 wording (02).
 - Design choices stricter than the rules, such as never installing packages, are now labeled as design, not rule.
 
 ### 2026-10-02: Break-glass and official access clarified so the break-glass path cannot become a backdoor
@@ -154,7 +157,7 @@ Newest last. Each entry names what changed and where.
 
 ### 2026-10-02: Design audit of all specs; 06, 08, 14 and 16 needed no change
 
-- Fixes for real risk: an admin-class account that a service or scheduled task logs on with is not rotated automatically (01, 05); the domain Administrator is rotated by hand (11); honey-accounts cannot log in and any attempt alerts, and domain ones are created by hand (09, 10, 11, 12); decoy ports are checked against scored and listening ports, not the scoring allowlist, which holds addresses (03, 09); the report template carries every Rule 11.4 field and warns about missing ones (02); a copy or hash of each baseline is kept off the host (04); the manifest hash is in the offline record and checked on every host, while the `ssh-keygen -Y` signature is checked only on the control node, because older OpenSSH cannot (07); one canary host per platform, and hosts with no canary go last (01); the operator confirms break-glass at the console once per host, and rotation is tested with `su -` or `runas` (01, 05); default-deny also allows official sources from the event packet (01, 11).
+- Fixes for real risk: an admin-class account that a service or scheduled task logs on with is not rotated automatically (01, 05); the domain Administrator is rotated by hand (11); honey-accounts cannot log in and any attempt alerts, and domain ones are created by hand (09, 10, 11, 12); decoy ports are checked against scored and listening ports, not the scoring allowlist, which holds addresses (03, 09); the report template carries every Rule 9.4 field and warns about missing ones (02); a copy or hash of each baseline is kept off the host (04); the manifest hash is in the offline record and checked on every host, while the `ssh-keygen -Y` signature is checked only on the control node, because older OpenSSH cannot (07); one canary host per platform, and hosts with no canary go last (01); the operator confirms break-glass at the console once per host, and rotation is tested with `su -` or `runas` (01, 05); default-deny also allows official sources from the event packet (01, 11).
 - Fixes for accuracy: local and remote modes described and the Ansible question resolved as native scripts; the freeze reading marked as needing confirmation; all host paths under one root, with `etc` added and admin-only access (00); domain controller Kerberos and NTLM events, auditd `-e 2` and `-f 2` never set, and a SIEM input that is TCP and limited to managed hosts (10); fail2ban is never installed or vendored, and a host's existing fail2ban gets the never-ban list (12); Windows patches ranked by exposure only (15); the login gap in probes and an optional hand-made test mailbox (13); cleanup deletes only accounts Labyrinth created (07); Rule 4.1 effect reworded (11, constraint 5).
 - Blueprint, Overview and `config/hosts.example` updated to match.
 
@@ -520,6 +523,17 @@ Where: 01, section 8; Conventions, section 3.1; manual, `runs` and section 10.
 - The timer has `OnCalendar=` with the due time and `Persistent=true`, so it fires as soon as the host starts if its time passed while the host was off. It also has `OnActiveSec=` with the same delay, so a clock change cannot move it.
 - `keep` and `rollback`, the timer's own included, stop and disable the timer and delete its two unit files. Because Labyrinth wrote them, they are the only files it deletes outside its own paths. If they cannot be deleted, `keep` records nothing and exits `40`, as when the timer cannot be stopped.
 - `runs` says `armed: timer lost`, without "(restart?)", when the unit files are missing or damaged.
+
+### 2026-10-23: Events differ; scored admins, open scored ports, authenticated probes and service replacement
+
+Where: 01, 05, 10, 11, 22 (new), this README; Blueprint; Overview; CLAUDE.md.
+
+- Rule numbers checked again by rendering the rules page: it has ten sections, numbered 1 to 10 (6 Permitted Materials, 7 Professional Conduct, 8 Questions, Disputes, and Disclosures, 9 Scoring). The 2026-10-08 entry was wrong: misleading the scoring engine is Rule 9.3, incident report content is Rule 9.4, and materials staying in the competition area is Rule 8.5. Every citation is corrected back.
+- Events differ on which accounts scoring logs in with (NCCDC, 2025, Local Competition Rules section). No account is assumed to be unscored. A new protected class, `scored-admin`, covers admin accounts a check logs in with; they are rotated in the first minute and their new passwords go into a `username,password` change list shown once on the terminal (05, section 2.4).
+- A scored port stays open to every source and is hardened in place; the scoring allowlist is no longer required when every scored service is allowed from any source (01, sections 6.1 and 7). Scored RDP, WinRM, SSH and SIEM ports follow the same rule (05, 10, 11).
+- Probes may log in with a probe account given at run time and check content, so a broken login is seen (01, section 9).
+- No host name, address, scored DNS name or username is changed, and account renames are no longer offered (01, 05).
+- New design 22: rebuilding or containerizing a scored service, only where an inject or the local competition rules allow it, off by default, with a data-preservation check and a revert path. Constraint 6 now says so, and constraint 9 is added.
 
 ## References
 

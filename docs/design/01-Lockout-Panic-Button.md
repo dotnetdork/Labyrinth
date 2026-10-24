@@ -1,6 +1,6 @@
 # 01. Lockout ("Panic Button") Design
 
-**Status:** Draft · reviewed 2026-10-05 · Phase: 🟥 Lock out · Priority: P0
+**Status:** Draft · reviewed 2026-10-23 · Phase: 🟥 Lock out · Priority: P0
 
 ## 1. What it is
 
@@ -15,10 +15,11 @@ The original idea ran against every reachable host in one pass, resetting creden
 | Tools must not deliberately break expected functionality. The examples are setting all user shells on Linux to `/bin/false` and indiscriminately terminating all outbound connections after 30 seconds (NCCDC, 2025, Rule 5.6.5). | No blanket actions. Every destructive action works from an explicit allowlist and skips the protected set. |
 | Operations and White Team must be given access immediately on request (NCCDC, 2025, Rule 4.1). At the 2025 Midwest qualifier every host, including the firewall, runs under a virtual lab system the event manages, so officials can reach each console without crossing the team's network (MWCCDC, 2025, Competition Topology; *Verified* 2026-10-09). | A confirmed break-glass path is a precondition, because access on request means a working login. Nothing removes it. Officials need no standing network path; any official sources the event packet names are still allowed, for events run differently. |
 | Anything that interferes with the scoring engine is the team's responsibility (NCCDC, 2025, Rule 4.11). | The scoring engine allowlist is applied first. Verification uses scoring-style probes. |
-| Do not mislead the scoring engine (NCCDC, 2025, Rule 11.3). | The panic button never fakes a service state. |
-| Administrator-class passwords are not used for scoring and may be changed freely. Other user passwords follow the notification process (Midwest Collegiate Cyber Defense Competition [MWCCDC], 2025, Rule 13). | Only admin-class credentials are rotated automatically. User-level rotation is manual-only. |
-| Scored services may not be migrated or containerized (NCCDC, 2025, Rule 4.14). | The panic button contains no container actions. |
+| Do not mislead the scoring engine (NCCDC, 2025, Rule 9.3). | The panic button never fakes a service state. |
+| Events differ on which accounts scoring logs in with. One region's 2025 packet said administrator-class passwords are not used for scoring and other user passwords follow a notification process (Midwest Collegiate Cyber Defense Competition [MWCCDC], 2025, Rule 13); other events score logins with administrator accounts as well, and take new passwords through a change process of their own (*Background*). | No account is assumed to be unscored. The operator marks each account a check logs in with as `scoring`, or as `scored-admin` when it is also an admin account the team must rotate (section 4). Admin-class accounts, `scored-admin` ones included, are rotated automatically; each new `scored-admin` password goes into a change list for the event's change process (design 05, section 2.4). User-level rotation waits for approval. |
+| Scored services may not be migrated or containerized unless an inject or the local competition rules allow it (NCCDC, 2025, Rule 4.14). | The panic button contains no container or replacement actions. Where an event allows them, they are a separate design, off by default, with its own approvals (design 22). |
 | Blue Teams should keep ICMP working on all competition devices (MWCCDC, 2025, Rule 14; *Verified* 2026-10-09). | Default-deny always allows ICMP, inbound and outbound, unless the run-time configuration says the event packet allows otherwise. |
+| Events may penalize filtering a public service by source address, or letting only the scoring engine reach it (*Background*); officials' manual checks and simulated users come from other addresses (MWCCDC, 2025, Competition Rules 6 and 14). | A scored port is open to every source and hardened where it is (section 6.1). One hostile address at a time can still be banned (design 12). The firewall adapter refuses an allow with a narrower source on a scored port (design 19, section 5). |
 | Points can be lost for failed employee access (Northeast Collegiate Cyber Defense Competition [NECCDC], 2026, Scoring Overview; *Provisional*, another region's packet). | Accounts that simulated employees use are treated like scoring accounts: never locked, rotated or switched to key-only by automation (design 05). |
 | Team tools may not use resources outside the competition environment other than simple DNS lookups; the example is cloud services and cloud processing (NCCDC, 2025, Rule 5.6.4). | Labyrinth's own code runs from the release. Packages come only from public sources, after the lockdown, as named in the tool's declaration (design 20). |
 
@@ -31,8 +32,9 @@ The original idea ran against every reachable host in one pass, resetting creden
 5. **Verify like the scoring engine.** After each module, run probes and compare with the probes taken before.
 6. **Fail toward access.** On any doubt, abort and leave the host as it was.
 7. **Assume breach.** The Red Team may already be inside when the event starts, or get in within seconds, so the first minute removes the ways back in, not just the passwords, and closes the network around the host before anything slower runs (section 6).
-8. **Defend scored services, don't avoid them.** Scored services are a primary Red Team target, and successful penetrations cost points (NCCDC, 2025, Scoring section). Leaving them untouched is not safe; changing them carefully, with probes and a revert timer, is.
-9. **Confirm, then act.** When a person confirms that something may be changed or removed, Labyrinth carries it out, with the same backups, probes and records. Only the actions on Tier 3's person-run list are left to a person's hands.
+8. **Keep every name and address.** Scoring, the officials and the event's own change process find each host, service and account by its address and name. Labyrinth never changes a host name, an address, a scored service's DNS name or a username (section 10).
+9. **Defend scored services, don't avoid them.** Scored services are a primary Red Team target, and successful penetrations cost points (NCCDC, 2025, Scoring section). Leaving them untouched is not safe; changing them carefully, with probes and a revert timer, is.
+10. **Confirm, then act.** When a person confirms that something may be changed or removed, Labyrinth carries it out, with the same backups, probes and records. Only the actions on Tier 3's person-run list are left to a person's hands.
 
 ## 4. The protected set
 
@@ -42,6 +44,7 @@ The protected set is a list the operator supplies at run time, from the event pa
 |---|---|---|
 | Official accounts | Accounts the White or Operations Team use | Never changed without the White Team's permission; logons alerted on (design 05, section 5) |
 | Scoring accounts | Mailbox users and other accounts the scoring engine logs in with | Never touched by automation |
+| Scored admin accounts (`scored-admin`) | Admin accounts a scoring check logs in with, at events that take new passwords through a change process | Rotated in the first minute like any admin account; each new password is shown once in a `username,password` change list for the operator to submit (design 05, section 2.4). Never locked or removed |
 | Employee accounts | Accounts that simulated employees (for example the Orange Team) use, as named in the event packet | Never touched by automation; treated like scoring accounts |
 | Operator accounts | Named team accounts | Never locked or removed |
 | Break-glass account | An existing admin-class account whose rotated password is kept in the team's offline record; no new account or key (design 05, section 5) | Never locked or removed; password rotated only in design 05's order; confirmed at the console by the operator (section 7) |
@@ -53,9 +56,9 @@ The protected set is a list the operator supplies at run time, from the event pa
 | Tier | Nature | Actions | How run |
 |---|---|---|---|
 | **0. Observe only** | Read-only | Inventory of users, groups, listeners, processes, sessions, scheduled tasks, startup items, keys and sudoers; baseline (design 04) | Automatic |
-| **1. Safe and reversible** | Cannot stop a scored service | Rotate admin-class passwords (root, Administrator and equivalents) that no service or scheduled task logs on with (design 05, section 2); back up, then clear, authorized keys that are not in the key registry, on accounts outside the protected set; end remote sessions after rotation (section 6.2) | Automatic after plan review |
+| **1. Safe and reversible** | Cannot stop a scored service | Rotate admin-class passwords (root, Administrator and equivalents) that no service or scheduled task logs on with, `scored-admin` accounts included, with their change list (design 05, sections 2 and 2.4); back up, then clear, authorized keys that are not in the key registry, on accounts outside the protected set; end remote sessions after rotation (section 6.2) | Automatic after plan review |
 | **2. Service-affecting** | Could interrupt a scored service | SSH (Secure Shell) configuration check and key-only drop-in (design 05, section 4); high-confidence persistence quarantine (design 17); default-deny inbound firewall with the scored ports, the scoring engine, any official sources named in the event packet, ICMP and the admin path allowed; default-deny outbound with the allowlist of section 6.1; installing the profile's packages (design 20); restore points of scored services (design 14); remove admin rights from unexpected *local* accounts and lock them (design 05, section 6); Windows protocol settings (design 11); rules for new passwords (design 05, section 2.2); automatic service-pack settings (design 18); automatic mitigations from the vulnerability catalog (design 21); disable services from a per-profile candidate list (design 15); a log-only outbound firewall rule (design 10, section 5); re-applying the sealed firewall rules when they drift (design 13, section 4.1) | Applied per ring with verify and a revert timer |
-| **3. Approve, then act** | High consequence, or not provably safe | **Labyrinth acts after a person approves:** unexplained persistence items (design 17); deleting a locked account once services are confirmed working (design 05, section 6); approval-class service-pack settings (design 18); lockout settings and PAM stack changes (design 05, section 2.2); approval-class Windows and domain controller settings (design 11); rotating an admin-class password that a service or scheduled task logs on with, once its dependents are listed; rotating application admin credentials (design 05, section 2.1); restoring a service from its restore point (design 14); lifting outbound default-deny on one host; applying a Linux security update (designs 15 and 20); banning a single address outbound from an unusual-outbound alert (design 12, section 6.1); blocking one abused tool's outbound traffic on one Windows host (design 10, section 5); a web application firewall blocking rule for one flaw (design 18, section 6.1); ending a SYSTEM process on Windows (design 11); resetting the KRBTGT password twice, with a replication check between the resets (design 11, section 5.1). **A person acts, from a printed checklist:** user-level password changes (notification required); domain account and group changes other than KRBTGT; Group Policy changes; DNS changes on a domain controller; domain controller restores and rescuing an unbootable host (design 14); Windows patching (design 15); appliance changes (design 16)
+| **3. Approve, then act** | High consequence, or not provably safe | **Labyrinth acts after a person approves:** unexplained persistence items (design 17); deleting a locked account once services are confirmed working (design 05, section 6); approval-class service-pack settings (design 18); lockout settings and PAM stack changes (design 05, section 2.2); approval-class Windows and domain controller settings (design 11); rotating an admin-class password that a service or scheduled task logs on with, once its dependents are listed; rotating application admin credentials (design 05, section 2.1); restoring a service from its restore point (design 14); lifting outbound default-deny on one host; applying a Linux security update (designs 15 and 20); banning a single address outbound from an unusual-outbound alert (design 12, section 6.1); blocking one abused tool's outbound traffic on one Windows host (design 10, section 5); a web application firewall blocking rule for one flaw (design 18, section 6.1); ending a SYSTEM process on Windows (design 11); resetting the KRBTGT password twice, with a replication check between the resets (design 11, section 5.1); rotating listed local or application users' passwords where the event takes a change list (design 05, section 2.4); rebuilding or containerizing one scored service where the event allows it (design 22). **A person acts, from a printed checklist:** other user-level password changes (notification required); domain account and group changes other than KRBTGT; Group Policy changes; DNS changes on a domain controller; domain controller restores and rescuing an unbootable host (design 14); Windows patching (design 15); appliance changes (design 16)
  | Shown in the plan; approved per item, or per category on one host |
 
 ```mermaid
@@ -98,17 +101,21 @@ Steps 4 to 7 run ring by ring in a normal run, and on every host at once in a fi
 
 Red Teams report planting persistence within the first 30 seconds of an event (*Background*). An attacker can come back through a password, a key, an open session, an open port, or a callback from something already planted. Closing only some of these leaves the rest, so each host gets all of them as one step, using only what the host already has (no install):
 
-1. **Rotate** admin-class passwords (Tier 1; design 05, section 2).
+1. **Rotate** admin-class passwords (Tier 1; design 05, section 2). A `scored-admin` account's new password joins the change list, shown at the end of the bundle for the operator to submit at once (design 05, section 2.4).
 2. **Remove** unregistered SSH keys and **check** the SSH configuration for planted settings (Tiers 1 and 2; design 05, section 4).
 3. **End** intruder sessions (Tier 1; section 6.2).
-4. **Default-deny inbound** (Tier 2), allowing the scoring engine, the scored ports, any official sources named in the event packet, ICMP and the admin path. A scored port stays open to every source, never only to the scoring engine's address, because officials' manual scoring checks and simulated users come from other addresses (MWCCDC, 2025, Competition Rules 6 and 14).
+4. **Default-deny inbound** (Tier 2), allowing the scoring engine, the scored ports, any official sources named in the event packet, ICMP and the admin path. A scored port stays open to every source, never only to the scoring engine's address, because officials' manual scoring checks and simulated users come from other addresses (MWCCDC, 2025, Competition Rules 6 and 14), and some events penalize any source filter on a public service (section 2). An admin path on a scored port, such as SSH where SSH is scored, is hardened in place (design 05, section 4.2), never moved, knocked or restricted by address.
 5. **Default-deny outbound** (Tier 2), allowing replies on established connections, loopback, ICMP, the DNS resolvers and NTP servers in the run-time configuration, the SIEM, the admin path, the package mirror or proxy (design 20), and every address a scored service connects out to, from `services` and the run-time `outbound-allow` list. On a Windows domain member, the domain controllers are allowed too.
 
 **Why this order.** Sessions are ended after passwords and keys change, so the attacker cannot simply log back in. The firewall closes before the persistence sweep, not after it: anything planted before the bundle is still on disk, but nobody can reach it from outside and its callbacks fail, so the sweep in step 6 can take the time it needs. A planted job that reopens a port or drops the rules is caught by the drift check (design 13, section 4.1) and by the sweep. One revert timer covers the whole bundle on each host. The steps that only take access away (the new passwords, the removed keys, the ended sessions) are kept as soon as each verifies with no scored service worse, so the timer undoes only the firewall and SSH settings, the steps that can lock the team out (design 00, section 4, rule 9).
 
 **Why outbound.** Scoring checks connect in, and their replies leave on connections the scoring engine opened, so an outbound default deny does not stop them. It does stop beacons, reverse shells and downloads of second-stage tools. This is targeted blocking from an explicit allowlist, not the indiscriminate ending of all outbound connections that the rules give as an example of breakage (NCCDC, 2025, Rule 5.6.5).
 
-**Reopening outbound.** Step 7 widens the outbound allowlist to what the sweep and the dependency map show the host needs, for example a scored app's update check. Outbound stays default-deny; a person can lift it for one host as a Tier 3 item. A probe that fails because of the outbound rules is rolled back with its module, as for any change.
+**Reopening outbound.** Step 7 widens the outbound allowlist to what the sweep and the dependency map show the host needs, for example a scored app's update check. The dependency map records the outbound connections each scored service made before the lockout (design 04), so the list starts from what the host really used. Outbound stays default-deny; a person can lift it for one host as a Tier 3 item. A probe that fails because of the outbound rules is rolled back with its module, as for any change.
+
+**Mail and other open-ended outbound.** A mail server that delivers to outside addresses, or a scored check that sends mail and waits for it, needs destinations nobody can list before the event. A profile may therefore put a host's outbound rules in log-only mode, so the outbound log rule records what would be denied (design 10, section 5) until a person reviews it and turns the deny on.
+
+**Flat networks.** Where every server shares one segment, the host firewall is the only boundary between them. The inbound default deny closes every port that is not scored or the admin path to inside hosts as well as outside ones. Domain traffic to a domain controller (design 11, section 3) and log traffic to the SIEM (design 10) are allowed from the inside hosts that need them.
 
 ### 6.2 Ending sessions
 
@@ -118,6 +125,8 @@ Changing a password does not end the sessions already logged in with it. So, rig
 - the operator's own session;
 - sessions from the admin source;
 - sessions of accounts in the protected set.
+
+**The admin source.** Where possible, the admin path is named by account and key rather than by address (design 05, section 4). Where the operators' machines get their addresses by DHCP, an address can change during the event, so the run-time lists name the range those machines draw from, and the plan warns when an admin source is a single address in it.
 
 This is not "terminating all connections" (NCCDC, 2025, Rule 5.6.5). It ends only interactive logins, after a credential change, and never touches service traffic or the excepted sessions. On Linux it uses `loginctl terminate-session`; on Windows, `logoff <session id>`. Each ended session is logged with its user, source and start time for the incident record (design 02).
 
@@ -170,7 +179,7 @@ The break-glass answer is still the operator's word for each host (section 7). I
 | Gate | Check |
 |---|---|
 | Protected set loaded | Non-empty and parsed |
-| Scoring allowlist present | In the firewall plan for every host that filters traffic. The runner blocks any module with `touches_scored: true` while the run-time `scoring-allowlist` is missing or empty |
+| Scored services reachable | In the firewall plan for every host that filters traffic, every scored service on the host has an allow from any source (section 6.1). The run-time `scoring-allowlist` is then optional: it is still applied first where present, and it feeds the never-ban list (design 12). The runner blocks a module with `touches_scored: true` that would leave a scored service on the host without such an allow |
 | Break-glass confirmed | The operator has confirmed, by typing, that the break-glass credential worked at this host's console. This is the operator's word, not proof: a script cannot reach the console, so it is asked once per host. The account must be in the protected set with class `breakglass`, the answer is kept in Labyrinth's state for later runs on that host, and every run records it in its manifest. When the answer is given, Labyrinth looks for a session of that account at the console (`loginctl` or `who` on Linux, `query user` on Windows) and records the session it found. If it finds none, or cannot look, it warns and goes on: the gate stays a confirmation, and the manifest says what backed it. |
 | Backup taken | Every file is copied before it changes, and the copy is recorded in the run manifest (`docs/Conventions.md`, section 7) |
 | Plan reviewed | Operator confirmed the plan by typing the group name, or gave it with `--confirm-group` in a first-minute run (section 6.3) |
@@ -196,13 +205,14 @@ After each module, probe as the scoring engine would:
 
 | Service | Probe | Pass condition |
 |---|---|---|
-| HTTP and HTTPS | Fetch the page | Expected status and expected content string |
+| HTTP and HTTPS | Fetch the scored page by its path | Expected status and expected content string |
 | DNS | Query a known record | Expected answer |
 | SMTP (Simple Mail Transfer Protocol) | Connect and read the banner; optionally send a test message | Expected response |
-| POP3 (Post Office Protocol 3) | Connect and read the banner (no scoring-account logins) | Expected response |
+| POP3 (Post Office Protocol 3) and IMAP | Connect and read the banner (no scoring-account logins) | Expected response |
 | FTP (File Transfer Protocol) | Connect and read the banner | Expected response |
+| A check that logs in (SSH, a file share, SQL, remote management, a SIEM search, mail or FTP with a login) | Log in with a probe account the operator supplies at run time and do what the check does (design 13, section 3) | The login works and the action returns what is expected |
 
-Take probes before and after. A regression triggers automatic rollback of that module and stops the run. Between runs, the health monitor repeats these probes on a schedule (design 13).
+Without a probe account, a check that logs in is probed by connecting only, and the plan says so: a broken login, which is what a credential change can cause, then goes unseen. Take probes before and after. A regression triggers automatic rollback of that module and stops the run. Between runs, the health monitor repeats these probes on a schedule (design 13).
 
 ## 10. What the panic button will never do
 
@@ -213,7 +223,9 @@ Take probes before and after. A regression triggers automatic rollback of that m
 - Delete an account without a person's approval, or before a checkpoint shows every scored service passing (design 05, section 6).
 - Stop services outside the candidate list.
 - Reboot.
-- Move a service into a container.
+- Move a service into a container or replace it. Where an event allows that, it is design 22, off by default.
+- Change a host name, an address, a scored service's DNS name or a username.
+- Restrict a scored port by source address.
 - Change scoring accounts.
 - Act on a host with no break-glass path.
 
@@ -231,6 +243,10 @@ Take probes before and after. A regression triggers automatic rollback of that m
 - A first-minute run without `--confirm-group` stops at the confirmation prompt, as a normal run does.
 - The revert timer restores the firewall when verify is deliberately failed.
 - A run with an empty protected set refuses to start.
+- A `scored-admin` account is rotated in the bundle, its new password appears once in the change list on the terminal, and it appears nowhere under the data root.
+- With no `scoring-allowlist`, the firewall module runs when every scored port on the host is allowed from any source, and an address that is neither the scoring engine nor the admin source still reaches each scored port.
+- An allow with a narrower source than any on a scored port is refused, and so is a deny of one.
+- With a probe account given, a test account whose login was broken on purpose fails its probe, and the module is rolled back.
 - After default-deny, the host still answers ping.
 - A second session stays usable throughout.
 - After the bundle, an intruder's SSH and RDP sessions are gone, while the console session, the operator's session and an admin-source session remain.

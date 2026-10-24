@@ -1,6 +1,6 @@
 # 18. Service Packs and Config Library
 
-**Status:** Draft · reviewed 2026-10-09 · Phase: 🟥 Lock out · Priority: P1
+**Status:** Draft · reviewed 2026-10-23 · Phase: 🟥 Lock out · Priority: P1
 
 ## 1. Goal
 
@@ -13,8 +13,8 @@ This spec ships a **service pack** for each common scored app and a small **conf
 | Rule | Effect |
 |---|---|
 | Anything that interferes with the scoring engine is the team's responsibility (NCCDC, 2025, Rule 4.11). | Every setting is followed by scoring-style probes, under a revert timer. |
-| Do not mislead the scoring engine (NCCDC, 2025, Rule 11.3). | A pack never fakes a response or changes what a check sees to make a broken service look healthy. |
-| Scored services may not be migrated or containerized (NCCDC, 2025, Rule 4.14). | Packs change settings in place. They never replace or move a service. |
+| Do not mislead the scoring engine (NCCDC, 2025, Rule 9.3). | A pack never fakes a response or changes what a check sees to make a broken service look healthy. |
+| Scored services may not be migrated or containerized unless an inject or the local competition rules allow it (NCCDC, 2025, Rule 4.14). | Packs change settings in place. They never replace or move a service; where an event allows that, it is design 22. |
 | Team tools may not use resources outside the competition environment other than simple DNS lookups; the example is cloud services and cloud processing (NCCDC, 2025, Rule 5.6.4). | Packs never install anything themselves. They use software already on the host, or a module the `packages` module installed for them, such as ModSecurity (design 20). |
 | Tools must not deliberately break expected functionality (NCCDC, 2025, Rule 5.6.5). | Settings that could change what users or the scoring engine see are never automatic (section 4). |
 
@@ -48,11 +48,16 @@ Examples per pack (*Background*; each is confirmed in the lab before release):
 | nginx | Hide the version; turn off directory listing where nothing uses it; security headers that do not change page content | Minimum TLS version and ciphers; request size and rate limits | Web application settings and code |
 | Apache httpd | Hide the version and OS banner; turn off directory listing and server-status where unused | Turn off modules; TLS settings | Web application settings and code |
 | IIS | Remove version headers; turn off directory browsing | TLS settings; request filtering | Application pools and web application settings |
-| Postfix | Hide the version banner; refuse to relay for outside senders where the packet confirms it | Authentication and TLS settings | Mailbox and alias changes |
-| Dovecot | Turn off plain-text login without TLS where the probe and packet allow | Authentication mechanisms | Mailbox changes |
+| Postfix | Hide the version banner; refuse to relay for outside senders where the event's materials confirm it | Authentication and TLS settings | Mailbox and alias changes |
+| Dovecot (POP3 and IMAP) | Turn off plain-text login without TLS where the probe and the event's materials allow | Authentication mechanisms; turn off the protocols that are not scored | Mailbox changes |
+| Webmail (for example Roundcube) | Hide the version; turn off the installer folder | Session and login-attempt limits | Plugins and the app's own settings |
 | BIND | Hide the version; refuse zone transfers to anyone but listed secondaries; turn off open recursion for outside clients | Rate limits | Zone contents |
 | Windows DNS, on a server that is not a domain controller and only for zones stored in files | Refuse zone transfers to unlisted servers | Recursion settings | Zone contents. On a domain controller, or for an Active Directory-integrated zone, nothing is automatic or approved: every setting is on the domain checklist (design 11, section 5), because those settings replicate to every domain controller |
 | MySQL / MariaDB | Bind to the addresses the scored app uses; turn off local file loading | Remove anonymous and test accounts | Application database users and grants |
+| Microsoft SQL Server | Turn off `xp_cmdshell` and other unused surface features | Turn off the `sa` login or rotate it as a `scored-admin` account (design 05, section 2.4); force encryption | Application logins, roles and grants |
+| SMB shares (Windows and Samba) | Turn off SMBv1; require signing where every client supports it | Remove `Everyone` and guest write access on scored shares, after the probes confirm the scoring account's access | Share contents and folder permissions |
+| WinRM | Turn off unencrypted traffic and Basic authentication | Turn off the HTTP listener where an HTTPS listener exists and the check uses it | Session configurations |
+| Splunk | See design 10, section 7 | — | — |
 | vsftpd (FTP) | Hide the banner version | Turn off anonymous login, and lock each user into their own folder; approval because a scoring check may use either | — |
 | OpenSSH | See design 05, section 4 | — | — |
 

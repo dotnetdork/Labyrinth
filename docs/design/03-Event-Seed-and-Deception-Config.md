@@ -1,6 +1,6 @@
 # 03. Event Seed and Deception Configuration
 
-**Status:** Draft · reviewed 2026-10-02 · Phase: 🟪 Deceive · Priority: P1
+**Status:** Draft · reviewed 2026-10-23 · Phase: 🟪 Deceive · Priority: P1
 
 ## 1. The problem
 
@@ -27,6 +27,7 @@ A rival who reads the repository learns how values are made, not which values th
 | `canary-token:N` | Canary file contents and markers |
 | `decoy-path:N` | Decoy file and directory names |
 | `ssh-banner:N` | Banner text variants |
+| `scored-admin:<username>` | The new password of a `scored-admin` account, the same on every host that has the name, so the team can work out the change list on its own machine (design 05, section 2.4). Never written down by Labyrinth |
 
 Changing `purpose` or `index` gives unrelated values. Nothing derived can be reversed to the seed.
 
@@ -50,7 +51,7 @@ flowchart LR
 
 ## 4. Constraints
 
-- **Never on a scored port.** Derived ports are checked against the scored-service list (`services`) and the host's current listeners, and skipped if they collide (NCCDC, 2025, Rule 11.3). The scoring allowlist holds the scoring engine's addresses, not ports, so it is not used for this check.
+- **Never on a scored port.** Derived ports are checked against the scored-service list (`services`) and the host's current listeners, and skipped if they collide (NCCDC, 2025, Rule 9.3). The scoring allowlist holds the scoring engine's addresses, not ports, so it is not used for this check.
 - **Never a real account name.** Derived names are checked against the protected set and existing users.
 - **Seed strength.** At least 128 bits from a cryptographic random source, written as a short readable string with a checksum group so a typo is detected.
 - **Seed handling.** The seed is never committed and never appears in shell history or logs. It is supplied by prompt at run time, held in memory and cleared after use. The offline record holds the only copy.

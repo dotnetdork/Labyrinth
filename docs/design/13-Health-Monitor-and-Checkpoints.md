@@ -1,6 +1,6 @@
 # 13. Health Monitor and Checkpoints
 
-**Status:** Draft · reviewed 2026-10-02 · Phase: 🟩 Sustain · Priority: P1
+**Status:** Draft · reviewed 2026-10-23 · Phase: 🟩 Sustain · Priority: P1
 
 ## 1. Goal
 
@@ -16,7 +16,7 @@ Today the scoring-style probes (design 01, section 9) run only when a module fin
 | Rule | Effect |
 |---|---|
 | Anything that interferes with the scoring engine is the team's responsibility (National Collegiate Cyber Defense Competition [NCCDC], 2025, Rule 4.11). | Probes are light: one per service per interval, with short timeouts. |
-| Do not mislead the scoring engine (NCCDC, 2025, Rule 11.3). | The monitor never fakes a response or changes what a service returns. |
+| Do not mislead the scoring engine (NCCDC, 2025, Rule 9.3). | The monitor never fakes a response or changes what a service returns. |
 | Tools must not deliberately break expected functionality (NCCDC, 2025, Rule 5.6.5). | The monitor changes nothing except re-applying sealed firewall rules, a verified state, under a revert timer (section 4.1). Rollback is a person's decision (section 4). |
 
 
@@ -30,8 +30,26 @@ Today the scoring-style probes (design 01, section 9) run only when a module fin
 > [!IMPORTANT]
 > **Answering is not logging in.** The probes check that a service answers, not that a user can log in to it, because scoring accounts are never used. A mail service can pass every probe while its logins are broken, and still fail scoring. To narrow this gap, the team may create a test mailbox or user by hand that is *not* a scoring account and add it to the service list with a login probe. A scheduled job cannot hold that password without storing it in a file, so the login probe runs only when an operator starts it, for example with `labyrinth checkpoint` (section 5). The password is typed in and kept only in memory, like the event seed (design 03).
 
+### 3.1 Probes that log in and check content
+
+Events differ in what a check does: some only connect, others log in and read a page, a mailbox, a file share, a table or a search result (*Background*). A probe that only connects misses the failures a hardening change is most likely to cause, so the service list may name, per service:
+
+| Kind | What the probe does |
+|---|---|
+| `http` with a path | Fetches that path, not only `/`, and compares the status and a content string |
+| `imap`, `pop3` | Logs in and lists the mailbox |
+| `ssh` | Logs in and runs `true` |
+| `smb` | Lists a named share |
+| `sql` | Logs in and runs a fixed read-only query |
+| `winrm` | Opens a session and runs a no-op |
+| `siem` | Runs a fixed search through the SIEM's interface |
+
+- **The account.** A probe that logs in uses a probe account the operator creates for the purpose, never a scoring account (design 01, section 4). Its password is typed at run time and held only in memory, never in a file (design 03). Where a `scored-admin` account was rotated, the probe uses the new password from the same run (design 05, section 2.4).
+- **No account given.** The probe connects only and the plan says so.
+- **Read-only.** A probe never writes, sends or deletes anything on the service.
+
 > [!IMPORTANT]
-> **Inside is not outside.** The control node probes from inside the network. The scoring engine checks from wherever it sits, often outside, through the edge firewall and NAT. A pass from inside does not prove the scoring engine sees a pass. Where possible, add one probe from the same side as the scoring engine, and trust the official scoreboard over the monitor.
+> **Inside is not outside.** The control node probes from inside the network. The scoring engine checks from wherever it sits, often outside, through the edge firewall and NAT. A pass from inside does not prove the scoring engine sees a pass. Where possible, add one probe from the same side as the scoring engine, and trust the official scoreboard over the monitor. `labyrinth probe` may run from a machine outside the team's network, such as a console the event provides; it then probes only the addresses in the run-time `own-ranges` list and refuses any other, so it never touches a system outside the team's network (NCCDC, 2025, Rule 4.10).
 
 ## 4. When a probe changes state
 
@@ -112,6 +130,8 @@ The command takes no action. It exists so that a regular review is quick and eve
 - Killing the monitor marks the status feed stale.
 - Probe traffic is under the target rate per service.
 - With a test mailbox configured, breaking mail logins in the lab makes the checkpoint's login probe fail even though the banner probe still passes.
+- An `http` probe with a path fails when that page's content string is missing, though `/` still answers.
+- `labyrinth probe` refuses an address outside `own-ranges`, and refuses to run with no `own-ranges` list.
 
 ## References
 

@@ -1,6 +1,6 @@
 # 20. Packages and Third-Party Tools
 
-**Status:** Draft · reviewed 2026-10-09 · Phase: All · Priority: P0
+**Status:** Draft · reviewed 2026-10-23 · Phase: All · Priority: P0
 
 ## 1. Goal
 
@@ -11,11 +11,11 @@ Get the tools the team needs onto each host in the minutes after the first-minut
 | Rule | Effect |
 |---|---|
 | Team-written tools that use resources outside the competition environment, other than simple DNS lookups, are prohibited; the rule's own example is tools that use cloud services or cloud processing (National Collegiate Cyber Defense Competition [NCCDC], 2025, Rule 5.6.4). | Labyrinth never sends data to, or has anything processed by, an outside service. Installing public software through the host's own package manager is not cloud processing. The install feature is named in the tool's declaration (Rule 5.6.2), so officials approve or reject it before the event. |
-| Free public resources that every team could reach are allowed; private staging areas for patches or software are prohibited (NCCDC, 2025, Rules 5.1, 5.2). | Sources are only the host's configured repositories, a mirror or proxy the event provides, and the public release pages pinned in the catalog (section 6). Never a team-controlled server, cloud drive or private repository. |
+| Free public resources that every team could reach are allowed, never one behind a fee, membership or contract; private staging areas for patches or software are prohibited (NCCDC, 2025, Rules 5.1, 5.2). | Sources are only the host's configured repositories, a mirror or proxy the event provides, and the public release pages pinned in the catalog (section 6). Never a team-controlled server, cloud drive or private repository. |
 | Team tools are declared and frozen (NCCDC, 2025, Rule 5.6.2). | Every package name is in the release, and every downloaded file is pinned by version and SHA-256 in the release, so what runs at the event is what officials approved. |
 | Tools must not deliberately break expected functionality (NCCDC, 2025, Rule 5.6.5). | Only listed packages, never a full upgrade, and an install that would remove or replace a package is refused (section 4). |
-| Scored services may not be migrated or containerized (NCCDC, 2025, Rule 4.14). | No container runtime is ever installed, and nothing moves a scored service. |
-| The 2025 qualifier packet describes a web proxy that includes the team's declared repository (Midwest Collegiate Cyber Defense Competition [MWCCDC], 2025; *Provisional*). | The proxy address is run-time configuration. When no source is reachable, installs are skipped and the lockdown still stands (section 4). |
+| Scored services may not be migrated or containerized unless an inject or the local competition rules allow it (NCCDC, 2025, Rule 4.14). | No container runtime is installed unless design 22's `ALLOW_CONTAINERS` option is on, and then only Podman or Docker from the host's own repositories. Nothing here moves a scored service. |
+| Events differ on what the hosts can reach: one region's 2025 qualifier packet describes a web proxy that includes the team's declared repository (Midwest Collegiate Cyber Defense Competition [MWCCDC], 2025; *Provisional*), and elsewhere hosts may reach the internet directly or not at all (*Background*). | The proxy address is run-time configuration. When no source is reachable, installs are skipped and the lockdown still stands (section 4). |
 
 ## 3. Sources, in order
 
