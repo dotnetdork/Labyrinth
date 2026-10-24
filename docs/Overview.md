@@ -1,6 +1,6 @@
 # How Labyrinth Works
 
-**Status:** Draft · reviewed 2026-10-09
+**Status:** Draft · reviewed 2026-10-23
 
 This is the plain-language tour of Labyrinth. It explains what each part of the system is for and how the parts fit together, without assuming you already know networking or security tooling. The [implementation blueprint](Blueprint.md) and the [design specs](design/README.md) hold the precise details. Each section below links to the one that goes deeper.
 
@@ -186,7 +186,7 @@ Each subsection answers four questions: what the part does, why it exists, how i
 
 **Why it exists.** Assume the attacker is already inside when the event starts. Their power comes from passwords they already know, sessions they already have open, and ways back in they left behind. Removing all of these, fast, removes most of their ways in. The scored services are among the Red Team's main targets, so Labyrinth defends them carefully rather than leaving them as found.
 
-**The first minute.** Each host gets one bundle of steps, in this order, using only what is already on it: change the admin passwords; remove unapproved SSH keys and check the SSH settings for anything planted; end the intruder's open remote sessions (never the console, the operator's own, the team's admin machine or an official's); then block all incoming traffic except the scoring engine, the scored services and the team's admin path, and all outgoing traffic except what the host and its scored services need. One revert timer covers the whole bundle. The steps that only take access away, such as the new passwords and the removed keys, are kept as soon as each checks out, so only the steps that could lock the team out are left for the timer to undo.
+**The first minute.** Each host gets one bundle of steps, in this order, using only what is already on it: change the admin passwords; remove unapproved SSH keys and check the SSH settings for anything planted; end the intruder's open remote sessions (never the console, the operator's own, the team's admin machine or an official's); then block all incoming traffic except the scored services, which stay open to everyone, and the team's admin path, and all outgoing traffic except what the host and its scored services need. One revert timer covers the whole bundle. The steps that only take access away, such as the new passwords and the removed keys, are kept as soon as each checks out, so only the steps that could lock the team out are left for the timer to undo.
 
 **Behind the lockdown.** With the network closed around each host, Labyrinth installs the team's extra tools, takes a backup of every scored service, sets aside the attacker's footholds and applies the rest of the hardening, then reopens outgoing traffic to the host's normal list. Anything the attacker planted early is still on disk while this happens, but it cannot be reached or call home.
 
@@ -194,10 +194,10 @@ Each subsection answers four questions: what the part does, why it exists, how i
 
 **How it works.** The obvious version, "reset everything, lock everything, block everything, everywhere, at once", would break things the scoring engine checks, and the rules forbid breaking what the network is expected to do. So the panic button keeps the speed but adds guard rails:
 
-- **The protected set.** Before anything else, the operator loads a list of accounts that must never be touched: the officials' accounts, the accounts the scoring engine logs in with, the team's own accounts, the emergency accounts and system accounts. If the list is missing or empty, the run stops.
+- **The protected set.** Before anything else, the operator loads a list of accounts that must never be touched: the officials' accounts, the accounts the scoring engine logs in with, the team's own accounts, the emergency accounts and system accounts. If the list is missing or empty, the run stops. An admin account the scoring engine logs in with is marked **scored-admin**: it is not left alone, because the Red Team knows its default password too, so Labyrinth changes it and prints the new password in a **change list** for the team to hand in through the event's own process.
 - **Safety gates.** Six checks must all pass before any change:
   1. the protected set is loaded;
-  2. the scoring engine is allowed through every firewall plan;
+  2. every scored service is reachable from anywhere in every firewall plan;
   3. the operator has confirmed that the emergency login works at the host's own console;
   4. backups exist;
   5. the operator has reviewed the plan and confirmed the target group's name (typed, or given in the command for a first-minute run);
@@ -207,17 +207,17 @@ Each subsection answers four questions: what the part does, why it exists, how i
 | Tier | What it covers | Who carries it out |
 |---|---|---|
 | 0. Observe only | Read-only inventory: users, groups, open ports, running programs, open sessions, scheduled tasks | Runs automatically |
-| 1. Safe and reversible | Change admin-class passwords; remove SSH keys that are not on the approved list; end intruder sessions | Runs automatically after the plan is reviewed |
+| 1. Safe and reversible | Change admin-class passwords, scored-admin ones included, with their change list; remove SSH keys that are not on the approved list; end intruder sessions | Runs automatically after the plan is reviewed |
 | 2. Service-affecting | Check and harden SSH; set aside obvious attacker footholds; block incoming and outgoing traffic except what is needed; install the team's chosen tools; back up the scored services; take admin rights from unexpected local accounts and lock them; safe settings for scored apps and Windows; turn off unneeded services | Runs host group by host group, with a check and a revert timer |
 | 3. Approve, then act | Unexplained footholds, deleting locked accounts, riskier app settings and passwords, restores, Linux updates, and the other items listed below | A person approves, then Labyrinth does it |
 
-Tier 3 in full: unexplained footholds; deleting locked accounts; riskier app settings; app admin passwords; restoring a service from a backup; Linux security updates; lifting the outgoing block on one host; ending a stubborn process that runs as SYSTEM on Windows; and resetting the domain's ticket-signing password (KRBTGT). A short list stays with a person, as a printed checklist: ordinary users' passwords, other domain accounts and policy, DNS on the domain controller, restoring the domain controller, rescuing a host that will not boot, Windows patching and network appliances.
+Tier 3 in full: unexplained footholds; deleting locked accounts; riskier app settings; app admin passwords; restoring a service from a backup; Linux security updates; lifting the outgoing block on one host; ending a stubborn process that runs as SYSTEM on Windows; resetting the domain's ticket-signing password (KRBTGT); changing listed users' passwords where the event takes a change list; and, only where the event allows it, rebuilding a scored service (section 4.21). A short list stays with a person, as a printed checklist: ordinary users' passwords, other domain accounts and policy, DNS on the domain controller, restoring the domain controller, rescuing a host that will not boot, Windows patching and network appliances.
 
 - **Host groups.** Each host belongs to one **group**, named in the team's hosts file, and a run acts on one group at a time. The first group holds one low-impact **test host** of each kind of system, for example one Linux host and one Windows workstation; then come the next group, and so on. (The design specs call these groups *rings*.) If a check fails, the run stops before the problem spreads. A host that is the only one of its kind, such as the domain controller, has no test host to go first; it is in the last group and relies on the revert timer and the tests.
 - **Revert timer (dead-man).** Before a change that could lock the team out, such as a firewall or SSH change, Labyrinth sets a timer that will undo the run automatically unless someone keeps it after confirming everything still works. If the change locks the team out, the timer puts things back, and every logged-in screen on the host shows a notice that it did. A change that only takes access away from an intruder, such as a new admin password or a removed planted key, is kept as soon as it checks out: undoing it would hand the intruder their access back.
 - **Checking like the scoring engine.** After each module, Labyrinth tests each scored service the way the scoring engine would (for example, fetching the web page and looking for the expected text) and compares the result with a test taken before the change. If a service got worse, that module is rolled back and the run stops.
 
-**What it will never do.** Disable accounts wholesale, change login shells, cut all connections, end a console or official's session, delete a file (it sets files aside instead), delete an account without a person's approval, stop services that are not on its candidate list, reboot, move a service into a container, change scoring accounts, or act on a host that has no emergency way in.
+**What it will never do.** Disable accounts wholesale, change login shells, cut all connections, end a console or official's session, delete a file (it sets files aside instead), delete an account without a person's approval, stop services that are not on its candidate list, reboot, move a service into a container (outside section 4.21), change scoring accounts, rename an account or host, change an address, limit a scored service to some addresses, or act on a host that has no emergency way in.
 
 > [!TIP]
 > **Break-glass** means a sealed emergency login, one per critical host, kept by the team captain in the team's **offline record**: on paper or in a local file on a team member's own machine, never in the repository or on the competition hosts. It exists so that the team, and the officials, can always get back in.
@@ -230,13 +230,14 @@ Tier 3 in full: unexplained footholds; deleting locked accounts; riskier app set
 
 **How it works.**
 
-- **Only admin-class passwords are changed automatically** (root, Administrator and similar). The rules say these are not used for scoring. Ordinary users' passwords may be used by the scoring engine, so they are changed only by hand, following the official notification process. An admin password is also left to a person when a Windows service or scheduled task logs on with that account, because changing it would break that service the next time it starts.
+- **Only admin-class passwords are changed automatically** (root, Administrator and similar). Events differ on which accounts the scoring engine uses, so none is assumed safe to change silently: an admin account the scoring engine logs in with is a scored-admin account, and its new password goes into the change list, shown once, for the team to submit straight away. The same name gets the same new password on every host, so one line in the list covers it. Ordinary users' passwords are changed only after approval, or by hand, following the event's own process. An admin password is also left to a person when a Windows service or scheduled task logs on with that account, because changing it would break that service the next time it starts.
+- **Names never change.** Labyrinth never renames an account: scoring and the officials know each one by name.
 - **New passwords are shown once**, on the operator's screen, to be copied into the offline record. Labyrinth never saves them to disk or logs, and teammates share them only through the official team chat.
 - **The safe order.** Set the new password, test it from a fresh login, confirm it is written down, and only then close the old session. SSH keys follow the same pattern: add the new key next to the old one, test it, then remove the old one.
 - **One SSH key per role** (for example, one for Linux admin work and one for monitoring), not one per person and not one shared key. Each key only works from the control node.
 - **An approved-key list** (the registry) is kept for every host. Any key found that is not on the list is backed up and then removed.
 - **Planted SSH settings.** An attacker may have added their own SSH settings file, which can quietly override the team's. Labyrinth sets aside unknown settings files and planted lines, makes sure its own settings load first, and asks SSH which settings it will actually use.
-- **Key-only, aware of scoring.** Where SSH is scored, the scoring engine's accounts keep their passwords and everyone else must use a key. Where it is not scored, everyone uses keys and only the team's admin machine can reach it.
+- **Key-only, aware of scoring.** Where SSH is scored, the scoring engine's accounts keep their passwords, everyone else must use a key, and the port stays open to everyone and in its usual place. Where it is not scored, everyone uses keys and only the team's admin machine can reach it.
 - **Unexpected accounts.** An account is expected if it is protected, named in the event packet or runs a scored service. Labyrinth also looks for hidden admins, such as a second root account or a user in an admin group by a side door. Unexpected local accounts with admin rights lose them and are locked at once; others are locked after a person approves. Once every scored service is confirmed working, a person can approve deleting them, so they cannot be switched back on. Their details are saved first, for the incident report.
 
 - **App admin passwords.** Apps have their own admin logins too (a website's admin page, the database's root account), and default ones are a favorite way in. Labyrinth lists them. After a person approves, it changes one, updates every settings file that stores it, and tests the app. It never does this on its own, because the scoring engine may log in to the app.
@@ -408,7 +409,7 @@ Some outside repositories are kept as **reference only** ([design 08](design/08-
 
 `labyrinth checkpoint` prints, in one screen: which services are up, new integrity findings, new accounts or open ports, open incident reports, trap hits and bans, and how long since each service was last backed up. It changes nothing. The control node also runs it on a schedule and raises one alert for each new finding, so nobody has to remember to look.
 
-**Two caveats.** The control node tests from *inside* the network. The scoring engine may test from outside, through the edge firewall. A pass from inside is good evidence, not proof. And the tests check that a service answers, not that a user can log in, because the scoring engine's accounts are never used. A team can close that gap by creating its own test mailbox by hand and checking it at each checkpoint.
+**Two caveats.** The control node tests from *inside* the network. The scoring engine may test from outside, through the edge firewall. A pass from inside is good evidence, not proof. And a plain test checks that a service answers, not that a user can log in, because the scoring engine's accounts are never used. A team closes that gap by creating its own test account by hand and typing its password at a checkpoint: the tests then log in, read the scored page, list a mailbox or share, or run a fixed query, the way the scoring engine does.
 
 ### 4.14 Backups you can restore (sustain)
 
@@ -416,9 +417,9 @@ Some outside repositories are kept as **reference only** ([design 08](design/08-
 
 **Why it exists.** Rollback only undoes Labyrinth's own changes. If an attacker defaces a website or deletes a database table, the team needs a copy from before the damage.
 
-**How it works.** A restore point is taken before patching, before the first risky change on a host, or on request. Labyrinth first checks there is enough disk space, records a hash of each backup so tampering is caught, and stores it where only an administrator can read it. Every restore point is also copied off the host to the control node, because an attacker with full control of a host can delete backups stored there, and Red Teams are expected to destroy things later in an event.
+**How it works.** A restore point is taken before patching, before the first risky change on a host, or on request. Labyrinth first checks there is enough disk space, records a hash of each backup so tampering is caught, and stores it where only an administrator can read it. Every restore point is also copied off the host to the control node, or to another team host named as the backup peer, because an attacker with full control of a host can delete backups stored there, and Red Teams are expected to destroy things later in an event.
 
-**Restoring.** `labyrinth restore` puts back a service's settings and files, its database, or a service that was stopped. Restoring overwrites live data, so a person first confirms the restore point is from before the damage; Labyrinth then does the restore, saves the damaged copy as evidence and tests the service. Restoring the domain controller and rescuing a host that will not boot (for example, after an attacker deleted a file it needs to start) stay with a person, following a printed procedure.
+**Restoring.** `labyrinth restore` puts back a service's settings and files, its database, or a service that was stopped. Restoring overwrites live data, so a person first confirms the restore point is from before the damage; Labyrinth then does the restore, saves the damaged copy as evidence and tests the service. Restoring the domain controller and rescuing a host that will not boot (for example, after an attacker deleted a file it needs to start) stay with a person, following a printed procedure. None of this relies on snapshots of the virtual machines, which some events do not offer.
 
 ### 4.15 Fewer services, targeted patches (lockout)
 
@@ -437,7 +438,7 @@ Some outside repositories are kept as **reference only** ([design 08](design/08-
 
 **Why it is manual.** Every vendor has its own commands, and a mistake on the device in front of the network can cut off every host, including the scoring engine's path. Labyrinth prints the steps; it never sends commands to an appliance.
 
-**The steps, in order.** Prepare a way back (second session, configuration backup); change the default passwords; allow management only from inside; allow the scoring engine before blocking anything; block everything else from outside; note how the router rewrites addresses; send the logs to the SIEM; save, test and keep a second backup.
+**The steps, in order.** Prepare a way back (second session, configuration backup); change the default passwords; allow management only from the admin machines; allow the scored services from everywhere before blocking anything; block everything else from outside; note how the router rewrites addresses; send the logs to the SIEM; save, test and keep a second backup.
 
 ### 4.17 Sweeping for attacker footholds (lockout)
 
@@ -456,7 +457,7 @@ Some outside repositories are kept as **reference only** ([design 08](design/08-
 
 ### 4.18 Ready-made settings for scored apps (lockout)
 
-**What it does.** Ships tested settings packs for common scored programs: web servers, mail, DNS, databases and FTP ([design 18](design/18-Service-Packs-and-Config-Library.md)).
+**What it does.** Ships tested settings packs for common scored programs: web servers, webmail and mail, DNS, databases (SQL Server included), file shares, remote management and FTP ([design 18](design/18-Service-Packs-and-Config-Library.md)).
 
 **Why it exists.** The scored services are what the Red Team attacks most, so leaving them exactly as found is not safe. But changing them by hand under pressure is how teams break their own services.
 
@@ -480,7 +481,13 @@ Some outside repositories are kept as **reference only** ([design 08](design/08-
 
 **How it works.** Tools come only from public sources every team can reach: the system's own software sources, a mirror or proxy the event provides, or a public download whose exact file is fixed in the release. Before installing, Labyrinth checks that the install would not remove or replace anything already there. New services stay switched off until their own part of Labyrinth sets them up. Every install is recorded. If no source can be reached, the installs are skipped and the lockdown stands.
 
-**What it will never do.** Upgrade the whole system, add a new software source, use a private server, or install a container system.
+**What it will never do.** Upgrade the whole system, add a new software source, use a private server or a paid one, or install a container system unless the event allows containers (section 4.21).
+
+### 4.21 Rebuilding a service, only where allowed (sustain)
+
+**What it does.** Where an inject or the event's own rules allow it, rebuilds one scored service that cannot be fixed where it stands: a clean install of the same service on the same host, or the same service in a container there ([design 22](design/22-Service-Replacement-and-Containers.md)). It is off by default, and turning it on means naming the inject or rule that allows it.
+
+**Why it is careful.** The national rules forbid moving or containerizing a scored service unless an inject or the local rules allow it. Even then, scoring checks the old address, the old name, the old content and the old users. So the new service is built beside the old one, every piece of data and every user is copied across and compared, and only then does the new one take over, under a revert timer. The old one is kept, stopped, until the team keeps the change.
 
 ---
 
@@ -501,13 +508,14 @@ Other rules also shape the design:
 |---|---|
 | Officials must be able to get in when they ask (NCCDC, 2025, Rule 4.1). | A tested emergency way in is required before any change. |
 | Anything that interferes with the scoring engine is the team's responsibility (NCCDC, 2025, Rule 4.11). | The scoring engine is allowed through firewalls first, and every change is tested like the scoring engine would test it. |
-| Do not mislead the scoring engine (NCCDC, 2025, Rule 11.3). | No trap or fake service on anything scored. |
-| Scored services may not be moved or put into containers (NCCDC, 2025, Rule 4.14). | No container tricks for scored services. |
+| Do not mislead the scoring engine (NCCDC, 2025, Rule 9.3). | No trap or fake service on anything scored. |
+| Scored services may not be moved or put into containers unless an inject or the event's own rules allow it (NCCDC, 2025, Rule 4.14). | Off by default; where allowed, only through section 4.21, with all the data moved over. |
+| Each event has its own local rules, and they differ (NCCDC, 2025, Local Competition Rules section). | Every event value is read at run time; nothing assumes one event's rules. Scored services stay open to every address, because some events penalize limiting them. |
 | No new devices (NCCDC, 2025, Rule 4.2). | Everything runs on the machines already there. |
 | No attacks on systems outside your own network (NCCDC, 2025, Rule 4.10). | Traps observe and record; they never strike back. |
 
 > [!IMPORTANT]
-> These rule numbers come from the 2026 national rules. The 2027 rules are not published yet, so every citation must be re-checked when they are.
+> These rule numbers come from the national rules, updated 10 December 2025. Each event's own materials and local rules come first.
 
 ---
 
@@ -531,12 +539,13 @@ Controls are ranked from **P0** (do first) to **P3** (do last): 🔴 P0 · 🟠 
 | Term | Meaning |
 |---|---|
 | Active Directory (AD) | Microsoft's system for managing users and computers across a Windows network from a central server, the **domain controller**. |
-| Admin-class account | An administrator account such as root or Administrator. Not used for scoring, so it may be changed freely. |
+| Admin-class account | An administrator account such as root or Administrator. Labyrinth changes its password in the first minute. |
 | Allowlist | A list of the only things that are permitted; everything else is blocked. |
 | Audit log | A log in which the operating system records who did what, such as opening a watched file. |
 | Baseline | A saved record of what a healthy host looks like, used to spot changes. |
 | Break-glass | A sealed emergency login kept in the offline record, used only when normal access fails. |
 | Canary | A bait file whose only purpose is to raise an alarm when someone opens it. |
+| Change list | The `username,password` lines Labyrinth prints once after changing scored-admin passwords, for the team to hand in through the event's own process. |
 | Control node | The one machine the team runs Labyrinth from. |
 | CVE | Common Vulnerabilities and Exposures: a public ID for a known security flaw. |
 | Default-deny | A firewall setting that blocks every incoming connection unless a rule allows it. |
@@ -572,6 +581,7 @@ Controls are ranked from **P0** (do first) to **P3** (do last): 🔴 P0 · 🟠 
 | Runbook | A tested, numbered procedure that a person follows step by step. |
 | Run ID | The name of one Labyrinth run, such as `20261002T140301Z-4f2a`: the start time in UTC and four random characters. Commands also accept just the last four characters (`4f2a`). |
 | Scored service | A service the scoring engine checks, such as a website, email or DNS. |
+| Scored-admin account | An admin account the scoring engine logs in with. Its password is changed, and the new one goes into the change list. |
 | Scoring engine | The automated checker that tests scored services and awards points. |
 | Seal | Taking a new baseline of a host once it is cleaned, and using it as the reference for every later check. |
 | SIEM | Security Information and Event Management system: a central place that collects and searches logs from every host. |

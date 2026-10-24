@@ -1,20 +1,20 @@
 # 05. Credentials and SSH Keys
 
-**Status:** Draft · reviewed 2026-10-05 · Phase: 🟥 Lock out · Priority: P0
+**Status:** Draft · reviewed 2026-10-23 · Phase: 🟥 Lock out · Priority: P0
 
 ## 1. Rules that shape it
 
 | Rule | Effect |
 |---|---|
-| Administrator-class passwords are not used for scoring and may be changed freely; other user passwords need the notification process (Midwest Collegiate Cyber Defense Competition [MWCCDC], 2025, Rule 13) | Automation rotates admin-class credentials only. |
+| Events differ on which accounts scoring logs in with. One region's 2025 packet said administrator-class passwords are not used for scoring and other user passwords need a notification process (Midwest Collegiate Cyber Defense Competition [MWCCDC], 2025, Rule 13); other events score admin logins too and take new passwords through a change process of their own (*Background*). | No account is assumed to be unscored. Automation rotates admin-class credentials; an admin account a check logs in with is a `scored-admin` account, and its new password goes into a change list (section 2.4). User-level rotation waits for approval. |
 | Officials must get access on request (National Collegiate Cyber Defense Competition [NCCDC], 2025, Rule 4.1) | When an official asks, the captain gives them a working credential from the team's offline record or logs in for them. No standing account or key is created for this (section 5). |
-| POP3 (Post Office Protocol 3) scoring uses domain users (MWCCDC, 2025, Functional Services section; *Provisional*) | Domain-wide password resets are manual-only. |
+| POP3 (Post Office Protocol 3) scoring uses domain users (MWCCDC, 2025, Functional Services section; *Provisional*) | Domain-wide password resets stay with a person, from the domain checklist (design 11, section 5), using the same change-list format where the event takes one. |
 | No deliberate breakage (NCCDC, 2025, Rule 5.6.5) | Never disable accounts wholesale. |
 | Scoring is based partly on controlling and preventing unauthorized access (NCCDC, 2025, Scoring section). No rule text read so far forbids locking or deleting an unauthorized account. | Unexpected accounts are locked, and deleted once a person confirms it is safe (section 6). Scored services, including SSH, are defended rather than left alone (section 4). |
 
 ## 2. Password rotation
 
-- **Who is rotated:** root, Administrator and equivalents, and team operator accounts. Never scoring accounts.
+- **Who is rotated:** root, Administrator and equivalents, team operator accounts, and `scored-admin` accounts with their change list (section 2.4). Never `scoring` or `employee` accounts.
 - **Accounts something logs on with.** On Windows, a service, scheduled task or web application pool set to log on as an account stores that account's password. Changing the password breaks it at its next start, often hours later. The Tier 0 inventory lists every such logon. An admin-class account with any is not rotated automatically. It is listed in Tier 3 (design 01, section 5) with everything that stores its password; once a person approves, Labyrinth rotates it, updates the stored password on each listed service, task or pool, and runs the probes. Linux services do not store their account's login password, so this mainly concerns Windows; a password written into an application's configuration file is not always found and is a reason to check the dependency map first.
 - **Generation:** a cryptographic random source, a length chosen by the profile, and a character set that survives the target's shell and login prompt.
 - **Record:** shown once on the operator's screen, to be copied into the team's offline record. Labyrinth never writes it to disk, logs or shell history.
@@ -25,7 +25,7 @@
   2. Test it from a fresh session.
   3. Acknowledge that it is recorded.
   4. Only then close the old session.
-- **User-level accounts:** manual checklist only, following the notification process.
+- **User-level accounts:** rotated only after approval, from an explicit list, where the event takes a change list (section 2.4). Otherwise a manual checklist, following the event's notification process.
 - **Crown jewels** (domain admin, KRBTGT) rotate at set checkpoints, not continuously. KRBTGT needs two resets with a replication check between them; it is an approval item that Labyrinth carries out (design 11, section 5.1).
 
 ### 2.1 Application admin credentials
@@ -67,6 +67,18 @@ A password is held only in a variable of the module's own process. It is never p
 
 Remote mode (design 00, section 5) must give each host a terminal (`ssh -t`, or an interactive remoting session) for rotation modules, or run them locally; otherwise they are blocked, as above.
 
+### 2.4 The change list
+
+Some events score logins with accounts the team is expected to secure, and take new passwords through a change process of their own, such as a form or an upload of `username,password` lines that the scoring system applies at once (*Background*). Rotating such an account without that step breaks its check until scoring has the new password. So:
+
+- **The class.** The operator lists each such admin account in the protected set with class `scored-admin` (design 01, section 4). It is rotated in the first minute like any admin account, never locked or removed, and its rotation is kept once verified (section 2).
+- **One list, shown once.** At the end of the module, Labyrinth shows every password it set for a `scored-admin` account, and for user-level accounts a person approved, as `username,password` lines on the terminal, through the same helper as any new password (section 2.3). The operator copies them into the event's change process and the offline record, then types `recorded`. The list is never written to disk, the log or the manifest.
+- **One password per name.** A change process that takes a username without naming a host or service applies one password to that name everywhere. A name that exists on several hosts must therefore get the same new password on each, and the plan lists every host it covers. Without a control node to carry the password between hosts, it is derived on each host from the event seed and the account name (design 03, section 3), so every host computes the same value and the team can work out the whole list on its own machine before the event. Without a seed, the operator types the new password once per host, at the terminal.
+- **Submit at once.** A check that logs in with the account fails from the rotation until the event applies the list, so the operator submits it as soon as it is shown. The probes that log in with the account use the new password, held in memory (design 13, section 3).
+- **What it cannot know.** Whether the event applied the list. The next authenticated probe, or the scoreboard, shows it.
+
+User-level accounts on a domain stay on the domain checklist (design 11, section 5): a person resets them, and the same `username,password` format is used for the event's change process.
+
 ## 3. Username policy
 
 Choosing our own names or random ones is a trade-off:
@@ -79,10 +91,9 @@ Choosing our own names or random ones is a trade-off:
 
 **Recommendation:**
 
-- Keep built-in admin names unless the packet allows changes.
+- Never rename an account. Scoring, the officials and the event's change process know each account by its name, and events commonly forbid changing usernames (*Background*). Renames are not offered.
 - Add role-based operator accounts with strong credentials.
-- Rely on keys plus source restriction rather than name secrecy.
-- Renames are manual-only.
+- Rely on keys and strong passwords rather than name secrecy. Restrict by source only on ports that are not scored (design 01, section 6.1).
 
 ## 4. SSH key design
 
@@ -112,7 +123,7 @@ The same pattern (verify the package, quarantine unknown add-ons, confirm the ef
 
 SSH is often a scored service and the Red Team will attack it, so it is hardened, not left as found:
 
-- **Where SSH is scored:** password login is turned off for every account **except** the scoring accounts and employee accounts (design 01, section 4), which keep it through a `Match User` block, because the scoring engine and simulated employees log in with a password. If the event packet does not say which accounts employees use, the exception covers every ordinary (non-admin) account until officials confirm, and key-only applies to admin-class accounts only. `AllowUsers` lists only the scoring accounts, operator accounts and accounts the packet names. `MaxAuthTries` and `LoginGraceTime` are lowered, and failed logins raise alerts (design 10).
+- **Where SSH is scored:** password login is turned off for every account **except** the scoring accounts and employee accounts (design 01, section 4), which keep it through a `Match User` block, because the scoring engine and simulated employees log in with a password. If the event packet does not say which accounts employees use, the exception covers every ordinary (non-admin) account until officials confirm, and key-only applies to admin-class accounts only. `AllowUsers` lists only the scoring accounts, operator accounts and accounts the packet names. `MaxAuthTries` and `LoginGraceTime` are lowered, and failed logins raise alerts (design 10). The port stays where it is and open to every source: a scored SSH port is never moved, knocked or restricted by address (design 01, section 6.1).
 - **Where SSH is not scored:** key-only for everyone, and the port is open only to the admin source (design 01).
 - **Root** cannot log in over SSH (`PermitRootLogin no`).
 
@@ -215,6 +226,9 @@ A locked account can be unlocked again by an attacker with admin rights, so a lo
 - No run changes the maximum or minimum password age.
 
 - An account is deleted only after a person approves and a checkpoint shows every scored service passing, and its evidence is saved first.
+- A `scored-admin` account that exists on two lab hosts gets the same new password on both from the same event seed, and the change list shows one line for it, naming both hosts in the plan.
+- The change list appears on the terminal only, and nowhere under the data root; without a terminal, no `scored-admin` account is rotated.
+- No run renames an account.
 
 ## References
 

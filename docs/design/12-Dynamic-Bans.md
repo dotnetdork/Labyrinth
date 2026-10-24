@@ -1,6 +1,6 @@
 # 12. Dynamic Bans
 
-**Status:** Draft · reviewed 2026-10-02 · Phase: 🟪 Deceive · Priority: P2
+**Status:** Draft · reviewed 2026-10-23 · Phase: 🟪 Deceive · Priority: P2
 
 ## 1. Goal
 
@@ -15,6 +15,7 @@ Turn repeated hostile touches into automatic, expiring blocks, and keep the bloc
 | Tools must not deliberately break expected functionality; indiscriminately ending all outbound connections is given as an example (NCCDC, 2025, Rule 5.6.5). | Blocking one hostile address is targeted, not indiscriminate. Bans are per address and expiring. There is no "block everything" mode, and an outbound ban never covers a range (section 6.1). |
 | Team tools may not use outside resources apart from DNS (NCCDC, 2025, Rule 5.6.4). | Offenders are never reported to or checked against an outside reputation service. |
 | Officials make manual scoring checks, and traffic generators send ordinary user traffic, and suspicious traffic, from random source addresses; anything that interferes with the scoring engine or manual scoring checks is the team's responsibility (Midwest Collegiate Cyber Defense Competition [MWCCDC], 2025, Competition Rules 5, 6 and 14; *Verified* 2026-10-09). | Not every legitimate client of a scored service comes from the scoring engine's address, and a simulated user may fail a login. So failed logins on a scored service's login only raise an alert (section 3). A trap port, the planted key and a honey-account stay instant bans, because no legitimate check touches them. |
+| Some events penalize filtering a public service by source address (*Background*; design 01, section 6.1). | A ban blocks one hostile address on every port; it is never a rule that limits a scored port to some sources. |
 
 ## 3. Triggers
 
@@ -36,7 +37,7 @@ Loaded from run-time configuration before any ban is possible. If it is missing 
 
 - the scoring engine's addresses;
 - the officials' addresses, where known;
-- the control node and the operators' admin sources;
+- the control node and the operators' admin sources, as a range where their addresses come from DHCP (design 01, section 6.2);
 - the SIEM (Security Information and Event Management system) and any log collector;
 - the host's own gateway and its own addresses;
 - the host's outbound dependencies: the DNS resolvers and NTP servers in the run-time configuration, any web proxy or package mirror the event provides, and any address a scored service connects out to.
