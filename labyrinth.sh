@@ -1699,7 +1699,9 @@ apply_one() {
   fi
   if [[ "${RUN_SCORED[i]}" == true ]]; then
     # Only the check is needed here, so the loader runs in a subshell and
-    # its reason is printed under the ERROR line.
+    # its reason is printed under the ERROR line. A missing or empty list
+    # (2) does not block: the list is optional (design 01, section 7), and
+    # the firewall adapter checks that scored ports stay reachable.
     rc=0; why="$(lab_addrs_load scoring-allowlist 2>&1)" || rc=$?
     if (( rc == 1 )); then
       say ERROR "$name"
@@ -1710,13 +1712,6 @@ apply_one() {
       detail Fix "$FIX_LINE"
       more "$id"
       RUN_STATE[i]=error; return 40
-    fi
-    if (( rc == 2 )); then
-      say BLOCKED "$name"
-      detail Problem 'it can affect a scored service, and the scoring allowlist is missing or empty'
-      detail Fix "list the scoring addresses in $LAB_CONFIG_DIR/scoring-allowlist"
-      more "$id"
-      RUN_STATE[i]=blocked; return 20
     fi
     if (( ! HAVE_SERVICES )); then
       say BLOCKED "$name"

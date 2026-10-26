@@ -1765,7 +1765,9 @@ function Invoke-LabApplyOne {
         $M.State = 'manual'; return 0
     }
     if ($M.Scored) {
-        try { $allow = Read-LabAddressList 'scoring-allowlist' }
+        # A missing or empty list does not block: the list is optional (design 01,
+        # section 7), and the firewall adapter checks that scored ports stay reachable.
+        try { $null = Read-LabAddressList 'scoring-allowlist' }
         catch {
             Write-LabStatus 'ERROR' $name
             Write-LabDetail 'Problem' 'the scoring allowlist is malformed'
@@ -1776,13 +1778,6 @@ function Invoke-LabApplyOne {
             Write-LabDetail 'Fix' $FixLine
             Write-LabMore $id
             $M.State = 'error'; return 40
-        }
-        if ($null -eq $allow) {
-            Write-LabStatus 'BLOCKED' $name
-            Write-LabDetail 'Problem' 'it can affect a scored service, and the scoring allowlist is missing or empty'
-            Write-LabDetail 'Fix' "list the scoring addresses in $(Join-Path $env:LAB_CONFIG_DIR 'scoring-allowlist')"
-            Write-LabMore $id
-            $M.State = 'blocked'; return 20
         }
         if (-not $script:HaveServices) {
             Write-LabStatus 'BLOCKED' $name

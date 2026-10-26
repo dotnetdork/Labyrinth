@@ -43,7 +43,7 @@ Configuration is **data, never code**. It is never `source`d in bash or dot-sour
 |---|---|---|
 | `event.conf` | `KEY=value`, one per line | Single values: SIEM address, revert-timer minutes, ring size, package proxy and mirror. Planned: `BACKUP_PEER` (design 14, section 5), and `ALLOW_SERVICE_REPLACE` and `ALLOW_CONTAINERS`, each `no` or `yes:<reference>` naming the inject or local rule that allows it (design 22, section 3) |
 | `protected-accounts` | `account class` per line, optional `# reason`; class is `official`, `scoring`, `employee`, `operator`, `breakglass`, `service` or `builtin`, and (planned) `scored-admin`, an admin account a scoring check logs in with, rotated with a change list (design 05, section 2.4) | The protected set (design 01, section 4); the class decides what Labyrinth may do to the account |
-| `scoring-allowlist` | one address or CIDR per line | Scoring engine sources, applied before any deny rule. Planned: optional when every scored service is allowed from any source (design 19, section 5) |
+| `scoring-allowlist` | one address or CIDR per line | Scoring engine sources, applied before any deny rule. Optional for the runner; the firewall adapter still needs it until it checks for allows from any source (planned, design 19, section 5) |
 | `never-ban` | one address or CIDR per line | Addresses that bans must never touch (design 12) |
 | `outbound-allow` | `address proto port` per line; proto `tcp` or `udp`, port a number or `any` | Outbound destinations the first-minute default deny keeps open, beyond the scored services (design 01, section 6.1) |
 | `services` | `name proto host port expect` per line; no value begins with `-` except an `expect` of `-` alone, meaning no expected text | Scored services and what their probe expects. Planned: an `http` path, and the probe kinds that log in (design 13, section 3.1) |
@@ -180,7 +180,7 @@ The whole line must parse before help or the version is shown. A value option th
 6. From here, changes are made and recorded: the run's manifest starts (`run_start`, `breakglass_verified`), and the scored services are probed if the `services` file lists any (otherwise a warning). A run folder or manifest that cannot be written is an error (`40`).
 7. Each module that needs a change, in order:
    - `manual-only`: never applied; its plan is the checklist.
-   - `touches_scored: true`: blocked (`20`) without a non-empty `scoring-allowlist` and a `services` file; the run continues.
+   - `touches_scored: true`: blocked (`20`) without a `services` file, and an error (`40`) if `scoring-allowlist` is malformed; the run continues after a block. A missing or empty `scoring-allowlist` does not block (design 01, section 7).
    - `requires`: blocked if a required module in this run did not complete.
    - `approval`: items a pre-approval rule covers are approved; the runner shows the rest again, and the operator types the ids or categories to approve, or `--approve` gives them (Approval items, below); none means nothing changes.
    - The revert timer is (re)armed for `REVERT_MINUTES`, unless the module is `read-only`.
