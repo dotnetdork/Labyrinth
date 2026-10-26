@@ -1,6 +1,6 @@
 # 06. Status Feed and MOTD (Message of the Day)
 
-**Status:** Draft · reviewed 2026-10-02 · Phase: 🟦 Observe · Priority: P2
+Phase: 🟦 Observe · Priority: P2
 
 ## 1. Goal
 
@@ -36,9 +36,9 @@ flowchart LR
 
 *Figure: the control node pulls a few saved searches from Splunk and pushes a short status file to each host over the admin path it already uses, while the SIEM itself has no access to any host. Blue is the status feed and gray is the SIEM.*
 
-## 3. Cross-segment flows
+## 3. Network flows
 
-Competition networks are often split into segments behind separate firewalls. Only the minimum flows are opened: log forwarding to Splunk (design 10), and the control node's admin path. The MOTD feed adds no new flow, because it reuses the admin path. Any new flow is checked against the firewall plan and the scoring allowlist first (National Collegiate Cyber Defense Competition [NCCDC], 2025, Rule 4.11).
+Whether the network is flat or split into segments behind separate firewalls, only the minimum flows are opened: log forwarding to Splunk (design 10), and the control node's admin path. On a flat network they are allowed in each host's own firewall; where there are segments, they are also the only flows opened between them. The MOTD feed adds no new flow, because it reuses the admin path. Any new flow is checked against the firewall plan and the scoring allowlist first (National Collegiate Cyber Defense Competition [NCCDC], 2025, Rule 4.11).
 
 ## 4. Content rules
 

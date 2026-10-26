@@ -1,7 +1,5 @@
 # How Labyrinth Works
 
-**Status:** Draft · reviewed 2026-10-23
-
 This is the plain-language tour of Labyrinth. It explains what each part of the system is for and how the parts fit together, without assuming you already know networking or security tooling. The [implementation blueprint](Blueprint.md) and the [design specs](design/README.md) hold the precise details. Each section below links to the one that goes deeper.
 
 **Who this is for:** someone who knows what a server, an operating system and a network are, and can read a script, but who has not memorized commands or security terms. Every term is explained the first time it appears, and the [glossary](#glossary) at the end collects them.
@@ -69,7 +67,7 @@ The blueprint calls these the **invariants**: ideas that hold on every operating
 
 1. **Identity:** no shared, default or unchanged passwords; give each account only the access it needs.
 2. **Surface:** block all incoming connections by default and allow only what is scored, plus the team's own admin access.
-3. **Segmentation and egress:** keep parts of the network separated, and treat unexpected *outgoing* traffic as a sign that an attacker's program is calling home.
+3. **Segmentation and egress:** keep parts of the network separated (on a flat network, each host's own firewall is the boundary), and treat unexpected *outgoing* traffic as a sign that an attacker's program is calling home.
 4. **Observability:** send important logs to one central place and watch logins, sensitive files and new programs starting.
 5. **Deception:** anything that is not a real service is a tripwire, and every trip is recorded in one place.
 6. **Recoverability:** keep backups, known-good snapshots and an emergency way back in.
@@ -80,16 +78,16 @@ The blueprint calls these the **invariants**: ideas that hold on every operating
 ```mermaid
 flowchart TD
     OP(["Operator<br/>(a team member)"])
-    CN["Control node<br/>runs Labyrinth"]
     subgraph hosts["Managed hosts (Linux and Windows)"]
-        H["Each host:<br/>hardened settings,<br/>traps, login banner"]
+        H["Each host runs Labyrinth itself:<br/>hardened settings,<br/>traps, login banner"]
     end
+    CN["Control node (optional)<br/>read-only checks,<br/>health monitor"]
     SIEM[("SIEM<br/>central log store")]
     TL[("Trip log<br/>every trap alarm")]
     REP["Incident report drafts"]
     WT(["White Team<br/>(officials)"])
-    OP -->|"reviews the plan,<br/>types to confirm"| CN
-    CN -->|"runs modules over<br/>the admin connection"| H
+    OP -->|"reviews the plan,<br/>types to confirm"| H
+    CN -.->|"read-only checks over<br/>the admin connection"| H
     H -->|"forward logs"| SIEM
     H -->|"a trap is touched"| TL
     TL --> REP
@@ -110,11 +108,12 @@ flowchart TD
     style hosts fill:#f8fafc,stroke:#94a3b8,color:#1e293b
 ```
 
-*Figure: the operator drives Labyrinth from one control node, which changes the hosts over the team's existing admin connection; hosts send logs to the SIEM and trap alarms to the trip log, and reports go to officials only after a person approves them. Amber marks people and gray the log store.*
+*Figure: an operator runs Labyrinth on each host, and an optional control node runs the jobs that look across hosts, such as checks and the health monitor; hosts send logs to the SIEM and trap alarms to the trip log, and reports go to officials only after a person approves them. Amber marks people and gray the log store.*
 
-- The **control node** is the one machine the team runs Labyrinth from. It sends every change to the other hosts over the team's admin connection.
-- The **SIEM** (Security Information and Event Management system; Splunk in the reference setup) collects logs from every host, so the evidence survives even if a host is wiped.
-- Nothing in the diagram sends data to an outside service. The competition rules forbid team tools from using outside resources other than DNS lookups, and give cloud services as the example (see [section 5](#5-the-competition-rules-that-shape-everything)). The only outside traffic is installing public software from the hosts' own software sources, after the lockdown ([design 20](design/20-Packages-and-Third-Party-Tools.md)).
+- **Each host runs Labyrinth itself** (local mode). This is the standard way to use it: nothing holds access to every host at once, and it keeps working if the network between hosts is cut.
+- The **control node** is an optional, hardened machine for the jobs that look across hosts: read-only checks, the health monitor, the status feed and copies of restore points kept off each host. Making changes from it (remote mode) comes later, once the read-only checks have run safely.
+- The **SIEM** (Security Information and Event Management system; for example Splunk) collects logs from every host, so the evidence survives even if a host is wiped.
+- Nothing in the diagram sends data to an outside service. The competition rules forbid team tools from using outside resources other than DNS lookups, and give cloud services as the example (see [section 5](#5-the-competition-rules-that-shape-everything)). Labyrinth itself needs only its own public release. Everything else that leaves the network is an optional extra, after the lockdown and only when its source answers: public software from the hosts' own software sources, a pinned download such as Sysmon, and a refreshed list of known-exploited flaws ([design 20](design/20-Packages-and-Third-Party-Tools.md)).
 
 ---
 
@@ -130,7 +129,7 @@ Labyrinth is organized so that new abilities can be added without rewriting the 
 
 When you point Labyrinth at a group of hosts, it looks up each host's profile, works out the modules to run, and runs them phase by phase.
 
-It is written in **bash** for Linux and **PowerShell** for Windows, because both are already installed on those systems. Nothing extra has to be downloaded for Labyrinth itself to run. Once the hosts are locked down, it installs the extra tools the team chose, from public sources only, and carries on without them if no source answers ([design 20](design/20-Packages-and-Third-Party-Tools.md)). Labyrinth can run directly on the host it changes, or from a control node that sends the same commands to many hosts and collects the results; the first way still works if the second is cut off. Network appliances (routers and firewall boxes) are handled with prepared configuration templates and a written checklist for a person to follow, not by remote automation.
+It is written in **bash** for Linux and **PowerShell** for Windows, because both are already installed on those systems. Nothing extra has to be downloaded for Labyrinth itself to run. Once the hosts are locked down, it installs the extra tools the team chose, from public sources only, and carries on without them if no source answers ([design 20](design/20-Packages-and-Third-Party-Tools.md)). Labyrinth runs directly on the host it changes; this local mode is the standard way to use it. A remote mode, which sends the same commands to many hosts from a control node and collects the results, comes later and starts read-only. Network appliances (routers and firewall boxes) are handled with prepared configuration templates and a written checklist for a person to follow, not by remote automation.
 
 ### 3.2 The life of one module
 
@@ -481,7 +480,7 @@ Some outside repositories are kept as **reference only** ([design 08](design/08-
 
 **How it works.** Tools come only from public sources every team can reach: the system's own software sources, a mirror or proxy the event provides, or a public download whose exact file is fixed in the release. Before installing, Labyrinth checks that the install would not remove or replace anything already there. New services stay switched off until their own part of Labyrinth sets them up. Every install is recorded. If no source can be reached, the installs are skipped and the lockdown stands.
 
-**What it will never do.** Upgrade the whole system, add a new software source, use a private server or a paid one, or install a container system unless the event allows containers (section 4.21).
+**What it will never do.** Upgrade the whole system, add a new software source (apart from EPEL, an optional extra on RHEL-family hosts), use a private server or a paid one, or install a container system unless the event allows containers (section 4.21).
 
 ### 4.21 Rebuilding a service, only where allowed (sustain)
 
@@ -546,7 +545,7 @@ Controls are ranked from **P0** (do first) to **P3** (do last): 🔴 P0 · 🟠 
 | Break-glass | A sealed emergency login kept in the offline record, used only when normal access fails. |
 | Canary | A bait file whose only purpose is to raise an alarm when someone opens it. |
 | Change list | The `username,password` lines Labyrinth prints once after changing scored-admin passwords, for the team to hand in through the event's own process. |
-| Control node | The one machine the team runs Labyrinth from. |
+| Control node | An optional, hardened machine for the jobs that look across hosts: read-only checks, the health monitor, the status file and off-host restore copies. Hardening runs on each host itself until remote apply exists. |
 | CVE | Common Vulnerabilities and Exposures: a public ID for a known security flaw. |
 | Default-deny | A firewall setting that blocks every incoming connection unless a rule allows it. |
 | Event seed | The secret random value, kept offline, from which all trap names and ports are derived. |

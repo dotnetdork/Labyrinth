@@ -1,6 +1,6 @@
 # 07. Cleanup and Tool Integrity
 
-**Status:** Draft · reviewed 2026-10-23 · Phase: 🟩 Sustain · Priority: P1
+Phase: 🟩 Sustain · Priority: P1
 
 ## 1. Two goals
 

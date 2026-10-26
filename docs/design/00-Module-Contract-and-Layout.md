@@ -1,7 +1,5 @@
 # 00. Module Contract and Repository Layout
 
-**Status:** Draft · reviewed 2026-10-09
-
 ## 1. Goal
 
 One main Labyrinth program enables each phase. Each phase is an entry script that calls small, single-purpose modules. Adding a capability means adding a folder, not editing the core, which is how the design stays scalable.
@@ -196,8 +194,8 @@ Rules for module authors:
 
 Labyrinth runs in two modes that share the same modules:
 
-- **Local mode.** `labyrinth.sh` or `labyrinth.ps1` runs on the host it changes. This is the base: it needs nothing but the host itself, and it is the fallback when remote access is lost.
-- **Remote mode.** `labyrinth remote plan <phase> --group <group>` or `labyrinth remote apply <phase> --group <group>` runs on a control node. For each target it copies the release, checks it (design 07, section 5), runs the *same* local command over SSH (Linux) or PowerShell remoting or OpenSSH (Windows), and brings back the logs and the run manifest. It must cope with being cut off, because the lockout rotates the very credentials and SSH settings it connects with.
+- **Local mode.** `labyrinth.sh` or `labyrinth.ps1` runs on the host it changes. This is the standard way to run Labyrinth: it needs nothing but the host itself, nothing holds access to every host at once, and it still works when remote access is lost.
+- **Remote mode.** Built after local mode, read-only first: `remote plan` comes before `remote apply`, which follows only once the read-only part has run safely in the lab. The control node holds access to every host, so it is a hardened server (Blueprint §6.1). `labyrinth remote plan <phase> --group <group>` or `labyrinth remote apply <phase> --group <group>` runs on a control node. For each target it copies the release, checks it (design 07, section 5), runs the *same* local command over SSH (Linux) or PowerShell remoting or OpenSSH (Windows), and brings back the logs and the run manifest. It must cope with being cut off, because the lockout rotates the very credentials and SSH settings it connects with.
 - **Keeping a run in remote mode.** A local apply ends by asking the operator to type `keep`. In remote mode the control node answers for each host, from what it can check itself: it keeps the host's run (`keep <run>`) only when, after the run, it can still log in to the host over the admin path with a new connection, and no scored service on that host that passed its probe from the control node before the run fails it after. This is the same rule as the checks after each module: a service the Red Team had already broken does not undo the team's changes. Otherwise it keeps nothing, and the revert timer rolls the host back, except the modules already kept once they verified (section 4, rule 9). Either way the control node prints and records which hosts it kept and why. The break-glass check at the console still follows the run (design 01, section 6.3); an operator who cannot log in there runs `rollback` for that host.
 
   Acceptance tests for remote mode, written when it is built (Roadmap, stage 5):
@@ -270,11 +268,11 @@ Nothing else changes.
 ## 9. Decisions
 
 - **Ansible or native scripts.** Resolved: native scripts. They work in local mode with nothing installed, and the remote mode (section 5) gives the reach Ansible would have given.
-- **Windows log shipping method.** Resolved (2026-10-05): the Splunk universal forwarder where the host already has it, otherwise a PowerShell script posting to Splunk's HTTP Event Collector. Nothing is installed. See design 10, section 4.
-- **Approvals in remote mode.** Resolved (2026-10-05): approvals can be passed with `--approve` (`-Approve`), and each approval is tied to the plan by a fingerprint, so an item that changed after the plan is refused. The prompt stays the default (Conventions, section 3.1).
-- **Pre-approval.** Resolved (2026-10-09): a first-minute run needs some items approved before anyone has seen the plan, such as a security update for a named scored package. `--approve` cannot carry them, because its entries need the fingerprint from a plan. So a module declares the categories that may be pre-approved (`pre_approvable`), and the run-time `pre-approved` file names the items or categories the team approved before the event (Conventions, section 3.1).
-- **Build order.** Resolved (2026-10-05): remote mode is built right after the P0 lockout modules work locally (`docs/Roadmap.md`).
-- **Where real-host tests run.** Resolved (2026-10-05): CI runners for what they can host, a local lab of virtual machines for the rest (Conventions, section 9).
+- **Windows log shipping method.** Resolved: the Splunk universal forwarder where the host already has it, otherwise a PowerShell script posting to Splunk's HTTP Event Collector. Nothing is installed. See design 10, section 4.
+- **Approvals in remote mode.** Resolved: approvals can be passed with `--approve` (`-Approve`), and each approval is tied to the plan by a fingerprint, so an item that changed after the plan is refused. The prompt stays the default (Conventions, section 3.1).
+- **Pre-approval.** Resolved: a first-minute run needs some items approved before anyone has seen the plan, such as a security update for a named scored package. `--approve` cannot carry them, because its entries need the fingerprint from a plan. So a module declares the categories that may be pre-approved (`pre_approvable`), and the run-time `pre-approved` file names the items or categories the team approved before the event (Conventions, section 3.1).
+- **Build order.** Resolved: local mode is the standard. Remote mode comes after the P0 lockout modules work locally, read-only `remote plan` first, and `remote apply` only once that has run safely in the lab (`docs/Roadmap.md`).
+- **Where real-host tests run.** Resolved: CI runners for what they can host, a local lab of virtual machines for the rest (Conventions, section 9).
 
 ## References
 

@@ -1,6 +1,6 @@
 # 20. Packages and Third-Party Tools
 
-**Status:** Draft · reviewed 2026-10-23 · Phase: All · Priority: P0
+Phase: All · Priority: P0
 
 ## 1. Goal
 
@@ -15,7 +15,7 @@ Get the tools the team needs onto each host in the minutes after the first-minut
 | Team tools are declared and frozen (NCCDC, 2025, Rule 5.6.2). | Every package name is in the release, and every downloaded file is pinned by version and SHA-256 in the release, so what runs at the event is what officials approved. |
 | Tools must not deliberately break expected functionality (NCCDC, 2025, Rule 5.6.5). | Only listed packages, never a full upgrade, and an install that would remove or replace a package is refused (section 4). |
 | Scored services may not be migrated or containerized unless an inject or the local competition rules allow it (NCCDC, 2025, Rule 4.14). | No container runtime is installed unless design 22's `ALLOW_CONTAINERS` option is on, and then only Podman or Docker from the host's own repositories. Nothing here moves a scored service. |
-| Events differ on what the hosts can reach: one region's 2025 qualifier packet describes a web proxy that includes the team's declared repository (Midwest Collegiate Cyber Defense Competition [MWCCDC], 2025; *Provisional*), and elsewhere hosts may reach the internet directly or not at all (*Background*). | The proxy address is run-time configuration. When no source is reachable, installs are skipped and the lockdown still stands (section 4). |
+| Events differ on what the hosts can reach: some provide a web proxy that includes the team's declared repository, some let hosts reach the internet directly, and some allow no outside access at all (*Background*; Blueprint §5). | The proxy address is run-time configuration. When no source is reachable, installs are skipped and the lockdown still stands (section 4). |
 
 ## 3. Sources, in order
 
@@ -24,7 +24,7 @@ Get the tools the team needs onto each host in the minutes after the first-minut
 3. **An event mirror or proxy.** Run-time `event.conf` keys `PROXY` (for example `http://proxy.example:3128`) and `MIRROR`. Labyrinth passes the proxy to the package manager for that command only and never writes it into the host's configuration.
 4. **A pinned public download**, only for a tool whose license forbids redistribution (for example the Sysinternals tools). The catalog holds the URL, the version and the SHA-256. The file goes to Labyrinth's temporary path, is checked against the hash before use, and is discarded on a mismatch.
 
-Labyrinth never adds a repository, a signing key or a package source, so a tool that the host's repositories lack (fail2ban on a RHEL-family host without EPEL, for example) is skipped, and the module that wanted it uses its fallback (design 12, section 6).
+Labyrinth adds no repository, signing key or package source, with one exception. On a RHEL-family host whose profile asks for EPEL (Extra Packages for Enterprise Linux), and only when EPEL can be reached, it installs the `epel-release` package from the host's own repositories, which adds the EPEL repository and its key. Rocky Linux and AlmaLinux carry that package; where the host's repositories do not, EPEL is skipped. It is an optional extra, recorded like any install and reported as skipped when it cannot be reached. Otherwise a tool that the host's repositories lack (fail2ban on a RHEL-family host without EPEL, for example) is skipped, and the module that wanted it uses its fallback (design 12, section 6).
 
 ## 4. How an install runs
 
@@ -52,7 +52,7 @@ Security updates use the same sources and the same checks. Design 21 ranks them,
 
 ## 6. Catalog
 
-Licenses were read from each project's repository on 2026-10-09 (*Verified*), except where marked. "Use" names the design that would use the tool. A tool not yet listed in a profile is not installed.
+Licenses were read from each project's repository (*Verified*), except where marked. "Use" names the design that would use the tool. A tool not yet listed in a profile is not installed.
 
 **Linux, from the host's repositories.**
 
@@ -82,7 +82,7 @@ Licenses were read from each project's repository on 2026-10-09 (*Verified*), ex
 | PersistenceSniper | Windows persistence hunting: run keys, services, scheduled tasks, WMI and more | 17 | MIT with the Commons Clause (no commercial use) |
 | Hayabusa, Chainsaw | Search Windows event logs with Sigma rules for the incident record | 02, 10 | AGPL-3.0, GPL-3.0 |
 | WES-NG, with its definitions file taken at release | Matches a Windows host's `systeminfo` to the updates it is missing and the vulnerabilities they fix, offline | 21 | BSD-3-Clause |
-| CISA known-exploited catalog, dated snapshot | Ranks findings | 15, 21 | Public U.S. government data (*Background*) |
+| CISA known-exploited catalog, dated snapshot (refreshed at the event only as an optional extra, design 21, section 3) | Ranks findings | 15, 21 | Public U.S. government data (*Background*) |
 
 **Pinned public downloads.**
 
@@ -109,7 +109,7 @@ Licenses were read from each project's repository on 2026-10-09 (*Verified*), ex
 ## 7. What it will never do
 
 - Run a full upgrade or a distribution upgrade.
-- Add a repository, a signing key or a package source.
+- Add a repository, a signing key or a package source, apart from EPEL through `epel-release` (section 3).
 - Install a container runtime.
 - Remove, downgrade or replace a package.
 - Use a private server, cloud drive or private repository as a source.
@@ -125,9 +125,8 @@ Licenses were read from each project's repository on 2026-10-09 (*Verified*), ex
 - A pinned download with a wrong SHA-256 is discarded and not run.
 - `rollback` stops and disables the services the install brought, and the packages stay installed.
 - With the proxy set in `event.conf`, the install goes through it, and the host's own package configuration is unchanged afterwards.
+- On a RHEL-family lab host whose profile asks for EPEL, `epel-release` is installed from the host's own repositories and recorded; with EPEL unreachable, or `epel-release` not offered, EPEL is reported as skipped, nothing else is added, and the module exits `0`.
 
 ## References
-
-Midwest Collegiate Cyber Defense Competition. (2025). *2025 Midwest Collegiate Cyber Defense Competition qualifier team packet* [PDF]. https://brazil.minnesota.edu/ccdc/ccdc-2025/2025MWCCDCQTeamPack.pdf
 
 National Collegiate Cyber Defense Competition. (2025, December 10). *Rules and requirements*. Retrieved October 9, 2026, from https://www.nationalccdc.org/rules.html

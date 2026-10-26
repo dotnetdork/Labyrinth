@@ -1,6 +1,6 @@
 # 11. Windows and Active Directory Hardening
 
-**Status:** Draft · reviewed 2026-10-23 · Phase: 🟥 Lock out · Priority: P0 (credentials, firewall), P1 (the rest)
+Phase: 🟥 Lock out · Priority: P0 (credentials, firewall), P1 (the rest)
 
 ## 1. Goal
 
@@ -13,7 +13,7 @@ So this spec splits the work by blast radius. A change that affects one host is 
 | Rule | Effect |
 |---|---|
 | Events differ on which accounts scoring logs in with (design 05, section 1). | Automation rotates only the built-in and administrator-class accounts. One a check logs in with is a `scored-admin` account, whose new password goes into the change list (design 05, section 2.4). |
-| Scored services have used AD users, for example for POP3 (Post Office Protocol 3) mail logins (Midwest Collegiate Cyber Defense Competition [MWCCDC], 2025, Functional Services section; *Provisional*). | Domain-wide resets, domain account changes and domain policy changes are done by a person from a checklist (section 5). |
+| Scored services have used AD users, for example for POP3 (Post Office Protocol 3) mail logins (*Background*). | Domain-wide resets, domain account changes and domain policy changes are done by a person from a checklist (section 5). |
 | Tools must not deliberately break expected functionality (National Collegiate Cyber Defense Competition [NCCDC], 2025, Rule 5.6.5). | Every change comes from an explicit list and skips the protected set. |
 | Officials must be given access on request (NCCDC, 2025, Rule 4.1). | When an official asks, the captain gives them a working login (design 05, section 5). Remote Desktop and firewall restrictions still allow the admin source and any official sources named in the event packet. |
 | Scoring is based partly on controlling and preventing unauthorized access (NCCDC, 2025, Scoring section), and scored services are a primary Red Team target. | Where RDP or WinRM is itself scored, it stays open to every source and is hardened in place (NLA, logging and the protocol settings below), never limited to the admin source or the scoring engine (design 01, section 6.1). |
@@ -104,7 +104,7 @@ The report names the account, file or field and why it was flagged. It never pri
 
 ### 3.3 Registry reference
 
-The keys and values below were checked against Microsoft's documentation in the 2026-10-05 review (Microsoft, 2025, 2026, n.d.-a to n.d.-f), except the rows marked *Background*, which are widely documented but were not re-checked at the source. Every value is a `REG_DWORD` unless the table says otherwise. `HKLM` is `HKEY_LOCAL_MACHINE`, and `Lsa` stands for `HKLM\SYSTEM\CurrentControlSet\Control\Lsa`.
+The keys and values below were checked against Microsoft's documentation (Microsoft, 2025, 2026, n.d.-a to n.d.-f), except the rows marked *Background*, which are widely documented but were not re-checked at the source. Every value is a `REG_DWORD` unless the table says otherwise. `HKLM` is `HKEY_LOCAL_MACHINE`, and `Lsa` stands for `HKLM\SYSTEM\CurrentControlSet\Control\Lsa`.
 
 | Setting | Key | Value set |
 |---|---|---|
@@ -221,7 +221,5 @@ Microsoft. (n.d.-d). *How to manage the changes in Netlogon secure channel conne
 Microsoft. (n.d.-e). *Network access: Do not allow anonymous enumeration of SAM accounts and shares*. Retrieved October 5, 2026, from https://learn.microsoft.com/en-us/previous-versions/windows/it-pro/windows-server-2012-r2-and-2012/jj852184(v=ws.11)
 
 Microsoft. (n.d.-f). *User Account Control and remote restrictions*. Retrieved October 5, 2026, from https://learn.microsoft.com/en-us/troubleshoot/windows-server/windows-security/user-account-control-and-remote-restriction
-
-Midwest Collegiate Cyber Defense Competition. (2025). *2025 Midwest Collegiate Cyber Defense Competition qualifier team packet* [PDF]. https://brazil.minnesota.edu/ccdc/ccdc-2025/2025MWCCDCQTeamPack.pdf
 
 National Collegiate Cyber Defense Competition. (2025, December 10). *Rules and requirements*. Retrieved October 2, 2026, from https://www.nationalccdc.org/rules.html

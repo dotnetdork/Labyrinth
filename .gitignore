@@ -9,8 +9,14 @@ prompts/
 
 # Agentic workflows
 .gemini
-.claude
 .agent
+
+# Claude Code: share the agents, commands and settings; keep personal files local
+.claude/*
+!.claude/agents/
+!.claude/commands/
+!.claude/settings.json
+CLAUDE.local.md
 
 # Built manuals (tools/manual/build.sh)
 build/

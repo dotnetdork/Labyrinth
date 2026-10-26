@@ -1,6 +1,6 @@
 # 04. Baseline and Integrity
 
-**Status:** Draft · reviewed 2026-10-23 · Phase: 🟦 Observe · Priority: P0 (first baseline), P1 (continuous)
+Phase: 🟦 Observe · Priority: P0 (first baseline), P1 (continuous)
 
 ## 1. Goal
 

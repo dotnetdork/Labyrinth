@@ -9,7 +9,7 @@ Work goes top to bottom. A stage starts when the one above it is merged, except 
 | # | Work | Why it comes here |
 |---|---|---|
 | 1 | **P0 lockout modules** (stage 4) | They take control back in the first minutes. Everything else assumes the attacker has been locked out. |
-| 2 | **Remote mode** (stage 5) | A first-minute run on every host at once needs it. Built as soon as the lockout works on one host. |
+| 2 | **Remote checks** (stage 5) | Read-only `remote plan` shows every host's plan from one hardened control node without changing anything. Changes still run locally on each host; `remote apply` follows once the read-only part has run safely in the lab. |
 | 3 | **Observe and checkpoints** (stage 6) | Without logging, the later traps and checks cannot be seen. Checkpoints guard the scored services from here on. |
 | 4 | **Sustain and hardening** (stage 7) | Service packs, patching and the flaw tracker keep scored services up and close known holes. |
 | 5 | **Reporting and cleanup** (stage 8) | Incident reports earn points, and cleanup must work before the tool is used at an event. |
@@ -33,8 +33,8 @@ Work goes top to bottom. A stage starts when the one above it is merged, except 
 
 ## 2. Rules for every branch
 
-- One component per branch, named `phase-<n>/<name>`.
-- Re-read the spec first. If it is wrong or vague, fix it with a review-log entry before writing code.
+- One component per branch, named `phase-<n>/<name>`, or `docs/<name>` for documentation only.
+- Re-read the spec first. If it is wrong or vague, fix it in the same branch before writing code, and say why in the commit message.
 - Write tests first, from the spec's acceptance-test list. Every module gets the negative test: protected accounts and scored services are untouched.
 - Make the change in bash and PowerShell together wherever the spec covers both platforms.
 - `tests/lint/guard.sh` and CI must be clean. A real-host acceptance test names where it runs: a CI runner or the lab (`docs/lab/README.md`).
@@ -80,11 +80,12 @@ Each module ships its read-only `check` and `plan` first. The branches are liste
 
 ### Stage 5: remote mode
 
-Built right after the P0 lockout works locally, so the lockout reaches every host quickly. A first-minute run on every host at once depends on it.
+Local mode is the standard, so the lockout already works on every host without this stage. Remote mode is built read-only first, from a hardened control node (Blueprint §6.1), and `remote apply` only once `remote plan` has run safely in the lab.
 
 | Branch | Spec | Delivers |
 |---|---|---|
-| `phase-5/remote` | 00 §5, 07 §5 | `remote plan` and `remote apply --group <group>` over SSH and PowerShell remoting: it copies and checks the release, runs the local command, and brings back logs and manifests. It collects approval items from the plan and passes each host its own `--approve` entries. It copes with losing the connection while credentials and SSH settings rotate. It keeps a host's run only when it can still log in over the admin path and no scored service that passed before the run fails after it; otherwise the timer reverts that host, except the modules kept once they verified (design 00, section 5) |
+| `phase-5/remote-plan` | 00 §5, 07 §5 | `remote plan --group <group>` over SSH and PowerShell remoting: it copies and checks the release, runs the local `plan`, and brings back the plans and logs. It changes nothing |
+| `phase-5/remote-apply` | 00 §5 | `remote apply --group <group>`, after `remote plan` has run safely in the lab: it runs the local `apply` and brings back logs and manifests. It collects approval items from the plan and passes each host its own `--approve` entries. It copes with losing the connection while credentials and SSH settings rotate. It keeps a host's run only when it can still log in over the admin path and no scored service that passed before the run fails after it; otherwise the timer reverts that host, except the modules kept once they verified (design 00, section 5) |
 
 ### Stage 6: observe and checkpoints
 
@@ -135,32 +136,33 @@ Built right after the P0 lockout works locally, so the lockout reaches every hos
 
 `phase-x/appliance-runbooks` (design 16) holds templates and runbooks only. It depends on nothing above.
 
-## 4. Decisions settled in reviews
+## 4. Settled decisions
 
-### 4.1 The 2026-10-05 review
+### 4.1 Approvals, logs, build order and tests
 
 | Question | Decision | Recorded in |
 |---|---|---|
 | How are approvals given? | Typed at the prompt by default. Each item carries a fingerprint from the plan, and `--approve` passes approvals without the prompt for remote mode. An item that changed since the plan is refused. | Conventions §3.1 |
 | How do Windows hosts ship logs? | The Splunk universal forwarder where the host already has one; otherwise a PowerShell script posting to Splunk's HTTP Event Collector. No forwarder is installed. | Design 10 §4, design 00 §9 |
-| When is remote mode built? | Right after the P0 lockout works locally (stage 5). | This page, design 00 §9 |
+| How is Labyrinth run, and when is remote mode built? | Local mode is the standard: each host's operator runs it on that host. Remote mode comes after the P0 lockout works locally, read-only `remote plan` first, and `remote apply` only once that has run safely in the lab (stage 5). | Blueprint §6.1, this page, design 00 §5, §9 |
 | Where do real-host tests run? | CI runners for Ubuntu, Windows Server and a single domain controller; a local lab for everything else, before each release. | Conventions §9, `docs/lab/README.md` |
 | Are the Windows registry values right? | Checked against Microsoft's documentation. Netlogon enforcement is now report-only, because patched domain controllers enforce it anyway. LSA protection is offered only in a form that rollback can remove. LDAP and SMB signing defaults on Windows Server 2025 are reported. The removal of the PowerShell 2.0 engine is noted. | Design 11 §3–§3.3, design 10 |
 
-### 4.2 The 2026-10-08 and 2026-10-09 reviews
+### 4.2 Installs, the first minute and automation
 
 | Question | Decision | Recorded in |
 |---|---|---|
-| May Labyrinth install software? | Yes, public software only, after the first-minute lockdown, through the `packages` module: the host's repositories, an event mirror or proxy, or a pinned public download. Rule 5.6.4's example is cloud services and cloud processing, which installing a package is not. Never a private source (Rule 5.2), a new repository or a full upgrade. | Design 20, CLAUDE.md |
+| May Labyrinth install software? | Yes, public software only, after the first-minute lockdown, through the `packages` module: the host's repositories, an event mirror or proxy, or a pinned public download. Rule 5.6.4's example is cloud services and cloud processing, which installing a package is not. Never a private source (Rule 5.2), a new repository (apart from EPEL, design 20 §3) or a full upgrade. | Design 20, CLAUDE.md |
+| What does Labyrinth need from the network? | Only its own public release. Packages, pinned downloads such as Sysmon, EPEL and refreshed lists of known flaws are optional extras: each runs after the lockdown when its source answers, and is reported as skipped otherwise. | Blueprint §6.1, design 20 |
 | What runs in the first minute? | Lock down with what the host has (rotate, keys, sessions, default-deny inbound and outbound), then install, then sweep, then reopen outbound to the normal allowlist. | Design 01 §6, §6.1 |
 | How does a first-minute run avoid prompts? | The existing options answer them (`--confirm-group`, `--break-glass`, `--approve`), and pre-approval rules cover the items the team approved before the event. Revert timers, probes, the scoring allowlist and the protected set stay. No command-line change is needed. | Design 01 §6.3 |
 | Can a ban block outbound traffic? | Yes. Every ban drops the address in both directions; an address from the unusual-outbound search is banned outbound only after approval. | Design 12 §6.1 |
 | How are known flaws handled? | Found and ranked locally, tracked until closed, and closed by mitigation or patch. A scored service is never turned off to close a flaw. | Design 21 |
-| Are design choices labeled as rules? | No longer. Watching abused tools, manual Group Policy, manual DNS on the domain controller, the candidate list and keeping login shells are design choices, and the docs now say so. | Design review log |
+| Are design choices labeled as rules? | No longer. Watching abused tools, manual Group Policy, manual DNS on the domain controller, the candidate list and keeping login shells are design choices, and the docs now say so. | CLAUDE.md, Blueprint |
 | How are items approved before the event? | `--approve` needs a fingerprint from a plan, so it could not carry them. A module declares the categories that are safe to pre-approve (`pre_approvable`), and the run-time `pre-approved` file names the items or categories the team approved. Each item is still checked against this run's plan, the probes and the revert timer. | Conventions §2.2, §3.1; design 00 §4 |
 | Which more steps run without a person? | Pre-approved security updates for named scored packages, default application passwords and settings tested on the event's versions; keeping a host's run in remote mode once the admin login works and no scored service regressed; scheduled read-only checkpoints that alert on new findings; and the KRBTGT reset, now carried out by Labyrinth after approval. Deleting accounts, restores, ordinary users' passwords, Group Policy, DNS on the domain controller, appliances, medium-confidence outbound bans and app settings that change what scoring sees stay with a person. | Designs 00 §5, 05 §2.1, 11 §5.1, 13 §5, 15 §4, 18 §4 |
 
-### 4.3 The 2026-10-23 review
+### 4.3 Scoring, sources and service replacement
 
 | Question | Decision | Recorded in |
 |---|---|---|
@@ -169,15 +171,15 @@ Built right after the P0 lockout works locally, so the lockout reaches every hos
 | Is the scoring allowlist still required? | Only where given. The gate passes when every scored service is allowed from any source. | Designs 01 §7, 19 §5 |
 | Do probes log in? | Where the operator gives a probe account at run time; it is never stored. Otherwise they connect only, and the plan says so. | Design 13 §3.1 |
 | May a scored service be rebuilt or containerized? | Only where an inject or the local competition rules allow it (Rule 4.14), through design 22, off by default and named in `event.conf`. | Design 22 |
-| Which rule numbers apply? | The rules page has ten sections: misleading scoring is 9.3, incident reports 9.4, materials 8.5. The 2026-10-08 renumbering was wrong and is reversed. | Design review log |
+| Which rule numbers apply? | The rules page has ten sections: misleading scoring is 9.3, incident reports 9.4, materials 8.5. | Blueprint, design README |
 
 ## 5. Open: questions for competition officials
 
-Short questions, each answerable in a line. The team sends them with the tool's declaration and records each answer in the design review log.
+Short questions, each answerable in a line. The team sends them with the tool's declaration and records each answer in the spec it affects.
 
 1. **Configuration after the freeze.** The frozen tool reads a folder of event facts that we fill in at the event: scoring engine addresses, host names, account names and the list of hosts. The files hold no code and cannot add features. Is filling them in after the freeze allowed (NCCDC, 2025, Rule 5.6.2)? Design 00, section 6 and Conventions, section 2.2 are labeled *Provisional* until the answer arrives.
 2. **Public packages.** After locking a host down, the tool installs a fixed list of free, public packages, such as auditd, from the host's own repositories or the event's mirror or proxy. Please confirm this is allowed (Rules 5.1, 5.2 and 5.6.4). The install feature is named in the declaration (design 20, section 2).
-3. **A public vulnerability database.** Trivy's database is a public file that changes daily, so it cannot be pinned by hash. All matching runs on the team's own hosts. May it be downloaded at the event? Until the answer arrives, Trivy stays out of the shipped profiles (design 21, section 6).
+3. **A public vulnerability database.** Trivy's database and the CISA known-exploited catalog are public files that change daily, so they cannot be pinned by hash. All matching runs on the team's own hosts. May it be downloaded at the event? Until the answer arrives, Trivy stays out of the shipped profiles (design 21, section 6).
 4. **Fetching the release at the event.** Where a host or a console reaches the internet, the operator downloads the declared release archive from its public release page and checks its SHA-256 against the value given with the declaration before unpacking it. Please confirm this is allowed (Rules 5.1 and 5.6.2) (design 07, section 5.2).
 
 ## References

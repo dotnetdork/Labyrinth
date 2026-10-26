@@ -1,14 +1,14 @@
 # 05. Credentials and SSH Keys
 
-**Status:** Draft · reviewed 2026-10-23 · Phase: 🟥 Lock out · Priority: P0
+Phase: 🟥 Lock out · Priority: P0
 
 ## 1. Rules that shape it
 
 | Rule | Effect |
 |---|---|
-| Events differ on which accounts scoring logs in with. One region's 2025 packet said administrator-class passwords are not used for scoring and other user passwords need a notification process (Midwest Collegiate Cyber Defense Competition [MWCCDC], 2025, Rule 13); other events score admin logins too and take new passwords through a change process of their own (*Background*). | No account is assumed to be unscored. Automation rotates admin-class credentials; an admin account a check logs in with is a `scored-admin` account, and its new password goes into a change list (section 2.4). User-level rotation waits for approval. |
+| Events differ on which accounts scoring logs in with. Some say administrator-class passwords are not used for scoring and other user passwords need a notification process; others score admin logins too and take new passwords through a change process of their own (*Background*; Blueprint §5). | No account is assumed to be unscored. Automation rotates admin-class credentials; an admin account a check logs in with is a `scored-admin` account, and its new password goes into a change list (section 2.4). User-level rotation waits for approval. |
 | Officials must get access on request (National Collegiate Cyber Defense Competition [NCCDC], 2025, Rule 4.1) | When an official asks, the captain gives them a working credential from the team's offline record or logs in for them. No standing account or key is created for this (section 5). |
-| POP3 (Post Office Protocol 3) scoring uses domain users (MWCCDC, 2025, Functional Services section; *Provisional*) | Domain-wide password resets stay with a person, from the domain checklist (design 11, section 5), using the same change-list format where the event takes one. |
+| Scored services such as POP3 (Post Office Protocol 3) mail have logged in with domain users (*Background*) | Domain-wide password resets stay with a person, from the domain checklist (design 11, section 5), using the same change-list format where the event takes one. |
 | No deliberate breakage (NCCDC, 2025, Rule 5.6.5) | Never disable accounts wholesale. |
 | Scoring is based partly on controlling and preventing unauthorized access (NCCDC, 2025, Scoring section). No rule text read so far forbids locking or deleting an unauthorized account. | Unexpected accounts are locked, and deleted once a person confirms it is safe (section 6). Scored services, including SSH, are defended rather than left alone (section 4). |
 
@@ -231,7 +231,5 @@ A locked account can be unlocked again by an attacker with admin rights, so a lo
 - No run renames an account.
 
 ## References
-
-Midwest Collegiate Cyber Defense Competition. (2025). *2025 Midwest Collegiate Cyber Defense Competition qualifier team packet* [PDF]. https://brazil.minnesota.edu/ccdc/ccdc-2025/2025MWCCDCQTeamPack.pdf
 
 National Collegiate Cyber Defense Competition. (2025, December 10). *Rules and requirements*. Retrieved October 2, 2026, from https://www.nationalccdc.org/rules.html

@@ -1,6 +1,6 @@
 # 22. Service Replacement and Containers
 
-**Status:** Draft · reviewed 2026-10-23 · Phase: 🟩 Sustain · Priority: P2 · Off by default
+Phase: 🟩 Sustain · Priority: P2 · Off by default
 
 ## 1. What it is
 

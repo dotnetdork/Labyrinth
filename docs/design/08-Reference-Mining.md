@@ -1,7 +1,5 @@
 # 08. Ideas Mined from Reference Repositories
 
-**Status:** Draft · reviewed 2026-10-02
-
 ## 1. Purpose
 
 Some repositories are kept as **reference only**: we read them, learn from them, and write our own original code. This avoids license obligations and avoids running code we have not vetted.
@@ -19,7 +17,7 @@ Team-written tools must be public and shared with all teams (National Collegiate
 Ideas and techniques are not covered by copyright, which is why writing from a specification is the safe route.
 
 > [!WARNING]
-> The license and activity notes in the table below were not re-checked in the 2026-09-29 review (*Provisional*). Confirm each before relying on it.
+> The license and activity notes in the table below have not been re-checked (*Provisional*). Confirm each before relying on it.
 
 ## 3. Sources and what we take from each
 
