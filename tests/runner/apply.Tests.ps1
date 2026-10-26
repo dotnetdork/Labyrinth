@@ -302,7 +302,8 @@ Describe 'labyrinth.ps1 apply' {
         $r.Code | Should -Be 20
         $lines = @($r.Output -split "`r?`n")
         ($lines -ccontains 'BLOCKED  Service breaker sample (observe.breaker)') | Should -BeTrue
-        ($lines -ccontains '  Problem:   it can affect a scored service, and there is no service list to test it with') | Should -BeTrue
+        # The line wraps, so match its start.
+        $r.Output | Should -Match ([regex]::Escape('  Problem:   it can affect a scored service, and there is no service list to'))
         Join-Path $lab 'probe-state' | Should -Not -Exist
         (Get-Content -LiteralPath $toggle) | Should -Be 'setting=on'
     }
