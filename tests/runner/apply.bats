@@ -288,12 +288,24 @@ setup() {
   [ ! -e "$LAB/probe-state" ]
 }
 
-@test "a module that touches scored services is blocked without the scoring allowlist" {
-  profile observe.breaker observe.toggle
+@test "a module that touches scored services runs without a scoring allowlist, and its probes still guard it" {
+  profile observe.breaker
   printf 'web http web.test 80 -\n' > "$ETC/services"
+  apply
+  [ "$status" -eq 30 ]
+  [[ "$output" != *'scoring allowlist is missing'* ]]
+  [[ "$output" == *"a scored service stopped working after the change: web"* ]]
+  grep -qx '  Did:       rolled back' <<< "$output"
+  [ ! -e "$LAB/probe-state" ]
+}
+
+@test "a module that touches scored services is blocked without a services file" {
+  profile observe.breaker observe.toggle
+  printf '198.51.100.0/28\n' > "$ETC/scoring-allowlist"
   apply
   [ "$status" -eq 20 ]
   grep -qx 'BLOCKED  Service breaker sample (observe.breaker)' <<< "$output"
+  grep -qx '  Problem:   it can affect a scored service, and there is no service list to test it with' <<< "$output"
   [ ! -e "$LAB/probe-state" ]
   grep -qx 'setting=on' "$LAB/toggle.conf"
 }
