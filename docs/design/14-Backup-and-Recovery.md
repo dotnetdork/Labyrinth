@@ -1,6 +1,6 @@
 # 14. Backup and Recovery
 
-**Status:** Draft · reviewed 2026-10-23 · Phase: 🟩 Sustain · Priority: P1
+Phase: 🟩 Sustain · Priority: P1
 
 ## 1. Goal
 

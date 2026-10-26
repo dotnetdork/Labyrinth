@@ -1,6 +1,6 @@
 # 18. Service Packs and Config Library
 
-**Status:** Draft · reviewed 2026-10-23 · Phase: 🟥 Lock out · Priority: P1
+Phase: 🟥 Lock out · Priority: P1
 
 ## 1. Goal
 

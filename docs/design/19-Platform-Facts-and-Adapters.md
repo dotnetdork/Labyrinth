@@ -1,6 +1,6 @@
 # 19. Platform Facts and Adapters
 
-**Status:** Draft · reviewed 2026-10-23 · Priority: P0
+Priority: P0
 
 ## 1. Goal
 

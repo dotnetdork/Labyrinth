@@ -1,6 +1,6 @@
 # 10. Log Forwarding and Detection
 
-**Status:** Draft · reviewed 2026-10-23 · Phase: 🟦 Observe · Priority: P1
+Phase: 🟦 Observe · Priority: P1
 
 ## 1. Goal
 
@@ -73,7 +73,7 @@ Routers and firewalls send their logs to the SIEM by syslog. The appliance runbo
 | Linux | The host's own syslog daemon (rsyslog or syslog-ng) forwarding to a SIEM input. It is already installed on most distributions, so nothing is added. | A Splunk universal forwarder, only if it is already present in the environment |
 | Windows | The Splunk universal forwarder if it is already installed; otherwise a PowerShell script posting to Splunk's HTTP Event Collector (below) | Leave events on the host and collect them with the report collector (design 08, section 4.4) |
 
-**Windows shipping, decided in the 2026-10-05 review.** `observe.forward_windows` picks the first of these that applies on each host:
+**Windows shipping.** `observe.forward_windows` picks the first of these that applies on each host:
 
 1. **The Splunk universal forwarder, if the host already has it.** The module adds an inputs file for the event baseline in its own app folder, beside the forwarder's own settings, and changes nothing else. If the forwarder already sends to the SIEM address in the run-time configuration, that is all. If it sends somewhere else, or nowhere, pointing it at the SIEM is an approval item, because someone else may rely on the current destination.
 2. **Otherwise, a PowerShell script posting to Splunk's HTTP Event Collector (HEC).** It uses only Windows PowerShell 5.1, so nothing is installed. A scheduled task running as SYSTEM every minute reads the baseline channels with `Get-WinEvent` from a bookmark kept in `<root>\state`, so a restart neither loses nor repeats events, and posts them in batches over HTTPS. The HEC address, token and the SIEM certificate's thumbprint come from run-time configuration, never the repository. The token file is readable by Administrators and SYSTEM only. The script trusts only the certificate with that thumbprint, never any certificate. The task and the script are recorded in the run manifest, and rollback removes them.
@@ -83,7 +83,7 @@ Windows Event Forwarding is not used: it needs a collector host and a Group Poli
 
 - **Vendoring.** A third-party forwarder or Sysmon may be placed in `vendor/` only after its license is confirmed to allow redistribution in a public repository. Until then, the module uses a copy that is already in the environment or is skipped.
 - **Order.** Forwarding starts before deception is deployed (Blueprint §1), so traps have somewhere to report.
-- **Cross-segment flows.** Only the one forwarding flow to the SIEM is opened, and only after it is checked against the scoring allowlist and the firewall plan (design 06, section 3).
+- **Network flows.** Only the one forwarding flow to the SIEM is opened, in each host's firewall and, where the network has segments, between them, and only after it is checked against the scoring allowlist and the firewall plan (design 06, section 3).
 - **The SIEM input.** Logs are sent over TCP, so a dropped connection is noticed and lines are not silently lost. The SIEM accepts its input only from the managed hosts in the `hosts` file, so an attacker cannot flood it or plant false events from elsewhere.
 
 ```mermaid

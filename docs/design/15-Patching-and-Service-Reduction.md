@@ -1,6 +1,6 @@
 # 15. Patching and Service Reduction
 
-**Status:** Draft · reviewed 2026-10-23 · Phase: 🟥 Lock out · Priority: P1
+Phase: 🟥 Lock out · Priority: P1
 
 ## 1. Goal
 
@@ -80,7 +80,7 @@ flowchart LR
 
 ## 5. Pinned questions
 
-- **Package sources and Rule 5.6.4.** Resolved (2026-10-09): the rule's example is cloud services and cloud processing, and Rules 5.1 and 5.2 allow public sources of software. Labyrinth applies approved updates through the host's package manager (design 20). The install feature is named in the tool's declaration, so officials can rule on it before the event.
+- **Package sources and Rule 5.6.4.** Resolved: the rule's example is cloud services and cloud processing, and Rules 5.1 and 5.2 allow public sources of software. Labyrinth applies approved updates through the host's package manager (design 20). The install feature is named in the tool's declaration, so officials can rule on it before the event.
 - **Windows updates.** Individual updates usually come from Microsoft's download sites, which may not be reachable. Windows patching is a manual checklist, ranked by the missing updates WES-NG finds (design 21, section 3.1).
 
 ## 6. What it will never do

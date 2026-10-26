@@ -41,7 +41,7 @@ A heterogeneous, contested network of the kind CCDC events use:
 - Windows Server with Active Directory;
 - Windows and Linux workstations;
 - a SIEM;
-- network edge appliances such as a router and one or more firewalls, often split into segments.
+- network edge appliances such as a router and one or more firewalls, with the inside network either flat or split into segments.
 
 Labyrinth classifies each host into a **profile** and applies the roles that fit — doing the safe work automatically, the riskier work once a person approves it, and printing a checklist for the few actions a person must carry out.
 
@@ -51,6 +51,8 @@ Labyrinth classifies each host into a **profile** and applies the roles that fit
 Labyrinth/
 ├── README.md                     ← you are here
 ├── CLAUDE.md                     ← working rules for contributors and AI assistants
+├── CONTRIBUTING.md               ← how to pick up an issue and open a pull request
+├── .claude/                      ← shared Claude Code agents, commands and settings
 ├── labyrinth.sh / labyrinth.ps1  ← main program: plan, apply, keep, rollback, runs, probe
 ├── core/ phases/ profiles/ platform/ report/   ← code layout from design 00
 ├── config/                       ← *.example templates for run-time values; never real values
@@ -64,21 +66,26 @@ Labyrinth/
 │   ├── Roadmap.md                 ← build order: milestones, branches, settled decisions
 │   ├── lab/README.md              ← the test lab: machines, how to run a pass, results
 │   ├── manual/labyrinth.md        ← operator manual: one source, Linux and Windows editions
-│   └── design/                    ← design specs 00–21 (module contract, panic button,
+│   └── design/                    ← design specs 00–22 (module contract, panic button,
 │                                    incident reporting, event seed, baseline, credentials,
 │                                    status feed, cleanup, reference mining, deception maze,
 │                                    log forwarding, Windows/AD, bans, health monitor,
 │                                    backups, patching, appliance runbooks, persistence
 │                                    sweep, service packs, platform adapters, packages,
-│                                    vulnerability tracker)
-└── .github/workflows/ci.yml       ← lint, guard and tests on Linux and Windows
+│                                    vulnerability tracker, service replacement)
+└── .github/                       ← CI (lint, guard and tests on Linux and Windows)
+                                     and the pull request template
 ```
 
 Strategy, the team's reading of the rules, topology notes and the vulnerability assessment live in the team's private repository, not here.
 
+## Contributing
+
+See [`CONTRIBUTING.md`](CONTRIBUTING.md): one issue, one person, one branch, one small pull request, merged after CI passes and a second person approves.
+
 ## Status
 
-Groundwork stage (reviewed 2026-10-09). The design specs are the blueprint the code is built against, and [`docs/Roadmap.md`](docs/Roadmap.md) gives the order they are built in. The core is built for Linux and Windows: logging, the run manifest, the safety gates, the revert timer (which undoes a run unless someone keeps it), scoring-style probes, and the main program's plan, apply, keep, rollback, runs and probe commands (docs/Conventions.md, section 3.1). The groundwork modules need is built too: platform facts, the firewall adapter, quarantine, approval items and the shipped profiles. It is tested on CI, but not yet in a lab. The guard checks every script for outside calls and blanket actions. No hardening module exists yet, and remote mode (driving many hosts from one control node) is not built.
+Groundwork stage. The design specs are the blueprint the code is built against, and [`docs/Roadmap.md`](docs/Roadmap.md) gives the order they are built in. The core is built for Linux and Windows: logging, the run manifest, the safety gates, the revert timer (which undoes a run unless someone keeps it), scoring-style probes, and the main program's plan, apply, keep, rollback, runs and probe commands (docs/Conventions.md, section 3.1). The groundwork modules need is built too: platform facts, the firewall adapter, quarantine, approval items and the shipped profiles. It is tested on CI, but not yet in a lab. The guard checks every script for outside calls and blanket actions. No hardening module exists yet, and remote mode (driving many hosts from one control node) is not built.
 
 
 > [!IMPORTANT]

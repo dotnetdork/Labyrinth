@@ -1,6 +1,6 @@
 # 03. Event Seed and Deception Configuration
 
-**Status:** Draft · reviewed 2026-10-23 · Phase: 🟪 Deceive · Priority: P1
+Phase: 🟪 Deceive · Priority: P1
 
 ## 1. The problem
 

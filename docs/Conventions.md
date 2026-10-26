@@ -1,7 +1,5 @@
 # Labyrinth Coding Conventions
 
-**Status:** Draft · reviewed 2026-10-23
-
 These conventions turn the design specs into code that every module writes the same way. The specs say *what* a part must do; this page says *how* the code is shaped. If the two disagree, the spec wins and this page is corrected.
 
 ## 1. Languages and targets
@@ -210,8 +208,6 @@ Cancelling a timer checks that it is really gone. If it is still armed, or on Li
 
 #### Approval items
 
-Decided in the 2026-10-05 review.
-
 - **Items.** An `approval` module's `plan` lists each item it would change, one per line on standard output: `item`, then the item id, its category, its fingerprint and the reason, separated by tabs. The core prints the line: `lab_item ID CATEGORY FINGERPRINT REASON` / `Write-LabItem`. The id is `[a-z0-9-]+`, unique within the module on this host, and derived from what the item is (for example its path), so the same item keeps its id from one run to the next. The category is `[a-z0-9-]+`. The fingerprint is the first 12 hex digits of the SHA-256 of the item's current state: its content, value or settings (`lab_item_fingerprint`, which reads the state on standard input, / `Get-LabItemFingerprint -Text`). A line that starts with `item` and a tab but is malformed, or an id listed twice, makes the module an `ERROR` (`40`), in plan and in apply.
 - **Shown** under the module's result line as `Item:` lines, `<id>@<fingerprint> (<category>): <reason>`.
 - **The prompt.** In apply, the runner shows the items not pre-approved again, after an `Approved:` line listing the pre-approved ones as `<ids> (pre-approved)`, then asks for item ids, and `category:<name>` for every item of that category in this run's plan, on this host only (design 01). A word that is neither is a `BLOCKED` (`20`); an id or category not in the plan is ignored with a line saying so. Each approved item goes to `apply` as `<id>@<fingerprint>` in `LAB_APPROVED`, with the fingerprint of this run's plan. Under the `CHANGE` line, `Approved:` lists them, each pre-approved one followed by `(pre-approved)`. When every item is pre-approved, the prompt is not asked. A module whose plan listed no items, or with nothing approved, changes nothing (`OK`).
@@ -361,14 +357,14 @@ The `delete` rule has exactly one legitimate use: the account module deleting an
 - **bats** for bash and **Pester 5** for PowerShell. Unit tests mock system commands. Real-system tests (`tests/core/realsystem.bats`, `tests/core/RealSystem.Tests.ps1`) run only where `LAB_REALSYSTEM=1`, which CI sets on its disposable runners, and on lab VMs; never on a developer's own machine.
 - Runner tests build a throwaway Labyrinth tree from the fixture modules in `tests/fixtures/modules/`, so they never touch the repository's own `phases/` or `profiles/`. The tree's core gets test doubles appended (`tests/fixtures/doubles.sh`, `tests/fixtures/Doubles.ps1`) that replace the administrator check, the ownership check, the revert timer and the probes.
 - **CI** (`.github/workflows/ci.yml`) runs on every push and pull request: ShellCheck, the guard and bats on Ubuntu; PSScriptAnalyzer and Pester under Windows PowerShell 5.1 on Windows; and the manual build, whose output is kept as a CI artifact. The test tools are installed on the CI runners only. A contributor may install them locally to run the same commands, but nothing in Labyrinth requires it.
-- **The compatibility suite** (`tests/runner/compat.bats`, `tests/runner/Compat.Tests.ps1`) holds every command form operators and stored revert timers rely on (section 3.1). It is never edited to make a change pass: change the runner instead. A form leaves it only by a design decision recorded in the design review log.
+- **The compatibility suite** (`tests/runner/compat.bats`, `tests/runner/Compat.Tests.ps1`) holds every command form operators and stored revert timers rely on (section 3.1). It is never edited to make a change pass: change the runner instead. A form leaves it only by a design decision recorded in the spec, with its reason in the commit message.
 - **The operator manual** (`docs/manual/labyrinth.md`) is one source for the Linux and Windows PDFs, the man page and the Windows help topic, built in CI by `tools/manual/build.sh`. Text for one platform sits between `<!-- linux -->` or `<!-- windows -->` and `<!-- end -->`. A change to a command, option, exit code or console message updates the manual in the same commit, and `tests/manual/manual.bats` checks that each platform's manual has every command, option and exit code and nothing from the other platform. The manual is written in the plain style of `docs/Overview.md`: short sentences, and every term explained the first time it appears.
 - Each module's tests start from its spec's acceptance-test list and include the negative test from design 00, section 8: protected accounts and scored services are untouched.
-- **Where real-host tests run** (decided in the 2026-10-05 review). Unit tests with test doubles run everywhere CI runs. Acceptance tests that change a real host run in two places:
+- **Where real-host tests run**. Unit tests with test doubles run everywhere CI runs. Acceptance tests that change a real host run in two places:
   - **CI runners,** with `LAB_REALSYSTEM=1`: Ubuntu, and Windows Server, including a job that promotes a throwaway runner to a single domain controller for the design 11 tests. These run on every pull request that touches the module.
   - **The lab,** local virtual machines that a person runs before each release: the RHEL family (Fedora, Rocky or Oracle Linux), Debian, a domain with a member server, several hosts for rings and remote mode, a SIEM, and appliance images for the runbooks (design 16). `docs/lab/README.md` lists the machines, how to build them from public install media, and the matrix of module × platform × version. Each result is recorded there with the version tested, which is the record design 18, section 7 asks for.
   - An acceptance test says which of the two it needs. A module is not released on a platform that neither has tested.
 
 ## 10. Commits
 
-One module or one core component per branch. Commit messages say what changed and why, in plain sentences. The spec is updated in the same branch when the code shows it needs to change, with an entry in the design review log.
+One module or one core component per branch. Commit messages say what changed and why, in plain sentences. The spec is updated in the same branch when the code shows it needs to change, and the commit message says why.

@@ -6,7 +6,7 @@ Labyrinth is a public, rules-bound hardening and deception tool for CCDC (Colleg
 
 Each rule below says where it comes from. **Rule** items restate the national CCDC rules for team-written tools (National Collegiate Cyber Defense Competition [NCCDC], 2025); breaking one can get the tool rejected or the team penalized. **Design** items are stricter choices made in the specs. They are just as binding here, but they are not the rules' wording, so never cite a rule number for them.
 
-1. **No outside resources at run time.** *Rule 5.6.4:* a team tool must not use resources outside the competition environment, apart from simple DNS lookups; cloud services and cloud processing are prohibited. So no `curl`/`wget`/`Invoke-WebRequest` to the internet, no `git clone`, no reputation or enrichment APIs. Installing public software is not cloud processing, so *Design (01, 20):* only the `packages` module and the core download helper may install, after the first-minute lockdown, from the host's configured repositories, an event mirror or proxy, or a download pinned by SHA-256 in the release. Never a full upgrade, a new repository, `Install-Module`, or a private source (Rule 5.2). Those lines carry a guard allow comment. Probes that talk to the team's *own* scored services are allowed and are marked for the guard (see `docs/Conventions.md`).
+1. **No outside resources at run time.** *Rule 5.6.4:* a team tool must not use resources outside the competition environment, apart from simple DNS lookups; cloud services and cloud processing are prohibited. So no `curl`/`wget`/`Invoke-WebRequest` to the internet, no `git clone`, no reputation or enrichment APIs. Installing public software is not cloud processing, so *Design (01, 20):* only the `packages` module and the core download helper may install, after the first-minute lockdown, from the host's configured repositories, an event mirror or proxy, or a download pinned by SHA-256 in the release. Never a full upgrade, a new repository (apart from EPEL through `epel-release`, design 20), `Install-Module`, or a private source (Rule 5.2). Those lines carry a guard allow comment. Probes that talk to the team's *own* scored services are allowed and are marked for the guard (see `docs/Conventions.md`).
 2. **No secrets or event values in the repository.** *Rules 5.6.1, 5.6.3:* the code is public and its links go to every other team. *Design (00, 03):* no passwords, keys, addresses, hostnames, seeds or per-event values; only `*.example` templates with placeholders. Configuration is supplied at run time.
 3. **No blanket actions.** *Rule 5.6.5:* tools must not deliberately break expected functionality; the rules' examples are setting all user shells to `/bin/false` and indiscriminately terminating all outbound connections. *Design (01, 05, 17):* never disable accounts wholesale, change login shells, stop services outside an explicit candidate list, or reboot. Never delete a file outside Labyrinth's own temporary and state paths: remove it by quarantine (design 17, section 5). The one exception is the Linux revert timer's own two unit files, which Labyrinth wrote (`docs/Conventions.md`, section 3.1). Delete an account only in the account module, for an account a person approved, after a checkpoint shows every scored service passing and its evidence is saved (design 05, section 6.4). Every change works from an explicit list and skips the protected set.
 4. **Plan by default.** *Design (00, 01):* `apply` runs only after the plan is printed, the safety gates pass, and the operator confirms the target group: typed at the prompt, or given with `--confirm-group` in a first-minute run whose profile the team reviewed before the event (design 01, section 6.3).
@@ -17,7 +17,15 @@ Each rule below says where it comes from. **Rule** items restate the national CC
 
 ## Public boundary
 
-This repository is public. Never add team strategy, schedules, deadlines, event dates, real topology, hostnames, addresses, team member details, or anything from the private planning repository. Generic, reusable defense logic only. Never commit `PRODUCT.md` or any `.impeccable*` file.
+This repository is public. Never add team strategy, schedules, deadlines, event dates, real topology, hostnames, addresses, team member details, or anything from the private planning repository. Generic, reusable defense logic only. Never commit `PRODUCT.md` or any `.impeccable*` file. Before a branch is handed over for merge, have the `verifier` subagent check its diff against this boundary and the hard rules above.
+
+## Subagents
+
+- `scout`: finding where a module, helper or convention lives, or a rule's wording.
+- `builder`: implementing a module from its spec once the spec is settled, or mirroring a change across `labyrinth.sh` and `labyrinth.ps1` with tests in both suites.
+- `verifier`: checking a module against its spec's acceptance tests, and the boundary check above.
+
+These agents and the project's commands (`/start-issue`, `/new-module`, `/pre-pr`) live in `.claude/`, shared by everyone. Personal rules go in `CLAUDE.local.md` and personal settings in `.claude/settings.local.json`; git ignores both. Decisions go in the specs or in issues, never only in an assistant's memory, so every contributor sees them.
 
 ## The module contract (design 00)
 
@@ -41,11 +49,11 @@ Each module is a folder `phases/<phase>/modules/<name>/` with `module.yml` and u
 
 ## How work is done
 
-1. Read the module's spec first. If the spec is ambiguous or wrong, raise it and update the spec (with a review-log entry in `docs/design/README.md`) before writing code.
+1. Read the module's spec first. If the spec is ambiguous or wrong, raise it and update the spec in the same branch before writing code, saying why in the commit message.
 2. Write tests first, from the spec's acceptance-test list: bats for bash, Pester 5 for PowerShell. Every module needs a negative test showing protected accounts and scored services are untouched.
 3. Implement against `core/`, following `docs/Conventions.md`.
-4. Run `tests/lint/guard.sh`. CI (`.github/workflows/ci.yml`) also runs ShellCheck, PSScriptAnalyzer, bats and Pester under Windows PowerShell 5.1; all must be clean. Never install test tools on a contributor's machine without asking; CI installs them on its own runners.
-5. One component per branch, named `phase-<n>/<name>` (for example `phase-2/cli-runner`). Commit; the maintainer pushes, reviews and merges once CI is green.
+4. CI (`.github/workflows/ci.yml`) runs `tests/lint/guard.sh`, ShellCheck, PSScriptAnalyzer, bats and Pester under Windows PowerShell 5.1; all must be clean. Run them locally only where the tools are already installed and `CLAUDE.local.md` does not say otherwise; never install test tools on someone's machine without asking. Otherwise push the branch and read the CI results.
+5. One issue, one person, one branch, one small pull request (`CONTRIBUTING.md`). Name the branch `phase-<n>/<name>` (for example `phase-2/cli-runner`), or `docs/<name>` for documentation only, and keep follow-up steps on it. Push only to that branch, so CI checks it, and fix failures there. Never push to `main`, force-push, rewrite history, or delete a branch you did not create. A pull request merges once CI is green and someone other than its author approves it.
 
 ## Changing the command line
 
@@ -76,4 +84,4 @@ Each module is a folder `phases/<phase>/modules/<name>/` with `module.yml` and u
 - **The `ERR` trap does not fire under `||`, `&&`, `if` or `!`.** Check a call that must not fail silently explicitly.
 - **Guard words:** strings must not contain the words the guard looks for (`tests/lint/guard.sh`), even in messages.
 
-Docs use US spelling, no draft version numbers, and APA 7 citations for rules.
+Docs use US spelling, no draft version numbers, no review logs or "reviewed on" dates (Git keeps the history), and APA 7 citations for rules.

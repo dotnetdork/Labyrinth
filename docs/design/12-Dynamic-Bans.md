@@ -1,6 +1,6 @@
 # 12. Dynamic Bans
 
-**Status:** Draft · reviewed 2026-10-23 · Phase: 🟪 Deceive · Priority: P2
+Phase: 🟪 Deceive · Priority: P2
 
 ## 1. Goal
 
@@ -14,7 +14,7 @@ Turn repeated hostile touches into automatic, expiring blocks, and keep the bloc
 | Active responses such as TCP resets are allowed, and anything that interferes with the scoring engine is the team's responsibility (NCCDC, 2025, Rule 4.11). | A ban may cut a connection already open to the banned address. The scoring engine and the host's outbound dependencies can never be banned (section 4), and automatic bans are refused when the host cannot tell sources apart (section 5). |
 | Tools must not deliberately break expected functionality; indiscriminately ending all outbound connections is given as an example (NCCDC, 2025, Rule 5.6.5). | Blocking one hostile address is targeted, not indiscriminate. Bans are per address and expiring. There is no "block everything" mode, and an outbound ban never covers a range (section 6.1). |
 | Team tools may not use outside resources apart from DNS (NCCDC, 2025, Rule 5.6.4). | Offenders are never reported to or checked against an outside reputation service. |
-| Officials make manual scoring checks, and traffic generators send ordinary user traffic, and suspicious traffic, from random source addresses; anything that interferes with the scoring engine or manual scoring checks is the team's responsibility (Midwest Collegiate Cyber Defense Competition [MWCCDC], 2025, Competition Rules 5, 6 and 14; *Verified* 2026-10-09). | Not every legitimate client of a scored service comes from the scoring engine's address, and a simulated user may fail a login. So failed logins on a scored service's login only raise an alert (section 3). A trap port, the planted key and a honey-account stay instant bans, because no legitimate check touches them. |
+| Officials make manual scoring checks, and at some events traffic generators send ordinary user traffic, and suspicious traffic, from random source addresses (*Background*; Blueprint §5); anything that interferes with the scoring engine is the team's responsibility (NCCDC, 2025, Rule 4.11). | Not every legitimate client of a scored service comes from the scoring engine's address, and a simulated user may fail a login. So failed logins on a scored service's login only raise an alert (section 3). A trap port, the planted key and a honey-account stay instant bans, because no legitimate check touches them. |
 | Some events penalize filtering a public service by source address (*Background*; design 01, section 6.1). | A ban blocks one hostile address on every port; it is never a rule that limits a scored port to some sources. |
 
 ## 3. Triggers
@@ -60,11 +60,11 @@ The refusal is exit code 20 (blocked by a safety gate, design 00) with a message
 
 **Linux.**
 
-- One kernel address set (ipset, or an nftables set) holds the banned addresses, with a timeout on each entry, and one rule per chain matches the whole set. Thousands of bans stay as fast as one (Blueprint §5.3).
+- One kernel address set (ipset, or an nftables set) holds the banned addresses, with a timeout on each entry, and one rule per chain matches the whole set. Thousands of bans stay as fast as one (Blueprint §3.5).
 - The set is matched on the `INPUT` chain by source and on the `OUTPUT` chain by destination. On hosts running Docker it is also matched on `DOCKER-USER` by source and by destination, because container traffic bypasses `INPUT` and `OUTPUT` (Blueprint §3.3).
 - The match rules come before the rule that accepts established connections. So a new ban also stops a session or a reverse shell already open to that address: an active response, which the rules allow (NCCDC, 2025, Rule 4.11).
 - **The watcher** is a small native Labyrinth watcher, in bash, on every Linux host. It tails the logs above and adds addresses to the set. Most triggers in section 3 (trap ports, the planted key, honey-accounts) are not things fail2ban handles out of the box, so they would need custom rules either way.
-- **fail2ban.** Where the host's repositories offer it, the `packages` module installs it after the lockdown and keeps it stopped (design 20, section 4), because on some distributions it starts at once with an SSH ban rule on, before the never-ban list is in place. Labyrinth never adds a repository for it, so a RHEL-family host without EPEL relies on the native watcher alone. This module then adds the never-ban list to fail2ban's `ignoreip` setting through a drop-in file in `jail.d`, so it cannot ban the scoring engine, turns off every jail for a scored service's login in the same drop-in (section 3), and only then starts it. A fail2ban that was already running is handled the same way. The native watcher still handles Labyrinth's own triggers.
+- **fail2ban.** Where the host's repositories offer it, the `packages` module installs it after the lockdown and keeps it stopped (design 20, section 4), because on some distributions it starts at once with an SSH ban rule on, before the never-ban list is in place. On a RHEL-family host it needs EPEL, which Labyrinth adds only as an optional extra where EPEL can be reached (design 20, section 3); without it, the host relies on the native watcher alone. This module then adds the never-ban list to fail2ban's `ignoreip` setting through a drop-in file in `jail.d`, so it cannot ban the scoring engine, turns off every jail for a scored service's login in the same drop-in (section 3), and only then starts it. A fail2ban that was already running is handled the same way. The native watcher still handles Labyrinth's own triggers.
 
 **Windows.** Optional and off by default. A scheduled task reads the relevant events and keeps two block rules in the rule group `Labyrinth`, one inbound and one outbound, with the same address list, expiring entries. Windows Firewall block rules take precedence over allow rules, so the ban holds whatever else is allowed. Blocking is often better done at the perimeter (Blueprint §3.5), through the appliance runbook (design 16).
 
@@ -128,7 +128,5 @@ An outbound ban is always one address, never a range or a port on its own. An ad
 - A trap-port hit from that same lab address is banned at once.
 
 ## References
-
-Midwest Collegiate Cyber Defense Competition. (2025). *2025 Midwest Collegiate Cyber Defense Competition qualifier team packet* [PDF]. https://brazil.minnesota.edu/ccdc/ccdc-2025/2025MWCCDCQTeamPack.pdf
 
 National Collegiate Cyber Defense Competition. (2025, December 10). *Rules and requirements*. Retrieved September 29, 2026, from https://www.nationalccdc.org/rules.html

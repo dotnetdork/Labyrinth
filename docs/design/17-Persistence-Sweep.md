@@ -1,6 +1,6 @@
 # 17. Persistence Sweep
 
-**Status:** Draft · reviewed 2026-10-23 · Phase: 🟥 Lock out · Priority: P0
+Phase: 🟥 Lock out · Priority: P0
 
 ## 1. Goal
 
