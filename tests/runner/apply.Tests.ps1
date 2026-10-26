@@ -284,12 +284,26 @@ Describe 'labyrinth.ps1 apply' {
         Join-Path $lab 'probe-state' | Should -Not -Exist
     }
 
-    It 'a module that touches scored services is blocked without the scoring allowlist' {
-        Write-TestProfile $t @('observe.breaker', 'observe.toggle')
+    It 'a module that touches scored services runs without a scoring allowlist, and its probes still guard it' {
+        Write-TestProfile $t @('observe.breaker')
         Write-TestConfig $t 'services' @('web http web.test 80 -')
         $r = Invoke-TestApply $t $answers
+        $r.Code | Should -Be 30
+        $r.Output | Should -Not -Match 'scoring allowlist is missing'
+        $r.Output | Should -Match 'a scored service stopped working after the change: web'
+        (@($r.Output -split "`r?`n") -ccontains '  Did:       rolled back') | Should -BeTrue
+        Join-Path $lab 'probe-state' | Should -Not -Exist
+    }
+
+    It 'a module that touches scored services is blocked without a services file' {
+        Write-TestProfile $t @('observe.breaker', 'observe.toggle')
+        Write-TestConfig $t 'scoring-allowlist' @('198.51.100.0/28')
+        $r = Invoke-TestApply $t $answers
         $r.Code | Should -Be 20
-        (@($r.Output -split "`r?`n") -ccontains 'BLOCKED  Service breaker sample (observe.breaker)') | Should -BeTrue
+        $lines = @($r.Output -split "`r?`n")
+        ($lines -ccontains 'BLOCKED  Service breaker sample (observe.breaker)') | Should -BeTrue
+        # The line wraps, so match its start.
+        $r.Output | Should -Match ([regex]::Escape('  Problem:   it can affect a scored service, and there is no service list to'))
         Join-Path $lab 'probe-state' | Should -Not -Exist
         (Get-Content -LiteralPath $toggle) | Should -Be 'setting=on'
     }
