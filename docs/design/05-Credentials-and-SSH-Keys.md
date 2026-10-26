@@ -123,9 +123,9 @@ The same pattern (verify the package, quarantine unknown add-ons, confirm the ef
 
 SSH is often a scored service and the Red Team will attack it, so it is hardened, not left as found:
 
-- **Where SSH is scored:** password login is turned off for every account **except** the scoring accounts and employee accounts (design 01, section 4), which keep it through a `Match User` block, because the scoring engine and simulated employees log in with a password. If the event packet does not say which accounts employees use, the exception covers every ordinary (non-admin) account until officials confirm, and key-only applies to admin-class accounts only. `AllowUsers` lists only the scoring accounts, operator accounts and accounts the packet names. `MaxAuthTries` and `LoginGraceTime` are lowered, and failed logins raise alerts (design 10). The port stays where it is and open to every source: a scored SSH port is never moved, knocked or restricted by address (design 01, section 6.1).
+- **Where SSH is scored:** password login is turned off for every account **except** the scoring, `scored-admin` and employee accounts (design 01, section 4), which keep it through a `Match User` block, because the scoring engine and simulated employees log in with a password. A `scored-admin` account keeps password login with its new password from the change list (section 2.4). If the event packet does not say which accounts employees use, the exception covers every ordinary (non-admin) account until officials confirm, and key-only applies to admin-class accounts only. `AllowUsers` lists only the scoring and `scored-admin` accounts, operator accounts and accounts the packet names. `MaxAuthTries` and `LoginGraceTime` are lowered, and failed logins raise alerts (design 10). The port stays where it is and open to every source: a scored SSH port is never moved, knocked or restricted by address (design 01, section 6.1).
 - **Where SSH is not scored:** key-only for everyone, and the port is open only to the admin source (design 01).
-- **Root** cannot log in over SSH (`PermitRootLogin no`).
+- **Root** cannot log in over SSH (`PermitRootLogin no`), unless `root` is listed as a `scored-admin` account on a host where SSH is scored. Then root keeps password login only inside its own `Match User root` block, and the plan says so.
 
 The scoring accounts and their checks come from the run-time `services` file. If the file does not say whether SSH is scored on a host, the host is treated as scored.
 
@@ -217,6 +217,7 @@ A locked account can be unlocked again by an attacker with admin rights, so a lo
 - A logon with the break-glass credential or an official account raises an alert.
 - A planted `00-x.conf` that allows root login, and a planted `Match` block, are quarantined, and `sshd -T` shows our settings in effect.
 - Where SSH is scored, a scoring account still logs in with its password, and an unexpected account cannot use a password.
+- Where SSH is scored, a `scored-admin` account logs in with its new password after the drop-in, and an admin account not listed as `scored-admin` cannot use a password. Root stays refused unless it is listed as `scored-admin`.
 - A second UID 0 account and an unexpected local Administrators member are found; the account loses its admin rights and is locked.
 - Re-enabling a locked account raises an alert.
 - A lab web app's default admin password is listed in Tier 0; after approval it is rotated, the app's database configuration file is updated, and the probe still passes.
