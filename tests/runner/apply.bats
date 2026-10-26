@@ -305,7 +305,8 @@ setup() {
   apply
   [ "$status" -eq 20 ]
   grep -qx 'BLOCKED  Service breaker sample (observe.breaker)' <<< "$output"
-  grep -qx '  Problem:   it can affect a scored service, and there is no service list to test it with' <<< "$output"
+  # The line wraps, so match its start.
+  [[ "$output" == *'  Problem:   it can affect a scored service, and there is no service list to'* ]]
   [ ! -e "$LAB/probe-state" ]
   grep -qx 'setting=on' "$LAB/toggle.conf"
 }
