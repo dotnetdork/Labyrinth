@@ -1,4 +1,4 @@
-# 02. Incident Reporting Automation
+# 20. Incident Reporting Automation
 
 Phase: 🟩 Sustain (cross-phase `report/`) · Priority: P1
 
@@ -20,7 +20,7 @@ Incident reports are scored at most events (*Background*), and a report earns cr
 ## 3. Pipeline
 
 1. **Detect.** A source raises an event: a decoy trip, an integrity change, a suspicious login, a Splunk alert, or a human "log this" command.
-2. **Collect.** The collector gathers facts already on the host: time (UTC and local), host, account, source address, process, file, command line, and the relevant log lines (design 04 provides the who/when/from-where join).
+2. **Collect.** The collector gathers facts already on the host: time (UTC and local), host, account, source address, process, file, command line, and the relevant log lines (design 08 provides the who/when/from-where join).
 3. **Correlate.** Events within a time window that share an address, account or host are grouped into one incident record with a timeline.
 4. **Draft.** The builder fills the report template from the record. Fields with no evidence stay marked `UNKNOWN`.
 5. **Review.** The incident lead edits the draft. The tool never marks a report final.
@@ -60,7 +60,7 @@ flowchart LR
 | Access obtained | Logons and privilege events in the timeline | Drafted, human edits |
 | Damage done | Integrity findings, probe failures, deleted or changed files | Drafted, human edits |
 | What was affected | Affected hosts, services and accounts | Drafted, human edits |
-| Evidence (log excerpts, hashes) | Collected files; quarantined items with their original path and SHA-256 (design 17); saved evidence of deleted accounts (design 05, section 6.4); ended sessions (design 01, section 6.2) | Yes |
+| Evidence (log excerpts, hashes) | Collected files; quarantined items with their original path and SHA-256 (design 06); saved evidence of deleted accounts (design 04, section 6.4); ended sessions (design 03, section 6.2) | Yes |
 | Impact on scored services | Probe results | Yes |
 | Actions taken and time | Run manifest (design 00) | Yes |
 | Remediation and prevention (the remediation plan) | Human | No |

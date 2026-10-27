@@ -1,6 +1,6 @@
 #Requires -Version 5.1
 # Pester 5 unit tests for the Windows Firewall adapter (platform\windows\
-# Firewall.ps1, design 19, section 5). netsh and the NetSecurity cmdlets are
+# Firewall.ps1, design 01, section 5). netsh and the NetSecurity cmdlets are
 # mocked, so no real firewall is read or changed.
 
 [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseDeclaredVarsMoreThanAssignments', '',

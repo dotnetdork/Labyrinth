@@ -1,4 +1,4 @@
-# 18. Service Packs and Config Library
+# 11. Service Packs and Config Library
 
 Phase: 🟧 Harden · Priority: P1
 
@@ -15,7 +15,7 @@ This spec ships a **service pack** for each common scored app and a small **conf
 | Anything that interferes with the scoring engine is the team's responsibility (NCCDC, 2025, Rule 4.11). | Every setting is followed by scoring-style probes, under a revert timer. |
 | Do not mislead the scoring engine (NCCDC, 2025, Rule 9.3). | A pack never fakes a response or changes what a check sees to make a broken service look healthy. |
 | Scored services may not be migrated or containerized unless an inject or the local competition rules allow it (NCCDC, 2025, Rule 4.14). | Packs change settings in place. They never replace or move a service; where an event allows that, it is design 22. |
-| Team tools may not use resources outside the competition environment other than simple DNS lookups; the example is cloud services and cloud processing (NCCDC, 2025, Rule 5.6.4). | Packs never install anything themselves. They use software already on the host, or a module the `packages` module installed for them, such as ModSecurity (design 20). |
+| Team tools may not use resources outside the competition environment other than simple DNS lookups; the example is cloud services and cloud processing (NCCDC, 2025, Rule 5.6.4). | Packs never install anything themselves. They use software already on the host, or a module the `packages` module installed for them, such as ModSecurity (design 02). |
 | Tools must not deliberately break expected functionality (NCCDC, 2025, Rule 5.6.5). | Settings that could change what users or the scoring engine see are never automatic (section 4). |
 
 ## 3. How a setting is applied
@@ -24,7 +24,7 @@ This spec ships a **service pack** for each common scored app and a small **conf
 2. **Add, don't replace.** Each setting goes into an add-on file in the app's own include folder (for example `conf.d`). The main configuration file is backed up and not rewritten. If the app has no include folder, the change is in the approval class and edits the main file after a backup.
 3. **Check with the app's own test**: `nginx -t`, `apachectl configtest`, `named-checkconf`, `postfix check`, `doveconf -n`, `vsftpd` start test, or the IIS configuration validator. A failed test stops the change.
 4. **Reload gently.** A graceful reload where the app supports one, not a full restart.
-5. **Probe and revert.** Probes run before and after; a revert timer undoes the change unless verify passes (design 01, section 8).
+5. **Probe and revert.** Probes run before and after; a revert timer undoes the change unless verify passes (design 03, section 8).
 6. **Record.** Every change goes into the run manifest, so `rollback` restores it.
 
 Re-running a pack finds nothing to change and exits 0 (design 00, section 4).
@@ -33,7 +33,7 @@ Re-running a pack finds nothing to change and exits 0 (design 00, section 4).
 
 | Class | Test for the class | Runs |
 |---|---|---|
-| **Automatic** | Does not change what users or the scoring engine see, and was tested on this app version in the lab | In the Harden phase, Tier 2 (design 01) |
+| **Automatic** | Does not change what users or the scoring engine see, and was tested on this app version in the lab | In the Harden phase, Tier 2 (design 03) |
 | **Approval** | Could change what the scoring engine sees, or the installed version was not tested | Shown in the plan; after a person approves, Labyrinth applies it (Tier 3) |
 | **Runbook** | Too specific to the event's own app or data | Printed steps for a person, kept in the release's runbook folder |
 
@@ -52,14 +52,14 @@ Examples per pack (*Background*; each is confirmed in the lab before release):
 | Dovecot (POP3 and IMAP) | Turn off plain-text login without TLS where the probe and the event's materials allow | Authentication mechanisms; turn off the protocols that are not scored | Mailbox changes |
 | Webmail (for example Roundcube) | Hide the version; turn off the installer folder | Session and login-attempt limits | Plugins and the app's own settings |
 | BIND | Hide the version; refuse zone transfers to anyone but listed secondaries; turn off open recursion for outside clients | Rate limits | Zone contents |
-| Windows DNS, on a server that is not a domain controller and only for zones stored in files | Refuse zone transfers to unlisted servers | Recursion settings | Zone contents. On a domain controller, or for an Active Directory-integrated zone, nothing is automatic or approved: every setting is on the domain checklist (design 11, section 5), because those settings replicate to every domain controller |
+| Windows DNS, on a server that is not a domain controller and only for zones stored in files | Refuse zone transfers to unlisted servers | Recursion settings | Zone contents. On a domain controller, or for an Active Directory-integrated zone, nothing is automatic or approved: every setting is on the domain checklist (design 12, section 5), because those settings replicate to every domain controller |
 | MySQL / MariaDB | Bind to the addresses the scored app uses; turn off local file loading | Remove anonymous and test accounts | Application database users and grants |
-| Microsoft SQL Server | Turn off `xp_cmdshell` and other unused surface features | Turn off the `sa` login or rotate it as a `scored-admin` account (design 05, section 2.4); force encryption | Application logins, roles and grants |
+| Microsoft SQL Server | Turn off `xp_cmdshell` and other unused surface features | Turn off the `sa` login or rotate it as a `scored-admin` account (design 04, section 2.4); force encryption | Application logins, roles and grants |
 | SMB shares (Windows and Samba) | Turn off SMBv1; require signing where every client supports it | Remove `Everyone` and guest write access on scored shares, after the probes confirm the scoring account's access | Share contents and folder permissions |
 | WinRM | Turn off unencrypted traffic and Basic authentication | Turn off the HTTP listener where an HTTPS listener exists and the check uses it | Session configurations |
-| Splunk | See design 10, section 7 | — | — |
+| Splunk | See design 14, section 7 | — | — |
 | vsftpd (FTP) | Hide the banner version | Turn off anonymous login, and lock each user into their own folder; approval because a scoring check may use either | — |
-| OpenSSH | See design 05, section 4 | — | — |
+| OpenSSH | See design 04, section 4 | — | — |
 
 ## 6. Host settings (config library)
 
@@ -71,13 +71,13 @@ A `sysctl.d` add-on file for Linux kernel settings that rarely affect services (
 - `net.ipv4.conf.all.accept_redirects = 0`, `accept_source_route = 0`;
 - `kernel.yama.ptrace_scope = 1` where the module exists.
 
-Remove the setuid bit from `pkexec` where no scored service uses it, which closes PwnKit (CVE-2021-4034) and later polkit flaws (design 21, section 5.2). The previous mode is recorded, so rollback puts it back.
+Remove the setuid bit from `pkexec` where no scored service uses it, which closes PwnKit (CVE-2021-4034) and later polkit flaws (design 09, section 5.2). The previous mode is recorded, so rollback puts it back.
 
 Never automatic: `net.ipv4.ip_forward` (routers and container hosts need it), `send_redirects` on a router, and reverse-path filtering (`rp_filter`), which can break traffic that returns by another route. Those are in the approval class.
 
 ### 6.1 Web application firewall rules
 
-A flaw in a scored web app that cannot be patched at once is closed with a web application firewall rule that blocks requests to the flawed path or matching the exploit's pattern, in the ModSecurity module installed beside the app (design 20). This is sometimes called a virtual patch. The rules come from the OWASP Core Rule Set and from the mitigation catalog (design 21, section 5.2).
+A flaw in a scored web app that cannot be patched at once is closed with a web application firewall rule that blocks requests to the flawed path or matching the exploit's pattern, in the ModSecurity module installed beside the app (design 02). This is sometimes called a virtual patch. The rules come from the OWASP Core Rule Set and from the mitigation catalog (design 09, section 5.2).
 
 - The firewall starts in detection-only mode, which logs and blocks nothing.
 - A blocking rule for one flaw is in the approval class, because a rule that matches a scoring check's request would break the service. After approval, it is applied with probes before and after, under a revert timer.
@@ -97,7 +97,7 @@ Whatever is not automated is written up as a runbook in the release: what to che
 
 - Replace a main configuration file without a backup and a person's approval.
 - Restart a scored service when a graceful reload is available.
-- Install or download a module itself, or enable one that neither the host nor the `packages` module (design 20) put there.
+- Install or download a module itself, or enable one that neither the host nor the `packages` module (design 02) put there.
 - Make a broken service look healthy.
 
 ## 10. Acceptance tests

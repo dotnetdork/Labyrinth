@@ -1,5 +1,5 @@
 #Requires -Version 5.1
-# core/safety/Safety.ps1: the safety gates and run lock (design 01,
+# core/safety/Safety.ps1: the safety gates and run lock (design 03,
 # sections 7 and 8). Dot-sourced through core/Lab.ps1. The parts that need
 # Windows itself (administrator check, revert timer) are in System.ps1.
 

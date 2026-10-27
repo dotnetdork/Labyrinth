@@ -1,11 +1,11 @@
-# The protected set (design 01, section 4).
+# The protected set (design 03, section 4).
 # One "account class" pair per line; an optional "# reason" after it.
 # Classes and what Labyrinth may do to each:
 #   official    never changed without the White Team's permission; logons alerted on
 #   scoring     never touched by automation
 #   employee    used by simulated employees; never touched by automation, keeps password login
 #   operator    never locked or removed
-#   breakglass  never locked or removed; password rotated only in design 05's order;
+#   breakglass  never locked or removed; password rotated only in design 04's order;
 #               unregistered SSH keys are still removed
 #   service     never touched until the dependency map is known
 #   builtin     never touched

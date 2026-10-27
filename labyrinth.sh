@@ -51,7 +51,7 @@ readonly RE_APPROVE='^(lockout|observe|deceive|sustain)\.[a-z0-9_-]+:[a-z0-9-]+@
 # as root, so it must name the folder lab_tree_trusted checks.
 LAB_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 export LAB_ROOT
-# The release check (design 07, section 5) comes before the rest of the
+# The release check (design 21, section 5) comes before the rest of the
 # core is loaded, so a changed core file never runs. A file that differs
 # from release.sha256 stops every command, the revert timer's rollback
 # included; with no release.sha256, apply, keep and rollback warn.
@@ -301,7 +301,7 @@ EOF
 }
 
 # cmd_version: the version, the runner, and the release hash to compare
-# with the team's offline record (design 07, section 5).
+# with the team's offline record (design 21, section 5).
 cmd_version() {
   printf 'labyrinth %s (labyrinth.sh, for Linux)\n' "$LAB_VERSION"
   if (( LAB_RELEASE == 0 )); then printf 'Release: %s\n' "$LAB_RELEASE_HASH"
@@ -1342,7 +1342,7 @@ plan_all() {
 
 # gate_trusted: only root may be able to change Labyrinth's code, its
 # configuration and its data root, because they run as root, later too, by
-# the revert timer (design 07, section 5).
+# the revert timer (design 21, section 5).
 gate_trusted() {
   local bad
   if (( LAB_RELEASE == 1 )); then
@@ -1354,7 +1354,7 @@ gate_trusted() {
 }
 
 # gate_protected: the protected set must load and hold at least one account
-# (design 01, section 7). Plan mode needs it too, because plans that touch
+# (design 03, section 7). Plan mode needs it too, because plans that touch
 # accounts depend on it.
 gate_protected() {
   local rc=0 file="$LAB_CONFIG_DIR/protected-accounts" why
@@ -1386,7 +1386,7 @@ ask() {
 }
 
 # gate_breakglass: before any change, the operator confirms the break-glass
-# account still works (design 01, section 7).
+# account still works (design 03, section 7).
 gate_breakglass() {
   local account='' sid='' rc
   if account="$(lab_breakglass_recorded)"; then
@@ -1700,7 +1700,7 @@ apply_one() {
   if [[ "${RUN_SCORED[i]}" == true ]]; then
     # Only the check is needed here, so the loader runs in a subshell and
     # its reason is printed under the ERROR line. A missing or empty list
-    # (2) does not block: the list is optional (design 01, section 7), and
+    # (2) does not block: the list is optional (design 03, section 7), and
     # the firewall adapter checks that scored ports stay reachable.
     rc=0; why="$(lab_addrs_load scoring-allowlist 2>&1)" || rc=$?
     if (( rc == 1 )); then

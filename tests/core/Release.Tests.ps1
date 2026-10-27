@@ -1,6 +1,6 @@
 #Requires -Version 5.1
 # Pester 5 unit tests for the release check (core\safety\Release.ps1,
-# design 07, section 5.1).
+# design 21, section 5.1).
 
 [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseDeclaredVarsMoreThanAssignments', '',
     Justification = 'Variables set in BeforeEach are used in the It blocks, which the analyzer cannot see.')]

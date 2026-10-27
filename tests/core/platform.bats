@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
 # Unit tests for the Linux platform facts (core/platform/platform.sh,
-# design 19). Each test builds a fake root under LAB_SYSROOT and puts stub
+# design 01). Each test builds a fake root under LAB_SYSROOT and puts stub
 # commands first on PATH, so no real host file or firewall is read.
 
 setup() {

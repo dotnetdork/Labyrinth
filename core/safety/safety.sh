@@ -1,5 +1,5 @@
 # shellcheck shell=bash
-# core/safety/safety.sh: the safety gates and run lock (design 01,
+# core/safety/safety.sh: the safety gates and run lock (design 03,
 # sections 7 and 8). Sourced through core/lib.sh. The parts that differ by
 # operating system (administrator check, revert timer) are in system.sh.
 

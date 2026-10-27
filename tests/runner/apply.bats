@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
 # Tests for labyrinth.sh apply, keep, rollback and probe (design 00,
-# section 5; design 01, sections 7 to 9; docs/Conventions.md section 3.1).
+# section 5; design 03, sections 7 to 9; docs/Conventions.md section 3.1).
 # The host-specific parts (root check, revert timer, probes) are test
 # doubles (tests/fixtures/doubles.sh); real-system tests are separate.
 

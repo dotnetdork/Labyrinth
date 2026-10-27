@@ -1,5 +1,5 @@
 #Requires -Version 5.1
-# core/platform/Platform.ps1: the platform facts for Windows (design 19,
+# core/platform/Platform.ps1: the platform facts for Windows (design 01,
 # section 3). Dot-sourced through core/Lab.ps1. Reading a fact changes
 # nothing.
 #

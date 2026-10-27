@@ -1,6 +1,6 @@
 # shellcheck shell=bash
 # core/secret/secret.sh: new passwords, shown once on the operator's
-# terminal for the offline record (design 05, section 2.3). Sourced through
+# terminal for the offline record (design 04, section 2.3). Sourced through
 # core/lib.sh.
 #
 # A module's standard output goes to the run log and its standard input is

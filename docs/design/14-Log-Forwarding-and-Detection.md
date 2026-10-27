@@ -1,4 +1,4 @@
-# 10. Log Forwarding and Detection
+# 14. Log Forwarding and Detection
 
 Phase: 🟦 Observe · Priority: P1
 
@@ -6,12 +6,12 @@ Phase: 🟦 Observe · Priority: P1
 
 Get the high-signal logs off every host and into the one SIEM (Security Information and Event Management system), then run a small set of saved searches over them. Logs kept only on a host die with the host, and several other parts of Labyrinth depend on the SIEM already holding the right events:
 
-- the status feed reads its saved searches (design 06);
-- the incident report builder collects its evidence from them (design 02);
-- the Windows side of the integrity check uses them to answer who, when and from where (design 04);
-- every trap reports through them (design 09).
+- the status feed reads its saved searches (design 15);
+- the incident report builder collects its evidence from them (design 20);
+- the Windows side of the integrity check uses them to answer who, when and from where (design 08);
+- every trap reports through them (design 17).
 
-This spec turns the Blueprint's logging capability (Blueprint §3.9) and the Windows event baseline idea (design 08, section 4.3) into modules.
+This spec turns the Blueprint's logging capability (Blueprint §3.9) and the Windows event baseline idea (design 22, section 4.3) into modules.
 
 ## 2. Rules that shape it
 
@@ -28,11 +28,11 @@ This spec turns the Blueprint's logging capability (Blueprint §3.9) and the Win
 
 | Source | What it shows | Notes |
 |---|---|---|
-| Authentication log (`auth.log` or `secure`) | Logins, failed logins, `sudo` use, SSH (Secure Shell) key fingerprints | sshd at `LogLevel VERBOSE` (design 05) |
-| auditd, with rule keys | Privileged commands; changes to identity files and sudoers; SSH keys; cron and systemd units; `/usr/local`; canary reads | The critical-file watch list comes from design 04; canary watches from design 09 |
-| Firewall denies | Blocked connections, including hits on trap ports | Feeds dynamic bans (design 12) |
+| Authentication log (`auth.log` or `secure`) | Logins, failed logins, `sudo` use, SSH (Secure Shell) key fingerprints | sshd at `LogLevel VERBOSE` (design 04) |
+| auditd, with rule keys | Privileged commands; changes to identity files and sudoers; SSH keys; cron and systemd units; `/usr/local`; canary reads | The critical-file watch list comes from design 08; canary watches from design 17 |
+| Firewall denies | Blocked connections, including hits on trap ports | Feeds dynamic bans (design 18) |
 | Labyrinth's own logs | Every run, integrity finding, trip and report category (design 00, section 7) | Already structured as JSON lines |
-| Trip log | Every trap hit (design 09) | Watched first: almost no false positives |
+| Trip log | Every trap hit (design 17) | Watched first: almost no false positives |
 
 ### 3.2 Windows event baseline
 
@@ -49,45 +49,45 @@ A short list, sized for a small SIEM. Each ID must be re-checked against Microso
 | 4720, 4722, 4724 | Security | Account created, enabled, password reset |
 | 4728, 4732, 4756 | Security | A member was added to a security-enabled group (global, local, universal) |
 | 4740 | Security | An account was locked out |
-| 4663 | Security | Object access on an audited file (canaries and critical files, designs 04 and 09) |
+| 4663 | Security | Object access on an audited file (canaries and critical files, designs 08 and 17) |
 | 1102 | Security | The audit log was cleared: treat as a confirmed intrusion unless the team did it |
 | 4104 | Microsoft-Windows-PowerShell/Operational | PowerShell script block logging: the text of each script as it runs, after any decoding, so an encoded or downloaded script can be read |
 | 4768, 4769, 4771 | Security, domain controller only | Kerberos ticket requests and failed pre-authentication. Service ticket requests using the older RC4 encryption are a common sign of Kerberoasting; many 4771 events from one source suggest password spraying. |
 | 4776 | Security, domain controller only | NTLM credential validation, including failures; shows password guessing against domain accounts |
-| 5827, 5828, 5830, 5831 | System, domain controller only | Netlogon: a vulnerable secure-channel connection denied (5827 machine account, 5828 trust account) or allowed only because the allow list names it (5830, 5831). Any of them is a ZeroLogon attempt or an allow-list entry to check (design 11, section 3.1) |
+| 5827, 5828, 5830, 5831 | System, domain controller only | Netlogon: a vulnerable secure-channel connection denied (5827 machine account, 5828 trust account) or allowed only because the allow list names it (5830, 5831). Any of them is a ZeroLogon attempt or an allow-list entry to check (design 12, section 3.1) |
 
-Script block logging is turned on by `observe.win_audit` (section 6). The PowerShell log's maximum size is raised, within the disk check in section 8, so its events are not overwritten before they are forwarded. Labyrinth never puts a secret in a script's text (design 05, section 2), so its own logged script blocks hold none. The old PowerShell 2.0 engine does not log script blocks, so an attacker can use it to avoid this log. Microsoft removed it from Windows 11 24H2 and Windows Server 2025 in 2025; on older builds Tier 0 reports whether it is installed (design 11, section 3.3).
+Script block logging is turned on by `observe.win_audit` (section 6). The PowerShell log's maximum size is raised, within the disk check in section 8, so its events are not overwritten before they are forwarded. Labyrinth never puts a secret in a script's text (design 04, section 2), so its own logged script blocks hold none. The old PowerShell 2.0 engine does not log script blocks, so an attacker can use it to avoid this log. Microsoft removed it from Windows 11 24H2 and Windows Server 2025 in 2025; on older builds Tier 0 reports whether it is installed (design 12, section 3.3).
 
 The domain controller events are the noisiest on this list. They are forwarded only from the domain controller, and the saved searches look for patterns (many failures, unusual encryption) rather than every event.
 
-If Sysmon is available in the environment, also forward process creation (Sysmon event 1), network connections (3), file creation (11) and registry value changes (13), using a small configuration written by the team (design 08).
+If Sysmon is available in the environment, also forward process creation (Sysmon event 1), network connections (3), file creation (11) and registry value changes (13), using a small configuration written by the team (design 22).
 
 ### 3.3 Network appliances
 
-Routers and firewalls send their logs to the SIEM by syslog. The appliance runbook (design 16) covers the setting. Labyrinth does not log in to an appliance to configure it.
+Routers and firewalls send their logs to the SIEM by syslog. The appliance runbook (design 05) covers the setting. Labyrinth does not log in to an appliance to configure it.
 
 ## 4. How logs are shipped
 
 | Platform | Preferred | Fallback |
 |---|---|---|
 | Linux | Where the SIEM is Splunk, the Splunk Universal Forwarder, already installed or downloaded (below) | The host's own syslog daemon (rsyslog or syslog-ng) forwarding to a SIEM input. It is already installed on most distributions, so nothing is added; it is also the method for a SIEM that is not Splunk |
-| Windows | The Splunk Universal Forwarder, already installed or downloaded (below); a PowerShell script posting to Splunk's HTTP Event Collector (below) where the download is not possible | Leave events on the host and collect them with the report collector (design 08, section 4.4) |
+| Windows | The Splunk Universal Forwarder, already installed or downloaded (below); a PowerShell script posting to Splunk's HTTP Event Collector (below) where the download is not possible | Leave events on the host and collect them with the report collector (design 22, section 4.4) |
 
 **Linux shipping.** `observe.forward_linux` picks the first of these that applies on each host: the forwarder already on the host (step 1 below, unchanged); otherwise the forwarder installed from the Linux amd64 `.tgz` (step 2 below, checked against `SPLUNK_UF_SHA256_LINUX`), unpacked under `/opt/splunkforwarder` and run as its own non-root user; otherwise a syslog forwarding drop-in pointing at the SIEM address. The `.tgz` is used rather than the `.deb` or `.rpm` so the same steps work on both Linux families.
 
 **Windows shipping.** `observe.forward_windows` picks the first of these that applies on each host:
 
 1. **The Splunk Universal Forwarder, if the host already has it.** The module adds an inputs file for the event baseline in its own app folder, beside the forwarder's own settings, and changes nothing else. If the forwarder already sends to the SIEM address in the run-time configuration, that is all. If it sends somewhere else, or nowhere, pointing it at the SIEM is an approval item, because someone else may rely on the current destination.
-2. **Otherwise, install the Splunk Universal Forwarder** from Splunk's public download site, after the first-minute lockdown (design 20). No login is needed; the address has the form `https://download.splunk.com/products/universalforwarder/releases/<version>/<platform>/<file>`. The version and the file's SHA-256 are pinned in the run-time configuration (`SPLUNK_UF_VERSION`, `SPLUNK_UF_SHA256_LINUX` for the Linux amd64 `.tgz`, `SPLUNK_UF_SHA256_WINDOWS` for the Windows x64 `.msi`, in `event.conf`), and the download is also checked against the `.sha512` file Splunk publishes beside it; a file that fails either check is deleted from the download folder and the next method is used. The forwarder version is never newer than the indexer's. The install is recorded in the run manifest like any other (design 20), and the forwarder is then pointed at the SIEM address in the run-time configuration. This is specified now and built later.
+2. **Otherwise, install the Splunk Universal Forwarder** from Splunk's public download site, after the first-minute lockdown (design 02). No login is needed; the address has the form `https://download.splunk.com/products/universalforwarder/releases/<version>/<platform>/<file>`. The version and the file's SHA-256 are pinned in the run-time configuration (`SPLUNK_UF_VERSION`, `SPLUNK_UF_SHA256_LINUX` for the Linux amd64 `.tgz`, `SPLUNK_UF_SHA256_WINDOWS` for the Windows x64 `.msi`, in `event.conf`), and the download is also checked against the `.sha512` file Splunk publishes beside it; a file that fails either check is deleted from the download folder and the next method is used. The forwarder version is never newer than the indexer's. The install is recorded in the run manifest like any other (design 02), and the forwarder is then pointed at the SIEM address in the run-time configuration. This is specified now and built later.
 3. **Otherwise, a PowerShell script posting to Splunk's HTTP Event Collector (HEC),** the fallback when the download is not possible. It uses only Windows PowerShell 5.1, so nothing is installed. A scheduled task running as SYSTEM every minute reads the baseline channels with `Get-WinEvent` from a bookmark kept in `<root>\state`, so a restart neither loses nor repeats events, and posts them in batches over HTTPS. The HEC address, token and the SIEM certificate's thumbprint come from run-time configuration, never the repository. The token file is readable by Administrators and SYSTEM only. The script trusts only the certificate with that thumbprint, never any certificate. The task and the script are recorded in the run manifest, and rollback removes them.
 4. **Otherwise, the fallback in the table above.**
 
-Windows Event Forwarding is not used: it needs a collector host and a Group Policy change, which is on the person-run list (design 11).
+Windows Event Forwarding is not used: it needs a collector host and a Group Policy change, which is on the person-run list (design 12).
 
-- **Vendoring.** The forwarder is downloaded, not vendored. Sysmon may be placed in `vendor/` only after its license is confirmed to allow redistribution in a public repository. Until then, the module uses a copy that is already in the environment, downloads a pinned release (design 20), or is skipped.
+- **Vendoring.** The forwarder is downloaded, not vendored. Sysmon may be placed in `vendor/` only after its license is confirmed to allow redistribution in a public repository. Until then, the module uses a copy that is already in the environment, downloads a pinned release (design 02), or is skipped.
 - **The indexer side.** On the SIEM, receiving on port 9997 is off until it is enabled, and it accepts forwarders only from the managed hosts in the `hosts` file. Enabling it is part of hardening the SIEM (section 7).
 - **Order.** Forwarding starts before deception is deployed (Blueprint §1), so traps have somewhere to report.
-- **Network flows.** Only the one forwarding flow to the SIEM is opened, in each host's firewall and, where the network has segments, between them, and only after it is checked against the scoring allowlist and the firewall plan (design 06, section 3).
+- **Network flows.** Only the one forwarding flow to the SIEM is opened, in each host's firewall and, where the network has segments, between them, and only after it is checked against the scoring allowlist and the firewall plan (design 15, section 3).
 - **The SIEM input.** Logs are sent over TCP, so a dropped connection is noticed and lines are not silently lost. The SIEM accepts its input only from the managed hosts in the `hosts` file, so an attacker cannot flood it or plant false events from elsewhere.
 
 ```mermaid
@@ -100,7 +100,7 @@ flowchart LR
     AP["Network appliances<br/>(syslog, set by runbook)"]
     SIEM[("SIEM<br/>one index per source")]
     SS["Saved searches<br/>(section 5)"]
-    OUT["Status feed (06) · incident<br/>reports (02) · bans (12)"]
+    OUT["Status feed (15) · incident<br/>reports (20) · bans (18)"]
     LX --> SIEM
     WN --> SIEM
     LB --> SIEM
@@ -124,7 +124,7 @@ A few high-value searches beat a hundred noisy dashboards (Blueprint §3.9). The
 | Search | Confidence |
 |---|---|
 | Any trip-log entry | Near-certain |
-| Any logon attempt, failed or successful, on a honey-account (design 09) | Near-certain |
+| Any logon attempt, failed or successful, on a honey-account (design 17) | Near-certain |
 | Kerberos service tickets requested with RC4, or many 4771 or 4776 failures from one source | High |
 | Canary file read (auditd `canary_read` key or event 4663 on a canary) | Near-certain |
 | Audit log cleared (1102) or auditd rules changed | Near-certain |
@@ -133,23 +133,23 @@ A few high-value searches beat a hundred noisy dashboards (Blueprint §3.9). The
 | New member of an admin group (4728, 4732, 4756; sudoers or `wheel`/`sudo` group change) | High |
 | New service or scheduled task (4697, 7045, 4698; new systemd unit or cron entry) | Medium |
 | Many failed logons from one source | Medium |
-| Integrity finding from design 04 | Medium to high, by file rank |
+| Integrity finding from design 08 | Medium to high, by file rank |
 | A locked account re-enabled (4722; auditd rule on `usermod` and `/etc/shadow`) | High |
-| WDigest turned back on, or a protocol setting from design 11 reverted | High |
+| WDigest turned back on, or a protocol setting from design 12 reverted | High |
 | A tool often abused for persistence or download is started: `nc`, `ncat`, `socat`, a compiler (`gcc`, `cc`), `certutil -urlcache`, `bitsadmin /transfer`, `mshta`, `regsvr32` with a URL | Medium; high when run by a web server or database account |
 | A PowerShell script block that decodes or downloads code and runs it (event 4104 with, for example, `FromBase64String`, `DownloadString`, `Invoke-Expression` or `-EncodedCommand`) | Medium; high when run by a web server, database or service account |
 | A remote-access or tunnel tool is installed or started, for example AnyDesk, TeamViewer, ScreenConnect, Splashtop, ngrok, chisel, frp, rclone or plink. The list is a data file in the release. | High, unless the profile lists the tool as one the company uses |
 | A change on the SIEM itself: a new user or role, a new app, a scripted input or alert action, or a search deleted (Splunk `_audit` index) | High |
-| A change to a boot-critical file (design 04, section 3) | Near-certain |
+| A change to a boot-critical file (design 08, section 3) | Near-certain |
 | ZeroLogon signs: a vulnerable Netlogon connection denied (events 5827, 5828) or allowed by the allow list (5830, 5831), checked against Microsoft's CVE-2020-1472 guidance (Microsoft, n.d.); or the domain controller's machine account password changed by an anonymous logon (event 4742; *Background*) | High |
-| DCSync signs: directory replication rights used (event 4662 with the replication GUIDs) by an account that is not a domain controller (*Background*). Event 4662 is recorded only when directory service access auditing is on, which `observe.win_audit` turns on for the domain controller only. Any hit marks the KRBTGT reset urgent in the plan (design 11, section 5.1) and puts admin rotation at the top of the domain checklist (design 11, section 5) | Near-certain |
+| DCSync signs: directory replication rights used (event 4662 with the replication GUIDs) by an account that is not a domain controller (*Background*). Event 4662 is recorded only when directory service access auditing is on, which `observe.win_audit` turns on for the domain controller only. Any hit marks the KRBTGT reset urgent in the plan (design 12, section 5.1) and puts admin rotation at the top of the domain checklist (design 12, section 5) | Near-certain |
 | Unusual outbound traffic: NTP to a server not in the run-time configuration, DNS to a resolver not in it, or a host's outbound volume far above its own normal, from the outbound log rule below | Medium; high from a scored service's account |
 
-**Outbound logging.** To feed the outbound search, each host gets a log-only firewall rule for new outbound connections, rate-limited so it cannot flood the log (Tier 2). It blocks nothing. Red Teams have hidden command-and-control traffic in NTP and rotated their callback addresses (*Background*), which inbound default-deny does not stop. **Filtering** a host's outbound traffic is part of the first-minute bundle (Tier 2, design 01, section 6.1): default-deny outbound, allowing what the services file and the run-time `outbound-allow` list name. The log rule stays on, so a blocked callback still shows up in the search.
+**Outbound logging.** To feed the outbound search, each host gets a log-only firewall rule for new outbound connections, rate-limited so it cannot flood the log (Tier 2). It blocks nothing. Red Teams have hidden command-and-control traffic in NTP and rotated their callback addresses (*Background*), which inbound default-deny does not stop. **Filtering** a host's outbound traffic is part of the first-minute bundle (Tier 2, design 03, section 6.1): default-deny outbound, allowing what the services file and the run-time `outbound-allow` list name. The log rule stays on, so a blocked callback still shows up in the search.
 
-**Watch by default, block per host.** The tools in the "abused tool" row have legitimate uses, and an administrator or a scored service may rely on one. So by default they are watched through process-creation logging, not removed or blocked. This is a design choice, not a rule: Rule 5.6.5 forbids deliberately breaking expected functionality (NCCDC, 2025), and blocking a tool on a host where nothing uses it breaks nothing. So, on Windows, Labyrinth offers a per-host Tier 3 item: an outbound Windows Firewall block rule for one abused tool's program path (for example `certutil.exe` or `bitsadmin.exe`, which Red Teams use to download second-stage tools), on a host where the inventory and the dependency map show no scheduled task, service or scored app using it. The rule is recorded in the run manifest and removed by `rollback`. The tool is never deleted or renamed, and a block never covers every host at once. The same goes for remote-access tools, which a company may use for support: the persistence sweep lists one for approval rather than removing it (design 17, section 4). The one exception is scheduling: `cron.allow` and `at.allow` are limited after the persistence sweep (design 17, section 6).
+**Watch by default, block per host.** The tools in the "abused tool" row have legitimate uses, and an administrator or a scored service may rely on one. So by default they are watched through process-creation logging, not removed or blocked. This is a design choice, not a rule: Rule 5.6.5 forbids deliberately breaking expected functionality (NCCDC, 2025), and blocking a tool on a host where nothing uses it breaks nothing. So, on Windows, Labyrinth offers a per-host Tier 3 item: an outbound Windows Firewall block rule for one abused tool's program path (for example `certutil.exe` or `bitsadmin.exe`, which Red Teams use to download second-stage tools), on a host where the inventory and the dependency map show no scheduled task, service or scored app using it. The rule is recorded in the run manifest and removed by `rollback`. The tool is never deleted or renamed, and a block never covers every host at once. The same goes for remote-access tools, which a company may use for support: the persistence sweep lists one for approval rather than removing it (design 06, section 4). The one exception is scheduling: `cron.allow` and `at.allow` are limited after the persistence sweep (design 06, section 6).
 
-**Sigma rules.** More searches can be converted from Sigma, the vendor-neutral rule format, *before* the release, never at the event. Each converted rule keeps its original author, license and rule ID in `vendor/` with a NOTICE file, and is tested against sample logs in the lab (design 08).
+**Sigma rules.** More searches can be converted from Sigma, the vendor-neutral rule format, *before* the release, never at the event. Each converted rule keeps its original author, license and rule ID in `vendor/` with a NOTICE file, and is tested against sample logs in the lab (design 22).
 
 ## 6. Modules
 
@@ -162,31 +162,31 @@ A few high-value searches beat a hundred noisy dashboards (Blueprint §3.9). The
 | `observe.sysmon` | Tier 2, optional | Installs Sysmon with the team's configuration, only if a permitted copy exists |
 | `observe.searches` | Tier 1, run against the SIEM | Loads the saved-search templates |
 
-Opening the forwarding port in a host firewall follows design 01 (Tier 2, with a revert timer).
+Opening the forwarding port in a host firewall follows design 03 (Tier 2, with a revert timer).
 
 ## 7. Hardening the SIEM host
 
-The SIEM is usually already installed on its own host, so Labyrinth does not install it; it hardens it. An attacker who controls the SIEM can blind the team or use it to run code: Splunk often runs as root or SYSTEM, and its scripted inputs and alert actions run commands (*Background*). The free edition of Splunk has no login at all (*Background*), so its web and management ports must be closed to everyone but the team unless they are scored. A scored port stays open to every source (design 01, section 6.1), so a scored SIEM with no login is a finding for a person, not something a firewall rule can fix.
+The SIEM is usually already installed on its own host, so Labyrinth does not install it; it hardens it. An attacker who controls the SIEM can blind the team or use it to run code: Splunk often runs as root or SYSTEM, and its scripted inputs and alert actions run commands (*Background*). The free edition of Splunk has no login at all (*Background*), so its web and management ports must be closed to everyone but the team unless they are scored. A scored port stays open to every source (design 03, section 6.1), so a scored SIEM with no login is a finding for a person, not something a firewall rule can fix.
 
 | Step | Tier |
 |---|---|
-| Rotate the SIEM's own admin password, shown once like any other (design 05, section 2). Where a scoring check logs in with it, it is a `scored-admin` account and its new password goes into the change list (design 05, section 2.4) | 1 |
-| List SIEM users and roles; lock unexpected ones, as for host accounts (design 05, section 6) | 0, then 2 |
+| Rotate the SIEM's own admin password, shown once like any other (design 04, section 2). Where a scoring check logs in with it, it is a `scored-admin` account and its new password goes into the change list (design 04, section 2.4) | 1 |
+| List SIEM users and roles; lock unexpected ones, as for host accounts (design 04, section 6) | 0, then 2 |
 | Firewall: the web interface (8000) and management port (8089) only from the admin source where they are not scored, and open to every source where they are (a check may search through either); the log inputs (9997 and syslog 514) only from the managed hosts | 2 |
 | Run `splunkd` as its own unprivileged user where it runs as root or SYSTEM. File ownership changes and a restart follow, so a person approves it | 3 |
-| Quarantine unknown apps, scripted inputs and alert actions that are not in the profile's known-good list; unexplained ones go to approval (design 17) | 2 or 3 |
-| Back up the SIEM's configuration folder (Splunk `etc`) before any change (design 14) | 1 |
+| Quarantine unknown apps, scripted inputs and alert actions that are not in the profile's known-good list; unexplained ones go to approval (design 06) | 2 or 3 |
+| Back up the SIEM's configuration folder (Splunk `etc`) before any change (design 07) | 1 |
 | Load the SIEM-change search on its `_audit` index (section 5) | 1 |
 
-The SIEM host also gets its platform's normal lockout (design 01). Ports, paths and role names come from the profile, so another SIEM product can be supported by a new profile.
+The SIEM host also gets its platform's normal lockout (design 03). Ports, paths and role names come from the profile, so another SIEM product can be supported by a new profile.
 
 ## 8. Safety
 
 - **Disk.** Before enabling a noisy source, check free space. Local logs rotate with a size cap, so logging can never fill a disk and stop a service.
-- **Volume.** Audit rules stay small (design 04, section 7). A rule that floods the log is removed, not tuned during the event.
+- **Volume.** Audit rules stay small (design 08, section 7). A rule that floods the log is removed, not tuned during the event.
 - **auditd settings that cannot be undone.** Labyrinth never sets `-e 2`, which locks the audit rules until the next reboot, so they could not be rolled back. It never sets `-f 2` either, which makes the kernel panic, stopping the whole host, when auditing fails. If a host already has `-e 2`, the rules cannot be loaded; `observe.auditd` reports exit code 20 (blocked) rather than reboot.
 - **Tampering.** Forwarding is the defense against a wiped host: once an event is in the SIEM, clearing the local log does not remove it. Clearing is itself alerted on (section 5).
-- **Trust path.** The SIEM receives logs only. It holds no keys to any host (design 06).
+- **Trust path.** The SIEM receives logs only. It holds no keys to any host (design 15).
 
 ## 9. Verify and roll back
 

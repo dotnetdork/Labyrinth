@@ -1,4 +1,4 @@
-# Test fixture: sets a new password for a test account, shown once on the terminal (design 05, section 2.3)
+# Test fixture: sets a new password for a test account, shown once on the terminal (design 04, section 2.3)
 id: observe.rotate
 title: Password rotation sample
 phase: observe
@@ -8,4 +8,4 @@ risk: reversible
 touches_scored: false
 requires: []
 outputs: []
-spec: 05
+spec: 04

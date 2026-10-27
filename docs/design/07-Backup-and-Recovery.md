@@ -1,4 +1,4 @@
-# 14. Backup and Recovery
+# 07. Backup and Recovery
 
 Phase: 🟧 Harden (taking restore points) and 🟩 Sustain (restoring) · Priority: P1
 
@@ -15,7 +15,7 @@ Red Teams plan for exactly this. Public Red Team accounts describe mid-event tak
 | Rule | Effect |
 |---|---|
 | Tools must not deliberately break expected functionality (National Collegiate Cyber Defense Competition [NCCDC], 2025, Rule 5.6.5). | A backup must never fill a disk or lock a database long enough to fail a check (section 5). |
-| Scored services may not be migrated or containerized unless an inject or the local competition rules allow it (NCCDC, 2025, Rule 4.14). | A restore puts data back in place on the same host. It never moves a service. A rebuild, where allowed, is design 22, and its data copy starts from a restore point taken here. |
+| Scored services may not be migrated or containerized unless an inject or the local competition rules allow it (NCCDC, 2025, Rule 4.14). | A restore puts data back in place on the same host. It never moves a service. A rebuild, where allowed, is design 13, and its data copy starts from a restore point taken here. |
 | Competition materials stay in the competition area (NCCDC, 2025, Rules 4.4, 8.5). | Backups never leave the event network. |
 | Team tools may not use outside resources apart from DNS (NCCDC, 2025, Rule 5.6.4). | No cloud or remote backup target. |
 
@@ -34,10 +34,10 @@ The list of what to back up comes from the profile. Paths are templates filled f
 
 ## 4. When
 
-- **Straight after the first-minute bundle**, for every scored service on the host, before the Red Team's later takedowns (design 01, section 6, step 5).
-- **Before patching** a service (design 15).
-- **Before the first Tier 2 change** on a host (design 01).
-- **On demand** through `labyrinth backup <service>`, and as a prompt in the checkpoint summary, which shows the time since each service's last backup (design 13).
+- **Straight after the first-minute bundle**, for every scored service on the host, before the Red Team's later takedowns (design 03, section 6, step 5).
+- **Before patching** a service (design 10).
+- **Before the first Tier 2 change** on a host (design 03).
+- **On demand** through `labyrinth backup <service>`, and as a prompt in the checkpoint summary, which shows the time since each service's last backup (design 19).
 
 How often to take further restore points is for the team's own plan.
 
@@ -64,10 +64,10 @@ flowchart LR
 ## 5. Safety
 
 - **Disk space.** Estimate the size first. Refuse if the backup would leave less than the configured free-space margin. A full disk stops services.
-- **Load.** Dumps use the consistent-snapshot option and run at low priority. The health probes (design 13) run before and after.
-- **Secrets.** Backups contain password hashes and application data. They are readable only by root or SYSTEM, are never copied into the repository or off the event network, and are listed in the run manifest so cleanup can remove them at the end of the event (design 07).
+- **Load.** Dumps use the consistent-snapshot option and run at low priority. The health probes (design 19) run before and after.
+- **Secrets.** Backups contain password hashes and application data. They are readable only by root or SYSTEM, are never copied into the repository or off the event network, and are listed in the run manifest so cleanup can remove them at the end of the event (design 21).
 - **Tampering.** Each restore point's SHA-256 is recorded in a backup manifest when it is taken. A restore checks the hash first, so a backup an attacker has altered is never restored silently.
-- **Copy off the host (required).** An attacker with root or SYSTEM can delete backups stored on the host, and destructive actions are expected later in an event. So every restore point is copied to the control node over the existing admin path (design 06) as soon as it is taken, with its hash checked on arrival. A restore point counts as complete only once its copy is confirmed. In local mode with no control node, the operator may name a backup peer in `event.conf` (`BACKUP_PEER`, another team host reached over the admin path): restore points are copied there the same way, into a folder only root or the administrators can read, and hash-checked on arrival. The peer is a team host inside the event network, never an outside service (NCCDC, 2025, Rule 5.6.4). Without a control node or a peer, the checkpoint lists every service without an off-host copy as a top finding (design 13, section 5), so the team knows its exposure.
+- **Copy off the host (required).** An attacker with root or SYSTEM can delete backups stored on the host, and destructive actions are expected later in an event. So every restore point is copied to the control node over the existing admin path (design 15) as soon as it is taken, with its hash checked on arrival. A restore point counts as complete only once its copy is confirmed. In local mode with no control node, the operator may name a backup peer in `event.conf` (`BACKUP_PEER`, another team host reached over the admin path): restore points are copied there the same way, into a folder only root or the administrators can read, and hash-checked on arrival. The peer is a team host inside the event network, never an outside service (NCCDC, 2025, Rule 5.6.4). Without a control node or a peer, the checkpoint lists every service without an off-host copy as a top finding (design 19, section 5), so the team knows its exposure.
 
 ## 6. Restoring
 
@@ -82,7 +82,7 @@ flowchart LR
 
 **No snapshots assumed.** Some events give teams no virtual-machine snapshots, or charge for a revert (*Background*). Labyrinth's restore points and runbooks therefore never depend on one; where an event offers snapshots, they are an extra the team uses by hand.
 
-`labyrinth restore` overwrites live data, so it never runs on its own. It shows which restore point it will use and when that point was taken, and a person confirms that the point is from before the damage. Labyrinth then carries out the restore (design 01, section 3) and records it in the run manifest. The damaged state it saved first is evidence for the incident report (design 02).
+`labyrinth restore` overwrites live data, so it never runs on its own. It shows which restore point it will use and when that point was taken, and a person confirms that the point is from before the damage. Labyrinth then carries out the restore (design 03, section 3) and records it in the run manifest. The damaged state it saved first is evidence for the incident report (design 20).
 
 ## 7. Acceptance tests
 

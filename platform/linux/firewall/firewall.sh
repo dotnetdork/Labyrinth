@@ -1,5 +1,5 @@
 # shellcheck shell=bash
-# platform/linux/firewall/firewall.sh: the Linux firewall adapter (design 19,
+# platform/linux/firewall/firewall.sh: the Linux firewall adapter (design 01,
 # section 5). A module sources it after core/lib.sh:
 #
 #   source "$LAB_ROOT/platform/linux/firewall/firewall.sh"
@@ -38,7 +38,7 @@ lab_fw() {
   backend="$(lab_fact firewall)"
   if [[ "$backend" == none ]]; then
     # No firewall is active, the default on many fresh installs. Use one the
-    # host already has, never install one (design 19, section 6). The
+    # host already has, never install one (design 01, section 6). The
     # snapshot of the empty ruleset puts the host back exactly as it was.
     if lab_have nft; then
       backend=nftables
@@ -52,7 +52,7 @@ lab_fw() {
   case "$backend" in
     ufw | firewalld | nftables | iptables) ;;
     *)
-      _lab_fw_err "the active firewall is '$backend' (design 19, section 3.1); nothing was changed"
+      _lab_fw_err "the active firewall is '$backend' (design 01, section 3.1); nothing was changed"
       return 20
       ;;
   esac

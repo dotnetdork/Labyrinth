@@ -1,4 +1,4 @@
-# 22. Service Replacement and Containers
+# 13. Service Replacement and Containers
 
 Phase: 🟧 Harden · Priority: P1 · Off by default
 
@@ -6,9 +6,9 @@ Phase: 🟧 Harden · Priority: P1 · Off by default
 
 A guarded way to rebuild a scored service when it cannot be fixed where it stands: a clean install of the service on the same host, or the service in a container on that host. The rebuild keeps the service's address, port, host name, DNS name, content, data and users, so the scoring engine and the service's users see the same service as before.
 
-The national rules forbid migrating or containerizing a scored service unless an inject or the local competition rules allow it (National Collegiate Cyber Defense Competition [NCCDC], 2025, Rule 4.14), and the local rules differ from event to event (NCCDC, 2025, Local Competition Rules section). Where they allow it on the same host, keeping the same public address and DNS name, this design uses it. So everything here is **off by default**. It is turned on by the operator only when the event's own rules or an inject allow it, and every step is an approval item (design 01, section 5, Tier 3).
+The national rules forbid migrating or containerizing a scored service unless an inject or the local competition rules allow it (National Collegiate Cyber Defense Competition [NCCDC], 2025, Rule 4.14), and the local rules differ from event to event (NCCDC, 2025, Local Competition Rules section). Where they allow it on the same host, keeping the same public address and DNS name, this design uses it. So everything here is **off by default**. It is turned on by the operator only when the event's own rules or an inject allow it, and every step is an approval item (design 03, section 5, Tier 3).
 
-Without this design, the only answers to a service that is badly compromised or cannot be patched are a slow clean-up by hand or the event's own recovery service, which can cost points and may restore an image that loses every change the team made (design 14, section 6). Snapshots and reverts may not be available at all, so nothing here relies on them. A rebuild from known-good software, with the service's data checked across, is often faster and leaves nothing of the attacker's behind.
+Without this design, the only answers to a service that is badly compromised or cannot be patched are a slow clean-up by hand or the event's own recovery service, which can cost points and may restore an image that loses every change the team made (design 07, section 6). Snapshots and reverts may not be available at all, so nothing here relies on them. A rebuild from known-good software, with the service's data checked across, is often faster and leaves nothing of the attacker's behind.
 
 ## 2. The rules that shape it
 
@@ -18,7 +18,7 @@ Without this design, the only answers to a service that is badly compromised or 
 | Local competition rules are unique to each event (NCCDC, 2025, Local Competition Rules section). | Nothing here assumes one event's limits. The settings say only what is allowed; the team reads its own event's rules and sets them. |
 | Changing a system to make the scoring engine assess a service as operational when it is not can bring disqualification or penalties (NCCDC, 2025, Rule 9.3). | A replacement must really serve the same content and logins. It is never a stand-in that answers the check while the real service is down, and it is cut over only after its own probes and the data check pass (section 5). |
 | Any team action that interrupts the scoring system is the team's responsibility and lowers the score (NCCDC, 2025, Rule 9.3). | The old service keeps serving until the new one has passed every check on a staging port. The cut-over itself is one short stop and start under a revert timer. |
-| Team tools may not use resources outside the competition environment other than simple DNS lookups (NCCDC, 2025, Rule 5.6.4); free public sources are allowed and private staging areas are not (NCCDC, 2025, Rules 5.1, 5.2). | Software and images come only from the sources design 20 allows: the host's repositories, an event mirror or proxy, a download pinned by SHA-256, or a public registry with the image pinned by digest. Never a team-controlled registry. |
+| Team tools may not use resources outside the competition environment other than simple DNS lookups (NCCDC, 2025, Rule 5.6.4); free public sources are allowed and private staging areas are not (NCCDC, 2025, Rules 5.1, 5.2). | Software and images come only from the sources design 02 allows: the host's repositories, an event mirror or proxy, a download pinned by SHA-256, or a public registry with the image pinned by digest. Never a team-controlled registry. |
 | Tools must not deliberately break expected functionality (NCCDC, 2025, Rule 5.6.5). | One service on one host at a time. The old install and its data are kept, stopped, never deleted, so the change can be undone. |
 
 **Design choices** (stricter than the rules, and not cited as rules):
@@ -40,17 +40,17 @@ Each key takes `yes:<reference>`, and is off when unset or `no`. The reference n
 
 ## 4. When it is worth it
 
-A replacement is the last of three choices, after mitigating in place and patching in place (design 21, section 5). Labyrinth offers it, as an approval item, only when one of these holds:
+A replacement is the last of three choices, after mitigating in place and patching in place (design 09, section 5). Labyrinth offers it, as an approval item, only when one of these holds:
 
-1. **No fix in place.** The tracker holds an open, known-exploited flaw on a scored service with no mitigation in the catalog and no update the host's sources offer (design 21).
-2. **Too far gone.** The persistence sweep or the integrity check has found the service's own files changed (a modified binary, a planted module, a web root with unexplained executable files), and a clean-up would take longer than a rebuild (designs 04, 17).
-3. **Asked for.** An inject asks for a new service, or for an existing one in a container. A new service is added to the run-time `services` file first, so the firewall and the probes know it (design 01, section 6.1).
+1. **No fix in place.** The tracker holds an open, known-exploited flaw on a scored service with no mitigation in the catalog and no update the host's sources offer (design 09).
+2. **Too far gone.** The persistence sweep or the integrity check has found the service's own files changed (a modified binary, a planted module, a web root with unexplained executable files), and a clean-up would take longer than a rebuild (designs 06, 08).
+3. **Asked for.** An inject asks for a new service, or for an existing one in a container. A new service is added to the run-time `services` file first, so the firewall and the probes know it (design 03, section 6.1).
 
 The plan shows the reason, the restore point it would start from and how long the last lab rehearsal of that service took (section 9). If the service passes its probes and a patch or mitigation exists, a replacement is not offered.
 
 ## 5. The data-preservation check
 
-The core of this design. Before the rebuild, Labyrinth takes an **inventory** of the service as it is; after copying the data into the new instance, it takes the same inventory of the new one; the cut-over is refused (`20`) unless the two match. The inventory is read-only and is also kept as evidence (design 02).
+The core of this design. Before the rebuild, Labyrinth takes an **inventory** of the service as it is; after copying the data into the new instance, it takes the same inventory of the new one; the cut-over is refused (`20`) unless the two match. The inventory is read-only and is also kept as evidence (design 20).
 
 | Service type | The inventory records | Match rule |
 |---|---|---|
@@ -61,21 +61,21 @@ The core of this design. Before the rebuild, Labyrinth takes an **inventory** of
 | Users of the service | The account names the service authenticates (system accounts it uses, the app's own user table, the directory group it reads) | Every name present, unchanged; a user's password or hash carried across, never reset |
 | How it answers | Address, port, protocol, the TLS certificate's subject and fingerprint, and the version banner where scoring may read it | Same address, port and protocol; the same certificate and key, copied across; any banner change listed in the plan |
 
-The inventory reads data with the service's own tools, as the operator, and never logs in with a scoring account (design 01, section 4). A table, mailbox or folder too large to copy within the profile's time limit is reported in the plan, so a person can decide before anything starts.
+The inventory reads data with the service's own tools, as the operator, and never logs in with a scoring account (design 03, section 4). A table, mailbox or folder too large to copy within the profile's time limit is reported in the plan, so a person can decide before anything starts.
 
 ## 6. Sequence
 
-Every step after the first is under a revert timer re-armed before it (design 01, section 8).
+Every step after the first is under a revert timer re-armed before it (design 03, section 8).
 
-1. **Check.** The option is on with a reference (section 3); the service is in `services`; a restore point exists and its off-host copy is confirmed (design 14, section 5); the disk has room for a second copy of the data.
+1. **Check.** The option is on with a reference (section 3); the service is in `services`; a restore point exists and its off-host copy is confirmed (design 07, section 5); the disk has room for a second copy of the data.
 2. **Inventory the old service** (section 5).
-3. **Build the new instance beside it**, on a staging port bound to `127.0.0.1` only, from the allowed sources (design 20). The old service keeps serving.
+3. **Build the new instance beside it**, on a staging port bound to `127.0.0.1` only, from the allowed sources (design 02). The old service keeps serving.
 4. **Copy the data** from the restore point, or from the live service with its own export tool, leaving out the items the plan lists as the attacker's.
 5. **Inventory the new instance** and compare. A mismatch stops here, with the difference listed; nothing that scoring sees has changed.
-6. **Probe the new instance on its staging port** with the same scoring-style probes, content check and logins as the real one (design 13, section 3).
-7. **Cut over.** Stop the old service and set it not to start; move the new one to the scored port; run the probes from the host and, where configured, from outside (design 13, section 3).
+6. **Probe the new instance on its staging port** with the same scoring-style probes, content check and logins as the real one (design 19, section 3).
+7. **Cut over.** Stop the old service and set it not to start; move the new one to the scored port; run the probes from the host and, where configured, from outside (design 19, section 3).
 8. **Keep or revert.** The run is kept once verify passes and no scored service that passed before is worse (design 00, section 4). Otherwise the timer stops the new instance and starts the old one again, untouched.
-9. **Seal.** The new instance's files go into the baseline (design 04, section 6), and the old install stays on disk, stopped, until the end of the event. Removing it is a cleanup item (design 07).
+9. **Seal.** The new instance's files go into the baseline (design 08, section 6), and the old install stays on disk, stopped, until the end of the event. Removing it is a cleanup item (design 21).
 
 ```mermaid
 flowchart TD
@@ -106,15 +106,15 @@ flowchart TD
 
 Where `ALLOW_CONTAINERS` is on, the new instance in section 6 may be a container. The extra rules:
 
-- **Runtime.** Installed by the `packages` module from the distribution's own repositories only, after approval (design 20), with no new repository: Podman on the RHEL family (rootless-capable), Docker from the distribution repositories (`docker.io`) on Debian and Ubuntu. Never a vendor install script.
+- **Runtime.** Installed by the `packages` module from the distribution's own repositories only, after approval (design 02), with no new repository: Podman on the RHEL family (rootless-capable), Docker from the distribution repositories (`docker.io`) on Debian and Ubuntu. Never a vendor install script.
 - **Images.** From a public registry, named by digest (`image@sha256:…`), never by a tag alone, since a tag can change after it was tested. The digest is in the release's catalog or in the approval item, so what runs is what the team reviewed.
 - **Least privilege.** Every container runs as a non-root user by default, drops ALL capabilities and adds back only those the service needs, sets `no-new-privileges`, uses a read-only root file system where the service allows (with a temporary file system where it writes), and is never `privileged`, never given the container engine's socket, and never given the host's network, process or other namespaces. Bind mounts are limited to the service's data and configuration folders on an allowlist, checked before the container starts (Blueprint §3.7).
 - **Named exception to non-root.** Services built to start as root and drop privileges themselves (Postfix and Dovecot) may start as root inside the container. The exception list is named in the catalog; any other container that would run as root is refused.
 - **Ports below 1024.** Published from a high port inside the container, so the container needs no capability to bind them. Rootless Podman cannot publish a host port below 1024, so on the RHEL family a container on such a port is started by root-run Podman with the service inside running as a non-root user (`--user`); the system-wide `net.ipv4.ip_unprivileged_port_start` setting is never lowered, because that would let any local user bind those ports.
 - **Same identity.** Same host, same public address, same DNS name and same usernames; the scored check passes before cutover (section 6).
-- **Data stays on the host.** The service's data lives in a host folder mounted into the container, so restore points (design 14) and the integrity check (design 04) cover it, and removing the container never removes the data. On SELinux hosts the mount is relabeled for the container (`:Z`).
-- **The firewall still applies.** Docker's published ports are handled in the `DOCKER-USER` chain, before the host's own input rules, so a published port bypasses UFW and firewalld. The firewall adapter therefore adds bans and the outbound rules to `DOCKER-USER` as well, includes it in its snapshot and `state` (design 19, section 5), and publishes only the scored port. Any other port the container opens is bound to `127.0.0.1`. Podman's rootless ports go through the host firewall normally.
-- **Logs.** The container logs to the host's journal, so log forwarding picks them up (design 10).
+- **Data stays on the host.** The service's data lives in a host folder mounted into the container, so restore points (design 07) and the integrity check (design 08) cover it, and removing the container never removes the data. On SELinux hosts the mount is relabeled for the container (`:Z`).
+- **The firewall still applies.** Docker's published ports are handled in the `DOCKER-USER` chain, before the host's own input rules, so a published port bypasses UFW and firewalld. The firewall adapter therefore adds bans and the outbound rules to `DOCKER-USER` as well, includes it in its snapshot and `state` (design 01, section 5), and publishes only the scored port. Any other port the container opens is bound to `127.0.0.1`. Podman's rootless ports go through the host firewall normally.
+- **Logs.** The container logs to the host's journal, so log forwarding picks them up (design 14).
 - **Restart.** The container restarts on failure and at boot, so a power cycle brings it back with the host.
 
 ## 8. What it will never do

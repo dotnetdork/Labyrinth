@@ -1,6 +1,6 @@
 # shellcheck shell=bash
 # platform/linux/firewall/firewalld.sh: the firewalld backend of the firewall
-# adapter (design 19, section 5). Sourced by firewall.sh; call it through
+# adapter (design 01, section 5). Sourced by firewall.sh; call it through
 # lab_fw.
 #
 # The snapshot is of the permanent configuration in /etc/firewalld. Changes
@@ -38,7 +38,7 @@ _lab_fw_firewalld_snapshot() {
 }
 
 # Files added since the snapshot are moved into the snapshot folder, never
-# deleted (design 19, section 6).
+# deleted (design 01, section 6).
 _lab_fw_firewalld_restore() {
   local dir="$1" etc rel
   etc="$(_lab_fw_firewalld_etc)"

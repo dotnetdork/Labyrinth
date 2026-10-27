@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
 # Unit tests for the new-password helpers (core/secret/secret.sh,
-# design 05, section 2.3).
+# design 04, section 2.3).
 
 setup() {
   LAB_ROOT="$(cd "$BATS_TEST_DIRNAME/../.." && pwd)"

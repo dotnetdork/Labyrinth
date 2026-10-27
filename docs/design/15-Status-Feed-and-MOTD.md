@@ -1,4 +1,4 @@
-# 06. Status Feed and MOTD (Message of the Day)
+# 15. Status Feed and MOTD (Message of the Day)
 
 Phase: 🟦 Observe · Priority: P2
 
@@ -12,7 +12,7 @@ The SIEM holds no keys to managed hosts. Instead:
 
 1. The control node queries Splunk for a small, fixed set of saved searches (per-host alert counts, last integrity findings, decoy trips).
 2. It renders one short text file per host.
-3. It pushes each file to its host using the operator SSH (Secure Shell) key (design 05) into a root-owned status path.
+3. It pushes each file to its host using the operator SSH (Secure Shell) key (design 04) into a root-owned status path.
 4. The host's login banner prints that file (`/etc/update-motd.d/` on Debian and Ubuntu; a `profile.d` script or `/etc/motd.d/` on RHEL-family hosts).
 
 This adds no new trust path: the control node already administers the hosts.
@@ -38,7 +38,7 @@ flowchart LR
 
 ## 3. Network flows
 
-Whether the network is flat or split into segments behind separate firewalls, only the minimum flows are opened: log forwarding to Splunk (design 10), and the control node's admin path. On a flat network they are allowed in each host's own firewall; where there are segments, they are also the only flows opened between them. The MOTD feed adds no new flow, because it reuses the admin path. Any new flow is checked against the firewall plan and the scoring allowlist first (National Collegiate Cyber Defense Competition [NCCDC], 2025, Rule 4.11).
+Whether the network is flat or split into segments behind separate firewalls, only the minimum flows are opened: log forwarding to Splunk (design 14), and the control node's admin path. On a flat network they are allowed in each host's own firewall; where there are segments, they are also the only flows opened between them. The MOTD feed adds no new flow, because it reuses the admin path. Any new flow is checked against the firewall plan and the scoring allowlist first (National Collegiate Cyber Defense Competition [NCCDC], 2025, Rule 4.11).
 
 ## 4. Content rules
 

@@ -1,6 +1,6 @@
 #Requires -Version 5.1
 # Pester 5 tests for labyrinth.ps1 apply, keep, rollback and probe (design 00,
-# section 5; design 01, sections 7 to 9; docs/Conventions.md section 3.1).
+# section 5; design 03, sections 7 to 9; docs/Conventions.md section 3.1).
 # The host-specific parts (administrator check, revert timer, probes) are
 # test doubles (tests\fixtures\Doubles.ps1); real-system tests are separate.
 

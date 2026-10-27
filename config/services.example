@@ -1,4 +1,4 @@
-# Scored services and what a healthy probe looks like (designs 01, 13).
+# Scored services and what a healthy probe looks like (designs 03, 19).
 # Format: name proto host port expect
 #   proto  : http | https | dns | smtp | pop3 | ftp | tcp
 #   expect : a string the response must contain, or a record value for dns.

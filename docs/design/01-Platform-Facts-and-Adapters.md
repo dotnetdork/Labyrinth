@@ -1,4 +1,4 @@
-# 19. Platform Facts and Adapters
+# 01. Platform Facts and Adapters
 
 Priority: P0
 
@@ -40,8 +40,8 @@ Reading a fact changes nothing, so facts are safe in `check` and `plan`. Each fa
 | `role` | `workstation`, `member-server`, `standalone-server` or `domain-controller` | `ProductType` and `PartOfDomain` |
 | `firewall` | `on` (every profile on), `partial`, `off` or `unknown` | `Get-NetFirewallProfile` |
 | `secure_boot` | `on`, `off`, `unsupported` (no UEFI) or `unknown` (for example, without administrator rights) | `Confirm-SecureBootUEFI` |
-| `ad_module` | `yes` or `no`: whether the ActiveDirectory PowerShell module is present (design 11, section 3.2) | `Get-Module -ListAvailable` |
-| `splunk_forwarder` | `yes` or `no` (design 10, section 4) | Whether the `SplunkForwarder` service exists |
+| `ad_module` | `yes` or `no`: whether the ActiveDirectory PowerShell module is present (design 12, section 3.2) | `Get-Module -ListAvailable` |
+| `splunk_forwarder` | `yes` or `no` (design 14, section 4) | Whether the `SplunkForwarder` service exists |
 
 **Optional tools.** `lab_have <tool>` (`Test-LabTool -Name <tool>` on Windows) says whether a command is on the path, for the tools Labyrinth must not assume, such as `jq`, `python3`, `curl` and `dig`. A module that can use one has a slower path that works without it.
 
@@ -69,32 +69,32 @@ Each backend is checked in this order:
 | `platform/linux/firewall/<backend>.sh` | One firewall adapter per Linux backend (section 5) |
 | `platform/ubuntu/`, `platform/rhel-family/` | Adapters that differ by family, such as package ownership (`dpkg -S` or `rpm -qf`) |
 | `platform/windows/Firewall.ps1` | The Windows Firewall adapter |
-| `platform/appliance/` | Runbooks and templates only (design 16) |
+| `platform/appliance/` | Runbooks and templates only (design 05) |
 
 The `hosts` file's platform `ubuntu` covers the whole Debian family, and `rhel-family` covers Fedora, RHEL, Rocky, Oracle Linux and AlmaLinux (Conventions, section 3.1).
 
 ## 5. The firewall adapter
 
-Every backend's adapter offers the same functions, so the firewall, ban and egress modules never call a backend directly. On Linux they are called through one dispatcher, `lab_fw FUNCTION ARGS` (in `platform/linux/firewall/firewall.sh`, which a module sources). The dispatcher picks the backend from the `firewall` fact and refuses (`20`) when the fact is `conflict` or `unknown`; `restore` instead uses the backend named in the snapshot, so a rollback still works after the fact changes. When the fact is `none`, the usual state of a fresh Debian install (nftables installed but not running, its shipped rules accepting everything, and UFW not installed), the dispatcher uses nftables if `nft` is installed, otherwise iptables if `iptables` is installed, under the same snapshot, allowlist and revert-timer rules; the snapshot of the empty ruleset puts the host back exactly as it was. That raw-nftables lockdown is for the first minute only, because the first-minute bundle installs nothing (design 01, section 6.1). In the Harden phase the `packages` module installs UFW from the distribution's repositories (design 20), the same allows and the same default deny are loaded into it, and the raw nftables table is removed once UFW is active and the probes pass. On Ubuntu, UFW is installed but often inactive on a fresh host; the fact is then `none` too, the same raw-nftables lockdown holds for the first minute, and in the Harden phase UFW is switched on with the same rules, with nothing to install. On the RHEL family the front end is firewalld. Switching UFW on is recorded in the run manifest like any change: its rollback switches UFW off again (`ufw disable`), loads the raw-nftables snapshot taken just before the switch, and probes; where the `packages` module installed UFW, that module's own rollback removes the package. A host with neither `nft` nor `iptables` is refused (`20`) and reported for a person. On Windows the functions are in `platform/windows/Firewall.ps1`, and they refuse (`20`) when the `firewall` fact is `unknown`.
+Every backend's adapter offers the same functions, so the firewall, ban and egress modules never call a backend directly. On Linux they are called through one dispatcher, `lab_fw FUNCTION ARGS` (in `platform/linux/firewall/firewall.sh`, which a module sources). The dispatcher picks the backend from the `firewall` fact and refuses (`20`) when the fact is `conflict` or `unknown`; `restore` instead uses the backend named in the snapshot, so a rollback still works after the fact changes. When the fact is `none`, the usual state of a fresh Debian install (nftables installed but not running, its shipped rules accepting everything, and UFW not installed), the dispatcher uses nftables if `nft` is installed, otherwise iptables if `iptables` is installed, under the same snapshot, allowlist and revert-timer rules; the snapshot of the empty ruleset puts the host back exactly as it was. That raw-nftables lockdown is for the first minute only, because the first-minute bundle installs nothing (design 03, section 6.1). In the Harden phase the `packages` module installs UFW from the distribution's repositories (design 02), the same allows and the same default deny are loaded into it, and the raw nftables table is removed once UFW is active and the probes pass. On Ubuntu, UFW is installed but often inactive on a fresh host; the fact is then `none` too, the same raw-nftables lockdown holds for the first minute, and in the Harden phase UFW is switched on with the same rules, with nothing to install. On the RHEL family the front end is firewalld. Switching UFW on is recorded in the run manifest like any change: its rollback switches UFW off again (`ufw disable`), loads the raw-nftables snapshot taken just before the switch, and probes; where the `packages` module installed UFW, that module's own rollback removes the package. A host with neither `nft` nor `iptables` is refused (`20`) and reported for a person. On Windows the functions are in `platform/windows/Firewall.ps1`, and they refuse (`20`) when the `firewall` fact is `unknown`.
 
 | Function (Linux) | Windows | Does |
 |---|---|---|
 | `snapshot [DIR]` | `Save-LabFirewallSnapshot [-Path DIR]` | Saves the complete current ruleset to DIR, in a form `restore` can load back exactly. DIR defaults to `<backup>/<run>/<module>/<seq>-firewall`. |
 | `restore DIR` | `Restore-LabFirewallSnapshot -Path DIR` | Puts back the ruleset saved in DIR, then compares `state` with the state saved at the snapshot |
 | `allow PROTO PORT SOURCE` | `Add-LabFirewallAllow -Protocol P -Port N -Source S` | Allows inbound PROTO (`tcp` or `udp`) on PORT from SOURCE (an address or CIDR, or `any`) |
-| `default_deny_in` | `Enable-LabFirewallDefaultDeny` | Sets the inbound default to deny, keeping established connections, loopback and ICMP (design 01, section 2) |
+| `default_deny_in` | `Enable-LabFirewallDefaultDeny` | Sets the inbound default to deny, keeping established connections, loopback and ICMP (design 03, section 2) |
 | `state` | `Get-LabFirewallRuleState` | Prints the current rules, normalized so two snapshots can be compared: packet counters are removed |
 | `lab_fw_rollback` | `Undo-LabFirewallChange` | Restores, newest first, every snapshot the current module took in the current run. A module's `rollback` calls it. |
 
 **Return codes.** Each function returns `0` on success, `20` when refused, `30` when a restore does not give back the saved state, and `40` on an error, so a module can pass the code straight on as its exit code. The reason goes to standard error.
 
-**Order and records.** The order is fixed. The caller takes a snapshot, adds the scoring allowlist and the admin source, then the rest of the allows, then calls `default_deny_in` (design 01). The adapter enforces it:
+**Order and records.** The order is fixed. The caller takes a snapshot, adds the scoring allowlist and the admin source, then the rest of the allows, then calls `default_deny_in` (design 03). The adapter enforces it:
 
 - `allow` and `default_deny_in` are refused (`20`) until the current module has taken a snapshot in the current run, and in plan mode.
 - `default_deny_in` is refused (`20`) until the scoring engine can still reach every scored service on this host. A service in the run-time `services` file is on this host when its host field is this host's short name or one of its addresses, or resolves to one (a simple DNS lookup). For each such service, every `scoring-allowlist` address needs an `allow` on the service's port: TCP, plus UDP for `dns`. An allow from `any` covers every address. When no scored service is on this host, every scoring address still needs some allow, or one from `any`. The refusal lists the missing pairs. The adapter keeps the run's allows in `<state>/runs/<run>/firewall-allows`. No probe can test this, because probes run from the host itself, where an inbound deny does not apply; the firewall module's `verify` therefore reads the live rules for the same pairs.
 - Each change is recorded in the run manifest before it is made (Conventions, section 7): `firewall_snapshot` (target: the backend; backup: DIR) once the snapshot is saved, then `firewall_allow` and `firewall_default_deny`. Rollback restores from the `firewall_snapshot` entries; the other two are the record of what was done.
 - Repeating `allow` with the same arguments in the same run changes nothing.
-- **Scored ports stay open to every source (planned).** Some events penalize filtering a public service by source address (design 01, section 6.1). `allow` on a scored service's port with a SOURCE other than `any` is refused (`20`), and so is any deny the adapter would add on such a port, such as a ban rule scoped to the port rather than to one hostile address (design 12). A ban of one address on every port is not a source filter and stays allowed.
+- **Scored ports stay open to every source (planned).** Some events penalize filtering a public service by source address (design 03, section 6.1). `allow` on a scored service's port with a SOURCE other than `any` is refused (`20`), and so is any deny the adapter would add on such a port, such as a ban rule scoped to the port rather than to one hostile address (design 18). A ban of one address on every port is not a source filter and stays allowed.
 - **The gate without a scoring allowlist (planned).** When `scoring-allowlist` is empty or missing, `default_deny_in` passes once every scored service on this host has an allow from `any` on its port. With a scoring allowlist, the check above applies as well.
 
 **Backends.**
@@ -115,8 +115,8 @@ Every backend's adapter offers the same functions, so the firewall, ban and egre
 - **nftables:** an accept in Labyrinth's table does not override a drop in another table's chain on the same hook. The firewall module's plan lists such drops for a person to review.
 - **Windows Firewall:** a block rule always wins over an allow rule, and Group Policy settings win over local ones. The firewall module's plan lists enabled inbound block rules and policy-set profiles.
 - **iptables without `ip6tables`:** only IPv4 is filtered, so IPv6 stays open after `default_deny_in`, which warns. The firewall module's plan says so.
-- **Docker:** published container ports are forwarded before the host's `INPUT` chain, so an `INPUT` default deny does not filter them, and a ban on `INPUT` alone misses them. Where Docker runs, bans go into `DOCKER-USER` too, and the plan lists every published port for a person to review (design 22, section 7).
-- **nftables and iptables:** the changes last until the ruleset is next reloaded or the host restarts. The health monitor re-applies the sealed rules when they drift (design 13, section 4.1).
+- **Docker:** published container ports are forwarded before the host's `INPUT` chain, so an `INPUT` default deny does not filter them, and a ban on `INPUT` alone misses them. Where Docker runs, bans go into `DOCKER-USER` too, and the plan lists every published port for a person to review (design 13, section 7).
+- **nftables and iptables:** the changes last until the ruleset is next reloaded or the host restarts. The health monitor re-applies the sealed rules when they drift (design 19, section 4.1).
 
 ## 6. What it will never do
 

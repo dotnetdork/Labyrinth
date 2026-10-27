@@ -8,9 +8,9 @@ These conventions turn the design specs into code that every module writes the s
 |---|---|---|---|
 | Linux | bash | 4.2 | Assuming `jq`, `python3`, `perl`, `curl`, `dig` or `yq`. Detect optional tools with `command -v` and degrade gracefully. |
 | Windows | Windows PowerShell | 5.1 | PowerShell 7-only syntax: `??`, `?.`, ternary `a ? b : c`, `&&`/`||` between commands, `ForEach-Object -Parallel`, `Clean {}` blocks |
-| Appliances | none | — | Any automation that writes to an appliance (design 16) |
+| Appliances | none | — | Any automation that writes to an appliance (design 05) |
 
-Team-written tools must not use resources outside the competition environment, apart from simple DNS lookups (National Collegiate Cyber Defense Competition [NCCDC], 2025, Rule 5.6.4). The rule's own example is cloud services and cloud processing, so Labyrinth never sends data to, or has anything processed by, an outside service. Downloading and installing public software is different: after the first-minute lockdown, the `packages` module and the core download helper, and only they, may fetch public software and public data from the host's configured repositories, an event mirror or proxy, or a release pinned by SHA-256 (design 20). Pasting a file in by hand is the fallback when none of those can be reached. Reputation and enrichment services, private sources and full upgrades are never used. If a module needs a tool the host still lacks, it uses its fallback or reports exit code 20 (blocked) with a clear message.
+Team-written tools must not use resources outside the competition environment, apart from simple DNS lookups (National Collegiate Cyber Defense Competition [NCCDC], 2025, Rule 5.6.4). The rule's own example is cloud services and cloud processing, so Labyrinth never sends data to, or has anything processed by, an outside service. Downloading and installing public software is different: after the first-minute lockdown, the `packages` module and the core download helper, and only they, may fetch public software and public data from the host's configured repositories, an event mirror or proxy, or a release pinned by SHA-256 (design 02). Pasting a file in by hand is the fallback when none of those can be reached. Reputation and enrichment services, private sources and full upgrades are never used. If a module needs a tool the host still lacks, it uses its fallback or reports exit code 20 (blocked) with a clear message.
 
 ## 2. Files and data formats
 
@@ -30,7 +30,7 @@ risk: service-affecting
 touches_scored: true
 requires: [observe.inventory]
 outputs: [/etc/ufw/user.rules, firewall-backup]
-spec: 01
+spec: 03
 ```
 
 The fields are those of design 00, section 4, plus `spec`, the design number the module implements. A loader that meets any other YAML construct fails with exit code 40.
@@ -41,14 +41,14 @@ Configuration is **data, never code**. It is never `source`d in bash or dot-sour
 
 | File | Format | Holds |
 |---|---|---|
-| `event.conf` | `KEY=value`, one per line | Single values: SIEM address, revert-timer minutes, ring size, package proxy and mirror. Planned: `BACKUP_PEER` (design 14, section 5); `ALLOW_SERVICE_REPLACE` and `ALLOW_CONTAINERS`, each `yes:<reference>` naming the inject or local rule that allows it, and off when unset (design 22, section 3); `AUTO_APPLY=yes` (section 3.3); and `SPLUNK_UF_VERSION`, `SPLUNK_UF_SHA256_LINUX` and `SPLUNK_UF_SHA256_WINDOWS` for the pinned forwarder download (design 10, section 4) |
-| `protected-accounts` | `account class` per line, optional `# reason`; class is `official`, `scoring`, `employee`, `operator`, `breakglass`, `service` or `builtin`, and (planned) `scored-admin`, an admin account a scoring check logs in with, rotated with a change list (design 05, section 2.4) | The protected set (design 01, section 4); the class decides what Labyrinth may do to the account |
-| `scoring-allowlist` | one address or CIDR per line | Scoring engine sources, applied before any deny rule. Optional for the runner; the firewall adapter still needs it until it checks for allows from any source (planned, design 19, section 5) |
-| `never-ban` | one address or CIDR per line | Addresses that bans must never touch (design 12) |
-| `outbound-allow` | `address proto port` per line; proto `tcp` or `udp`, port a number or `any` | Outbound destinations the first-minute default deny keeps open, beyond the scored services (design 01, section 6.1) |
-| `services` | `name proto host port expect` per line; no value begins with `-` except an `expect` of `-` alone, meaning no expected text | Scored services and what their probe expects. Planned: an `http` path, and the probe kinds that log in (design 13, section 3.1) |
-| `own-ranges` | one address or CIDR per line | Planned: the team's own networks; `probe` run from outside refuses any address not in them (design 13, section 3) |
-| `hosts` | `host group profile platform` per line | Which hosts exist, and each one's group (its ring, design 01), profile and platform |
+| `event.conf` | `KEY=value`, one per line | Single values: SIEM address, revert-timer minutes, ring size, package proxy and mirror. Planned: `BACKUP_PEER` (design 07, section 5); `ALLOW_SERVICE_REPLACE` and `ALLOW_CONTAINERS`, each `yes:<reference>` naming the inject or local rule that allows it, and off when unset (design 13, section 3); `AUTO_APPLY=yes` (section 3.3); and `SPLUNK_UF_VERSION`, `SPLUNK_UF_SHA256_LINUX` and `SPLUNK_UF_SHA256_WINDOWS` for the pinned forwarder download (design 14, section 4) |
+| `protected-accounts` | `account class` per line, optional `# reason`; class is `official`, `scoring`, `employee`, `operator`, `breakglass`, `service` or `builtin`, and (planned) `scored-admin`, an admin account a scoring check logs in with, rotated with a change list (design 04, section 2.4) | The protected set (design 03, section 4); the class decides what Labyrinth may do to the account |
+| `scoring-allowlist` | one address or CIDR per line | Scoring engine sources, applied before any deny rule. Optional for the runner; the firewall adapter still needs it until it checks for allows from any source (planned, design 01, section 5) |
+| `never-ban` | one address or CIDR per line | Addresses that bans must never touch (design 18) |
+| `outbound-allow` | `address proto port` per line; proto `tcp` or `udp`, port a number or `any` | Outbound destinations the first-minute default deny keeps open, beyond the scored services (design 03, section 6.1) |
+| `services` | `name proto host port expect` per line; no value begins with `-` except an `expect` of `-` alone, meaning no expected text | Scored services and what their probe expects. Planned: an `http` path, and the probe kinds that log in (design 19, section 3.1) |
+| `own-ranges` | one address or CIDR per line | Planned: the team's own networks; `probe` run from outside refuses any address not in them (design 19, section 3) |
+| `hosts` | `host group profile platform` per line | Which hosts exist, and each one's group (its ring, design 03), profile and platform |
 | `profiles/<name>.profile` | one module id per line | Optional override of a shipped profile |
 | `pre-approved` | `module-id category item` per line; `item` is an item id, or `*` for every item of the category | Approval items the team approved before the event (section 3.1). Optional: when it is missing, nothing is approved in advance |
 
@@ -65,7 +65,7 @@ The release ships six: `linux-server`, `linux-web`, `linux-siem`, `windows-membe
 - every line is a module id, listed once, naming a module whose `module.yml` carries that id;
 - a `windows-*` profile lists only modules whose platforms include `windows` and that have `.ps1` entry points;
 - a `linux-*` profile lists only modules with a Linux platform and `.sh` entry points;
-- the `appliance` profile lists only `manual-only` modules (design 16).
+- the `appliance` profile lists only `manual-only` modules (design 05).
 
 ## 3. How a module is run
 
@@ -161,7 +161,7 @@ The whole line must parse before help or the version is shown. A value option th
 - Every file in the configuration folder must be readable. One that is not is refused with "needs root (or an elevated Administrator session) to read <file>" (`20`), because a file that cannot be read would otherwise look missing or empty and could quietly weaken a gate.
 - A `services` file that is malformed is an error (`40`) in `plan` as in `apply`, before anything is asked. A `services` file with no service in it counts as missing.
 - This host's line in `hosts` must name a platform the runner serves: `ubuntu` (the whole Debian family; `debian` is a planned alias) or `rhel-family` (Fedora, RHEL, Rocky, Oracle Linux, AlmaLinux) for `labyrinth.sh`, `windows` for `labyrinth.ps1`. Otherwise the run is blocked (`20`).
-- An `appliance` is never changed (design 16).
+- An `appliance` is never changed (design 05).
 
 `keep`, `rollback` and `runs` skip these checks, so a stored revert-timer command still works after the configuration changes.
 
@@ -178,12 +178,12 @@ The whole line must parse before help or the version is shown. A value option th
 1. Administrator or root (`20`). On Windows the data root is then made private: only Administrators, SYSTEM and the operator's account can use it, and it does not inherit rights from its parent. A file or folder under it that another account owns is refused (`20`) and must be checked and removed by hand. Then the host's line and profile, `event.conf`, and the protected set: missing or empty is `20`, malformed is `40`. Plan mode needs the protected set too.
 2. The run lock, `<state>/lock`, holding the process id. A live holder blocks the run (`20`); a lock whose process is gone is taken over. The check is only that a process with that id exists, so if the id is reused after a crash, the lock stays held; when no Labyrinth run is going, delete `<state>/lock` by hand.
 3. Every module is planned, after the `pre-approved` file is read (a malformed one is `40`). Any `40` means nothing is applied. If nothing needs applying, the run ends with no prompts.
-4. **Break-glass** (design 01, section 7): the operator logs in at the console with a `breakglass`-class account and types its name. It is asked once per host and kept in `<state>/breakglass` as `<timestamp><TAB><account>`.
+4. **Break-glass** (design 03, section 7): the operator logs in at the console with a `breakglass`-class account and types its name. It is asked once per host and kept in `<state>/breakglass` as `<timestamp><TAB><account>`.
 5. **Confirmation:** the recap lists what will change and the release hash (`Release:`), and the operator types the host's group name.
 6. From here, changes are made and recorded: the run's manifest starts (`run_start`, `breakglass_verified`), and the scored services are probed if the `services` file lists any (otherwise a warning). A run folder or manifest that cannot be written is an error (`40`).
 7. Each module that needs a change, in order:
    - `manual-only`: never applied; its plan is the checklist.
-   - `touches_scored: true`: blocked (`20`) without a `services` file, and an error (`40`) if `scoring-allowlist` is malformed; the run continues after a block. A missing or empty `scoring-allowlist` does not block (design 01, section 7).
+   - `touches_scored: true`: blocked (`20`) without a `services` file, and an error (`40`) if `scoring-allowlist` is malformed; the run continues after a block. A missing or empty `scoring-allowlist` does not block (design 03, section 7).
    - `requires`: blocked if a required module in this run did not complete.
    - `approval`: items a pre-approval rule covers are approved; the runner shows the rest again, and the operator types the ids or categories to approve, or `--approve` gives them (Approval items, below); none means nothing changes.
    - The revert timer is (re)armed for `REVERT_MINUTES`, unless the module is `read-only`.
@@ -205,15 +205,15 @@ Cancelling a timer checks that it is really gone. If it is still armed, or on Li
 
 #### Trusted code
 
-**Who can change the code.** `apply`, `keep` and `rollback` first check that only root (Linux) or administrators (Windows) can change the program folder, the configuration folder, the data root, anything in them and every folder above them (`lab_tree_trusted`, `Find-LabUntrustedItem`; design 07, section 5). If another account could, the command refuses with `20` and changes nothing, because the revert timer would later run that code as root or SYSTEM. The check only reads. On Linux the timer's command line uses real paths, with links resolved.
+**Who can change the code.** `apply`, `keep` and `rollback` first check that only root (Linux) or administrators (Windows) can change the program folder, the configuration folder, the data root, anything in them and every folder above them (`lab_tree_trusted`, `Find-LabUntrustedItem`; design 21, section 5). If another account could, the command refuses with `20` and changes nothing, because the revert timer would later run that code as root or SYSTEM. The check only reads. On Linux the timer's command line uses real paths, with links resolved.
 
-**What the code is.** Before it loads the rest of the core, each runner checks every file of its folder against `release.sha256` (`lab_release_check`, `Test-LabRelease`; design 07, section 5.1), for every command. A file that is changed, missing or not in the list refuses the command with `20`, the revert timer's `rollback` included, which also sends a notice. With no list, `apply`, `keep` and `rollback` warn, and the release hash reads `not checked`.
+**What the code is.** Before it loads the rest of the core, each runner checks every file of its folder against `release.sha256` (`lab_release_check`, `Test-LabRelease`; design 21, section 5.1), for every command. A file that is changed, missing or not in the list refuses the command with `20`, the revert timer's `rollback` included, which also sends a notice. With no list, `apply`, `keep` and `rollback` warn, and the release hash reads `not checked`.
 
 #### Approval items
 
 - **Items.** An `approval` module's `plan` lists each item it would change, one per line on standard output: `item`, then the item id, its category, its fingerprint and the reason, separated by tabs. The core prints the line: `lab_item ID CATEGORY FINGERPRINT REASON` / `Write-LabItem`. The id is `[a-z0-9-]+`, unique within the module on this host, and derived from what the item is (for example its path), so the same item keeps its id from one run to the next. The category is `[a-z0-9-]+`. The fingerprint is the first 12 hex digits of the SHA-256 of the item's current state: its content, value or settings (`lab_item_fingerprint`, which reads the state on standard input, / `Get-LabItemFingerprint -Text`). A line that starts with `item` and a tab but is malformed, or an id listed twice, makes the module an `ERROR` (`40`), in plan and in apply.
 - **Shown** under the module's result line as `Item:` lines, `<id>@<fingerprint> (<category>): <reason>`.
-- **The prompt.** In apply, the runner shows the items not pre-approved again, after an `Approved:` line listing the pre-approved ones as `<ids> (pre-approved)`, then asks for item ids, and `category:<name>` for every item of that category in this run's plan, on this host only (design 01). A word that is neither is a `BLOCKED` (`20`); an id or category not in the plan is ignored with a line saying so. Each approved item goes to `apply` as `<id>@<fingerprint>` in `LAB_APPROVED`, with the fingerprint of this run's plan. Under the `CHANGE` line, `Approved:` lists them, each pre-approved one followed by `(pre-approved)`. When every item is pre-approved, the prompt is not asked. A module whose plan listed no items, or with nothing approved, changes nothing (`OK`).
+- **The prompt.** In apply, the runner shows the items not pre-approved again, after an `Approved:` line listing the pre-approved ones as `<ids> (pre-approved)`, then asks for item ids, and `category:<name>` for every item of that category in this run's plan, on this host only (design 03). A word that is neither is a `BLOCKED` (`20`); an id or category not in the plan is ignored with a line saying so. Each approved item goes to `apply` as `<id>@<fingerprint>` in `LAB_APPROVED`, with the fingerprint of this run's plan. Under the `CHANGE` line, `Approved:` lists them, each pre-approved one followed by `(pre-approved)`. When every item is pre-approved, the prompt is not asked. A module whose plan listed no items, or with nothing approved, changes nothing (`OK`).
 - **Pre-approval rules.** An `approval` module's `module.yml` may list categories in `pre_approvable` (design 00, section 4): categories whose items are safe to change without a person seeing each one, because the module checks the item fully and the change can be undone or breaks nothing. The run-time `pre-approved` file (section 2.2) holds rules, `module-id category item`, decided by the team before the event; `item` is an item id, or `*` for every item of that category. In `plan` and `apply`, each item of this run's plan that a rule names, in a category its module allows, is approved with this run's fingerprint, and the module's plan shows them on a `Note:` line, `pre-approved, so applied without asking: <ids>`. A rule for a category the module does not allow is ignored, with a line after the plan: `Pre-approval ignored: <module-id> does not let category <category> be pre-approved: <rule>`. A rule for a module not in this run is for other hosts, and is passed over in silence. A malformed `pre-approved` file is an error (`40`), naming the file and line. Pre-approved items are checked again before each change, like any other (below).
 - **`--approve` / `-Approve`** (`apply` only) approves without the prompt, for remote mode (design 00, section 5). Its value is a comma-separated list of `<module-id>:<item-id>@<fingerprint>`, copied from a plan. It takes no categories, because a category could include items the operator never saw; an entry with a category, or any other malformed entry, is a usage error (`40`). When `--approve` is given, an `approval` module gets its pre-approved items and the entries that name it, and the prompt is not asked. After the plan, each entry that names no item of an `approval` module in this run's plan is ignored with a line saying so.
 - **Changed since the plan.** An `--approve` entry whose fingerprint differs from this run's plan is left out, recorded as `approval_refused` and shown as a `Found:` line. `apply` then recomputes each approved item's fingerprint before changing it, with `lab_approved ID FINGERPRINT` / `Test-LabApproved`: `0` approved and unchanged, `1` not approved, `2` changed since the plan, which records `approval_refused` and leaves the item alone. None of these makes the run fail.
@@ -290,10 +290,10 @@ The runner does not do this yet; it is specified here and scheduled in the Roadm
   - The host's group comes from the `hosts` file, matched on the host's name and address. A mismatch or an ambiguous match blocks (`20`). `--confirm-group` is still accepted but no longer needed.
   - The break-glass account is the `breakglass`-class account from the protected set that exists on the host; with none, or more than one, the run blocks (`20`). Labyrinth checks for a console session itself and warns if it finds none, instead of prompting.
   - **It never prompts in the middle of a run.** An approval item that no pre-approval rule covers goes to a queue under the state path. `labyrinth queue` lists the queue, and `labyrinth approve <ids>` applies the chosen items in a new run with the same backups, manifest, revert timer and probes.
-  - **Always queued, whatever the rules say:** deleting an account; changing a scored service that has no probe; replacing or containerizing a service (design 22); any Tier 3 item.
+  - **Always queued, whatever the rules say:** deleting an account; changing a scored service that has no probe; replacing or containerizing a service (design 13); any Tier 3 item.
   - **Kept automatically.** Every module is kept once its verify and probes pass, except firewall and SSH changes. Those stay under the revert timer until one `keep` per host run.
 - **Short output.** Each module gets one line: `OK`, `CHANGED`, `ROLLED BACK`, `QUEUED`, `BLOCKED` or `FAIL`, then its title and ID. The full Found/Fix/More block is printed only for a failure or a block. Every detail is in the run log. `--detail` shows the full block for every module.
-- **The Harden phase.** Five phases in order: Lock out, Harden, Observe, Deceive, Sustain. Lock out is the first-minute bundle (designs 01, 05, 16). Harden holds the install (20), restore points (14), the persistence sweep (17), the CVE assessment and mitigations (21), patching and service reduction (15), the service packs (18), Windows and AD hardening (11), service replacement and containers (22) and the official-package check (04), and then reopens outbound.
+- **The Harden phase.** Five phases in order: Lock out, Harden, Observe, Deceive, Sustain. Lock out is the first-minute bundle (designs 03, 04, 05). Harden holds the install (02), restore points (07), the persistence sweep (06), the CVE assessment and mitigations (09), patching and service reduction (10), the service packs (11), Windows and AD hardening (12), service replacement and containers (13) and the official-package check (08), and then reopens outbound.
 
 ## 4. Bash style
 
@@ -313,7 +313,7 @@ The runner does not do this yet; it is specified here and scheduled in the Roadm
 - Use approved verbs. Core functions use the `Lab` noun prefix (for example `Write-LabLog`, `Add-LabManifestEntry`).
 - Never use `Invoke-Expression`, never dot-source configuration.
 - Exit with the contract codes using `exit <code>`; do not let an exception escape an entry point without being mapped to `40`. In `labyrinth.ps1` the last `catch` does this: like the bash `ERR` trap (section 4), it reports an internal error with what is known about the run. A manifest write whose failure must not end the run silently gets its own `try`.
-- Use `[System.Security.Cryptography.RandomNumberGenerator]` for anything secret, never `Get-Random` (design 01, section 8).
+- Use `[System.Security.Cryptography.RandomNumberGenerator]` for anything secret, never `Get-Random` (design 03, section 8).
 - PSScriptAnalyzer must pass. A suppression uses `[Diagnostics.CodeAnalysis.SuppressMessageAttribute()]` with a justification.
 
 ## 6. Logging
@@ -331,7 +331,7 @@ Every log line is one JSON object on one line (JSON lines), written through the 
 | `event` | `rule_added` | Short machine-readable name |
 | `msg` | `allowed tcp/443 from any source` | Human-readable |
 
-Logs are written to `<logs>/<category>/<YYYYMMDD>.jsonl` (UTC date); warnings and errors are also printed to standard error. Plan mode writes no log files. Extra fields may follow. **Never log a secret:** passwords, keys, the event seed and tokens are never passed to the logger, not even masked. A module makes a new password with `lab_secret_new` / `Get-LabRandomSecret` and hands it over only with `lab_secret_show` / `Show-LabSecret`, which write to the terminal, never to standard output (design 05, section 2.3). Log categories are those in design 00, section 7.
+Logs are written to `<logs>/<category>/<YYYYMMDD>.jsonl` (UTC date); warnings and errors are also printed to standard error. Plan mode writes no log files. Extra fields may follow. **Never log a secret:** passwords, keys, the event seed and tokens are never passed to the logger, not even masked. A module makes a new password with `lab_secret_new` / `Get-LabRandomSecret` and hands it over only with `lab_secret_show` / `Show-LabSecret`, which write to the terminal, never to standard output (design 04, section 2.3). Log categories are those in design 00, section 7.
 
 ## 7. The run manifest
 
@@ -345,11 +345,11 @@ The manifest is `<state>/runs/<run>/manifest.jsonl`, one JSON object per line, e
 | `apply_start` | A module's `apply` is about to run; `rollback <run>` undoes every module with one, except one kept once verified (`module_kept`) |
 | `file` | A file is about to change; `backup` holds its copy, `<backup>/<run>/<module>/<seq>-<name>` |
 | `file_created` | A file that did not exist is about to be created |
-| `firewall_snapshot` | The firewall adapter saved the ruleset; `target` is the backend and `backup` the snapshot folder. Rollback restores it (design 19, section 5) |
+| `firewall_snapshot` | The firewall adapter saved the ruleset; `target` is the backend and `backup` the snapshot folder. Rollback restores it (design 01, section 5) |
 | `firewall_allow`, `firewall_default_deny` | The firewall adapter is about to add an allow, or set the inbound default to deny; undone by the snapshot |
-| `quarantine_file`, `quarantine_cron`, `quarantine_unit`, `quarantine_task`, `quarantine_service`, `quarantine_registry`, `quarantine_wmi`, `quarantine_process` | An item is about to be quarantined; `lab_quarantine_restore` / `Undo-LabQuarantine` put it back, except an ended process (design 17, section 5.1) |
-| `package_install` | The `packages` module installed a package; `target` is the package and `note` its version. Rollback stops and disables any service it brought and leaves the package installed (design 20, section 4) |
-| `finding_state` | A known flaw changed state in the vulnerability tracker; `target` is the flaw and host, `note` the new state and how. Nothing to undo; the change that closed it has its own entry (design 21, section 4) |
+| `quarantine_file`, `quarantine_cron`, `quarantine_unit`, `quarantine_task`, `quarantine_service`, `quarantine_registry`, `quarantine_wmi`, `quarantine_process` | An item is about to be quarantined; `lab_quarantine_restore` / `Undo-LabQuarantine` put it back, except an ended process (design 06, section 5.1) |
+| `package_install` | The `packages` module installed a package; `target` is the package and `note` its version. Rollback stops and disables any service it brought and leaves the package installed (design 02, section 4) |
+| `finding_state` | A known flaw changed state in the vulnerability tracker; `target` is the flaw and host, `note` the new state and how. Nothing to undo; the change that closed it has its own entry (design 09, section 4) |
 | `approval_refused` | An approved item was left alone because it changed since the plan; `target` is the item id (section 3.1). Nothing to undo |
 | `module_kept` | The module verified and no scored service got worse, so it is kept: `rollback <run>` and the revert timer leave it alone until it is applied again; `rollback <run> --all` undoes it (design 00, section 4, rule 9) |
 | `rolled_back` | The module was rolled back |
@@ -366,7 +366,7 @@ curl -fsS --max-time 5 "$url"   # lab-guard: allow network -- probe of a scored 
 
 The comment must name the rule and give a reason after `--`. Reviewers check every allow comment.
 
-The `delete` rule has exactly one legitimate use: the account module deleting an account a person approved (design 05, section 6.4). That line carries an allow comment naming the approval. No other module deletes an account, and no module deletes a file outside Labyrinth's own temporary and state paths; anything else is removed by quarantine (design 17, section 5).
+The `delete` rule has exactly one legitimate use: the account module deleting an account a person approved (design 04, section 6.4). That line carries an allow comment naming the approval. No other module deletes an account, and no module deletes a file outside Labyrinth's own temporary and state paths; anything else is removed by quarantine (design 06, section 5).
 
 ## 9. Tests
 
@@ -378,8 +378,8 @@ The `delete` rule has exactly one legitimate use: the account module deleting an
 - **The operator manual** (`docs/manual/labyrinth.md`) is one source for the Linux and Windows PDFs, the man page and the Windows help topic, built in CI by `tools/manual/build.sh`. Text for one platform sits between `<!-- linux -->` or `<!-- windows -->` and `<!-- end -->`. A change to a command, option, exit code or console message updates the manual in the same commit, and `tests/manual/manual.bats` checks that each platform's manual has every command, option and exit code and nothing from the other platform. The manual is written in the plain style of `docs/Overview.md`: short sentences, and every term explained the first time it appears.
 - Each module's tests start from its spec's acceptance-test list and include the negative test from design 00, section 8: protected accounts and scored services are untouched.
 - **Where real-host tests run**. Unit tests with test doubles run everywhere CI runs. Acceptance tests that change a real host run in two places:
-  - **CI runners,** with `LAB_REALSYSTEM=1`: Ubuntu, and Windows Server, including a job that promotes a throwaway runner to a single domain controller for the design 11 tests. These run on every pull request that touches the module.
-  - **The lab,** local virtual machines that a person runs before each release: the RHEL family (Fedora, Rocky or Oracle Linux), Debian, a domain with a member server, several hosts for rings and remote mode, a SIEM, and appliance images for the runbooks (design 16). `docs/lab/README.md` lists the machines, how to build them from public install media, and the matrix of module × platform × version. Each result is recorded there with the version tested, which is the record design 18, section 7 asks for.
+  - **CI runners,** with `LAB_REALSYSTEM=1`: Ubuntu, and Windows Server, including a job that promotes a throwaway runner to a single domain controller for the design 12 tests. These run on every pull request that touches the module.
+  - **The lab,** local virtual machines that a person runs before each release: the RHEL family (Fedora, Rocky or Oracle Linux), Debian, a domain with a member server, several hosts for rings and remote mode, a SIEM, and appliance images for the runbooks (design 05). `docs/lab/README.md` lists the machines, how to build them from public install media, and the matrix of module × platform × version. Each result is recorded there with the version tested, which is the record design 11, section 7 asks for.
   - An acceptance test says which of the two it needs. A module is not released on a platform that neither has tested.
 
 ## 10. Commits

@@ -1,6 +1,6 @@
 #Requires -Version 5.1
 # core/safety/System.ps1: the Windows side of the safety code: the
-# administrator check and the dead-man revert timer (design 01, section 8).
+# administrator check and the dead-man revert timer (design 03, section 8).
 # Dot-sourced through core/Lab.ps1.
 #
 # The timer of a run is a one-time scheduled task \Labyrinth\lab-revert-<run>-<n>
@@ -125,7 +125,7 @@ function Test-LabItemAcl {
 # than the trusted ones (Get-LabAdminSid) could change, or $null if there
 # is none. SYSTEM runs the code, configuration and manifest under each P,
 # the revert timer's rollback included, so an account that could write
-# there could run its own code as SYSTEM (design 07, section 5). Each
+# there could run its own code as SYSTEM (design 21, section 5). Each
 # existing P, and everything in it, must be owned by a trusted account,
 # with no other account allowed to write to it, delete it or change its
 # access; each folder above P must not let another account delete, take or

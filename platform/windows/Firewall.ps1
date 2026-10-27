@@ -1,5 +1,5 @@
 #Requires -Version 5.1
-# platform\windows\Firewall.ps1: the Windows Firewall adapter (design 19,
+# platform\windows\Firewall.ps1: the Windows Firewall adapter (design 01,
 # section 5). A module dot-sources it after core\Lab.ps1:
 #
 #   . (Join-Path $env:LAB_ROOT 'platform\windows\Firewall.ps1')
@@ -40,7 +40,7 @@ function Test-LabFirewallChange {
     }
     $state = Get-LabFact -Name firewall
     if ($state -eq 'unknown') {
-        Write-LabFirewallError "the Windows Firewall state is unknown (design 19, section 3); nothing was changed"
+        Write-LabFirewallError "the Windows Firewall state is unknown (design 01, section 3); nothing was changed"
         return 20
     }
     return 0
@@ -250,7 +250,7 @@ function Test-LabFirewallScoringCovered {
 }
 
 # Windows Firewall keeps established connections and loopback itself. ICMP is
-# allowed in both families (design 01, section 2), then every profile is
+# allowed in both families (design 03, section 2), then every profile is
 # turned on with inbound default Block and local allow rules honored.
 # Test-LabFirewallLocalRuleHonored: 0 if the rules Labyrinth adds on this
 # host take effect; 20 if Group Policy turns off local rule merging

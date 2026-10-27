@@ -1,5 +1,5 @@
 #!/usr/bin/env bats
-# Tests for tests/lint/guard.sh (design 08, section 4.5; docs/Conventions.md section 8).
+# Tests for tests/lint/guard.sh (design 22, section 4.5; docs/Conventions.md section 8).
 
 setup() {
   GUARD="$BATS_TEST_DIRNAME/guard.sh"
