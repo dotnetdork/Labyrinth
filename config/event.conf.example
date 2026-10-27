@@ -2,38 +2,38 @@
 # Format: KEY=value, one per line. This file is read as data, never executed.
 # Placeholder values only; never commit a real value.
 
-# Address of the SIEM that receives forwarded logs (design 10).
+# Address of the SIEM that receives forwarded logs (design 14).
 SIEM_ADDRESS=192.0.2.10
 SIEM_SYSLOG_PORT=514
 
-# Minutes before a dead-man revert timer undoes an unconfirmed change (design 01).
+# Minutes before a dead-man revert timer undoes an unconfirmed change (design 03).
 REVERT_MINUTES=5
 
-# Largest number of hosts changed at once after the canary ring (design 01).
+# Largest number of hosts changed at once after the canary ring (design 03).
 RING_MAX_HOSTS=3
 
-# Seconds before a probe gives up and counts as a failure (designs 01, 13).
+# Seconds before a probe gives up and counts as a failure (designs 03, 19).
 PROBE_TIMEOUT=5
 
-# Proxy and mirror for package installs after the lockdown (design 20).
+# Proxy and mirror for package installs after the lockdown (design 02).
 # Leave unset when the hosts reach their repositories directly.
 # PROXY=http://192.0.2.30:3128
 # MIRROR=http://192.0.2.31/
 
 # Event allowances. Off when unset. Turn one on only when the event's local
 # rules or an inject allow it, and name that rule or inject after the colon.
-# Containers on the same host, address and DNS name (design 22).
+# Containers on the same host, address and DNS name (design 13).
 # ALLOW_CONTAINERS=yes:local-rule-example
-# Replacing a scored service, with full proof before cutover (design 22).
+# Replacing a scored service, with full proof before cutover (design 13).
 # ALLOW_SERVICE_REPLACE=yes:inject-example
 
 # One command per host: apply prints a short plan and carries it out, and
-# approval items no pre-approval rule covers wait in a queue (design 01).
+# approval items no pre-approval rule covers wait in a queue (design 03).
 # Specified, not built yet. Unset keeps today's behavior.
 # AUTO_APPLY=yes
 
 # Splunk Universal Forwarder download, pinned by version and SHA-256, never
-# newer than the indexer (design 10). The hashes are of the Linux amd64 .tgz
+# newer than the indexer (design 14). The hashes are of the Linux amd64 .tgz
 # and the Windows x64 .msi. Placeholders only.
 # SPLUNK_UF_VERSION=0.0.0
 # SPLUNK_UF_SHA256_LINUX=0000000000000000000000000000000000000000000000000000000000000000

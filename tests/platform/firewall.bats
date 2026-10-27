@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
 # Unit tests for the Linux firewall adapter (platform/linux/firewall/,
-# design 19, section 5). Every firewall command is a stub that writes its
+# design 01, section 5). Every firewall command is a stub that writes its
 # arguments to $CALLS, so the tests see exactly what would have run. No real
 # firewall is read or changed.
 

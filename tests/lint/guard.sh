@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # guard.sh: static check that Labyrinth code makes no outside calls and takes
-# no blanket actions (Rules 5.6.4 and 5.6.5; design 08, section 4.5). The
+# no blanket actions (Rules 5.6.4 and 5.6.5; design 22, section 4.5). The
 # 'install' rules keep installs in one place: only the packages module and the
 # core download helper may install, with an allow comment naming design 20.
 #

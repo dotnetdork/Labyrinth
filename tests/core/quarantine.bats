@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
 # Unit tests for the quarantine helper (core/quarantine/quarantine.sh,
-# design 17, section 5.1). Items live under a fake root in the test's own
+# design 06, section 5.1). Items live under a fake root in the test's own
 # folder; systemctl is a stub that writes its arguments to $CALLS.
 
 setup() {

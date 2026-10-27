@@ -1,6 +1,6 @@
 #Requires -Version 5.1
 # core/probe/Probe.ps1: scoring-style probes of the services in the run-time
-# service list (design 01, section 9; design 13). Dot-sourced through
+# service list (design 03, section 9; design 19). Dot-sourced through
 # core/Lab.ps1.
 #
 # A probe only checks that a service answers as expected; it never logs in.

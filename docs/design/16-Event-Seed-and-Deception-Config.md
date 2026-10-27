@@ -1,4 +1,4 @@
-# 03. Event Seed and Deception Configuration
+# 16. Event Seed and Deception Configuration
 
 Phase: 🟪 Deceive · Priority: P1
 
@@ -11,7 +11,7 @@ Team-written tools must be public before use and frozen (National Collegiate Cyb
 The code is public. The values are not in the code. Kerckhoffs's principle says a system should stay secure even when everything except the key is known. Here the "key" is a short random value, the **event seed**, chosen by the team just before the event.
 
 - The **algorithm** (how a seed becomes decoy names, ports and tokens) is public.
-- The **seed** is secret. It is kept in the team's offline record (design 05, section 2) and shared only through the official team chat or in person.
+- The **seed** is secret. It is kept in the team's offline record (design 04, section 2) and shared only through the official team chat or in person.
 - Every run derives the same values from the same seed, so every team member and every host gets consistent results without a shared secrets file.
 
 A rival who reads the repository learns how values are made, not which values this event uses.
@@ -27,7 +27,7 @@ A rival who reads the repository learns how values are made, not which values th
 | `canary-token:N` | Canary file contents and markers |
 | `decoy-path:N` | Decoy file and directory names |
 | `ssh-banner:N` | Banner text variants |
-| `scored-admin:<username>` | The new password of a `scored-admin` account, the same on every host that has the name, so the team can work out the change list on its own machine (design 05, section 2.4). Never written down by Labyrinth |
+| `scored-admin:<username>` | The new password of a `scored-admin` account, the same on every host that has the name, so the team can work out the change list on its own machine (design 04, section 2.4). Never written down by Labyrinth |
 
 Changing `purpose` or `index` gives unrelated values. Nothing derived can be reversed to the seed.
 

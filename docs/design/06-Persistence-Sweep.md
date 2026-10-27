@@ -1,10 +1,10 @@
-# 17. Persistence Sweep
+# 06. Persistence Sweep
 
 Phase: 🟧 Harden · Priority: P0
 
 ## 1. Goal
 
-Assume the attacker is already inside when the event starts. Someone who got in early leaves ways back: scheduled jobs, services, startup items, keys, sudo rules and login hooks. Rotating passwords and ending sessions (design 01) does not remove any of them, so the attacker simply returns.
+Assume the attacker is already inside when the event starts. Someone who got in early leaves ways back: scheduled jobs, services, startup items, keys, sudo rules and login hooks. Rotating passwords and ending sessions (design 03) does not remove any of them, so the attacker simply returns.
 
 This spec finds those footholds and removes them as early as is safe, without breaking a scored service. Scored services are a primary Red Team target, and successful penetrations cost points (National Collegiate Cyber Defense Competition [NCCDC], 2025, Scoring section), so the sweep covers them too.
 
@@ -15,18 +15,18 @@ This spec finds those footholds and removes them as early as is safe, without br
 | Scoring is based partly on controlling and preventing unauthorized access (NCCDC, 2025, Scoring section). No rule forbids removing an attacker's foothold. | Removal is part of the job, not an optional extra. |
 | Tools must not deliberately break expected functionality (NCCDC, 2025, Rule 5.6.5). | Never a blanket action such as removing every cron job. Each item is judged on its own and quarantined, never deleted. |
 | Anything that interferes with the scoring engine is the team's responsibility (NCCDC, 2025, Rule 4.11). | An item a scored service depends on is never removed automatically. Probes run before and after, under a revert timer. |
-| Reports must say what happened and what was affected (NCCDC, 2025, Rule 9.4). | Quarantine keeps every item, so it can be shown as evidence in the report (design 02). |
+| Reports must say what happened and what was affected (NCCDC, 2025, Rule 9.4). | Quarantine keeps every item, so it can be shown as evidence in the report (design 20). |
 
 ## 3. Where it looks
 
 | Platform | Persistence points |
 |---|---|
-| Linux | System and per-user crontabs, `cron.d`, anacron, `at` jobs; systemd units and timers (system and per-user); `rc.local` and init scripts; shell startup files (`/etc/profile.d`, system and user `bashrc` and `profile`); `sudoers` and `sudoers.d`; PAM configuration; `ld.so.preload`; SSH configuration and every key source (design 05, section 4); setuid files and kernel modules not owned by a package; web server and PHP modules or extensions not owned by a package (Apache and nginx modules, `php.ini` `extension=` and `auto_prepend_file` lines) |
+| Linux | System and per-user crontabs, `cron.d`, anacron, `at` jobs; systemd units and timers (system and per-user); `rc.local` and init scripts; shell startup files (`/etc/profile.d`, system and user `bashrc` and `profile`); `sudoers` and `sudoers.d`; PAM configuration; `ld.so.preload`; SSH configuration and every key source (design 04, section 4); setuid files and kernel modules not owned by a package; web server and PHP modules or extensions not owned by a package (Apache and nginx modules, `php.ini` `extension=` and `auto_prepend_file` lines) |
 | Windows | Services; scheduled tasks; Run and RunOnce registry keys; startup folders; WMI event subscriptions; Winlogon `Userinit` and `Shell` values; Image File Execution Options debuggers; replaced accessibility programs (`sethc.exe`, `utilman.exe`); members of the local Administrators group; unsigned DLLs in a service's own folder (report only, because DLL hijacking is hard to judge automatically); IIS modules and handlers not in the profile's known-good list |
-| Both | Remote-access and tunnel tools (for example AnyDesk, TeamViewer, ScreenConnect, ngrok, chisel, rclone, plink), found as installed services, running processes or program files and matched against the release's data file (design 10, section 5) |
-| SIEM host | Splunk apps, scripted inputs and alert actions (design 10, section 7) |
+| Both | Remote-access and tunnel tools (for example AnyDesk, TeamViewer, ScreenConnect, ngrok, chisel, rclone, plink), found as installed services, running processes or program files and matched against the release's data file (design 14, section 5) |
+| SIEM host | Splunk apps, scripted inputs and alert actions (design 14, section 7) |
 | Scored apps | Files in a web root or application folder that look like web shells, and CMS plugins or themes not in the app's original install (flagged only; section 4) |
-| Labyrinth's own tree | Reported only, never quarantined (section 5.1). Labyrinth's program folder is checked against the release list before every command (design 07, section 5.1); the sweep reports any file under the data root (`state`, `backup`, `logs`, `etc`) that no run record or configuration file explains, such as a script dropped into `state`. A `lab-revert-*` systemd unit or a task under `\Labyrinth\` that no run's `timer` file names is unexplained and listed for approval: Labyrinth's names are public, so an intruder can copy them |
+| Labyrinth's own tree | Reported only, never quarantined (section 5.1). Labyrinth's program folder is checked against the release list before every command (design 21, section 5.1); the sweep reports any file under the data root (`state`, `backup`, `logs`, `etc`) that no run record or configuration file explains, such as a script dropped into `state`. A `lab-revert-*` systemd unit or a task under `\Labyrinth\` that no run's `timer` file names is unexplained and listed for approval: Labyrinth's names are public, so an intruder can copy them |
 
 
 ## 4. Classes
@@ -34,14 +34,14 @@ This spec finds those footholds and removes them as early as is safe, without br
 Each item found is checked three ways:
 
 - **Owned by a package?** On Linux, `dpkg -S` or `rpm -qf`, then a verify of that package's files. On Windows, signed by Microsoft, or listed in the profile's known-good list.
-- **Does a scored service depend on it?** Checked through the service's unit dependencies, its process tree, its files and its run-as account (design 05, section 2).
+- **Does a scored service depend on it?** Checked through the service's unit dependencies, its process tree, its files and its run-as account (design 04, section 2).
 - **Does it show a strong sign of attack?** See the list below.
 
 | Class | Which items | What happens |
 |---|---|---|
-| **Known good** | Owned by a package and unmodified, or on the profile's known-good list | Left alone; baselined (design 04) |
-| **High confidence** | Not owned by a package, **and** nothing scored depends on it, **and** at least one strong sign | Quarantined automatically in the Harden phase, right behind the first-minute lockdown (design 01, section 6). Tier 2, with probes and a revert timer. |
-| **Unexplained** | Any other item not owned by a package, a package file that fails verification, or an item belonging to a protected account | Listed in the plan with the reason. A person approves each item, or a whole category on one host; Labyrinth then quarantines them (Tier 3, design 01). |
+| **Known good** | Owned by a package and unmodified, or on the profile's known-good list | Left alone; baselined (design 08) |
+| **High confidence** | Not owned by a package, **and** nothing scored depends on it, **and** at least one strong sign | Quarantined automatically in the Harden phase, right behind the first-minute lockdown (design 03, section 6). Tier 2, with probes and a revert timer. |
+| **Unexplained** | Any other item not owned by a package, a package file that fails verification, or an item belonging to a protected account | Listed in the plan with the reason. A person approves each item, or a whole category on one host; Labyrinth then quarantines them (Tier 3, design 03). |
 | **Scored-app content** | Files inside a scored app's own folders that look like web shells | Listed with the reason. A person confirms each one, because a false positive takes the site down. Labyrinth then quarantines it. |
 
 **Strong signs** (any one is enough):
@@ -94,7 +94,7 @@ Quarantine disables the item and moves it aside, recording what is needed to put
 | A registry value or WMI subscription | Exported, then removed |
 | A process the item started | Ended once the item is quarantined, so it cannot simply restart |
 
-The quarantine area is readable only by root or SYSTEM (design 00, section 7). It is kept until the end of the event as evidence, and each item feeds the incident record (design 02).
+The quarantine area is readable only by root or SYSTEM (design 00, section 7). It is kept until the end of the event as evidence, and each item feeds the incident record (design 20).
 
 ### 5.1 The quarantine helper
 
@@ -113,7 +113,7 @@ Quarantine is a core helper (`core/quarantine/`), so every module that removes a
 
 - **Return codes:** `0` done (or the item is already gone, so there was nothing to do), `20` the item was left as it is (refused, or it could not be moved, such as an immutable or locked file), `40` error; the reason goes to standard error. A module treats `20` as one item for a person, lists it, and goes on with the rest: an item an attacker shaped must never stop the sweep or undo the items already quarantined.
 - **Item text is kept as it is.** A file name, cron line or process command line may hold tabs or other control characters. The manifest escapes them, so they never stop a quarantine.
-- **Refused:** in plan mode; a path that is not absolute, is a folder, or is inside Labyrinth's own root; a cron line that is not in the file; a unit with no unit file; a unit a package installed, asked of the package database (`dpkg-query -S` or `rpm -qf`), not read from its path, since an intruder can write a unit to `/usr/lib` or `/run` too (a package's unit file is never quarantined and its unit is only disabled after approval, in design 15, but its drop-ins that no package installed are quarantined first); a unit outside `/etc` and `/run` on a host with no package database, which cannot tell; process 1 and Labyrinth's own process and its parents.
+- **Refused:** in plan mode; a path that is not absolute, is a folder, or is inside Labyrinth's own root; a cron line that is not in the file; a unit with no unit file; a unit a package installed, asked of the package database (`dpkg-query -S` or `rpm -qf`), not read from its path, since an intruder can write a unit to `/usr/lib` or `/run` too (a package's unit file is never quarantined and its unit is only disabled after approval, in design 10, but its drop-ins that no package installed are quarantined first); a unit outside `/etc` and `/run` on a host with no package database, which cannot tell; process 1 and Labyrinth's own process and its parents.
 - **Recorded first.** Each step is in the manifest before it is made (Conventions, section 7).
 - **Restore.** `lab_quarantine_restore` (`Undo-LabQuarantine`) undoes the current module's quarantine entries, newest first, and a module's `rollback` calls it next to `lab_restore_files`. A file comes back to its path with its owner, mode and SELinux label, after its SHA-256 is checked against the manifest; a file now at that path is moved aside, never overwritten. A cron line is uncommented in place, leaving the rest of the file as it is. A unit is enabled and started again if it was before. A transient unit cannot be brought back, like a process: its entry is the record. A task, service, registry value or binding is put back as exported. Restoring is safe to repeat.
 - **A process cannot be restored.** Ending it is recorded, and rollback restores the item that started it, which restarts it if it is a unit or service that was running.
@@ -125,13 +125,13 @@ Quarantine is a core helper (`core/quarantine/`), so every module that removes a
 
 After the sweep, `cron.allow` and `at.allow` are set to root plus any account the dependency map shows using them. Other accounts then cannot add jobs. This is Tier 2, with probes and a revert timer.
 
-Watching tools often abused for persistence, and blocking one on a single Windows host after approval, is covered in design 10, section 5.
+Watching tools often abused for persistence, and blocking one on a single Windows host after approval, is covered in design 14, section 5.
 
 ## 7. When it runs
 
-- **Early:** the high-confidence class runs first in the Harden phase, right after the first-minute bundle has closed the network (design 01, section 6).
+- **Early:** the high-confidence class runs first in the Harden phase, right after the first-minute bundle has closed the network (design 03, section 6).
 - **Right after the bundle:** the full list of unexplained items is shown for approval.
-- **At every checkpoint** (design 13): the sweep runs again in report mode. After the baseline is sealed (design 04, section 6), any new persistence item is a high-ranked integrity finding.
+- **At every checkpoint** (design 19): the sweep runs again in report mode. After the baseline is sealed (design 08, section 6), any new persistence item is a high-ranked integrity finding.
 
 ## 8. What it will never do
 

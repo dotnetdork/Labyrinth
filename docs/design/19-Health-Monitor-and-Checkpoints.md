@@ -1,4 +1,4 @@
-# 13. Health Monitor and Checkpoints
+# 19. Health Monitor and Checkpoints
 
 Phase: 🟩 Sustain · Priority: P1
 
@@ -9,7 +9,7 @@ Two jobs for the long middle of an event, after the lockout:
 1. **Health monitor:** notice within minutes when a scored service stops answering, whoever caused it.
 2. **Checkpoint:** one read-only command that sums up the whole network's state, so a team can review it at regular intervals.
 
-Today the scoring-style probes (design 01, section 9) run only when a module finishes. Nothing re-checks a service an hour later, after the Red Team, a teammate or a slow failure has changed it.
+Today the scoring-style probes (design 03, section 9) run only when a module finishes. Nothing re-checks a service an hour later, after the Red Team, a teammate or a slow failure has changed it.
 
 ## 2. Rules that shape it
 
@@ -23,13 +23,13 @@ Today the scoring-style probes (design 01, section 9) run only when a module fin
 ## 3. The health monitor
 
 - **Where it runs:** on the control node, as a scheduled job.
-- **What it probes:** every service in the run-time service list, using the same probes as the panic button (design 01, section 9). Scoring accounts are never used to log in (design 01, section 4).
+- **What it probes:** every service in the run-time service list, using the same probes as the panic button (design 03, section 9). Scoring accounts are never used to log in (design 03, section 4).
 - **Only the team's own services.** Probes, from the control node or from a workstation, go only to the team's own services in the run-time service list. Labyrinth never probes or scans another team's systems or anything outside the team's own ranges (NCCDC, 2025, Rule 4.10).
 - **How often:** an interval set in configuration. The timing belongs to the team's own plan, not to this public document.
-- **Where results go:** the `health` log category (design 00, section 7), forwarded to the SIEM (design 10), and a one-line summary per host in the status feed (design 06).
+- **Where results go:** the `health` log category (design 00, section 7), forwarded to the SIEM (design 14), and a one-line summary per host in the status feed (design 15).
 
 > [!IMPORTANT]
-> **Answering is not logging in.** The probes check that a service answers, not that a user can log in to it, because scoring accounts are never used. A mail service can pass every probe while its logins are broken, and still fail scoring. To narrow this gap, the team may create a test mailbox or user by hand that is *not* a scoring account and add it to the service list with a login probe. A scheduled job cannot hold that password without storing it in a file, so the login probe runs only when an operator starts it, for example with `labyrinth checkpoint` (section 5). The password is typed in and kept only in memory, like the event seed (design 03).
+> **Answering is not logging in.** The probes check that a service answers, not that a user can log in to it, because scoring accounts are never used. A mail service can pass every probe while its logins are broken, and still fail scoring. To narrow this gap, the team may create a test mailbox or user by hand that is *not* a scoring account and add it to the service list with a login probe. A scheduled job cannot hold that password without storing it in a file, so the login probe runs only when an operator starts it, for example with `labyrinth checkpoint` (section 5). The password is typed in and kept only in memory, like the event seed (design 16).
 
 ### 3.1 Probes that log in and check content
 
@@ -45,7 +45,7 @@ Events differ in what a check does: some only connect, others log in and read a 
 | `winrm` | Opens a session and runs a no-op |
 | `siem` | Runs a fixed search through the SIEM's interface |
 
-- **The account.** A probe that logs in uses a probe account the operator creates for the purpose, never a scoring account (design 01, section 4). Its password is typed at run time and held only in memory, never in a file (design 03). Where a `scored-admin` account was rotated, the probe uses the new password from the same run (design 05, section 2.4).
+- **The account.** A probe that logs in uses a probe account the operator creates for the purpose, never a scoring account (design 03, section 4). Its password is typed at run time and held only in memory, never in a file (design 16). Where a `scored-admin` account was rotated, the probe uses the new password from the same run (design 04, section 2.4).
 - **No account given.** The probe connects only and the plan says so.
 - **Read-only.** A probe never writes, sends or deletes anything on the service.
 
@@ -59,22 +59,22 @@ When a service goes from pass to fail, or back, the monitor:
 1. writes the change, with both probe results, to the `health` log;
 2. looks up the last Labyrinth change on that host in the run manifest and names it as a **rollback candidate**;
 3. raises an alert in the status feed and the SIEM;
-4. records the outage time for the incident report's "impact on scored services" field (design 02).
+4. records the outage time for the incident report's "impact on scored services" field (design 20).
 
-It does **not** roll back on its own. During a run, a failed verify triggers automatic rollback (design 00), because the cause is almost certainly the change just made. An hour later, the cause could be the Red Team, a teammate or the scoring side. Blindly reverting could undo a security fix, so a person decides. To restore a damaged service, the person runs `labyrinth restore` (design 14, section 6).
+It does **not** roll back on its own. During a run, a failed verify triggers automatic rollback (design 00), because the cause is almost certainly the change just made. An hour later, the cause could be the Red Team, a teammate or the scoring side. Blindly reverting could undo a security fix, so a person decides. To restore a damaged service, the person runs `labyrinth restore` (design 07, section 6).
 
 ### 4.1 Firewall drift
 
-Red Teams have been seen dropping a team's firewall rules. So each interval, the monitor also compares every host's firewall rules with the set recorded in the sealed baseline (design 04, section 6). When they differ, it:
+Red Teams have been seen dropping a team's firewall rules. So each interval, the monitor also compares every host's firewall rules with the set recorded in the sealed baseline (design 08, section 6). When they differ, it:
 
-1. logs and alerts on the difference, as a high-ranked integrity finding for the incident record (design 02);
-2. **re-applies the sealed rule set automatically**, with the same before-and-after probes and revert timer as the original change (design 01, section 8).
+1. logs and alerts on the difference, as a high-ranked integrity finding for the incident record (design 20);
+2. **re-applies the sealed rule set automatically**, with the same before-and-after probes and revert timer as the original change (design 03, section 8).
 
-This is the one change the monitor makes on its own, because it puts back a state that was already verified and sealed, rather than guessing at a cause. If the team changed the firewall on purpose, it reseals first (design 04, section 6). If re-applying fails its probes, the timer reverts it and a person decides. Repeated drift on one host is flagged as a sign that the attacker still has admin rights there.
+This is the one change the monitor makes on its own, because it puts back a state that was already verified and sealed, rather than guessing at a cause. If the team changed the firewall on purpose, it reseals first (design 08, section 6). If re-applying fails its probes, the timer reverts it and a person decides. Repeated drift on one host is flagged as a sign that the attacker still has admin rights there.
 
 ```mermaid
 flowchart TD
-    TMR["Scheduled on the control node"] --> PR["Probe every scored service<br/>(design 01 probes)"]
+    TMR["Scheduled on the control node"] --> PR["Probe every scored service<br/>(design 03 probes)"]
     PR --> CMP{"Same result<br/>as last time?"}
     CMP -->|yes| LOGQ[("health log")]
     CMP -->|"no: pass ↔ fail"| ACT["Log both results · name the last<br/>Labyrinth change as rollback candidate ·<br/>alert · record impact for reports"]
@@ -97,18 +97,18 @@ flowchart TD
 | Section | Source |
 |---|---|
 | Scored services: current state and any outage since the last checkpoint | Health log (this spec) |
-| Integrity: changes since the latest sealed baseline | Baseline comparison against the seal (design 04, section 6) |
-| Persistence: new items, and items still waiting for approval | Persistence sweep in report mode (design 17, section 7) |
-| Locked accounts ready to offer for deletion, once every scored service passes | Account module (design 05, section 6.4) |
-| Known flaws: open findings by rank, mitigated findings still waiting for a patch, accepted findings with their reasons, and any mitigation that has drifted | Vulnerability tracker (design 21, section 4) |
-| Inventory drift: new accounts, listeners, services, tasks | Inventory module (design 08, section 4.1) |
-| Open incidents and reports not yet submitted | Report tracker (design 02) |
-| Trap trips and active bans | Trip log and ban set (designs 09, 12) |
-| Time since the last backup of each scored service | Backup record (design 14) |
-| Revert timers still armed | Safety core (design 01) |
+| Integrity: changes since the latest sealed baseline | Baseline comparison against the seal (design 08, section 6) |
+| Persistence: new items, and items still waiting for approval | Persistence sweep in report mode (design 06, section 7) |
+| Locked accounts ready to offer for deletion, once every scored service passes | Account module (design 04, section 6.4) |
+| Known flaws: open findings by rank, mitigated findings still waiting for a patch, accepted findings with their reasons, and any mitigation that has drifted | Vulnerability tracker (design 09, section 4) |
+| Inventory drift: new accounts, listeners, services, tasks | Inventory module (design 22, section 4.1) |
+| Open incidents and reports not yet submitted | Report tracker (design 20) |
+| Trap trips and active bans | Trip log and ban set (designs 17, 18) |
+| Time since the last backup of each scored service | Backup record (design 07) |
+| Revert timers still armed | Safety core (design 03) |
 | Firewall drift found and re-applied since the last checkpoint | Section 4.1 |
-| Services with no restore point copied off the host | Backup record (design 14, section 5) |
-| Tool integrity: signature and hashes still match | Design 07 |
+| Services with no restore point copied off the host | Backup record (design 07, section 5) |
+| Tool integrity: signature and hashes still match | Design 21 |
 
 The command takes no action. It exists so that a regular review is quick and every review covers the same ground.
 
@@ -116,7 +116,7 @@ The command takes no action. It exists so that a regular review is quick and eve
 
 ## 6. Failure behavior
 
-- If the monitor stops, the status feed marks its data stale (design 06), so silence is never mistaken for health.
+- If the monitor stops, the status feed marks its data stale (design 15), so silence is never mistaken for health.
 - A probe that times out counts as a fail, never as a pass.
 - The monitor never blocks a login or a Labyrinth run.
 

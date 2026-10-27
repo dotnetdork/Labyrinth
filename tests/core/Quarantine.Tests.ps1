@@ -1,6 +1,6 @@
 #Requires -Version 5.1
 # Pester 5 unit tests for the quarantine helper (core\quarantine\
-# Quarantine.ps1, design 17, section 5.1). Files and registry values are real,
+# Quarantine.ps1, design 06, section 5.1). Files and registry values are real,
 # under TestDrive: and TestRegistry:; scheduled tasks and services are mocked.
 
 [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseDeclaredVarsMoreThanAssignments', '',

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # manifest.sh: write release.sha256, the release list, into a copy of
-# Labyrinth and print its SHA-256 (design 07, section 5).
+# Labyrinth and print its SHA-256 (design 21, section 5).
 #
 # Usage: tools/release/manifest.sh [folder]   (default: this copy)
 #

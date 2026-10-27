@@ -1,11 +1,11 @@
 #Requires -Version 5.1
-# core/quarantine/Quarantine.ps1: quarantine, never delete (design 17,
+# core/quarantine/Quarantine.ps1: quarantine, never delete (design 06,
 # section 5.1). Dot-sourced through core/Lab.ps1.
 #
 # Each function takes an item and the reason the module gives for it, records
 # the step in the run manifest, then disables the item and keeps what is
 # needed to put it back under <backup>\quarantine\<run>\<seq>\. The helper
-# does not judge an item: the module decides its class (design 17, section
+# does not judge an item: the module decides its class (design 06, section
 # 4). Undo-LabQuarantine undoes the current module's entries, newest first.
 #
 # Each function returns 0 done (or the item is already gone), 20 refused or
@@ -188,7 +188,7 @@ function Restore-LabQuarantineService {
 }
 
 # Values whose removal would stop every logon. A person sets them back to the
-# default after approval instead (design 17, section 5.1).
+# default after approval instead (design 06, section 5.1).
 $script:LabQuarantineKeepValues = @(
     'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon|Userinit',
     'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon|Shell'

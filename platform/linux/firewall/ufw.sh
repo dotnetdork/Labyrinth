@@ -1,6 +1,6 @@
 # shellcheck shell=bash
 # platform/linux/firewall/ufw.sh: the UFW backend of the firewall adapter
-# (design 19, section 5). Sourced by firewall.sh; call it through lab_fw.
+# (design 01, section 5). Sourced by firewall.sh; call it through lab_fw.
 
 _LAB_UFW_FILES='user.rules user6.rules before.rules before6.rules after.rules after6.rules ufw.conf'
 

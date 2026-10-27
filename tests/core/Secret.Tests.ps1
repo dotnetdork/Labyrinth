@@ -1,6 +1,6 @@
 #Requires -Version 5.1
 # Pester 5 unit tests for the new-password helpers (core\secret\Secret.ps1,
-# design 05, section 2.3).
+# design 04, section 2.3).
 
 [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseDeclaredVarsMoreThanAssignments', '',
     Justification = 'Variables set in BeforeEach are used in the It blocks, which the analyzer cannot see.')]

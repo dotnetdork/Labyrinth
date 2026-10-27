@@ -10,7 +10,7 @@ One main Labyrinth program enables each phase. Each phase is an entry script tha
 
 | Folder | Phase | Contains |
 |---|---|---|
-| `lockout` | 🟥 Lock out | The first-minute bundle: credentials, unregistered keys, remote-admin hardening, ending intruder sessions, default-deny firewall. Nothing is installed (design 01) |
+| `lockout` | 🟥 Lock out | The first-minute bundle: credentials, unregistered keys, remote-admin hardening, ending intruder sessions, default-deny firewall. Nothing is installed (design 03) |
 | `harden` | 🟧 Harden | Behind the lockdown: installs, restore points, persistence sweep, vulnerability mitigations, patching and service reduction, service packs, Windows and AD hardening, service replacement and containers, official-package verification, then reopening outbound |
 | `observe` | 🟦 Observe | Log forwarding, auditing, integrity baseline, status feed |
 | `deceive` | 🟪 Deceive | Canaries, honey-accounts, trap ports, tarpits, decoy services |
@@ -54,10 +54,10 @@ Labyrinth/
 │   ├── manifest/                # run manifest: what was changed, for rollback and cleanup
 │   ├── safety/                  # protected set, gates, dead-man revert timers
 │   ├── approval/                # approval items: item lines, fingerprints, approval checks
-│   ├── quarantine/              # quarantine, never delete: move aside and restore (design 17)
-│   ├── secret/                  # new passwords, shown once on the terminal (design 05)
-│   ├── platform/                # platform facts: OS, firewall, role (design 19)
-│   ├── seed/                    # event seed derivation (design 03)
+│   ├── quarantine/              # quarantine, never delete: move aside and restore (design 06)
+│   ├── secret/                  # new passwords, shown once on the terminal (design 04)
+│   ├── platform/                # platform facts: OS, firewall, role (design 01)
+│   ├── seed/                    # event seed derivation (design 16)
 │   └── probe/                   # scoring-style health probes
 ├── phases/
 │   ├── lockout/
@@ -71,9 +71,9 @@ Labyrinth/
 │   ├── observe/  (same shape)
 │   ├── deceive/  (same shape)
 │   └── sustain/  (same shape)
-├── report/                      # incident report builder (design 02); cross-phase
+├── report/                      # incident report builder (design 20); cross-phase
 ├── profiles/                    # host profile → ordered module list
-├── platform/                    # adapters (design 19): linux/firewall, ubuntu, rhel-family, windows, appliance runbooks
+├── platform/                    # adapters (design 01): linux/firewall, ubuntu, rhel-family, windows, appliance runbooks
 ├── config/                      # templates only: *.example, never values
 ├── vendor/                      # pinned third-party code, each with LICENSE and NOTICE
 ├── tests/                       # lab tests and negative tests
@@ -133,7 +133,7 @@ Every module is a folder containing a metadata file, a help page and up to six e
 | `requires` | Other modules or facts that must exist first |
 | `outputs` | Files and state it creates, so cleanup can find them |
 | `keep_on_verify` | Optional, `true` or `false` (the default), for a module that changes something (`reversible`, `service-affecting` or `approval`). `true` means the change is kept as soon as it verifies and no scored service got worse, so the revert timer no longer undoes it (rule 9 below). It is only for a change that takes access away from someone other than the team and cannot lock the team out or cut off scoring |
-| `pre_approvable` | Optional, for an `approval` module only: the item categories a pre-approval rule may approve (Conventions, section 3.1). A category belongs here only if an item of it is safe to change without a person seeing it: the module checks the item fully, and the change can be undone or breaks nothing. Examples are a security update for a named package (design 15, section 4), a known default application password (design 05, section 2.1) and a setting that is approval-class only because the installed version was not tested in the lab (design 18, section 4) |
+| `pre_approvable` | Optional, for an `approval` module only: the item categories a pre-approval rule may approve (Conventions, section 3.1). A category belongs here only if an item of it is safe to change without a person seeing it: the module checks the item fully, and the change can be undone or breaks nothing. Examples are a security update for a named package (design 10, section 4), a known default application password (design 04, section 2.1) and a setting that is approval-class only because the installed version was not tested in the lab (design 11, section 4) |
 
 `about.txt` is the module's help page, printed by `labyrinth help <module-id>` under a summary of `module.yml` in plain words. It is plain text, at most 78 columns, and fits one screen. It answers, in this order and in short sentences: what the module checks, what it changes, why, what can go wrong and what Labyrinth does about it, how to undo it, and what to do when it fails. Every module in a release has one; a module without it still runs, and its help page says the page is missing.
 
@@ -192,7 +192,7 @@ Rules for module authors:
 3. A `manual-only` module never changes anything. It prints a checklist for a human. This is kept for actions too broad or too hard to undo for Labyrinth to carry out even with approval: Group Policy changes, DNS changes on a domain controller, domain controller restores, rescuing an unbootable host, Windows patching and appliance changes.
 4. No module calls an outside service or sends data out of the competition environment (National Collegiate Cyber Defense Competition [NCCDC], 2025, Rule 5.6.4). Only the `packages` module and the core download helper install or download software, after the first-minute lockdown, from the public sources of design 20.
 5. No module deliberately breaks expected functionality (NCCDC, 2025, Rule 5.6.5).
-6. No module deletes a file. Anything removed is quarantined (design 17, section 5). An account is deleted only by the account module, after approval (design 05, section 6).
+6. No module deletes a file. Anything removed is quarantined (design 06, section 5). An account is deleted only by the account module, after approval (design 04, section 6).
 7. A module writes its output for a beginner, as `key: text` lines with a key from `found`, `will do`, `did`, `why`, `risk`, `problem`, `cause`, `fix` and `undo`: `found: password logins are on`, `will do: turn them off`. Any other line is shown as a note. An entry point that exits `20`, `30` or `40` prints a `problem:` line last, saying what stopped it; without one, the operator sees only that the script gave no reason. The runner adds the module's title, its status and a pointer to its help page (docs/Conventions.md, section 3.2).
 8. An entry point never reads standard input. The runner gives it none (`/dev/null` on Linux, an empty, closed input on Windows), so a module can never take an answer the operator typed for Labyrinth.
 9. **Kept once verified.** The revert timer exists to undo a change that locks the team out or cuts off scoring. Undoing a change that only takes access away from an intruder does the opposite: it gives the intruder their access back, and it can leave the team's offline record wrong, because an old password returns. So a module whose change only takes access away sets `keep_on_verify: true`. Examples are rotating an admin password the team keeps in the offline record, removing an SSH key the key registry does not list, ending an intruder's session, quarantining a high-confidence persistence item and locking an unexpected local account. The runner keeps such a module (`module_kept` in the run manifest) once its `verify` passes and the scored services were probed with none worse than before. The revert timer and `rollback <run>` then leave it alone, and only `rollback <run> --all` undoes it. Without a service list nothing is kept early, and the timer still covers the change. A firewall change, an SSH or remote-administration setting, a stopped service and anything else that can lock the team out never sets it, whatever its risk class; the design review of each module checks this. The runner refuses `keep_on_verify` on a `read-only` or `manual-only` module, which has nothing to keep (`40`).
@@ -202,8 +202,8 @@ Rules for module authors:
 Labyrinth runs in two modes that share the same modules:
 
 - **Local mode.** `labyrinth.sh` or `labyrinth.ps1` runs on the host it changes. This is the standard way to run Labyrinth: it needs nothing but the host itself, nothing holds access to every host at once, and it still works when remote access is lost.
-- **Remote mode.** Built after local mode, read-only first: `remote plan` comes before `remote apply`, which follows only once the read-only part has run safely in the lab. The control node holds access to every host, so it is a hardened server (Blueprint §6.1). `labyrinth remote plan <phase> --group <group>` or `labyrinth remote apply <phase> --group <group>` runs on a control node. For each target it copies the release, checks it (design 07, section 5), runs the *same* local command over SSH (Linux) or PowerShell remoting or OpenSSH (Windows), and brings back the logs and the run manifest. It must cope with being cut off, because the lockout rotates the very credentials and SSH settings it connects with.
-- **Keeping a run in remote mode.** A local apply ends by asking the operator to type `keep`. In remote mode the control node answers for each host, from what it can check itself: it keeps the host's run (`keep <run>`) only when, after the run, it can still log in to the host over the admin path with a new connection, and no scored service on that host that passed its probe from the control node before the run fails it after. This is the same rule as the checks after each module: a service the Red Team had already broken does not undo the team's changes. Otherwise it keeps nothing, and the revert timer rolls the host back, except the modules already kept once they verified (section 4, rule 9). Either way the control node prints and records which hosts it kept and why. The break-glass check at the console still follows the run (design 01, section 6.3); an operator who cannot log in there runs `rollback` for that host.
+- **Remote mode.** Built after local mode, read-only first: `remote plan` comes before `remote apply`, which follows only once the read-only part has run safely in the lab. The control node holds access to every host, so it is a hardened server (Blueprint §6.1). `labyrinth remote plan <phase> --group <group>` or `labyrinth remote apply <phase> --group <group>` runs on a control node. For each target it copies the release, checks it (design 21, section 5), runs the *same* local command over SSH (Linux) or PowerShell remoting or OpenSSH (Windows), and brings back the logs and the run manifest. It must cope with being cut off, because the lockout rotates the very credentials and SSH settings it connects with.
+- **Keeping a run in remote mode.** A local apply ends by asking the operator to type `keep`. In remote mode the control node answers for each host, from what it can check itself: it keeps the host's run (`keep <run>`) only when, after the run, it can still log in to the host over the admin path with a new connection, and no scored service on that host that passed its probe from the control node before the run fails it after. This is the same rule as the checks after each module: a service the Red Team had already broken does not undo the team's changes. Otherwise it keeps nothing, and the revert timer rolls the host back, except the modules already kept once they verified (section 4, rule 9). Either way the control node prints and records which hosts it kept and why. The break-glass check at the console still follows the run (design 03, section 6.3); an operator who cannot log in there runs `rollback` for that host.
 
   Acceptance tests for remote mode, written when it is built (Roadmap, stage 5):
   - A host whose scored service already failed its probe before the run, and still fails after it, is kept when the admin login works with a new connection and no other service regressed. The control node reports the failing service.
@@ -218,7 +218,7 @@ labyrinth plan|apply <phase> [--profile <name>]        # local; remote adds --gr
       for modules that touch scored services)
    3. plan all modules and print the combined plan
    4. human confirms (typed, or given on the command line in a first-minute run)
-      → apply in rings, or on every host at once in a first-minute run (design 01)
+      → apply in rings, or on every host at once in a first-minute run (design 03)
    5. verify each module with scoring-style probes; auto-rollback a module on regression
    6. write run manifest; run cleanup
 ```
@@ -234,9 +234,9 @@ The steps above are the outline; `docs/Conventions.md` section 3.1 gives the exa
 | `probe` | Probe every scored service once | Conventions 3.1 |
 | `help [<topic>]`, `version` | Help on a command, `basics` or a module, and the version | Conventions 3.1 |
 | `remote plan <phase> --group <group>`, `remote apply <phase> --group <group>` | Run the local command on every host of a group from a control node | This section |
-| `seal`, `reseal --reason <text>` | Seal the baseline, or reseal it after an approved change | Design 04 |
-| `checkpoint` | Print the read-only health summary | Design 13 |
-| `backup <service>`, `restore <service> [--database \| --start]` | Back up a service, or restore it from a backup | Designs 14 and 15 |
+| `seal`, `reseal --reason <text>` | Seal the baseline, or reseal it after an approved change | Design 08 |
+| `checkpoint` | Print the read-only health summary | Design 19 |
+| `backup <service>`, `restore <service> [--database \| --start]` | Back up a service, or restore it from a backup | Designs 07 and 10 |
 | `queue`, `approve <ids>` | List the approval items queued under `AUTO_APPLY`, or apply chosen ones in a new run | Section 5.1 |
 
 The commands below `help` are planned and do not exist yet (`queue` and `approve` are specified in section 5.1 and built later). A new command takes a verb not used above, and an option that means the same thing in two commands has the same name in both.
@@ -248,9 +248,9 @@ The runner does not do this yet. Everything above describes today's behavior; th
 - **One command per host, no separate plan step.** `apply` prints a compact plan and carries it out. `plan` stays as the read-only command. Every existing command form keeps working.
 - **The switch.** `AUTO_APPLY=yes` in `event.conf`. When it is unset, behavior is exactly as in section 5.
 - **The group comes from the hosts file**, matched on the host's name and address. A mismatch or an ambiguous match blocks the run (`20`). `--confirm-group` is still accepted but no longer required.
-- **The break-glass account** is the `breakglass`-class account from the protected set that exists on the host; with none, or more than one, the run blocks. Labyrinth looks for a console session itself and warns if it finds none, instead of prompting (design 01, section 7).
+- **The break-glass account** is the `breakglass`-class account from the protected set that exists on the host; with none, or more than one, the run blocks. Labyrinth looks for a console session itself and warns if it finds none, instead of prompting (design 03, section 7).
 - **It never prompts mid-run.** An approval item that no pre-approval rule covers goes to a queue under the state path. `labyrinth queue` lists the queued items; `labyrinth approve <ids>` applies the chosen ones in a new run, with the same backups, manifest, revert timer and probes as any run.
-- **The risky list always queues,** whatever the pre-approval rules say: deleting an account; changing a scored service that has no probe; replacing or containerizing a service; and any Tier 3 item (design 01, section 5).
+- **The risky list always queues,** whatever the pre-approval rules say: deleting an account; changing a scored service that has no probe; replacing or containerizing a service; and any Tier 3 item (design 03, section 5).
 - **Kept automatically.** Every module is kept once its verify and probes pass, except firewall and SSH changes. Those stay under the revert timer until one `keep` per host run.
 - **Short output.** One line per module: `OK`, `CHANGED`, `ROLLED BACK`, `QUEUED`, `BLOCKED` or `FAIL`. The full *found / fix / more* blocks appear only for failures and blocks; the details go to the run log, and `--detail` shows the full blocks (Conventions, section 3.2).
 
@@ -276,7 +276,7 @@ Every host uses the same tree, and everything Labyrinth keeps is under one root.
 
 - **Default root:** `/opt/labyrinth` on Linux, `C:\ProgramData\Labyrinth` on Windows.
 - **Ownership.** The whole tree is owned by root (SYSTEM and Administrators on Windows). `etc`, `state` and `backup` are readable by them only, because backups can hold copies of configuration files that contain secrets and the state shows where the traps are.
-- **Log categories:** `run`, `auth`, `integrity`, `network`, `deception`, `report`, `health` (design 13).
+- **Log categories:** `run`, `auth`, `integrity`, `network`, `deception`, `report`, `health` (design 19).
 
 ## 8. Adding a capability
 
@@ -289,7 +289,7 @@ Nothing else changes.
 ## 9. Decisions
 
 - **Ansible or native scripts.** Resolved: native scripts. They work in local mode with nothing installed, and the remote mode (section 5) gives the reach Ansible would have given.
-- **Windows log shipping method.** Resolved: install the Splunk Universal Forwarder from Splunk's public download site, pinned by version and SHA-256 in the run-time configuration (design 10, section 4); a PowerShell script posting to Splunk's HTTP Event Collector is the fallback.
+- **Windows log shipping method.** Resolved: install the Splunk Universal Forwarder from Splunk's public download site, pinned by version and SHA-256 in the run-time configuration (design 14, section 4); a PowerShell script posting to Splunk's HTTP Event Collector is the fallback.
 - **Approvals in remote mode.** Resolved: approvals can be passed with `--approve` (`-Approve`), and each approval is tied to the plan by a fingerprint, so an item that changed after the plan is refused. The prompt stays the default (Conventions, section 3.1).
 - **Pre-approval.** Resolved: a first-minute run needs some items approved before anyone has seen the plan, such as a security update for a named scored package. `--approve` cannot carry them, because its entries need the fingerprint from a plan. So a module declares the categories that may be pre-approved (`pre_approvable`), and the run-time `pre-approved` file names the items or categories the team approved before the event (Conventions, section 3.1).
 - **Build order.** Resolved: local mode is the standard. Remote mode comes after the P0 lockout modules work locally, read-only `remote plan` first, and `remote apply` only once that has run safely in the lab (`docs/Roadmap.md`).

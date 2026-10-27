@@ -1,4 +1,4 @@
-# Addresses dynamic bans must never touch (design 12, section 4).
+# Addresses dynamic bans must never touch (design 18, section 4).
 # One address or CIDR per line. Include the scoring engine, officials,
 # the control node, operators' admin sources, the SIEM, the host's gateway,
 # and the host's outbound dependencies (DNS resolvers, NTP servers, any proxy

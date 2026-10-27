@@ -6,7 +6,7 @@ Closes #
 
 ## Spec
 
-<!-- The design spec and sections this implements, for example "design 05, section 2.4". -->
+<!-- The design spec and sections this implements, for example "design 04, section 2.4". -->
 
 ## Checklist
 

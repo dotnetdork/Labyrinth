@@ -1,6 +1,6 @@
 # shellcheck shell=bash
 # core/probe/probe.sh: scoring-style probes of the services in the run-time
-# service list (design 01, section 9; design 13). Sourced through
+# service list (design 03, section 9; design 19). Sourced through
 # core/lib.sh.
 #
 # A probe only checks that a service answers as expected; it never logs in.

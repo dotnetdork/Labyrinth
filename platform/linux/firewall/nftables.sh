@@ -1,6 +1,6 @@
 # shellcheck shell=bash
 # platform/linux/firewall/nftables.sh: the nftables backend of the firewall
-# adapter (design 19, section 5). Sourced by firewall.sh; call it through
+# adapter (design 01, section 5). Sourced by firewall.sh; call it through
 # lab_fw.
 #
 # Labyrinth's rules live in their own table, inet labyrinth, whose input

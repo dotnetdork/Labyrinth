@@ -1,5 +1,5 @@
 #!/usr/bin/env bats
-# Unit tests for the release check (core/safety/release.sh, design 07,
+# Unit tests for the release check (core/safety/release.sh, design 21,
 # section 5.1).
 
 setup() {

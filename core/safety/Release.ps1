@@ -1,5 +1,5 @@
 #Requires -Version 5.1
-# core/safety/Release.ps1: the release check (design 07, section 5).
+# core/safety/Release.ps1: the release check (design 21, section 5).
 #
 # release.sha256, in Labyrinth's folder, lists the SHA-256 of every file
 # Labyrinth runs: one '<sha256>  <path>' line per file, the format of

@@ -1,4 +1,4 @@
-# 07. Cleanup and Tool Integrity
+# 21. Cleanup and Tool Integrity
 
 Phase: 🟩 Sustain · Priority: P1
 
@@ -12,8 +12,8 @@ Phase: 🟩 Sustain · Priority: P1
 - Every module lists its `outputs` in `module.yml` (design 00), and every `apply` writes to the run manifest.
 - `cleanup` removes temporary files; `rollback` undoes changes. They are separate so the operator can clean up without reverting.
 - End-of-event cleanup removes revert timers, scheduled tasks, temporary accounts and copied code from hosts, but keeps logs and reports until they are collected.
-- **Accounts.** The only accounts cleanup ever deletes are ones Labyrinth itself created, such as honey-accounts (design 09), and recorded in the run manifest when it created them. Cleanup never deletes an account that existed before Labyrinth ran; deleting an unexpected account is a separate, approved step during the event (design 05, section 6.4). Domain honey-accounts, created by hand (design 11, section 5), are removed by hand too.
-- Cleanup never deletes evidence or anything the manifest does not list. The quarantine area (design 17, section 5) and saved account evidence are evidence: they are kept, like logs and reports, until they are collected.
+- **Accounts.** The only accounts cleanup ever deletes are ones Labyrinth itself created, such as honey-accounts (design 17), and recorded in the run manifest when it created them. Cleanup never deletes an account that existed before Labyrinth ran; deleting an unexpected account is a separate, approved step during the event (design 04, section 6.4). Domain honey-accounts, created by hand (design 12, section 5), are removed by hand too.
+- Cleanup never deletes evidence or anything the manifest does not list. The quarantine area (design 06, section 5) and saved account evidence are evidence: they are kept, like logs and reports, until they are collected.
 
 - Cleanup only touches Labyrinth paths (design 00 standard paths).
 
@@ -33,7 +33,7 @@ The earlier idea was an encrypted folder, decrypted with a shared team password.
 
 | Control | How |
 |---|---|
-| Release identity | A tagged release with a commit hash. The hash is kept in the team's offline record (design 05, section 2) and matches the declared release (NCCDC, 2025, Rule 5.6.2). |
+| Release identity | A tagged release with a commit hash. The hash is kept in the team's offline record (design 04, section 2) and matches the declared release (NCCDC, 2025, Rule 5.6.2). |
 | Manifest | A list of every file with its SHA-256, generated at release time. The manifest's own SHA-256 is kept in the offline record. |
 | Signature | The manifest is signed with a team key, using `ssh-keygen -Y sign`. The public key is kept in the offline record and stored on the control node. |
 | Immutable location | Code sits in a root-owned, read-only directory on each host (`<root>/bin`). The core checks this before every `apply`, `keep` and `rollback`, the revert timer's included: the code folder, the configuration folder and the data root, everything in them, and every folder above them must be changeable only by root (Linux) or by administrators, SYSTEM and TrustedInstaller (Windows). On Linux that means owned by root and not writable by group or others; a folder above may be writable if it is sticky, like `/tmp`. Otherwise the command refuses with 20 and changes nothing. The check only reads: Labyrinth never changes the owner or permissions of its own code. The revert timer runs `labyrinth.sh` from the real path, with links resolved. |
@@ -52,13 +52,13 @@ The manifest is `release.sha256` in Labyrinth's folder: one `<sha256>  <path>` l
 - **What it shows.** `version` and the recap of every `apply`, just before the group-name prompt, print `Release: <sha256>`. The operator compares it with the offline record by eye.
 - **Its limit.** The check is code in the release. An intruder with root who changes the runner or the check as well can make it print the expected hash. What catches that is a check with the host's own tools, which the manual gives: `sha256sum release.sha256` (or `Get-FileHash`) against the offline record, then `sha256sum -c --quiet release.sha256`. The check on each run catches a changed, planted or missing file, a damaged copy, and a partial update; the host's own tools catch the rest.
 
-The persistence sweep covers what the check does not (design 17, section 3): files in Labyrinth's data root that no run record explains, and look-alike timers and tasks.
+The persistence sweep covers what the check does not (design 06, section 3): files in Labyrinth's data root that no run record explains, and look-alike timers and tasks.
 
-Resident components (timers, watchers) are hashed by the integrity check (design 04) like any other critical file.
+Resident components (timers, watchers) are hashed by the integrity check (design 08) like any other critical file.
 
 ### 5.2 Getting the release onto a host
 
-Events differ on how a team's code reaches the hosts. Some offer a proxy that reaches the team's declared repository (Blueprint §5, internet access); some give each team a console on a machine that reaches the internet while the hosts do not; some allow neither (*Background*). Labyrinth assumes no control node, so the release is a single file the operator can fetch, or carry in and paste as an offline fallback, and check with each host's own tools. Downloads are the first choice: after the first-minute lockdown the host may fetch public software too (design 20), but the release itself is always checked against the offline record before it is unpacked:
+Events differ on how a team's code reaches the hosts. Some offer a proxy that reaches the team's declared repository (Blueprint §5, internet access); some give each team a console on a machine that reaches the internet while the hosts do not; some allow neither (*Background*). Labyrinth assumes no control node, so the release is a single file the operator can fetch, or carry in and paste as an offline fallback, and check with each host's own tools. Downloads are the first choice: after the first-minute lockdown the host may fetch public software too (design 02), but the release itself is always checked against the offline record before it is unpacked:
 
 - **The file.** Each release publishes a `.tar.gz` (Linux) and a `.zip` (Windows) as release assets, built by `tools/release/manifest.sh` with `release.sha256` inside. The SHA-256 of each archive goes into the offline record with the manifest's.
 - **Fetching.** On a host that can reach the repository: `curl -fsSLO https://github.com/<repository>/releases/download/<tag>/labyrinth-<tag>.tar.gz`, or on Windows `Invoke-WebRequest -UseBasicParsing -Uri <url> -OutFile <file>` after setting TLS 1.2 (`[Net.ServicePointManager]::SecurityProtocol = 'Tls12'`), which older Windows Server releases need. Where only a console reaches the internet, the archive is fetched there and copied in over the admin path.

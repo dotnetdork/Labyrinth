@@ -1,6 +1,6 @@
 #Requires -Version 5.1
 # core/secret/Secret.ps1: new passwords, shown once on the operator's
-# console for the offline record (design 05, section 2.3). Dot-sourced
+# console for the offline record (design 04, section 2.3). Dot-sourced
 # through core/Lab.ps1.
 #
 # A module's standard output goes to the run log and its standard input is

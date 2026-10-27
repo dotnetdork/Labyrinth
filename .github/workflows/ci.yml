@@ -2,7 +2,7 @@
 # Test tools are installed on the disposable CI runners only. On a host,
 # Labyrinth installs nothing in the first minute, and afterwards only public
 # software from the host's repositories, an event mirror or a pinned download
-# (docs/Conventions.md section 1, design 20).
+# (docs/Conventions.md section 1, design 02).
 name: CI
 
 # Every push runs CI once, on any branch. A pull request adds no second run

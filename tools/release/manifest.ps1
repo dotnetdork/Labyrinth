@@ -2,7 +2,7 @@
 <#
 .SYNOPSIS
     Write release.sha256, the release list, into a copy of Labyrinth and
-    print its SHA-256 (design 07, section 5).
+    print its SHA-256 (design 21, section 5).
 
 .DESCRIPTION
     Run it on the copy that will be deployed, after it is unpacked and

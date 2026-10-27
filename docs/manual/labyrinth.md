@@ -529,4 +529,4 @@ Then run the command again. Labyrinth's own check finds a changed, added or miss
 
 - [How Labyrinth Works](../Overview.md): the ideas behind the tool, in plain language.
 - [Conventions, section 3](../Conventions.md#3-how-a-module-is-run): the exact rules for commands, options and output.
-- [Design 01, the lockout panic button](../design/01-Lockout-Panic-Button.md): the safety checks and the revert timer in detail.
+- [Design 03, the lockout panic button](../design/03-Lockout-Panic-Button.md): the safety checks and the revert timer in detail.

@@ -1,7 +1,7 @@
 # shellcheck shell=bash
 # core/safety/system.sh: the operating-system side of the safety code for
 # Linux: the administrator and ownership checks and the dead-man revert
-# timer (design 01, section 8). Sourced through core/lib.sh.
+# timer (design 03, section 8). Sourced through core/lib.sh.
 #
 # The timer of a run is a systemd timer and service named
 # lab-revert-<run>-<n>, written to /etc/systemd/system and enabled, so it
@@ -16,7 +16,7 @@ lab_is_admin() { [[ "$(id -u)" == 0 ]]; }
 # lab_tree_trusted PATH...: can only root change each PATH? Root runs the
 # code, configuration and manifest under them, the revert timer's rollback
 # included, so an account that could write there could run its own code as
-# root (design 07, section 5). Each existing PATH, and everything in it,
+# root (design 21, section 5). Each existing PATH, and everything in it,
 # must be owned by root and not writable by group or others (a symbolic
 # link need only be owned by root). Every folder above it must be owned by
 # root and not writable by group or others, unless it is sticky, like

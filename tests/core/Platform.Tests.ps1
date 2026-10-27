@@ -1,6 +1,6 @@
 #Requires -Version 5.1
 # Pester 5 unit tests for the Windows platform facts (core\platform\
-# Platform.ps1, design 19). The CIM, firewall, Secure Boot, module and
+# Platform.ps1, design 01). The CIM, firewall, Secure Boot, module and
 # service cmdlets are mocked, so no real host setting is read.
 
 [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseDeclaredVarsMoreThanAssignments', '',

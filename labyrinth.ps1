@@ -591,7 +591,7 @@ function Exit-Lab {
 }
 
 # Write-LabVersion: the version, the runner, and the release hash to
-# compare with the team's offline record (design 07, section 5).
+# compare with the team's offline record (design 21, section 5).
 function Write-LabVersion {
     Write-LabLine "labyrinth $LabVersion (labyrinth.ps1, for Windows)"
     $release = 'not checked (no release.sha256)'
@@ -1404,7 +1404,7 @@ function Invoke-LabPlanAll {
 
 # Only administrators may be able to change Labyrinth's code, its
 # configuration and its data root, because they run as SYSTEM, later too,
-# by the revert timer (design 07, section 5).
+# by the revert timer (design 21, section 5).
 function Assert-LabTrustedTree {
     if ($script:Release.Status -eq 'missing') {
         $script:PendingWarnings += "no release.sha256, so Labyrinth's files were not checked"
@@ -1416,7 +1416,7 @@ function Assert-LabTrustedTree {
     }
 }
 
-# The protected set must load and hold at least one account (design 01,
+# The protected set must load and hold at least one account (design 03,
 # section 7). Plan mode needs it too, because plans that touch accounts depend on it.
 function Assert-LabProtectedSet {
     $set = $null
@@ -1765,7 +1765,7 @@ function Invoke-LabApplyOne {
         $M.State = 'manual'; return 0
     }
     if ($M.Scored) {
-        # A missing or empty list does not block: the list is optional (design 01,
+        # A missing or empty list does not block: the list is optional (design 03,
         # section 7), and the firewall adapter checks that scored ports stay reachable.
         try { $null = Read-LabAddressList 'scoring-allowlist' }
         catch {
@@ -2529,7 +2529,7 @@ function Write-LabProbeReport {
 }
 
 try {
-    # The release check (design 07, section 5) comes before any of the
+    # The release check (design 21, section 5) comes before any of the
     # core is loaded, so a changed core file never runs. A file that
     # differs from release.sha256 stops every command, the revert timer's
     # rollback included; with no release.sha256, apply, keep and rollback

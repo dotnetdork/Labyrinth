@@ -1,4 +1,4 @@
-# 05. Credentials and SSH Keys
+# 04. Credentials and SSH Keys
 
 Phase: 🟥 Lock out · Priority: P0
 
@@ -8,25 +8,25 @@ Phase: 🟥 Lock out · Priority: P0
 |---|---|
 | Events differ on which accounts scoring logs in with. Some say administrator-class passwords are not used for scoring and other user passwords need a notification process; others score admin logins too and take new passwords through a change process of their own (*Background*; Blueprint §5). | No account is assumed to be unscored. Automation rotates admin-class credentials; an admin account a check logs in with is a `scored-admin` account, and its new password goes into a change list (section 2.4). User-level rotation waits for approval. |
 | Officials must get access on request (National Collegiate Cyber Defense Competition [NCCDC], 2025, Rule 4.1) | When an official asks, the captain gives them a working credential from the team's offline record or logs in for them. No standing account or key is created for this (section 5). |
-| Scored services such as POP3 (Post Office Protocol 3) mail have logged in with domain users (*Background*) | Domain-wide password resets stay with a person, from the domain checklist (design 11, section 5), using the same change-list format where the event takes one. |
+| Scored services such as POP3 (Post Office Protocol 3) mail have logged in with domain users (*Background*) | Domain-wide password resets stay with a person, from the domain checklist (design 12, section 5), using the same change-list format where the event takes one. |
 | No deliberate breakage (NCCDC, 2025, Rule 5.6.5) | Never disable accounts wholesale. |
 | Scoring is based partly on controlling and preventing unauthorized access (NCCDC, 2025, Scoring section). No rule text read so far forbids locking or deleting an unauthorized account. | Unexpected accounts are locked, and deleted once a person confirms it is safe (section 6). Scored services, including SSH, are defended rather than left alone (section 4). |
 
 ## 2. Password rotation
 
 - **Who is rotated:** root, Administrator and equivalents, team operator accounts, and `scored-admin` accounts with their change list (section 2.4). Never `scoring` or `employee` accounts.
-- **Accounts something logs on with.** On Windows, a service, scheduled task or web application pool set to log on as an account stores that account's password. Changing the password breaks it at its next start, often hours later. The Tier 0 inventory lists every such logon. An admin-class account with any is not rotated automatically. It is listed in Tier 3 (design 01, section 5) with everything that stores its password; once a person approves, Labyrinth rotates it, updates the stored password on each listed service, task or pool, and runs the probes. Linux services do not store their account's login password, so this mainly concerns Windows; a password written into an application's configuration file is not always found and is a reason to check the dependency map first.
+- **Accounts something logs on with.** On Windows, a service, scheduled task or web application pool set to log on as an account stores that account's password. Changing the password breaks it at its next start, often hours later. The Tier 0 inventory lists every such logon. An admin-class account with any is not rotated automatically. It is listed in Tier 3 (design 03, section 5) with everything that stores its password; once a person approves, Labyrinth rotates it, updates the stored password on each listed service, task or pool, and runs the probes. Linux services do not store their account's login password, so this mainly concerns Windows; a password written into an application's configuration file is not always found and is a reason to check the dependency map first.
 - **Generation:** a cryptographic random source, a length chosen by the profile, and a character set that survives the target's shell and login prompt.
 - **Record:** shown once on the operator's screen, to be copied into the team's offline record. Labyrinth never writes it to disk, logs or shell history.
 - **Kept once verified.** A rotation of a password the team holds, the removal of an unregistered key and the end of an intruder's session set `keep_on_verify: true` (design 00, section 4, rule 9). They cannot lock the team out, because the new password is already in the offline record and the break-glass path is untouched, and undoing them would give the intruder their access back and make the offline record wrong. A rotation that updates a service's configuration file is kept only once that service's probe shows it no worse.
-- **The offline record** is where the team keeps the secrets Labyrinth must not store: new passwords, the break-glass credential, the event seed (design 03) and the release fingerprint (design 07). It stays out of the repository and off every competition host: on paper, or in a local file on an operator's own machine that is not synced to any cloud service, because outside storage and collaboration services are prohibited during the event (National Collegiate Cyber Defense Competition [NCCDC], 2025, Rule 5.2). Teammates share these secrets only through the official team chat or in person. Activity on that chat may be logged and released (NCCDC, 2025, Rule 5.5), so every credential shared there is rotated after the event (section 5).
+- **The offline record** is where the team keeps the secrets Labyrinth must not store: new passwords, the break-glass credential, the event seed (design 16) and the release fingerprint (design 21). It stays out of the repository and off every competition host: on paper, or in a local file on an operator's own machine that is not synced to any cloud service, because outside storage and collaboration services are prohibited during the event (National Collegiate Cyber Defense Competition [NCCDC], 2025, Rule 5.2). Teammates share these secrets only through the official team chat or in person. Activity on that chat may be logged and released (NCCDC, 2025, Rule 5.5), so every credential shared there is rotated after the event (section 5).
 - **Order:**
   1. Set the new credential.
   2. Test it from a fresh session.
   3. Acknowledge that it is recorded.
   4. Only then close the old session.
 - **User-level accounts:** rotated only after approval, from an explicit list, where the event takes a change list (section 2.4). Otherwise a manual checklist, following the event's notification process.
-- **Crown jewels** (domain admin, KRBTGT) rotate at set checkpoints, not continuously. KRBTGT needs two resets with a replication check between them; it is an approval item that Labyrinth carries out (design 11, section 5.1).
+- **Crown jewels** (domain admin, KRBTGT) rotate at set checkpoints, not continuously. KRBTGT needs two resets with a replication check between them; it is an approval item that Labyrinth carries out (design 12, section 5.1).
 
 ### 2.1 Application admin credentials
 
@@ -34,8 +34,8 @@ Operating system passwords are not the only default credentials. Red Teams repor
 
 - **Inventory (Tier 0).** For each scored app in the profile, list its admin accounts, using the app's own tools where present (for example `wp user list --role=administrator`, or a read-only query of the database's user table), and the configuration files that store a password the app uses to reach its database.
 - **Rotate (Tier 3, approve then act).** Each account is shown with what depends on it. Once a person approves, Labyrinth sets a new password, updates every listed configuration file that stores it (backed up first), runs the app's syntax check and probes under a revert timer, and shows the new password once for the offline record.
-- **Never automatic**, because an app password can be stored in places the inventory misses, and the scoring engine may log in to the app. An account the packet names as used by scoring or employees is in the protected set and never offered. Each account is an item in category `default-app-password`, which the module lets a pre-approval rule cover: a known default password is never one the scoring engine relies on keeping. An account a rule names counts as approved, so a first-minute run rotates it without a prompt (design 01, section 6.3; Conventions, section 3.1).
-- **Appliances** (firewall and router admin logins) stay in their runbooks (design 16).
+- **Never automatic**, because an app password can be stored in places the inventory misses, and the scoring engine may log in to the app. An account the packet names as used by scoring or employees is in the protected set and never offered. Each account is an item in category `default-app-password`, which the module lets a pre-approval rule cover: a known default password is never one the scoring engine relies on keeping. An account a rule names counts as approved, so a first-minute run rotates it without a prompt (design 03, section 6.3; Conventions, section 3.1).
+- **Appliances** (firewall and router admin logins) stay in their runbooks (design 05).
 
 ### 2.2 Password and lockout policy
 
@@ -52,7 +52,7 @@ The rules for new passwords and for repeated failed logons are host settings. Th
 - **The PAM stack.** One wrong line in a PAM file can stop every login on the host, the console included. So Labyrinth never edits PAM files directly. Where a setting needs a module added to the stack, it uses the distribution's own tool (`pam-auth-update` on Debian and Ubuntu, `authselect` on the Red Hat family), in the approval class, and only for a module already installed; it never installs one. Before the change is kept, an operator account logs in from a fresh session while the old session stays open (the order in section 2), and the revert timer restores the files if that login fails.
 - **Lockout.** The Red Team can lock scoring and employee accounts on purpose by guessing their passwords, and a locked scoring account is a scored service down. So lockout is never automatic. The plan names every scoring and employee account it would cover on that host, so the person approving sees the risk. A lockout always ends by itself after a set time; Labyrinth never sets one that only an administrator can clear.
 - **Password age.** On Windows, a new maximum age can expire existing passwords at once, scoring accounts' included. A minimum age stops the team rotating a password again after an incident. An event is shorter than any useful maximum age, so neither is set.
-- **Domain controllers.** A domain controller has no local account policy: the default domain policy applies, and changing it is a Group Policy change on the domain checklist (design 11, section 5).
+- **Domain controllers.** A domain controller has no local account policy: the default domain policy applies, and changing it is a Group Policy change on the domain checklist (design 12, section 5).
 - **Record and roll back.** Tier 0 reports the current settings on every host. Every change records the previous values in the run manifest (on Windows, from a `secedit` export), and `rollback` restores them.
 
 ### 2.3 Handing over a new password
@@ -71,13 +71,13 @@ Remote mode (design 00, section 5) must give each host a terminal (`ssh -t`, or 
 
 Some events score logins with accounts the team is expected to secure, and take new passwords through a change process of their own, such as a form or an upload of `username,password` lines that the scoring system applies at once (*Background*). Rotating such an account without that step breaks its check until scoring has the new password. So:
 
-- **The class.** The operator lists each such admin account in the protected set with class `scored-admin` (design 01, section 4). It is rotated in the first minute like any admin account, never locked or removed, and its rotation is kept once verified (section 2).
+- **The class.** The operator lists each such admin account in the protected set with class `scored-admin` (design 03, section 4). It is rotated in the first minute like any admin account, never locked or removed, and its rotation is kept once verified (section 2).
 - **One list, shown once.** At the end of the module, Labyrinth shows every password it set for a `scored-admin` account, and for user-level accounts a person approved, as `username,password` lines on the terminal, through the same helper as any new password (section 2.3). The operator copies them into the event's change process and the offline record, then types `recorded`. The list is never written to disk, the log or the manifest.
-- **One password per name.** A change process that takes a username without naming a host or service applies one password to that name everywhere. A name that exists on several hosts must therefore get the same new password on each, and the plan lists every host it covers. Without a control node to carry the password between hosts, it is derived on each host from the event seed and the account name (design 03, section 3), so every host computes the same value and the team can work out the whole list on its own machine before the event. Without a seed, the operator types the new password once per host, at the terminal.
-- **Submit at once.** A check that logs in with the account fails from the rotation until the event applies the list, so the operator submits it as soon as it is shown. The probes that log in with the account use the new password, held in memory (design 13, section 3).
+- **One password per name.** A change process that takes a username without naming a host or service applies one password to that name everywhere. A name that exists on several hosts must therefore get the same new password on each, and the plan lists every host it covers. Without a control node to carry the password between hosts, it is derived on each host from the event seed and the account name (design 16, section 3), so every host computes the same value and the team can work out the whole list on its own machine before the event. Without a seed, the operator types the new password once per host, at the terminal.
+- **Submit at once.** A check that logs in with the account fails from the rotation until the event applies the list, so the operator submits it as soon as it is shown. The probes that log in with the account use the new password, held in memory (design 19, section 3).
 - **What it cannot know.** Whether the event applied the list. The next authenticated probe, or the scoreboard, shows it.
 
-User-level accounts on a domain stay on the domain checklist (design 11, section 5): a person resets them, and the same `username,password` format is used for the event's change process.
+User-level accounts on a domain stay on the domain checklist (design 12, section 5): a person resets them, and the same `username,password` format is used for the event's change process.
 
 ## 3. Username policy
 
@@ -93,7 +93,7 @@ Choosing our own names or random ones is a trade-off:
 
 - Never rename an account. Scoring, the officials and the event's change process know each account by its name, and events commonly forbid changing usernames (*Background*). Renames are not offered.
 - Add role-based operator accounts with strong credentials.
-- Rely on keys and strong passwords rather than name secrecy. Restrict by source only on ports that are not scored (design 01, section 6.1).
+- Rely on keys and strong passwords rather than name secrecy. Restrict by source only on ports that are not scored (design 03, section 6.1).
 
 ## 4. SSH key design
 
@@ -105,14 +105,14 @@ Choosing our own names or random ones is a trade-off:
 - **Private keys** stay on the control node, protected with a passphrase, never copied to managed hosts.
 - **Optional:** short-lived SSH (Secure Shell) certificates from a team certificate authority if the team decides the added moving part is worth it.
 - **Ubuntu 24.04:** SSH is socket activated, so changes to the listening port need the socket unit as well as the daemon configuration.
-- **Hardening:** a drop-in file in `sshd_config.d`, tested with `sshd -t` before reload, with a dead-man revert (design 01).
+- **Hardening:** a drop-in file in `sshd_config.d`, tested with `sshd -t` before reload, with a dead-man revert (design 03).
 
 ### 4.1 Checking the SSH configuration for planted settings
 
-An attacker who got in first may have changed SSH itself. For most settings, `sshd` uses the **first** value it reads (*Background*), so an add-on file that sorts before ours (for example `00-x.conf`) wins, and a `Match` block can override any setting for chosen users or addresses. Adding our own drop-in is therefore not enough. In the first-minute bundle (design 01, section 6.1), Labyrinth:
+An attacker who got in first may have changed SSH itself. For most settings, `sshd` uses the **first** value it reads (*Background*), so an add-on file that sorts before ours (for example `00-x.conf`) wins, and a `Match` block can override any setting for chosen users or addresses. Adding our own drop-in is therefore not enough. In the first-minute bundle (design 03, section 6.1), Labyrinth:
 
 1. **Verifies the package files** (`dpkg --verify openssh-server` or `rpm -V openssh-server`). A changed `sshd` binary or PAM module is a high-ranked finding for a person, never fixed automatically.
-2. **Quarantines unknown add-on files** in `sshd_config.d` and planted lines in the main file (`Match` blocks, `AuthorizedKeysFile`, `AuthorizedKeysCommand`, `TrustedUserCAKeys`, `PermitRootLogin yes`, `PermitEmptyPasswords yes`) that are not in the profile's known-good list (design 17, section 5).
+2. **Quarantines unknown add-on files** in `sshd_config.d` and planted lines in the main file (`Match` blocks, `AuthorizedKeysFile`, `AuthorizedKeysCommand`, `TrustedUserCAKeys`, `PermitRootLogin yes`, `PermitEmptyPasswords yes`) that are not in the profile's known-good list (design 06, section 5).
 3. **Names our file to load first** (`00-labyrinth.conf`) and confirms the result with `sshd -T`, which prints the settings `sshd` will actually use.
 4. **Sweeps every key source:** `authorized_keys`, `authorized_keys2`, any path named by `AuthorizedKeysFile`, `~/.ssh/rc` and `/etc/ssh/sshrc`.
 5. **Handles hosts without drop-ins.** RHEL 8 has no `Include` line by default; there the main file is backed up and edited in place.
@@ -123,8 +123,8 @@ The same pattern (verify the package, quarantine unknown add-ons, confirm the ef
 
 SSH is often a scored service and the Red Team will attack it, so it is hardened, not left as found:
 
-- **Where SSH is scored:** password login is turned off for every account **except** the scoring, `scored-admin` and employee accounts (design 01, section 4), which keep it through a `Match User` block, because the scoring engine and simulated employees log in with a password. A `scored-admin` account keeps password login with its new password from the change list (section 2.4). If the event packet does not say which accounts employees use, the exception covers every ordinary (non-admin) account until officials confirm, and key-only applies to admin-class accounts only. `AllowUsers` is set only when the scored accounts are known, and then lists only the scoring and `scored-admin` accounts, operator accounts and accounts the packet names; where a scoring account has not been identified, a list could lock it out, so Labyrinth leaves `AllowUsers` alone, logs why and queues the setting as an approval item. `MaxAuthTries` and `LoginGraceTime` are lowered, and failed logins raise alerts (design 10). The port stays where it is and open to every source: a scored SSH port is never moved, knocked or restricted by address (design 01, section 6.1).
-- **Where SSH is not scored:** key-only for everyone, and the port is open only to the admin source (design 01).
+- **Where SSH is scored:** password login is turned off for every account **except** the scoring, `scored-admin` and employee accounts (design 03, section 4), which keep it through a `Match User` block, because the scoring engine and simulated employees log in with a password. A `scored-admin` account keeps password login with its new password from the change list (section 2.4). If the event packet does not say which accounts employees use, the exception covers every ordinary (non-admin) account until officials confirm, and key-only applies to admin-class accounts only. `AllowUsers` is set only when the scored accounts are known, and then lists only the scoring and `scored-admin` accounts, operator accounts and accounts the packet names; where a scoring account has not been identified, a list could lock it out, so Labyrinth leaves `AllowUsers` alone, logs why and queues the setting as an approval item. `MaxAuthTries` and `LoginGraceTime` are lowered, and failed logins raise alerts (design 14). The port stays where it is and open to every source: a scored SSH port is never moved, knocked or restricted by address (design 03, section 6.1).
+- **Where SSH is not scored:** key-only for everyone, and the port is open only to the admin source (design 03).
 - **Root** cannot log in over SSH (`PermitRootLogin no`), unless `root` is listed as a `scored-admin` account on a host where SSH is scored. Then root keeps password login only inside its own `Match User root` block, and the plan says so.
 
 The scoring accounts and their checks come from the run-time `services` file. If the file does not say whether SSH is scored on a host, the host is treated as scored.
@@ -161,9 +161,9 @@ Break-glass is how the team gets back into a host it has locked itself out of. I
 A break-glass path must not become a backdoor, so:
 
 - **No new account and no key.** The break-glass credential is the rotated password of an existing admin-class account (root or the local Administrator), kept by the captain in the team's offline record (section 2). Labyrinth never creates an account or an SSH key for it.
-- **Console first.** Before Labyrinth changes a host, the operator confirms by typing that the break-glass credential worked at that host's console (design 01, section 7). A script cannot reach the console, so this is asked once per host, not before every change. Where the platform allows it without blocking the team's own admin path, the credential works only at the console; on Linux, `PermitRootLogin no` in the SSH drop-in (section 4) already does this.
+- **Console first.** Before Labyrinth changes a host, the operator confirms by typing that the break-glass credential worked at that host's console (design 03, section 7). A script cannot reach the console, so this is asked once per host, not before every change. Where the platform allows it without blocking the team's own admin path, the credential works only at the console; on Linux, `PermitRootLogin no` in the SSH drop-in (section 4) already does this.
 - **Rotated like any admin password.** Its rotation follows section 2. The new password is tested in a fresh session on the host, `su -` on Linux or `runas` on Windows, which checks the password itself without needing SSH. It is never locked or removed. Unregistered SSH keys on the account are still removed.
-- **Watched.** A successful logon with it raises an alert (design 10, section 5).
+- **Watched.** A successful logon with it raises an alert (design 14, section 5).
 - **Rotated after use** and after the event.
 
 **Official accounts** named in the event packet are never changed without the White Team's permission. They are still watched: their logons raise an alert, and the team confirms unexpected ones with the White Team. If the White Team agrees, the captain rotates the password and hands them the new one.
@@ -172,7 +172,7 @@ A break-glass path must not become a backdoor, so:
 
 ### 6.1 Who is expected
 
-An account is **expected** if it is in the protected set (design 01, section 4), including scoring and employee accounts, is a user the event packet names, or owns or runs a scored service (from the dependency map). Locking an account an employee needs can cost points (design 01, section 2), which is why unexpected accounts *without* admin rights are locked only after a person approves.
+An account is **expected** if it is in the protected set (design 03, section 4), including scoring and employee accounts, is a user the event packet names, or owns or runs a scored service (from the dependency map). Locking an account an employee needs can cost points (design 03, section 2), which is why unexpected accounts *without* admin rights are locked only after a person approves.
  Every other account that can log in is **unexpected**. The Tier 0 inventory lists every account and group on each host, with its creation time where the platform records one.
 
 ### 6.2 Hidden admins
@@ -191,14 +191,14 @@ Administrator rights can hide in places a simple group listing misses. The inven
 |---|---|---|
 | Unexpected *local* account with admin rights or a hidden-admin sign | Admin rights removed and the account locked, in the first-minute bundle's tier | 2, automatic |
 | Other unexpected *local* account | Listed with its evidence; locked after a person approves | 3 |
-| Unexpected *domain* account or group member | Printed on the domain checklist (design 11, section 5) | 3, person-run |
+| Unexpected *domain* account or group member | Printed on the domain checklist (design 12, section 5) | 3, person-run |
 | Expected account | Unchanged | — |
 
-Locking means: on Linux, `usermod -L` and an expiry date in the past, with the login shell left as it is (a design choice: Rule 5.6.5's example is setting *all* user shells to `/bin/false`, and leaving the shell alone keeps rollback simple and avoids any resemblance to it); on Windows, the account disabled. Both are recorded in the run manifest and undone by `rollback`. Re-enabling a locked account raises an alert (Windows event 4722; an auditd rule on Linux; design 10).
+Locking means: on Linux, `usermod -L` and an expiry date in the past, with the login shell left as it is (a design choice: Rule 5.6.5's example is setting *all* user shells to `/bin/false`, and leaving the shell alone keeps rollback simple and avoids any resemblance to it); on Windows, the account disabled. Both are recorded in the run manifest and undone by `rollback`. Re-enabling a locked account raises an alert (Windows event 4722; an auditd rule on Linux; design 14).
 
 ### 6.4 Delete once confirmed
 
-A locked account can be unlocked again by an attacker with admin rights, so a lock is not the end state. After the next checkpoint shows every scored service passing (design 13), Labyrinth offers each locked account for deletion. A person approves each one. Before deleting, Labyrinth saves its evidence: groups, keys, creation information and an archive of the home folder, kept in the quarantine area (design 17, section 5). It then deletes the account and checks for files still owned by the old UID or SID, which are listed for a person. Domain accounts stay on the person-run checklist.
+A locked account can be unlocked again by an attacker with admin rights, so a lock is not the end state. After the next checkpoint shows every scored service passing (design 19), Labyrinth offers each locked account for deletion. A person approves each one. Before deleting, Labyrinth saves its evidence: groups, keys, creation information and an archive of the home folder, kept in the quarantine area (design 06, section 5). It then deletes the account and checks for files still owned by the old UID or SID, which are listed for a person. Domain accounts stay on the person-run checklist.
 
 ## 7. Acceptance tests
 

@@ -1,5 +1,5 @@
 # shellcheck shell=bash
-# core/platform/platform.sh: the platform facts for Linux (design 19,
+# core/platform/platform.sh: the platform facts for Linux (design 01,
 # section 3). Sourced through core/lib.sh. Reading a fact changes nothing.
 #
 # lab_fact NAME prints one fact. A fact is worked out on first use; call
@@ -10,7 +10,7 @@
 LAB_FACT_NAMES='os_id os_family os_version init pkg_db firewall selinux'
 
 # lab_have TOOL: is TOOL on the path? For the tools Labyrinth must not
-# assume, such as jq, python3, curl and dig (design 19, section 3).
+# assume, such as jq, python3, curl and dig (design 01, section 3).
 lab_have() { command -v "$1" > /dev/null 2>&1; }
 
 # lab_fact NAME: print the fact NAME; exit 2 if there is no such fact.
@@ -138,7 +138,7 @@ _lab_iptables_has_rules() {
   return 1
 }
 
-# The active firewall (design 19, section 3.1): ufw, firewalld, nftables,
+# The active firewall (design 01, section 3.1): ufw, firewalld, nftables,
 # iptables, none, conflict, or unknown when a check could not run.
 _lab_fact_firewall() {
   local out count=0 found='' unknown=0

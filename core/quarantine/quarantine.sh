@@ -1,16 +1,16 @@
 # shellcheck shell=bash
-# core/quarantine/quarantine.sh: quarantine, never delete (design 17,
+# core/quarantine/quarantine.sh: quarantine, never delete (design 06,
 # section 5.1). Sourced through core/lib.sh.
 #
 # Each function takes an item and the reason the module gives for it, records
 # the step in the run manifest, then disables the item and moves it aside to
 # <backup>/quarantine/<run>/<seq>/. The helper does not judge an item: the
-# module decides its class (design 17, section 4). lab_quarantine_restore
+# module decides its class (design 06, section 4). lab_quarantine_restore
 # undoes the current module's entries, newest first.
 #
 # Return codes: 0 done (or the item is already gone), 20 this item was left
 # as it is (refused, or it could not be moved), 40 error. A module treats 20
-# as one item for a person and goes on with the rest (design 17, section
+# as one item for a person and goes on with the rest (design 06, section
 # 5.1), so one item an attacker shaped cannot stop the sweep. Item text may
 # hold control characters: the manifest escapes them. The reason goes to
 # standard error.
@@ -221,7 +221,7 @@ _lab_q_owner() {
 # in /usr/lib or /run may be an intruder's.
 #   - A transient unit has no file to keep: it is stopped and recorded, and,
 #     like a process, cannot be brought back.
-#   - A package's unit is only disabled after approval (design 15): the
+#   - A package's unit is only disabled after approval (design 10): the
 #     drop-ins no package installed are quarantined, and 20 leaves the unit
 #     for a person.
 lab_quarantine_unit() {
