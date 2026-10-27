@@ -99,7 +99,7 @@ With the network closed around each host, the Harden phase installs the team's t
 
 - **Install the team's tools** from public sources (design 02), and **take restore points** of the scored services before the first risky change (design 07).
 - **Sweep for persistence:** scheduled jobs, services, startup items, SSH and PAM changes, and web shells. Clear attacker footholds are quarantined automatically; anything a scored service might depend on waits for approval. Nothing is deleted (design 06).
-- **Verify against the official packages, then baseline:** users, listening ports, processes, scheduled tasks/cron, startup items, firewall state. The package database on a host can be edited by root, so for a core set of packages (OpenSSH server, sudo, PAM, coreutils, util-linux, systemd, the shadow tools) and any package a local check flags, Labyrinth downloads the package from the host's configured repositories, checks its signature and compares its files' hashes with the files on disk. A mismatch is a finding for a person, never an automatic fix. Windows keeps Authenticode signer checks and `sfc /verifyonly`. Verify before hashing files, so a compromised state is not recorded as normal. Once the lockout and sweep are verified, seal the baseline, so later checks compare against the cleaned host (design 08, section 6).
+- **Verify against the official packages, then baseline** (last in the Harden phase, after patching, so it checks the packages as they are left; design 03, section 6): users, listening ports, processes, scheduled tasks/cron, startup items, firewall state. The package database on a host can be edited by root, so for a core set of packages (OpenSSH server, sudo, PAM, coreutils, util-linux, systemd, the shadow tools) and any package a local check flags, Labyrinth downloads the package from the host's configured repositories, checks its signature and compares its files' hashes with the files on disk. A mismatch is a finding for a person, never an automatic fix. Windows keeps Authenticode signer checks and `sfc /verifyonly`. Verify before hashing files, so a compromised state is not recorded as normal. Once the lockout and sweep are verified, seal the baseline, so later checks compare against the cleaned host (design 08, section 6).
 - **Move or hide admin:** where SSH (Secure Shell) or RDP (Remote Desktop Protocol) is not scored, get it off the obvious port, and consider port-knocking on hosts that support it (§3.4, §4.7). A scored admin service is never moved or hidden; it stays open to every source and is hardened in place.
 - **Disable services you are not graded on.** Every listener is a vector.
 
@@ -500,7 +500,7 @@ Triage under a clock. Do P0 everywhere before P1 anywhere. The **When** column i
 | Egress logging + DNS sinkhole (§3.10, §4.6) | ★★★ | Med | 🟡 P2 |
 | Port knocking (§4.7) | ★★ | Med | ⚪ P3 |
 
-*The Rule 5.6 items (public, declared, frozen, no outside resources, no breakage) apply to every row.*
+*The Rule 5.6 items (public, declared, frozen, no cloud processing, no breakage) apply to every row.*
 
 *Canaries and honey-accounts are P2 by sequence, because they need §3.9's logging first. They are still the highest-confidence detections you will deploy, so get to them.*
 

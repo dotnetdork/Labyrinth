@@ -14,7 +14,7 @@ Incident reports are scored at most events (*Background*), and a report earns cr
 |---|---|
 | Report content requirements (NCCDC, 2025, Rule 9.4) | The report template is built from the required fields. Re-check the field list against each event's materials, which may ask for more. |
 | Reports are presented to the White Team for collection (NCCDC, 2025, Rule 9.4) | Labyrinth produces a file or text block. A human submits it through the channel the officials specify. Nothing is auto-submitted. |
-| No outside resources (NCCDC, 2025, Rule 5.6.4) | No external enrichment such as IP reputation lookups. |
+| No cloud services or cloud processing (NCCDC, 2025, Rule 5.6.4) | No external enrichment such as IP reputation lookups. |
 | Only a thorough report that correctly identifies and addresses the attack may reduce the penalty (NCCDC, 2025, Rule 9.4) | Reports state only what evidence shows. Unknown fields say "unknown". |
 
 ## 3. Pipeline

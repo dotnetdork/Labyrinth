@@ -380,7 +380,7 @@ Some outside repositories are kept as **reference only** ([design 22](design/22-
 
 **How it works.**
 
-- **Linux** hosts forward their login records, the audit log (who ran which privileged command, who touched which watched file) and firewall "blocked" messages, using the logging program that is already installed.
+- **Linux** hosts forward their login records, the audit log (who ran which privileged command, who touched which watched file) and firewall "blocked" messages. Where the SIEM is Splunk they use Splunk's forwarder (below); otherwise, or when the forwarder cannot be installed, the logging program that is already installed.
 - **The Splunk forwarder.** Where the SIEM is Splunk, each host installs Splunk's own forwarder program, downloaded from Splunk's public download site. The exact version and file fingerprint (SHA-256) are fixed in the run-time settings, the download is checked against the fingerprint file Splunk publishes beside it, and the forwarder is never newer than the SIEM's own version. On the SIEM, receiving stays switched off until the team enables it. A small script that sends events over HTTP is the fallback.
 - **Windows** hosts forward a short, fixed list of event IDs, the numbers Windows gives each kind of event: logons, failed logons, new accounts, new admin-group members, new services and scheduled tasks, and "the audit log was cleared". The domain controller also forwards its sign-in ticket events, which show password guessing and attempts to steal service passwords.
 - The SIEM accepts logs only from the team's own hosts, so an attacker cannot flood it or plant false entries.
@@ -467,7 +467,7 @@ Some outside repositories are kept as **reference only** ([design 22](design/22-
 **How it works.** Labyrinth looks in the usual hiding places: scheduled jobs, services, startup items, login scripts, SSH and admin settings, and web folders. Each thing it finds is sorted:
 
 - **Known good:** belongs to installed software and is unchanged. Left alone.
-- **Clearly the attacker's:** does not belong to installed software, nothing scored relies on it, and it shows an unmistakable sign, such as running from a temporary folder or opening a command line to the network. Set aside automatically in the first minute.
+- **Clearly the attacker's:** does not belong to installed software, nothing scored relies on it, and it shows an unmistakable sign, such as running from a temporary folder or opening a command line to the network. Set aside automatically in the Harden phase, straight after the first-minute lockdown.
 - **Unexplained:** anything else. Shown to a person with the reason; once approved, Labyrinth sets it aside.
 - **Inside a scored website:** possible attacker web pages are always shown to a person first, because removing a real page would take the site down.
 

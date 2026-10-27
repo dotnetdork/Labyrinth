@@ -13,13 +13,14 @@ Build each machine from the vendor's public install media, with the default mini
 
 | Machine | Platform | Used for |
 |---|---|---|
-| RHEL-family host | A current RHEL-family release (Rocky Linux or Oracle Linux), with a web stack (nginx or Apache, a PHP app, MariaDB) | Service packs (design 11), the persistence sweep's web shell tests (design 06), firewalld and SELinux enforcing, Podman containers (design 13), and planted known-exploited flaws such as an old WordPress plugin and a vulnerable `pkexec` (design 09) |
-| Ubuntu host | A supported Ubuntu LTS release, with a mail stack (Postfix and Dovecot) | Service packs; UFW; Docker containers from `docker.io` (design 13); mailbox and message-count proofs for service replacement |
-| Debian host | A supported Debian release, with a free Splunk edition | Log forwarding and saved searches (design 14); the forwarder download and checksum check; the Debian lockdown with no firewall front end, where raw nftables holds until UFW takes over (design 01) |
-| Domain controller | A supported Windows Server release | Design 12: domain checks, LDAP and Netlogon settings, the domain checklist |
-| Member server | An older supported Windows Server release, joined to the domain, with SQL Server | Windows member settings, the SQL Server service pack, ring order, logons after default-deny |
-| Router | An open-source router image | Runbook rehearsal (design 05); never automated |
-| Firewall appliance | A free or trial image where the vendor offers one | Runbook rehearsal only (design 05); never automated |
+| Debian-family hosts | A supported Ubuntu LTS release and a supported Debian release | UFW; the Debian lockdown with no firewall front end, where raw nftables holds until UFW takes over (design 01); Docker containers from `docker.io` (design 13) |
+| RHEL-family host | A current RHEL-family release (Rocky Linux, Oracle Linux or Fedora) | firewalld and SELinux enforcing; Podman containers (design 13) |
+| Linux web server | Either Linux family, with nginx or Apache, a PHP app and MySQL or MariaDB | Service packs (design 11), the persistence sweep's web shell tests (design 06), and planted known-exploited flaws such as an old WordPress plugin and a vulnerable `pkexec` (design 09) |
+| Linux mail and DNS | Either Linux family, with Postfix, Dovecot and BIND | Service packs; DNS probes; mailbox and message-count proofs for service replacement |
+| SIEM | A free Splunk edition, or the SIEM the event is expected to use | Log forwarding and saved searches (design 14); the forwarder download and checksum check |
+| Domain controller | Windows Server, two versions: the oldest still supported and the newest | Design 12: domain checks, LDAP and Netlogon settings, the domain checklist |
+| Member server | Windows Server, joined to the domain, with IIS or SQL Server | Windows member settings, the SQL Server service pack, ring order, logons after default-deny |
+| Appliances | An open-source router image, and a free or trial firewall image where the vendor offers one | Runbook rehearsal only (design 05); never automated |
 | Control node | Any Linux host | Remote mode (design 00, section 5); the version scan of the team's own hosts (design 09) |
 | Package mirror | A local mirror or caching proxy for both Linux families, on the lab network | Installs, security updates and the official-package checks (designs 02, 08 and 10). Switched off for the tests that need no source |
 
