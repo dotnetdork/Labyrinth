@@ -2,11 +2,13 @@
 # (design 03, section 6.1), beyond the scored services in `services`.
 # Format: `address proto port`, one per line; address is an address or CIDR,
 # proto is tcp or udp, port is a number or `any`. Include DNS resolvers,
-# NTP servers, the SIEM, the package mirror or proxy, and anything a scored
-# service connects out to. Placeholder (documentation) ranges only.
+# NTP servers, the SIEM (the forwarder port and the TCP syslog fallback,
+# design 14), the package mirror or proxy, and anything a scored service
+# connects out to. Placeholder (documentation) ranges only.
 
 192.0.2.53 udp 53
 192.0.2.53 tcp 53
 192.0.2.123 udp 123
-192.0.2.10 udp 514
+192.0.2.10 tcp 9997
+192.0.2.10 tcp 514
 192.0.2.30 tcp 3128

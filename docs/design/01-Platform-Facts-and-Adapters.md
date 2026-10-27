@@ -107,7 +107,7 @@ Every backend's adapter offers the same functions, so the firewall, ban and egre
 | iptables | `iptables-save` and `ip6tables-save`, loaded back with `iptables-restore` and `ip6tables-restore` | A rule in Labyrinth's own chain, `LAB-INPUT`, jumped to from the top of `INPUT`, for IPv4, IPv6 or both | Loopback, established-connection and ICMP rules in `LAB-INPUT`, then the `INPUT` policy `DROP` |
 | Windows Firewall | `netsh advfirewall export`, loaded back with `netsh advfirewall import` | An inbound allow rule in the rule group `Labyrinth` | ICMPv4 and ICMPv6 allow rules, then every profile on, with inbound default `Block` and local allow rules honored. Refused (`20`) when Group Policy turns off local firewall rules (`AllowLocalFirewallRules`) for any profile in the effective policy, because Labyrinth's allow rules would then do nothing; `40` when the effective policy cannot be read. |
 
-**Status.** The firewall line of each run's summary shows the host's firewall in one format, whatever the backend: the backend name, whether it is active, and the inbound default, for example `ufw active deny-in`, `firewalld active deny-in`, `windows on deny-in`, or `none`, `conflict` or `unknown` where the fact says so (Conventions, section 3.2). Backend names never appear in a different spelling on different hosts.
+**Status (planned).** The firewall line of each run's summary will show the host's firewall in one format, whatever the backend: the backend name, whether it is active, and the inbound default, for example `ufw active deny-in`, `firewalld active deny-in`, `windows on deny-in`, or `none`, `conflict` or `unknown` where the fact says so (Conventions, section 3.3). Backend names never appear in a different spelling on different hosts.
 
 **Known limits.** Each one is a reason for the acceptance tests on a real host (section 7):
 
@@ -143,7 +143,7 @@ Every backend's adapter offers the same functions, so the firewall, ban and egre
 - Each change is in the run manifest before it is made, and `lab_fw_rollback` (`Undo-LabFirewallChange`) restores the snapshot.
 - After `default_deny_in` on each lab host, the host still answers ping, an allowed port from an allowed source still connects, and an established session survives.
 - On a Debian lab host with no firewall front end, the first-minute lockdown uses nftables; after the Harden phase the fact is `ufw`, the same allows and default deny hold, and no nftables table of Labyrinth's is left behind.
-- A run's summary shows the host's firewall in the one format above, on Ubuntu, Debian, the RHEL family and Windows.
+- (Planned, with the firewall line.) A run's summary shows the host's firewall in the one format above, on Ubuntu, Debian, the RHEL family and Windows.
 - With the firewall fact `conflict` or `unknown`, every function but `restore` is refused (`20`) and calls no firewall command. With the fact `none`, the adapter uses an installed `nft`, then `iptables`, and refuses (`20`) when neither is installed.
 
 ## References

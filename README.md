@@ -67,13 +67,14 @@ Labyrinth/
 │   ├── Roadmap.md                 ← build order: milestones, branches, settled decisions
 │   ├── lab/README.md              ← the test lab: machines, how to run a pass, results
 │   ├── manual/labyrinth.md        ← operator manual: one source, Linux and Windows editions
-│   └── design/                    ← design specs 00–22 (module contract, panic button,
-│                                    incident reporting, event seed, baseline, credentials,
-│                                    status feed, cleanup, reference mining, deception maze,
-│                                    log forwarding, Windows/AD, bans, health monitor,
-│                                    backups, patching, appliance runbooks, persistence
-│                                    sweep, service packs, platform adapters, packages,
-│                                    vulnerability tracker, service replacement)
+│   └── design/                    ← design specs 00–22, in run order (module contract,
+│                                    platform adapters, packages, panic button,
+│                                    credentials, appliance runbooks, persistence sweep,
+│                                    backups, baseline, vulnerability tracker, patching,
+│                                    service packs, Windows/AD, service replacement,
+│                                    log forwarding, status feed, event seed, deception
+│                                    maze, bans, health monitor, incident reporting,
+│                                    cleanup, reference mining)
 └── .github/                       ← CI (lint, guard and tests on Linux and Windows)
                                      and the pull request template
 ```

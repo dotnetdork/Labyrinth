@@ -12,5 +12,5 @@
 # Placeholders only. Replace them with the module ids, categories and item
 # ids your team reviewed.
 
-# lockout.example-patching security-update example-package
+# harden.example-patching security-update example-package
 # lockout.example-app-credentials default-app-password example-app-admin
