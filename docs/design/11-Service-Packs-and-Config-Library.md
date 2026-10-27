@@ -14,7 +14,7 @@ This spec ships a **service pack** for each common scored app and a small **conf
 |---|---|
 | Anything that interferes with the scoring engine is the team's responsibility (NCCDC, 2025, Rule 4.11). | Every setting is followed by scoring-style probes, under a revert timer. |
 | Do not mislead the scoring engine (NCCDC, 2025, Rule 9.3). | A pack never fakes a response or changes what a check sees to make a broken service look healthy. |
-| Scored services may not be migrated or containerized unless an inject or the local competition rules allow it (NCCDC, 2025, Rule 4.14). | Packs change settings in place. They never replace or move a service; where an event allows that, it is design 22. |
+| Scored services may not be migrated or containerized unless an inject or the local competition rules allow it (NCCDC, 2025, Rule 4.14). | Packs change settings in place. They never replace or move a service; where an event allows that, it is design 13. |
 | Team tools may not use resources outside the competition environment other than simple DNS lookups; the example is cloud services and cloud processing (NCCDC, 2025, Rule 5.6.4). | Packs never install anything themselves. They use software already on the host, or a module the `packages` module installed for them, such as ModSecurity (design 02). |
 | Tools must not deliberately break expected functionality (NCCDC, 2025, Rule 5.6.5). | Settings that could change what users or the scoring engine see are never automatic (section 4). |
 

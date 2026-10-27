@@ -164,7 +164,7 @@ This is the core of the reference. Each capability gives:
 - **Edge:** change the appliance admin, web, SSH and SNMP credentials immediately. Routers and firewalls often ship with well-known defaults.
 - **CCDC note:** the number-one foothold is a credential the Red Team already knows. Rotate administrator-class credentials first, everywhere, before anything clever.
 
-  **[RULES]** Events differ on which accounts scoring logs in with (§5), so none is assumed unscored. An admin account a check logs in with is a `scored-admin` account: it is rotated, and its new password goes into a `username,password` change list shown once for the event's change process (design 04, section 2.4). Domain-wide or user-level resets are manual-only by default: scored mail checks have logged in with Active Directory users (*Background*), so a mass reset can zero a scored service. As a design choice, the KRBTGT reset is an approval item that Labyrinth carries out: it is one account with a known procedure, and the first reset breaks nothing. Design: 03, 04, 11.
+  **[RULES]** Events differ on which accounts scoring logs in with (§5), so none is assumed unscored. An admin account a check logs in with is a `scored-admin` account: it is rotated, and its new password goes into a `username,password` change list shown once for the event's change process (design 04, section 2.4). Domain-wide or user-level resets are manual-only by default: scored mail checks have logged in with Active Directory users (*Background*), so a mass reset can zero a scored service. As a design choice, the KRBTGT reset is an approval item that Labyrinth carries out: it is one account with a known procedure, and the first reset breaks nothing. Design: 03, 04, 12.
 
 ### 3.2 Remote-admin hardening (SSH / RDP / WinRM) — **P0/P1**
 
@@ -207,7 +207,7 @@ This is the core of the reference. Each capability gives:
 - **Windows:** there is no fail2ban. Approximate it with a scheduled task or a WinLogbeat → SIEM alert that drives a firewall block, or with an IDS (intrusion detection system) at the edge. This is usually better handled at the perimeter.
 - **CCDC note:** ipset matters when a tarpit is feeding you thousands of IPs; a per-IP ruleset will bloat and slow the box.
 
-  **[RULES]** Bans act only on your own host's traffic, inbound and outbound. Dropping traffic to or from a hostile address is not offensive activity; scanning, attacking or contacting it is, and offensive activity outside the team's network is prohibited (NCCDC, 2025, Rule 4.10). Active response such as TCP resets is allowed, but anything that interferes with scoring is the team's responsibility (NCCDC, 2025, Rule 4.11). The scoring engine, officials, operators and the host's outbound dependencies are always on the ignore list. A ban on one address is targeted, not the indiscriminate blocking the rules give as an example (NCCDC, 2025, Rule 5.6.5). Design: 12.
+  **[RULES]** Bans act only on your own host's traffic, inbound and outbound. Dropping traffic to or from a hostile address is not offensive activity; scanning, attacking or contacting it is, and offensive activity outside the team's network is prohibited (NCCDC, 2025, Rule 4.10). Active response such as TCP resets is allowed, but anything that interferes with scoring is the team's responsibility (NCCDC, 2025, Rule 4.11). The scoring engine, officials, operators and the host's outbound dependencies are always on the ignore list. A ban on one address is targeted, not the indiscriminate blocking the rules give as an example (NCCDC, 2025, Rule 5.6.5). Design: 18.
 
 > [!WARNING]
 > If traffic from outside reaches the host through NAT (network address translation) on the router, the scoring engine and the Red Team can appear to come from the same last-hop address, and banning that address would block scoring. Confirm what source addresses the host actually sees before enabling automatic bans.
@@ -227,7 +227,7 @@ This is the core of the reference. Each capability gives:
 
   **[RULES]** Do not migrate or containerize scored services unless an inject or the local competition rules allow it (NCCDC, 2025, Rule 4.14). Where they do, rebuilding a service is design 13, off by default, and only with full proof that its users, mailboxes, pages, database contents and address are preserved and its scored check passes on a staging port before cutover (§3.7).
 
-  A scored service you break costs points immediately; an unpatched, non-exploited CVE probably does not. Prioritize by exploitability plus exposure, not by count. Known-exploited domain controller flaws (for example ZeroLogon, CVE-2020-1472) rank above everything else. Web apps and their plugins are inventoried from the files on disk and ranked the same way; an unused vulnerable plugin can be deactivated after approval. A scored service with a flaw is never turned off to close it: it is mitigated in place (a setting or a web application firewall rule), then patched in place. Each finding is tracked from open to closed and shown at every checkpoint. Matching is done locally, never by sending versions to an outside service (NCCDC, 2025, Rule 5.6.4). Designs: 10, 21.
+  A scored service you break costs points immediately; an unpatched, non-exploited CVE probably does not. Prioritize by exploitability plus exposure, not by count. Known-exploited domain controller flaws (for example ZeroLogon, CVE-2020-1472) rank above everything else. Web apps and their plugins are inventoried from the files on disk and ranked the same way; an unused vulnerable plugin can be deactivated after approval. A scored service with a flaw is never turned off to close it: it is mitigated in place (a setting or a web application firewall rule), then patched in place. Each finding is tracked from open to closed and shown at every checkpoint. Matching is done locally, never by sending versions to an outside service (NCCDC, 2025, Rule 5.6.4). Designs: 09, 10.
 
 ### 3.7 Application / container least-privilege — **P1** (Linux app hosts, where the event allows containers)
 
@@ -256,7 +256,7 @@ This is the core of the reference. Each capability gives:
 - **Linux:** `auditd` with rule keys for privileged commands, identity and sudoers, SSH keys, cron, systemd units, `/usr/local`, and **canary reads**; forward to Splunk.
 - **Windows/AD:** **Sysmon** (process creation, network, image loads) plus Windows Security auditing (4624/4625/4688/4720/4728…); forward to Splunk through the universal forwarder. Hosts of both kinds install the Splunk Universal Forwarder from Splunk's public download site, pinned by version and SHA-256 in the run-time configuration and checked against the checksum file published beside it; the forwarder is never newer than the indexer. Receiving on 9997 stays off on the indexer until enabled, and the HEC script is the fallback (design 14).
 - **SIEM:** Splunk is the aggregation point. A few high-value saved searches (new local admin, canary hit, authentication to a locked account, boot-critical file changes, ZeroLogon and DCSync signs, unusual outbound traffic) beat a hundred noisy dashboards. The SIEM host is itself hardened: its admin password rotated, users and roles audited, its web and management ports open only to the admin source unless they are scored (then open to every source), its inputs only to managed hosts, `splunkd` moved off root after approval, and unknown apps and scripted inputs quarantined (design 14, section 7).
-- **CCDC note:** stand this up in the Observe phase, *before* deception, so the traps have somewhere to report. Design: 10.
+- **CCDC note:** stand this up in the Observe phase, *before* deception, so the traps have somewhere to report. Design: 14.
 
 ### 3.10 Egress control — **P2**
 
@@ -273,7 +273,7 @@ This is the core of the reference. Each capability gives:
 - **Windows/AD:** system state and AD backups; VSS (Volume Shadow Copy Service) snapshots; a documented DC (domain controller) recovery path.
 - **Off-host copies are required:** an attacker with root or SYSTEM can delete on-host backups, so each restore point is copied to the control node, or another team host named as the backup peer, and hash-checked before it counts as complete (design 07, section 5). Snapshots of the virtual machines may not be available; Labyrinth never relies on them.
 - **Restore:** `labyrinth restore <service>` (with `--database` or `--start`) runs after a person confirms the restore point predates the damage (Tier 3); the damaged state is kept as evidence. Domain controller restores and rescuing an unbootable host (for example, a deleted `/etc/fstab`) are person-run, from printed runbooks (design 07, section 6).
-- **CCDC note:** the team that can *revert* a bad change in seconds outscores the team that is afraid to make changes. Design: 14.
+- **CCDC note:** the team that can *revert* a bad change in seconds outscores the team that is afraid to make changes. Design: 07.
 
 ---
 
@@ -421,7 +421,7 @@ Classify each host and apply only the roles that fit:
 | Profile | Example host | Roles |
 |---|---|---|
 | `linux-server` | Any Linux server without a web role | identity, ssh, firewall, bans, deception, egress_log, audit_motd, patching |
-| `linux-web` | Linux web or webmail server | + nginx_edge (the scanner tarpit is P1 here). Containers only where an inject or the local rules allow it (NCCDC, 2025, Rule 4.14), through design 22. |
+| `linux-web` | Linux web or webmail server | + nginx_edge (the scanner tarpit is P1 here). Containers only where an inject or the local rules allow it (NCCDC, 2025, Rule 4.14), through design 13. |
 | `windows-member` | Windows member servers and workstations | win_base, win_firewall, win_audit, honey-account, canary (design 12) |
 | `windows-dc` | Domain controller with DNS | + AD hardening checklist (design 12); the KRBTGT reset is an approval item and the DNS sinkhole is manual-only (§3.1, §4.6) |
 | `linux-siem` | SIEM server | identity, ssh, firewall + ingest config (the destination, hardened but light) |
@@ -445,7 +445,7 @@ The design keeps the speed and adds guard rails:
 - dead-man revert timers;
 - scoring-style probes after each module.
 
-Tier 3 actions wait for a person's approval; Labyrinth then carries them out, except a short person-run list (Group Policy, DNS changes on a domain controller, domain controller restores, rescuing an unbootable host, Windows patching and appliances). Items the team decided on before the event, such as security updates for named scored packages, can be pre-approved, so a first-minute run applies them without a prompt (Conventions, section 3.1). Nothing is deleted without approval: files are quarantined, and accounts are deleted only after approval once services pass. See designs 03 and 17. After the lockout, seal the baseline and layer `observe → deceive → sustain`.
+Tier 3 actions wait for a person's approval; Labyrinth then carries them out, except a short person-run list (Group Policy, DNS changes on a domain controller, domain controller restores, rescuing an unbootable host, Windows patching and appliances). Items the team decided on before the event, such as security updates for named scored packages, can be pre-approved, so a first-minute run applies them without a prompt (Conventions, section 3.1). Nothing is deleted without approval: files are quarantined, and accounts are deleted only after approval once services pass. See designs 03 and 06. After the lockout, seal the baseline and layer `observe → deceive → sustain`.
 
 
 ### 6.5 Secret handling

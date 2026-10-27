@@ -15,7 +15,7 @@ Fewer listeners and fewer known-exploited packages (Blueprint §3.6), without br
 |---|---|
 | Tools must not deliberately break expected functionality (National Collegiate Cyber Defense Competition [NCCDC], 2025, Rule 5.6.5). | Services are disabled only from a per-profile candidate list; nothing scored is on it. No blind full upgrade. |
 | Anything that interferes with the scoring engine is the team's responsibility (NCCDC, 2025, Rule 4.11). | Every change is followed by the scoring-style probes. |
-| Scored services may not be migrated or containerized unless an inject or the local competition rules allow it (NCCDC, 2025, Rule 4.14). | Patching updates a package in place. No major-version upgrade, no replacement service; a rebuild, where allowed, is design 22. |
+| Scored services may not be migrated or containerized unless an inject or the local competition rules allow it (NCCDC, 2025, Rule 4.14). | Patching updates a package in place. No major-version upgrade, no replacement service; a rebuild, where allowed, is design 13. |
 | Team tools may not use outside resources apart from DNS; the example is cloud services and cloud processing (NCCDC, 2025, Rule 5.6.4). | Updates come from the host's own package manager and its public repositories, or an event mirror, never a private source or a full upgrade (design 02). |
 
 ## 3. Service reduction

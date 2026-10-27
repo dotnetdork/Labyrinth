@@ -47,12 +47,12 @@ Ideas and techniques are not covered by copyright, which is why writing from a s
 
 - A short list of event IDs to forward: logons, failed logons, privilege use, process creation with command line, service and task creation, account changes, log clearing.
 - Chosen by ourselves from the Windows documentation and the reading list, sized for a small SIEM (Security Information and Event Management system).
-- Specified in full, with the event list, in design 10.
+- Specified in full, with the event list, in design 14.
 
 ### 4.4 Collection module (sustain, P2)
 
 - A live triage collector for a suspected compromised host: process tree, network connections, recent file changes, persistence locations.
-- Read-only, output to the `report` log category, feeds design 02.
+- Read-only, output to the `report` log category, feeds design 20.
 
 ### 4.5 Lint checks for our own scripts (tests)
 
