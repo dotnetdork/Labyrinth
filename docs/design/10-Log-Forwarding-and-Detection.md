@@ -70,18 +70,22 @@ Routers and firewalls send their logs to the SIEM by syslog. The appliance runbo
 
 | Platform | Preferred | Fallback |
 |---|---|---|
-| Linux | The host's own syslog daemon (rsyslog or syslog-ng) forwarding to a SIEM input. It is already installed on most distributions, so nothing is added. | A Splunk universal forwarder, only if it is already present in the environment |
-| Windows | The Splunk universal forwarder if it is already installed; otherwise a PowerShell script posting to Splunk's HTTP Event Collector (below) | Leave events on the host and collect them with the report collector (design 08, section 4.4) |
+| Linux | Where the SIEM is Splunk, the Splunk Universal Forwarder, already installed or downloaded (below) | The host's own syslog daemon (rsyslog or syslog-ng) forwarding to a SIEM input. It is already installed on most distributions, so nothing is added; it is also the method for a SIEM that is not Splunk |
+| Windows | The Splunk Universal Forwarder, already installed or downloaded (below); a PowerShell script posting to Splunk's HTTP Event Collector (below) where the download is not possible | Leave events on the host and collect them with the report collector (design 08, section 4.4) |
+
+**Linux shipping.** `observe.forward_linux` picks the first of these that applies on each host: the forwarder already on the host (step 1 below, unchanged); otherwise the forwarder installed from the Linux amd64 `.tgz` (step 2 below, checked against `SPLUNK_UF_SHA256_LINUX`), unpacked under `/opt/splunkforwarder` and run as its own non-root user; otherwise a syslog forwarding drop-in pointing at the SIEM address. The `.tgz` is used rather than the `.deb` or `.rpm` so the same steps work on both Linux families.
 
 **Windows shipping.** `observe.forward_windows` picks the first of these that applies on each host:
 
-1. **The Splunk universal forwarder, if the host already has it.** The module adds an inputs file for the event baseline in its own app folder, beside the forwarder's own settings, and changes nothing else. If the forwarder already sends to the SIEM address in the run-time configuration, that is all. If it sends somewhere else, or nowhere, pointing it at the SIEM is an approval item, because someone else may rely on the current destination.
-2. **Otherwise, a PowerShell script posting to Splunk's HTTP Event Collector (HEC).** It uses only Windows PowerShell 5.1, so nothing is installed. A scheduled task running as SYSTEM every minute reads the baseline channels with `Get-WinEvent` from a bookmark kept in `<root>\state`, so a restart neither loses nor repeats events, and posts them in batches over HTTPS. The HEC address, token and the SIEM certificate's thumbprint come from run-time configuration, never the repository. The token file is readable by Administrators and SYSTEM only. The script trusts only the certificate with that thumbprint, never any certificate. The task and the script are recorded in the run manifest, and rollback removes them.
-3. **Otherwise, the fallback in the table above.**
+1. **The Splunk Universal Forwarder, if the host already has it.** The module adds an inputs file for the event baseline in its own app folder, beside the forwarder's own settings, and changes nothing else. If the forwarder already sends to the SIEM address in the run-time configuration, that is all. If it sends somewhere else, or nowhere, pointing it at the SIEM is an approval item, because someone else may rely on the current destination.
+2. **Otherwise, install the Splunk Universal Forwarder** from Splunk's public download site, after the first-minute lockdown (design 20). No login is needed; the address has the form `https://download.splunk.com/products/universalforwarder/releases/<version>/<platform>/<file>`. The version and the file's SHA-256 are pinned in the run-time configuration (`SPLUNK_UF_VERSION`, `SPLUNK_UF_SHA256_LINUX` for the Linux amd64 `.tgz`, `SPLUNK_UF_SHA256_WINDOWS` for the Windows x64 `.msi`, in `event.conf`), and the download is also checked against the `.sha512` file Splunk publishes beside it; a file that fails either check is deleted from the download folder and the next method is used. The forwarder version is never newer than the indexer's. The install is recorded in the run manifest like any other (design 20), and the forwarder is then pointed at the SIEM address in the run-time configuration. This is specified now and built later.
+3. **Otherwise, a PowerShell script posting to Splunk's HTTP Event Collector (HEC),** the fallback when the download is not possible. It uses only Windows PowerShell 5.1, so nothing is installed. A scheduled task running as SYSTEM every minute reads the baseline channels with `Get-WinEvent` from a bookmark kept in `<root>\state`, so a restart neither loses nor repeats events, and posts them in batches over HTTPS. The HEC address, token and the SIEM certificate's thumbprint come from run-time configuration, never the repository. The token file is readable by Administrators and SYSTEM only. The script trusts only the certificate with that thumbprint, never any certificate. The task and the script are recorded in the run manifest, and rollback removes them.
+4. **Otherwise, the fallback in the table above.**
 
 Windows Event Forwarding is not used: it needs a collector host and a Group Policy change, which is on the person-run list (design 11).
 
-- **Vendoring.** A third-party forwarder or Sysmon may be placed in `vendor/` only after its license is confirmed to allow redistribution in a public repository. Until then, the module uses a copy that is already in the environment or is skipped.
+- **Vendoring.** The forwarder is downloaded, not vendored. Sysmon may be placed in `vendor/` only after its license is confirmed to allow redistribution in a public repository. Until then, the module uses a copy that is already in the environment, downloads a pinned release (design 20), or is skipped.
+- **The indexer side.** On the SIEM, receiving on port 9997 is off until it is enabled, and it accepts forwarders only from the managed hosts in the `hosts` file. Enabling it is part of hardening the SIEM (section 7).
 - **Order.** Forwarding starts before deception is deployed (Blueprint §1), so traps have somewhere to report.
 - **Network flows.** Only the one forwarding flow to the SIEM is opened, in each host's firewall and, where the network has segments, between them, and only after it is checked against the scoring allowlist and the firewall plan (design 06, section 3).
 - **The SIEM input.** Logs are sent over TCP, so a dropped connection is noticed and lines are not silently lost. The SIEM accepts its input only from the managed hosts in the `hosts` file, so an attacker cannot flood it or plant false events from elsewhere.
@@ -153,8 +157,8 @@ A few high-value searches beat a hundred noisy dashboards (Blueprint §3.9). The
 |---|---|---|
 | `observe.auditd` | Tier 1 | Installs the Labyrinth audit rule file as a drop-in; the base rules are untouched |
 | `observe.win_audit` | Tier 1 | Sets the audit policy, command-line capture and PowerShell script block logging needed for the event baseline |
-| `observe.forward_linux` | Tier 1 | Adds a syslog forwarding drop-in pointing at the SIEM address from run-time configuration |
-| `observe.forward_windows` | Tier 1 | Ships Windows events by the method in section 4: the forwarder already on the host, or the HEC script. Repointing an existing forwarder is an approval item |
+| `observe.forward_linux` | Tier 1 | Ships Linux logs by the method in section 4: the forwarder already on the host, the pinned forwarder download, or a syslog forwarding drop-in pointing at the SIEM address from run-time configuration. Repointing an existing forwarder is an approval item |
+| `observe.forward_windows` | Tier 1 | Ships Windows events by the method in section 4: the forwarder already on the host, the pinned forwarder download, or the HEC script. Repointing an existing forwarder is an approval item |
 | `observe.sysmon` | Tier 2, optional | Installs Sysmon with the team's configuration, only if a permitted copy exists |
 | `observe.searches` | Tier 1, run against the SIEM | Loads the saved-search templates |
 
@@ -192,7 +196,7 @@ The SIEM host also gets its platform's normal lockout (design 01). Ports, paths 
 ## 10. Acceptance tests
 
 - A marker event from every lab host arrives in the SIEM.
-- On a host with no forwarder, the HEC script ships the marker event; stopping and restarting the task neither loses nor repeats an event; a SIEM certificate whose thumbprint does not match is refused.
+- On a host with no forwarder and no download possible, the HEC script ships the marker event; stopping and restarting the task neither loses nor repeats an event; a SIEM certificate whose thumbprint does not match is refused.
 - On a host whose forwarder already sends elsewhere, the module adds its inputs and lists the destination change for approval without making it.
 - A planted Netlogon allow-list entry and a connection it allows raise the ZeroLogon search.
 - A failed SSH login, a new local admin and a canary read each raise the matching saved search.

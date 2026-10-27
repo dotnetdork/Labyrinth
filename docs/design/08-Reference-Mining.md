@@ -67,7 +67,7 @@ Ideas and techniques are not covered by copyright, which is why writing from a s
 
 ## 6. Re-check
 
-Reference repositories change. Re-read them before each release and note which commit was read. Vetting details for candidate repositories live in the CCDC-2027 docs.
+Reference repositories change. Re-read them before each release and note which commit was read. Vetting details for candidate repositories live in the team's private configuration.
 
 ## References
 

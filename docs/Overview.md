@@ -7,11 +7,12 @@ This is the plain-language tour of Labyrinth. It explains what each part of the 
 > [!NOTE]
 > Labyrinth is being built: the core and the main program exist, and the modules do not yet. This page describes how the system is *intended* to work.
 
-**Color key.** The same four colors mark the four phases everywhere in the Labyrinth docs:
+**Color key.** The same five colors mark the five phases everywhere in the Labyrinth docs:
 
 | Color | Phase | In one line |
 |---|---|---|
 | 🟥 | **Lock out** | Take control back from the attacker. |
+| 🟧 | **Harden** | Install the tools, set aside footholds, patch and shrink what is exposed. |
 | 🟦 | **Observe** | See what is happening on every machine. |
 | 🟪 | **Deceive** | Plant traps that give the attacker away. |
 | 🟩 | **Sustain** | Keep everything running and be able to undo mistakes. |
@@ -36,30 +37,33 @@ Labyrinth is the answer: **one strategy that applies to every machine, and one t
 
 ## 2. The big picture
 
-### 2.1 The strategy: four phases, in order
+### 2.1 The strategy: five phases, in order
 
-Labyrinth works in four phases. Each one depends on the one before it.
+Labyrinth works in five phases. Each one depends on the one before it.
 
 ```mermaid
 flowchart LR
-    L["<b>1. Lock out</b><br/>change default passwords<br/>close unneeded doors<br/>keep a way back in"]
-    O["<b>2. Observe</b><br/>collect logs centrally<br/>record what 'normal' looks like<br/>spot changes"]
-    D["<b>3. Deceive</b><br/>plant fake files, accounts<br/>and ports as tripwires"]
-    S["<b>4. Sustain</b><br/>keep scored services up<br/>undo bad changes<br/>write incident reports"]
-    L --> O --> D --> S
+    L["<b>1. Lock out</b><br/>change default passwords<br/>block incoming and outgoing<br/>keep a way back in"]
+    H["<b>2. Harden</b><br/>install the team's tools<br/>set aside footholds<br/>patch and cut services"]
+    O["<b>3. Observe</b><br/>collect logs centrally<br/>record what 'normal' looks like<br/>spot changes"]
+    D["<b>4. Deceive</b><br/>plant fake files, accounts<br/>and ports as tripwires"]
+    S["<b>5. Sustain</b><br/>keep scored services up<br/>undo bad changes<br/>write incident reports"]
+    L --> H --> O --> D --> S
     classDef lockout fill:#fde8e8,stroke:#c0392b,color:#4a1111
+    classDef harden fill:#fdeedc,stroke:#c2410c,color:#4a1d06
     classDef observe fill:#e3eefc,stroke:#2563eb,color:#0f2a5c
     classDef deceive fill:#efe7fb,stroke:#7c3aed,color:#351465
     classDef sustain fill:#e3f6e8,stroke:#15803d,color:#0f3d20
     class L lockout
+    class H harden
     class O observe
     class D deceive
     class S sustain
 ```
 
-*Figure: the four phases in the order they run, with the main jobs of each. Colors follow the phase key.*
+*Figure: the five phases in the order they run, with the main jobs of each. Colors follow the phase key.*
 
-Why this order? A trap is worthless if the attacker still has a valid password and an open way in, so locking out comes first. Traps are only useful if their alarms land somewhere you are watching, so observing comes before deceiving. The blueprint sums it up as *lock-out before observation, observation before deception, deception before comfort* ([Blueprint §1](Blueprint.md#1-operating-doctrine--the-order-of-work)).
+Why this order? A trap is worthless if the attacker still has a valid password and an open way in, so locking out comes first. Hardening comes next, because the host should be closed to the network before anything is installed on it. Traps are only useful if their alarms land somewhere you are watching, so observing comes before deceiving. The blueprint sums it up as *lock-out before hardening, hardening before observation, observation before deception, deception before comfort* ([Blueprint §1](Blueprint.md#1-operating-doctrine--the-order-of-work)).
 
 ### 2.2 The seven rules of thumb behind every phase
 
@@ -70,7 +74,7 @@ The blueprint calls these the **invariants**: ideas that hold on every operating
 3. **Segmentation and egress:** keep parts of the network separated (on a flat network, each host's own firewall is the boundary), and treat unexpected *outgoing* traffic as a sign that an attacker's program is calling home.
 4. **Observability:** send important logs to one central place and watch logins, sensitive files and new programs starting.
 5. **Deception:** anything that is not a real service is a tripwire, and every trip is recorded in one place.
-6. **Recoverability:** keep backups, known-good snapshots and an emergency way back in.
+6. **Recoverability:** keep backups and restore points of its own, and an emergency way back in. Snapshots of the virtual machines may not be available, so Labyrinth never relies on them.
 7. **Change discipline:** every change can be run twice safely, can be undone, and is timestamped. Never make a change you cannot undo in ten seconds.
 
 ### 2.3 The system at a glance
@@ -113,7 +117,7 @@ flowchart TD
 - **Each host runs Labyrinth itself** (local mode). This is the standard way to use it: nothing holds access to every host at once, and it keeps working if the network between hosts is cut.
 - The **control node** is an optional, hardened machine for the jobs that look across hosts: read-only checks, the health monitor, the status feed and copies of restore points kept off each host. Making changes from it (remote mode) comes later, once the read-only checks have run safely.
 - The **SIEM** (Security Information and Event Management system; for example Splunk) collects logs from every host, so the evidence survives even if a host is wiped.
-- Nothing in the diagram sends data to an outside service. The competition rules forbid team tools from using outside resources other than DNS lookups, and give cloud services as the example (see [section 5](#5-the-competition-rules-that-shape-everything)). Labyrinth itself needs only its own public release. Everything else that leaves the network is an optional extra, after the lockdown and only when its source answers: public software from the hosts' own software sources, a pinned download such as Sysmon, and a refreshed list of known-exploited flaws ([design 20](design/20-Packages-and-Third-Party-Tools.md)).
+- Nothing in the diagram sends data to an outside service. The competition rules forbid team tools from using outside resources other than DNS lookups, and give cloud services as the example (see [section 5](#5-the-competition-rules-that-shape-everything)). Labyrinth itself needs only its own public release. Everything else that leaves the network happens after the lockdown, and is only public software and public data: from the hosts' own software sources, a mirror or proxy the event provides, or a download pinned by its SHA-256 (a fingerprint of the exact file), such as Sysmon or the Splunk forwarder. Labyrinth tries the download first and falls back to a person pasting the file in when nothing answers ([design 20](design/20-Packages-and-Third-Party-Tools.md)).
 
 ---
 
@@ -124,12 +128,12 @@ flowchart TD
 Labyrinth is organized so that new abilities can be added without rewriting the core ([design 00](design/00-Module-Contract-and-Layout.md)).
 
 - A **module** is one small, single-purpose piece of automation, for example "set up the firewall" or "change the admin passwords". Each module is a folder.
-- A **phase** is a group of modules that belong together: 🟥 lockout, 🟦 observe, 🟪 deceive or 🟩 sustain.
+- A **phase** is a group of modules that belong together: 🟥 lockout, 🟧 harden, 🟦 observe, 🟪 deceive or 🟩 sustain.
 - A **profile** describes a kind of host, such as a Linux web server, a Windows domain controller or a network appliance, and lists which modules apply to it. A profile is a list, not code.
 
 When you point Labyrinth at a group of hosts, it looks up each host's profile, works out the modules to run, and runs them phase by phase.
 
-It is written in **bash** for Linux and **PowerShell** for Windows, because both are already installed on those systems. Nothing extra has to be downloaded for Labyrinth itself to run. Once the hosts are locked down, it installs the extra tools the team chose, from public sources only, and carries on without them if no source answers ([design 20](design/20-Packages-and-Third-Party-Tools.md)). Labyrinth runs directly on the host it changes; this local mode is the standard way to use it. A remote mode, which sends the same commands to many hosts from a control node and collects the results, comes later and starts read-only. Network appliances (routers and firewall boxes) are handled with prepared configuration templates and a written checklist for a person to follow, not by remote automation.
+It is written in **bash** for Linux and **PowerShell** for Windows, because both are already installed on those systems. Nothing extra has to be downloaded for Labyrinth itself to run. Once the hosts are locked down, it downloads public software and public data the team chose, from public sources only, and falls back to pasting the files in by hand if no source answers ([design 20](design/20-Packages-and-Third-Party-Tools.md)). Labyrinth runs directly on the host it changes; this local mode is the standard way to use it. A remote mode, which sends the same commands to many hosts from a control node and collects the results, comes later and starts read-only. Network appliances (routers and firewall boxes) are handled with prepared configuration templates and a written checklist for a person to follow, not by remote automation.
 
 ### 3.2 The life of one module
 
@@ -173,6 +177,18 @@ Two words you will see often:
 
 Every host uses the same folder layout, so the team always knows where to look: the Labyrinth code (read-only), its run-time settings, its state (baselines and records), its logs (one folder per category, such as `auth`, `integrity` or `deception`) and its timestamped backups. All of it sits under one top-level folder that only administrators can use. That location can be changed, so it is not a fixed, publicly known path ([design 00, section 7](design/00-Module-Contract-and-Layout.md#7-standard-paths-on-every-host)).
 
+### 3.4 One command per host (planned)
+
+Today a run has a separate plan step and apply step. The team intends to fold them into one: `apply` prints a compact plan and carries it out, and `plan` stays as the read-only command. **The runner does not do this yet**; it is specified now and built next. Every existing command form keeps working.
+
+It is switched on by `AUTO_APPLY=yes` in the run-time settings; if the setting is missing, Labyrinth behaves as it does today. When it is on:
+
+- **The group comes from the hosts file.** Labyrinth matches the host's name and address; a mismatch or an ambiguity stops the run. Typing the group name is still accepted, but no longer required.
+- **The emergency account is the break-glass account in the protected list that exists on that host.** If there is none, or more than one, the run stops. Labyrinth looks for a console session itself and warns if it finds none, rather than asking.
+- **It never asks a question mid-run.** Approval items that no pre-approval rule covers go to a **queue**. `labyrinth queue` lists them, and `labyrinth approve` applies the ones a person picks, in a new run with the same backups, record, timer and tests. Always queued: deleting an account, changing a scored service that has no test, replacing or containerizing a service, and anything in Tier 3.
+- **Each module is kept automatically** once its checks and tests pass, except firewall and SSH changes, which stay under the revert timer until the person runs one `keep` for the host's run.
+- **Output is short:** one line per module (`OK`, `CHANGED`, `ROLLED BACK`, `QUEUED`, `BLOCKED` or `FAIL`). Full explanations appear only for failures and blocked steps; the rest goes to the run log, and `--detail` shows everything.
+
 ---
 
 ## 4. Each part of the system
@@ -185,9 +201,9 @@ Each subsection answers four questions: what the part does, why it exists, how i
 
 **Why it exists.** Assume the attacker is already inside when the event starts. Their power comes from passwords they already know, sessions they already have open, and ways back in they left behind. Removing all of these, fast, removes most of their ways in. The scored services are among the Red Team's main targets, so Labyrinth defends them carefully rather than leaving them as found.
 
-**The first minute.** Each host gets one bundle of steps, in this order, using only what is already on it: change the admin passwords; remove unapproved SSH keys and check the SSH settings for anything planted; end the intruder's open remote sessions (never the console, the operator's own, the team's admin machine or an official's); then block all incoming traffic except the scored services, which stay open to everyone, and the team's admin path, and all outgoing traffic except what the host and its scored services need. One revert timer covers the whole bundle. The steps that only take access away, such as the new passwords and the removed keys, are kept as soon as each checks out, so only the steps that could lock the team out are left for the timer to undo.
+**The first minute.** Each host gets one bundle of steps, in this order, installing nothing and using only what is already on it: change the admin passwords; remove unapproved SSH keys and check the SSH settings for anything planted; end the intruder's open remote sessions (never the console, the operator's own, the team's admin machine or an official's); then block all incoming traffic except the scored services, which stay open to everyone, and the team's admin path, and all outgoing traffic except what the host and its scored services need. Nothing is installed in this bundle because installing is slow and the lockdown should be in place before outgoing traffic opens again; no rule forces that. On a Debian host with no firewall program running, the lockdown uses the raw built-in firewall (nftables), and UFW, the usual front end, takes over in the Harden phase with the same rules. One revert timer covers the whole bundle. The steps that only take access away, such as the new passwords and the removed keys, are kept as soon as each checks out, so only the steps that could lock the team out are left for the timer to undo.
 
-**Behind the lockdown.** With the network closed around each host, Labyrinth installs the team's extra tools, takes a backup of every scored service, sets aside the attacker's footholds and applies the rest of the hardening, then reopens outgoing traffic to the host's normal list. Anything the attacker planted early is still on disk while this happens, but it cannot be reached or call home.
+**The Harden phase.** With the network closed around each host, Labyrinth installs the team's extra tools, takes a backup of every scored service, sets aside the attacker's footholds, checks the core system files against the official packages (section 4.3), patches named packages, turns off unneeded services and applies the rest of the hardening, then reopens outgoing traffic to the host's normal list. Anything the attacker planted early is still on disk while this happens, but it cannot be reached or call home.
 
 **First-minute runs.** The team reviews the plan before the event. At the start, one command per host, started on every host at once, gives all the answers up front, so nobody types a confirmation while the Red Team is moving. Items the team approved in advance, such as a security update for a named scored program or an app's known default password, are listed in a file of pre-approvals, and are carried out without asking. A module accepts this only for kinds of item it marks as safe to approve unseen. When the run is started from the control node, the control node keeps each host's changes only if it can still log in to that host and no scored service that worked before the run fails after it; otherwise the revert timer undoes them. The revert timer, the checks before and after, and the protected set still apply.
 
@@ -250,6 +266,8 @@ Tier 3 in full: unexplained footholds; deleting locked accounts; riskier app set
 **Background.** A **hash** is a short fingerprint of a file. If even one byte of the file changes, the hash changes. A **baseline** is a saved set of hashes and settings that describes "normal".
 
 **The trap it avoids.** If the Red Team is already inside when you take the baseline, you record their changes as normal. So Labyrinth first checks files against the operating system's own records of what the installed software should look like (the package database on Linux, digital signatures on Windows). Anything that does not match is reported to a person as a finding, and is never added to the baseline.
+
+**Records an attacker could edit.** The package database lives on the host, and an administrator account can change it. So, in the Harden phase, for a core set of packages (the SSH server, sudo, the login modules, the basic command-line tools, the service manager and the password tools) and any package the local check flags, Labyrinth downloads the package from the host's own software sources, checks its signature, and compares the hash of each file inside it with the file on the disk. A mismatch is a finding for a person, never an automatic fix. Windows keeps its signature checks and `sfc /verifyonly`, the built-in system file check.
 
 **How it works.**
 
@@ -363,6 +381,7 @@ Some outside repositories are kept as **reference only** ([design 08](design/08-
 **How it works.**
 
 - **Linux** hosts forward their login records, the audit log (who ran which privileged command, who touched which watched file) and firewall "blocked" messages, using the logging program that is already installed.
+- **The Splunk forwarder.** Where the SIEM is Splunk, each host installs Splunk's own forwarder program, downloaded from Splunk's public download site. The exact version and file fingerprint (SHA-256) are fixed in the run-time settings, the download is checked against the fingerprint file Splunk publishes beside it, and the forwarder is never newer than the SIEM's own version. On the SIEM, receiving stays switched off until the team enables it. A small script that sends events over HTTP is the fallback.
 - **Windows** hosts forward a short, fixed list of event IDs, the numbers Windows gives each kind of event: logons, failed logons, new accounts, new admin-group members, new services and scheduled tasks, and "the audit log was cleared". The domain controller also forwards its sign-in ticket events, which show password guessing and attempts to steal service passwords.
 - The SIEM accepts logs only from the team's own hosts, so an attacker cannot flood it or plant false entries.
 - **Appliances** send their logs by **syslog**, the standard way network devices send log lines to a collector.
@@ -378,7 +397,7 @@ Some outside repositories are kept as **reference only** ([design 08](design/08-
 
 **What it will never do.** Send logs anywhere outside the competition network, or let logging fill a disk.
 
-### 4.11 Windows and the domain controller (lockout)
+### 4.11 Windows and the domain controller (harden)
 
 **What it does.** Hardens Windows machines and the **domain controller** with the same guard rails as the panic button ([design 11](design/11-Windows-and-AD-Hardening.md)).
 
@@ -410,7 +429,7 @@ Some outside repositories are kept as **reference only** ([design 08](design/08-
 
 **Two caveats.** The control node tests from *inside* the network. The scoring engine may test from outside, through the edge firewall. A pass from inside is good evidence, not proof. And a plain test checks that a service answers, not that a user can log in, because the scoring engine's accounts are never used. A team closes that gap by creating its own test account by hand and typing its password at a checkpoint: the tests then log in, read the scored page, list a mailbox or share, or run a fixed query, the way the scoring engine does.
 
-### 4.14 Backups you can restore (sustain)
+### 4.14 Backups you can restore (harden)
 
 **What it does.** Takes **restore points** of each scored service: its settings, its website files, its database and, on the domain controller, the directory itself ([design 14](design/14-Backup-and-Recovery.md)).
 
@@ -420,7 +439,7 @@ Some outside repositories are kept as **reference only** ([design 08](design/08-
 
 **Restoring.** `labyrinth restore` puts back a service's settings and files, its database, or a service that was stopped. Restoring overwrites live data, so a person first confirms the restore point is from before the damage; Labyrinth then does the restore, saves the damaged copy as evidence and tests the service. Restoring the domain controller and rescuing a host that will not boot (for example, after an attacker deleted a file it needs to start) stay with a person, following a printed procedure. None of this relies on snapshots of the virtual machines, which some events do not offer.
 
-### 4.15 Fewer services, targeted patches (lockout)
+### 4.15 Fewer services, targeted patches (harden)
 
 **What it does.** Turns off services the host does not need, and helps the team patch the software most likely to be attacked ([design 15](design/15-Patching-and-Service-Reduction.md)).
 
@@ -439,7 +458,7 @@ Some outside repositories are kept as **reference only** ([design 08](design/08-
 
 **The steps, in order.** Prepare a way back (second session, configuration backup); change the default passwords; allow management only from the admin machines; allow the scored services from everywhere before blocking anything; block everything else from outside; note how the router rewrites addresses; send the logs to the SIEM; save, test and keep a second backup.
 
-### 4.17 Sweeping for attacker footholds (lockout)
+### 4.17 Sweeping for attacker footholds (harden)
 
 **What it does.** Finds the ways back in that an attacker left behind, and removes them without breaking a scored service ([design 17](design/17-Persistence-Sweep.md)).
 
@@ -454,7 +473,7 @@ Some outside repositories are kept as **reference only** ([design 08](design/08-
 
 "Set aside" means **quarantined**: switched off and moved to a locked folder, with a record of how to put it back. Nothing is deleted, so a mistake can be undone and the item can be shown as evidence in the incident report.
 
-### 4.18 Ready-made settings for scored apps (lockout)
+### 4.18 Ready-made settings for scored apps (harden)
 
 **What it does.** Ships tested settings packs for common scored programs: web servers, webmail and mail, DNS, databases (SQL Server included), file shares, remote management and FTP ([design 18](design/18-Service-Packs-and-Config-Library.md)).
 
@@ -462,31 +481,35 @@ Some outside repositories are kept as **reference only** ([design 08](design/08-
 
 **How it works.** Each setting is sorted in advance. Safe ones (such as hiding the software version or turning off file listings nobody uses) are applied automatically, after the program's own syntax check, with a gentle reload, a test like the scoring engine's and a revert timer. Settings that could change what the scoring engine sees wait for a person's approval. Anything too specific to the event's own app is written up as a step-by-step runbook.
 
-### 4.19 Finding and closing known flaws (lockout)
+### 4.19 Finding and closing known flaws (harden)
 
 **What it does.** Finds the known flaws on the team's machines before the Red Team uses them, closes the dangerous ones first, and keeps each one on a list until it is closed ([design 21](design/21-Vulnerability-Tracker-and-Mitigations.md)).
 
 **Why it exists.** A Red Team's first step is to check which software versions are running and attack the ones with known flaws. Labyrinth does the same check from the inside, first.
 
-**How it works.** Labyrinth reads the system's own update data, the versions of scored web apps and plugins on disk, and on Windows the updates that are missing. It also scans the team's own machines (never anyone else's) for the software versions they show the network, which catches programs installed by hand. All matching happens on the team's machines; nothing is sent out to be looked up. Flaws are ranked: the domain controller first, then scored services, then anything reachable from the network that is known to be exploited.
+**How it works.** The assessment only reports; it changes nothing. Labyrinth starts with the tools each system already has: `dnf updateinfo list --security` on the Red Hat family, `debsecan` on Debian, `pro security-status` on Ubuntu, and the list of installed updates on Windows. It also reads the versions of scored web apps and plugins on disk, and then runs Lynis (a system audit tool) and Trivy (a scanner for known flaws). Lynis comes from the system's own software sources; Trivy is a pinned download checked against its SHA-256, and it fetches its public flaw database after the lockdown. The heavier OpenVAS/Greenbone scanner is not used, because its feed takes hours to sync. Labyrinth also scans the team's own machines (never anyone else's) for the software versions they show the network, which catches programs installed by hand. All matching happens on the team's machines; nothing is sent out to be looked up. Flaws are ranked: the domain controller first, then scored services, then anything reachable from the network that is known to be exploited.
 
 **Closing a flaw.** An unscored service with a flaw is simply turned off. A scored service is never turned off. Instead, Labyrinth closes the flaw while the service keeps running: first with a tested setting or firewall rule from its catalog where one exists (for example, removing a dangerous permission from a helper program nothing uses), then with the security update once a person approves it. Each flaw is tracked as open, mitigated, patched or accepted, and every checkpoint shows what is still open.
 
-### 4.20 Installing the team's tools (lockout)
+### 4.20 Installing the team's tools (harden)
 
 **What it does.** Installs the extra tools each kind of host needs, such as auditd, fail2ban and file-integrity and malware scanners, straight after the first-minute lockdown ([design 20](design/20-Packages-and-Third-Party-Tools.md)).
 
 **Why it exists.** Typing install commands host by host under pressure is slow and error-prone, and a tool installed before the lockdown could start doing things before its settings are in place.
 
-**How it works.** Tools come only from public sources every team can reach: the system's own software sources, a mirror or proxy the event provides, or a public download whose exact file is fixed in the release. Before installing, Labyrinth checks that the install would not remove or replace anything already there. New services stay switched off until their own part of Labyrinth sets them up. Every install is recorded. If no source can be reached, the installs are skipped and the lockdown stands.
+**How it works.** Tools come only from public sources every team can reach: the system's own software sources, a mirror or proxy the event provides, or a public download whose exact file is fixed in the release by its SHA-256. PowerShell Gallery modules on Windows are allowed at pinned versions. The SSH tarpit (endlessh) comes from the system's own sources, from EPEL on the Red Hat family, and is not bundled. Before installing, Labyrinth checks that the install would not remove or replace anything already there. New services stay switched off until their own part of Labyrinth sets them up. Every install is recorded. Labyrinth tries the download first, and a person can paste the file in by hand when no source answers. If neither works, the installs are skipped and the lockdown stands.
 
-**What it will never do.** Upgrade the whole system, add a new software source (apart from EPEL, an optional extra on RHEL-family hosts), use a private server or a paid one, or install a container system unless the event allows containers (section 4.21).
+**What it will never do.** Upgrade the whole system, add a new software source (apart from EPEL, an optional extra on RHEL-family hosts), use a private server or a paid one, send anything to a cloud service, or install a container system unless the event allows containers (section 4.21).
 
-### 4.21 Rebuilding a service, only where allowed (sustain)
+### 4.21 Rebuilding a service, only where allowed (harden)
 
-**What it does.** Where an inject or the event's own rules allow it, rebuilds one scored service that cannot be fixed where it stands: a clean install of the same service on the same host, or the same service in a container there ([design 22](design/22-Service-Replacement-and-Containers.md)). It is off by default, and turning it on means naming the inject or rule that allows it.
+**What it does.** Where an inject or the event's own rules allow it, rebuilds one scored service that cannot be fixed where it stands: a clean install on the same host, or the same service in a container there ([design 22](design/22-Service-Replacement-and-Containers.md)). Each is off by default. Containers are turned on with `ALLOW_CONTAINERS=yes:<reference>` and replacing a service with `ALLOW_SERVICE_REPLACE`, and turning either on means naming the inject or rule that allows it.
 
 **Why it is careful.** The national rules forbid moving or containerizing a scored service unless an inject or the local rules allow it. Even then, scoring checks the old address, the old name, the old content and the old users. So the new service is built beside the old one, every piece of data and every user is copied across and compared, and only then does the new one take over, under a revert timer. The old one is kept, stopped, until the team keeps the change.
+
+**The proof.** A replacement needs full proof, or Labyrinth refuses: the same users, the same mailboxes and message counts, the same pages (compared by hash), the same database contents, and the scored check passing against the new service on a staging port before it takes over. The new service keeps the same host, public address, DNS name and usernames.
+
+**Container rules.** On the Red Hat family the engine is Podman, and on Debian and Ubuntu it is Docker (`docker.io`), both from the system's own software sources. Every container runs as a non-root user by default, drops all extra privileges and adds back only what the service needs, cannot gain new privileges, uses a read-only file system where the service allows, and is never privileged. It never gets the container engine's control socket or the host's own process and network spaces, and only approved folders are mounted into it. Services built to start as root and then give it up themselves (Postfix, Dovecot) are on a named exception list; any other container running as root is refused. Ports below 1024 are published from a high port inside the container.
 
 ---
 
@@ -496,7 +519,7 @@ Every design choice above traces back to a handful of rules. In plain words, a t
 
 - **be public** at least three months before it is used, **declared** to the officials, and **frozen** (no changes) for each event;
 - be **shared** with every competing team;
-- use **no outside resources** during the event, other than DNS lookups;
+- use **no cloud services or other outside processing**, other than DNS lookups. Free public software that every team can reach is allowed, but only from the hosts' own sources, an event mirror or a pinned download, and only after the lockdown;
 - **never deliberately break** things the network is expected to do. The rules give setting every Linux login shell to `/bin/false` and ending all outbound connections after 30 seconds as examples of what not to do
 
 (National Collegiate Cyber Defense Competition [NCCDC], 2025, Rules 5.6.1–5.6.5).
@@ -508,7 +531,7 @@ Other rules also shape the design:
 | Officials must be able to get in when they ask (NCCDC, 2025, Rule 4.1). | A tested emergency way in is required before any change. |
 | Anything that interferes with the scoring engine is the team's responsibility (NCCDC, 2025, Rule 4.11). | The scoring engine is allowed through firewalls first, and every change is tested like the scoring engine would test it. |
 | Do not mislead the scoring engine (NCCDC, 2025, Rule 9.3). | No trap or fake service on anything scored. |
-| Scored services may not be moved or put into containers unless an inject or the event's own rules allow it (NCCDC, 2025, Rule 4.14). | Off by default; where allowed, only through section 4.21, with all the data moved over. |
+| Scored services may not be moved or put into containers unless an inject or the event's own rules allow it (NCCDC, 2025, Rule 4.14). | Off by default; where allowed, only through section 4.21, on the same host with the same address and name, and with all the data moved over. |
 | Each event has its own local rules, and they differ (NCCDC, 2025, Local Competition Rules section). | Every event value is read at run time; nothing assumes one event's rules. Scored services stay open to every address, because some events penalize limiting them. |
 | No new devices (NCCDC, 2025, Rule 4.2). | Everything runs on the machines already there. |
 | No attacks on systems outside your own network (NCCDC, 2025, Rule 4.10). | Traps observe and record; they never strike back. |
@@ -551,11 +574,13 @@ Controls are ranked from **P0** (do first) to **P3** (do last): 🔴 P0 · 🟠 
 | Event seed | The secret random value, kept offline, from which all trap names and ports are derived. |
 | Exit code | The number a command ends with, which says how it went: 0 done or nothing to do, 10 a change is needed, 20 blocked by a safety check, 30 a check after a change failed, 40 an error. |
 | Firewall | Software or a device that decides which network connections are allowed. |
+| Harden | The second phase, after the lockdown: installing the team's tools, restore points, sweeping for footholds, patching and cutting services, then reopening outgoing traffic. |
 | Group | A set of hosts that receives a change together, named in the team's hosts file. The first group holds one low-impact test host of each kind of system. |
 | Group Policy | Settings a Windows domain pushes to every machine at once. |
 | Hash | A short fingerprint of a file that changes if the file changes. |
 | Hidden admin | An account with administrator power that does not look like one, such as a second root account or a member of an admin group by a side door. |
 | Persistence | A way back in that an attacker leaves behind, such as a scheduled job or a hidden service. |
+| Queue | The list of approval items that wait for a person when one command per host is used; `labyrinth queue` shows it and `labyrinth approve` applies chosen ones. |
 | Quarantine | Switching an item off and moving it to a locked folder, with a record of how to put it back, instead of deleting it. |
 | Offline record | Where the team keeps passwords, the seed and the release fingerprint: on paper or in a local file on a team member's own machine, never in the repository, a cloud drive or the competition hosts. |
 | Honey-account | A fake account that cannot log in; any attempt to use it is an alarm. |

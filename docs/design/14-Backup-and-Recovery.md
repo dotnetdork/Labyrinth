@@ -1,6 +1,6 @@
 # 14. Backup and Recovery
 
-Phase: 🟩 Sustain · Priority: P1
+Phase: 🟧 Harden (taking restore points) and 🟩 Sustain (restoring) · Priority: P1
 
 ## 1. Goal
 

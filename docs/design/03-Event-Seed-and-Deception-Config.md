@@ -39,7 +39,7 @@ flowchart LR
     MAP --> CHK{"Collides with a scored or<br/>listening port, the protected set<br/>or an existing name?"}
     CHK -->|yes| SKIP["Skip and report"]
     CHK -->|no| VAL["Decoy value:<br/>name · port · token · path · banner"]
-    classDef secret fill:#fdebdc,stroke:#c2410c,color:#4a1d06
+    classDef secret fill:#fef9c3,stroke:#a16207,color:#422006
     classDef deceive fill:#efe7fb,stroke:#7c3aed,color:#351465
     classDef stop fill:#f6f6f6,stroke:#b42318,color:#4a1111,stroke-dasharray:4 3
     class SEED secret
@@ -47,7 +47,7 @@ flowchart LR
     class SKIP stop
 ```
 
-*Figure: the public algorithm combines the secret seed with a purpose label to produce each decoy value, and any value that collides with scoring or a protected account is skipped. Orange marks the secret, purple the resulting decoy value, and a dashed red outline a value that is skipped.*
+*Figure: the public algorithm combines the secret seed with a purpose label to produce each decoy value, and any value that collides with scoring or a protected account is skipped. Gold marks the secret, purple the resulting decoy value, and a dashed red outline a value that is skipped.*
 
 ## 4. Constraints
 

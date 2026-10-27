@@ -10,29 +10,35 @@ One main Labyrinth program enables each phase. Each phase is an entry script tha
 
 | Folder | Phase | Contains |
 |---|---|---|
-| `lockout` | 🟥 Lock out | Credentials, accounts, firewall, remote-admin hardening, service reduction |
+| `lockout` | 🟥 Lock out | The first-minute bundle: credentials, unregistered keys, remote-admin hardening, ending intruder sessions, default-deny firewall. Nothing is installed (design 01) |
+| `harden` | 🟧 Harden | Behind the lockdown: installs, restore points, persistence sweep, vulnerability mitigations, patching and service reduction, service packs, Windows and AD hardening, service replacement and containers, official-package verification, then reopening outbound |
 | `observe` | 🟦 Observe | Log forwarding, auditing, integrity baseline, status feed |
 | `deceive` | 🟪 Deceive | Canaries, honey-accounts, trap ports, tarpits, decoy services |
-| `sustain` | 🟩 Sustain | Health checks, backups, rollback, patching, reporting |
+| `sustain` | 🟩 Sustain | Health checks, backups, rollback, reporting |
 
 ```mermaid
 flowchart LR
-    L["<b>1. Lock out</b><br/>credentials · accounts<br/>firewall · remote admin<br/>service reduction"]
-    O["<b>2. Observe</b><br/>log forwarding · auditing<br/>integrity baseline<br/>status feed"]
-    D["<b>3. Deceive</b><br/>canaries · honey-accounts<br/>trap ports · tarpits<br/>decoy services"]
-    S["<b>4. Sustain</b><br/>health checks · backups<br/>rollback · patching<br/>reporting"]
-    L --> O --> D --> S
+    L["<b>1. Lock out</b><br/>first-minute bundle<br/>credentials · keys · sessions<br/>default-deny firewall"]
+    H["<b>2. Harden</b><br/>installs · restore points<br/>persistence sweep · patching<br/>service packs · Windows and AD"]
+    O["<b>3. Observe</b><br/>log forwarding · auditing<br/>integrity baseline<br/>status feed"]
+    D["<b>4. Deceive</b><br/>canaries · honey-accounts<br/>trap ports · tarpits<br/>decoy services"]
+    S["<b>5. Sustain</b><br/>health checks · backups<br/>rollback · reporting"]
+    L --> H --> O --> D --> S
     classDef lockout fill:#fde8e8,stroke:#c0392b,color:#4a1111
+    classDef harden fill:#fdeedc,stroke:#c2410c,color:#4a1d06
     classDef observe fill:#e3eefc,stroke:#2563eb,color:#0f2a5c
     classDef deceive fill:#efe7fb,stroke:#7c3aed,color:#351465
     classDef sustain fill:#e3f6e8,stroke:#15803d,color:#0f3d20
     class L lockout
+    class H harden
     class O observe
     class D deceive
     class S sustain
 ```
 
-*Figure: the four phases run in order, left to right, and each box lists the kinds of module its folder contains. Colors follow the phase key: red is lock out, blue is observe, purple is deceive and green is sustain.*
+*Figure: the five phases run in order, left to right, and each box lists the kinds of module its folder contains. Colors follow the phase key: red is lock out, orange is harden, blue is observe, purple is deceive and green is sustain.*
+
+Harden is specified here ahead of the code. Until the runner builds the phase, the existing modules keep their current folders and `phase` values, and the phase folder `harden` does not exist yet (`docs/Roadmap.md`).
 
 ## 3. Repository layout
 
@@ -61,6 +67,7 @@ Labyrinth/
 │   │       ├── firewall/
 │   │       ├── ssh/
 │   │       └── services/
+│   ├── harden/   (same shape; specified, not built yet)
 │   ├── observe/  (same shape)
 │   ├── deceive/  (same shape)
 │   └── sustain/  (same shape)
@@ -76,7 +83,7 @@ Labyrinth/
 Notes:
 
 - **Profiles** map hosts to modules, for example `linux-web`, `linux-siem`, `windows-dc`, `windows-member`, `appliance`. A profile is a list, not code.
-- **Appliances** (VyOS, Palo Alto, Cisco FTD (Firepower Threat Defense)) are handled by templated configuration and a manual runbook, not remote-execution modules.
+- **Appliances** (for example VyOS or a Palo Alto firewall) are handled by templated configuration and a manual runbook, not remote-execution modules.
 - **Language:** bash on Linux, Windows PowerShell 5.1 on Windows. No interpreter or package has to be installed for Labyrinth itself to run (section 9); the tools it adds to a host come from design 20.
 
 ```mermaid
@@ -87,7 +94,7 @@ flowchart TD
         CFG["config/<br/>*.example templates only"]
     end
     subgraph work["What it runs"]
-        PH["phases/<br/>lockout · observe · deceive · sustain"]
+        PH["phases/<br/>lockout · harden · observe · deceive · sustain"]
         MOD["phases/{phase}/modules/{name}/<br/>module.yml + entry points"]
         REP["report/<br/>incident report builder"]
     end
@@ -118,7 +125,7 @@ Every module is a folder containing a metadata file, a help page and up to six e
 |---|---|
 | `id` | Unique name, for example `lockout.firewall` |
 | `title` | The plain name an operator reads first, for example `Firewall`: plain ASCII, at most 40 characters |
-| `phase` | `lockout`, `observe`, `deceive` or `sustain` |
+| `phase` | `lockout`, `harden`, `observe`, `deceive` or `sustain` (`harden` is specified, not built yet) |
 | `priority` | P0 to P3 (P0 runs first, P3 last) |
 | `platforms` | `ubuntu`, `rhel-family`, `windows`, `appliance` |
 | `risk` | `read-only`, `reversible`, `service-affecting`, `approval` or `manual-only` |
@@ -183,7 +190,7 @@ Rules for module authors:
 1. `touches_scored: true` modules run only after the scoring allowlist and the protected set are loaded.
 2. An `approval` module lists each item it would change, with the reason, and changes only the items a person approves, per item or per category on one host, or that the team approved before the event with a pre-approval rule (Conventions, section 3.1). Approved items go through the same backup, manifest, verify and rollback as any other change.
 3. A `manual-only` module never changes anything. It prints a checklist for a human. This is kept for actions too broad or too hard to undo for Labyrinth to carry out even with approval: Group Policy changes, DNS changes on a domain controller, domain controller restores, rescuing an unbootable host, Windows patching and appliance changes.
-4. No module calls an outside service or sends data out of the competition environment (National Collegiate Cyber Defense Competition [NCCDC], 2025, Rule 5.6.4). Only the `packages` module and the core download helper install or download software, from the public sources of design 20.
+4. No module calls an outside service or sends data out of the competition environment (National Collegiate Cyber Defense Competition [NCCDC], 2025, Rule 5.6.4). Only the `packages` module and the core download helper install or download software, after the first-minute lockdown, from the public sources of design 20.
 5. No module deliberately breaks expected functionality (NCCDC, 2025, Rule 5.6.5).
 6. No module deletes a file. Anything removed is quarantined (design 17, section 5). An account is deleted only by the account module, after approval (design 05, section 6).
 7. A module writes its output for a beginner, as `key: text` lines with a key from `found`, `will do`, `did`, `why`, `risk`, `problem`, `cause`, `fix` and `undo`: `found: password logins are on`, `will do: turn them off`. Any other line is shown as a note. An entry point that exits `20`, `30` or `40` prints a `problem:` line last, saying what stopped it; without one, the operator sees only that the script gave no reason. The runner adds the module's title, its status and a pointer to its help page (docs/Conventions.md, section 3.2).
@@ -230,8 +237,22 @@ The steps above are the outline; `docs/Conventions.md` section 3.1 gives the exa
 | `seal`, `reseal --reason <text>` | Seal the baseline, or reseal it after an approved change | Design 04 |
 | `checkpoint` | Print the read-only health summary | Design 13 |
 | `backup <service>`, `restore <service> [--database \| --start]` | Back up a service, or restore it from a backup | Designs 14 and 15 |
+| `queue`, `approve <ids>` | List the approval items queued under `AUTO_APPLY`, or apply chosen ones in a new run | Section 5.1 |
 
-The commands below `help` are planned and do not exist yet. A new command takes a verb not used above, and an option that means the same thing in two commands has the same name in both.
+The commands below `help` are planned and do not exist yet (`queue` and `approve` are specified in section 5.1 and built later). A new command takes a verb not used above, and an option that means the same thing in two commands has the same name in both.
+
+### 5.1 Automatic apply (specified now, built later)
+
+The runner does not do this yet. Everything above describes today's behavior; this section describes the next work (`docs/Roadmap.md`). It exists so that one command per host can carry out a whole phase without a person answering prompts, while keeping every gate.
+
+- **One command per host, no separate plan step.** `apply` prints a compact plan and carries it out. `plan` stays as the read-only command. Every existing command form keeps working.
+- **The switch.** `AUTO_APPLY=yes` in `event.conf`. When it is unset, behavior is exactly as in section 5.
+- **The group comes from the hosts file**, matched on the host's name and address. A mismatch or an ambiguous match blocks the run (`20`). `--confirm-group` is still accepted but no longer required.
+- **The break-glass account** is the `breakglass`-class account from the protected set that exists on the host; with none, or more than one, the run blocks. Labyrinth looks for a console session itself and warns if it finds none, instead of prompting (design 01, section 7).
+- **It never prompts mid-run.** An approval item that no pre-approval rule covers goes to a queue under the state path. `labyrinth queue` lists the queued items; `labyrinth approve <ids>` applies the chosen ones in a new run, with the same backups, manifest, revert timer and probes as any run.
+- **The risky list always queues,** whatever the pre-approval rules say: deleting an account; changing a scored service that has no probe; replacing or containerizing a service; and any Tier 3 item (design 01, section 5).
+- **Kept automatically.** Every module is kept once its verify and probes pass, except firewall and SSH changes. Those stay under the revert timer until one `keep` per host run.
+- **Short output.** One line per module: `OK`, `CHANGED`, `ROLLED BACK`, `QUEUED`, `BLOCKED` or `FAIL`. The full *found / fix / more* blocks appear only for failures and blocks; the details go to the run log, and `--detail` shows the full blocks (Conventions, section 3.2).
 
 ## 6. Code and configuration are separate
 
@@ -268,7 +289,7 @@ Nothing else changes.
 ## 9. Decisions
 
 - **Ansible or native scripts.** Resolved: native scripts. They work in local mode with nothing installed, and the remote mode (section 5) gives the reach Ansible would have given.
-- **Windows log shipping method.** Resolved: the Splunk universal forwarder where the host already has it, otherwise a PowerShell script posting to Splunk's HTTP Event Collector. Nothing is installed. See design 10, section 4.
+- **Windows log shipping method.** Resolved: install the Splunk Universal Forwarder from Splunk's public download site, pinned by version and SHA-256 in the run-time configuration (design 10, section 4); a PowerShell script posting to Splunk's HTTP Event Collector is the fallback.
 - **Approvals in remote mode.** Resolved: approvals can be passed with `--approve` (`-Approve`), and each approval is tied to the plan by a fingerprint, so an item that changed after the plan is refused. The prompt stays the default (Conventions, section 3.1).
 - **Pre-approval.** Resolved: a first-minute run needs some items approved before anyone has seen the plan, such as a security update for a named scored package. `--approve` cannot carry them, because its entries need the fingerprint from a plan. So a module declares the categories that may be pre-approved (`pre_approvable`), and the run-time `pre-approved` file names the items or categories the team approved before the event (Conventions, section 3.1).
 - **Build order.** Resolved: local mode is the standard. Remote mode comes after the P0 lockout modules work locally, read-only `remote plan` first, and `remote apply` only once that has run safely in the lab (`docs/Roadmap.md`).

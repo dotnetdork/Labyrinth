@@ -4,7 +4,7 @@ Priority: P0
 
 ## 1. Goal
 
-Modules must behave the same on every supported host, but the hosts differ. Ubuntu runs UFW, Fedora runs firewalld, and a minimal Debian may run bare nftables. Package ownership is answered by `dpkg` on one family and `rpm` on the other. A Windows domain controller needs care that a member server does not.
+Modules must behave the same on every supported host, but the hosts differ. Ubuntu runs UFW, the RHEL family runs firewalld, and a minimal Debian may run bare nftables. Package ownership is answered by `dpkg` on one family and `rpm` on the other. A Windows domain controller needs care that a member server does not.
 
 This spec gives every module one read-only way to learn what host it is on: the **platform facts**. It also gives one way to change the things that differ: the **adapters**. A module asks for a fact or calls an adapter; it never guesses a platform from a file name or a tool it happens to find.
 
@@ -75,7 +75,7 @@ The `hosts` file's platform `ubuntu` covers the whole Debian family, and `rhel-f
 
 ## 5. The firewall adapter
 
-Every backend's adapter offers the same functions, so the firewall, ban and egress modules never call a backend directly. On Linux they are called through one dispatcher, `lab_fw FUNCTION ARGS` (in `platform/linux/firewall/firewall.sh`, which a module sources). The dispatcher picks the backend from the `firewall` fact and refuses (`20`) when the fact is `conflict` or `unknown`; `restore` instead uses the backend named in the snapshot, so a rollback still works after the fact changes. When the fact is `none`, the usual state of a fresh Ubuntu or Debian install, the dispatcher uses nftables if `nft` is installed, otherwise iptables if `iptables` is installed, under the same snapshot, allowlist and revert-timer rules; the snapshot of the empty ruleset puts the host back exactly as it was. UFW is not turned on: it is built on iptables or nftables, which are therefore present, and its restore could not turn it back off. A host with neither is refused (`20`) and reported for a person. On Windows the functions are in `platform/windows/Firewall.ps1`, and they refuse (`20`) when the `firewall` fact is `unknown`.
+Every backend's adapter offers the same functions, so the firewall, ban and egress modules never call a backend directly. On Linux they are called through one dispatcher, `lab_fw FUNCTION ARGS` (in `platform/linux/firewall/firewall.sh`, which a module sources). The dispatcher picks the backend from the `firewall` fact and refuses (`20`) when the fact is `conflict` or `unknown`; `restore` instead uses the backend named in the snapshot, so a rollback still works after the fact changes. When the fact is `none`, the usual state of a fresh Debian install (nftables installed but not running, its shipped rules accepting everything, and UFW not installed), the dispatcher uses nftables if `nft` is installed, otherwise iptables if `iptables` is installed, under the same snapshot, allowlist and revert-timer rules; the snapshot of the empty ruleset puts the host back exactly as it was. That raw-nftables lockdown is for the first minute only, because the first-minute bundle installs nothing (design 01, section 6.1). In the Harden phase the `packages` module installs UFW from the distribution's repositories (design 20), the same allows and the same default deny are loaded into it, and the raw nftables table is removed once UFW is active and the probes pass. On Ubuntu, UFW is installed but often inactive on a fresh host; the fact is then `none` too, the same raw-nftables lockdown holds for the first minute, and in the Harden phase UFW is switched on with the same rules, with nothing to install. On the RHEL family the front end is firewalld. Switching UFW on is recorded in the run manifest like any change: its rollback switches UFW off again (`ufw disable`), loads the raw-nftables snapshot taken just before the switch, and probes; where the `packages` module installed UFW, that module's own rollback removes the package. A host with neither `nft` nor `iptables` is refused (`20`) and reported for a person. On Windows the functions are in `platform/windows/Firewall.ps1`, and they refuse (`20`) when the `firewall` fact is `unknown`.
 
 | Function (Linux) | Windows | Does |
 |---|---|---|
@@ -107,6 +107,8 @@ Every backend's adapter offers the same functions, so the firewall, ban and egre
 | iptables | `iptables-save` and `ip6tables-save`, loaded back with `iptables-restore` and `ip6tables-restore` | A rule in Labyrinth's own chain, `LAB-INPUT`, jumped to from the top of `INPUT`, for IPv4, IPv6 or both | Loopback, established-connection and ICMP rules in `LAB-INPUT`, then the `INPUT` policy `DROP` |
 | Windows Firewall | `netsh advfirewall export`, loaded back with `netsh advfirewall import` | An inbound allow rule in the rule group `Labyrinth` | ICMPv4 and ICMPv6 allow rules, then every profile on, with inbound default `Block` and local allow rules honored. Refused (`20`) when Group Policy turns off local firewall rules (`AllowLocalFirewallRules`) for any profile in the effective policy, because Labyrinth's allow rules would then do nothing; `40` when the effective policy cannot be read. |
 
+**Status.** The firewall line of each run's summary shows the host's firewall in one format, whatever the backend: the backend name, whether it is active, and the inbound default, for example `ufw active deny-in`, `firewalld active deny-in`, `windows on deny-in`, or `none`, `conflict` or `unknown` where the fact says so (Conventions, section 3.2). Backend names never appear in a different spelling on different hosts.
+
 **Known limits.** Each one is a reason for the acceptance tests on a real host (section 7):
 
 - **firewalld:** the snapshot is of the permanent configuration. A rule that exists only at run time when the snapshot is taken is lost at the next reload. The snapshot warns when the run-time and permanent rules differ, and the restore then reports `30`.
@@ -118,7 +120,7 @@ Every backend's adapter offers the same functions, so the firewall, ban and egre
 
 ## 6. What it will never do
 
-- Install a firewall, or switch from the firewall a host is using to another. A host with no active firewall gets the nftables or iptables it already has (section 5). Windows Firewall is always present on Windows, so `default_deny_in` there turns its profiles on, as part of the deny the caller asked for.
+- Switch from the firewall a host is using to another, or run two at once. A Debian host with no firewall front end gets UFW in the Harden phase, installed by the `packages` module, and until then the nftables or iptables it already has (section 5). The first-minute bundle installs nothing. Windows Firewall is always present on Windows, so `default_deny_in` there turns its profiles on, as part of the deny the caller asked for.
 - Delete a file to restore a snapshot. A file the snapshot did not hold is moved into the snapshot folder.
 - Change the firewall without a snapshot taken by the same module in the same run.
 - Guess a fact. An unknown fact blocks the module that needs it.
@@ -140,6 +142,8 @@ Every backend's adapter offers the same functions, so the firewall, ban and egre
 - With iptables and no `ip6tables`, `default_deny_in` warns that IPv6 stays open.
 - Each change is in the run manifest before it is made, and `lab_fw_rollback` (`Undo-LabFirewallChange`) restores the snapshot.
 - After `default_deny_in` on each lab host, the host still answers ping, an allowed port from an allowed source still connects, and an established session survives.
+- On a Debian lab host with no firewall front end, the first-minute lockdown uses nftables; after the Harden phase the fact is `ufw`, the same allows and default deny hold, and no nftables table of Labyrinth's is left behind.
+- A run's summary shows the host's firewall in the one format above, on Ubuntu, Debian, the RHEL family and Windows.
 - With the firewall fact `conflict` or `unknown`, every function but `restore` is refused (`20`) and calls no firewall command. With the fact `none`, the adapter uses an installed `nft`, then `iptables`, and refuses (`20`) when neither is installed.
 
 ## References

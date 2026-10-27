@@ -13,33 +13,33 @@ These are design documents, not code. They describe what each part must do, how 
 
 ## Reading order
 
-Each spec belongs to one phase of the doctrine, and every document uses the same colors for them: 🟥 **Lock out** · 🟦 **Observe** · 🟪 **Deceive** · 🟩 **Sustain**. In diagrams, amber marks a step a person does or decides, and a dashed red outline marks a stop or refusal.
+Each spec belongs to one phase of the doctrine (five in all: lock out, harden, observe, deceive, sustain), and every document uses the same colors for them: 🟥 **Lock out** · 🟧 **Harden** · 🟦 **Observe** · 🟪 **Deceive** · 🟩 **Sustain**. In diagrams, amber marks a step a person does or decides, and a dashed red outline marks a stop or refusal.
 
 | # | Document | Phase | Question it answers |
 |---|---|---|---|
 | 00 | [Module contract and layout](00-Module-Contract-and-Layout.md) | All | How is Labyrinth organized so that new capabilities plug in without touching the core? |
-| 01 | [Lockout ("panic button")](01-Lockout-Panic-Button.md) | 🟥 Lock out | How do we do the first-minutes lockout safely and inside the rules? |
+| 01 | [Lockout ("panic button")](01-Lockout-Panic-Button.md) | 🟥 Lock out, 🟧 Harden | How do we do the first-minutes lockout safely and inside the rules, and harden behind it? |
 | 02 | [Incident reporting automation](02-Incident-Reporting-Automation.md) | 🟩 Sustain | How do we produce complete Red Team incident reports quickly? |
 | 03 | [Event seed and deception config](03-Event-Seed-and-Deception-Config.md) | 🟪 Deceive | How can the code be public but the deception still be unpredictable? |
-| 04 | [Baseline and integrity](04-Baseline-and-Integrity.md) | 🟦 Observe | How do we hash critical files and learn who changed what, when, and from where? |
+| 04 | [Baseline and integrity](04-Baseline-and-Integrity.md) | 🟦 Observe, 🟧 Harden | How do we hash critical files and learn who changed what, when, and from where? |
 | 05 | [Credentials and SSH keys](05-Credentials-and-SSH-Keys.md) | 🟥 Lock out | How do we rotate credentials and deploy SSH (Secure Shell) keys without locking ourselves out? |
 | 06 | [Status feed and MOTD](06-Status-Feed-and-MOTD.md) | 🟦 Observe | How does the SIEM (Security Information and Event Management system) inform every host without new trust paths? |
 | 07 | [Cleanup and tool integrity](07-Cleanup-and-Tool-Integrity.md) | 🟩 Sustain | How do we leave nothing behind and keep our own tools tamper-evident? |
 | 08 | [Ideas mined from reference repos](08-Reference-Mining.md) | All | What did the reference-only repositories teach us, turned into specs? |
 | 09 | [Deception maze and CVE decoys](09-Deception-Maze-and-CVE-Decoys.md) | 🟪 Deceive | How do we build the maze, and where are the limits? |
 | 10 | [Log forwarding and detection](10-Log-Forwarding-and-Detection.md) | 🟦 Observe | Which logs leave each host, how they reach the SIEM, and which few searches run over them? |
-| 11 | [Windows and AD hardening](11-Windows-and-AD-Hardening.md) | 🟥 Lock out | How do we harden Windows hosts and the domain controller without a domain-wide mistake? |
+| 11 | [Windows and AD hardening](11-Windows-and-AD-Hardening.md) | 🟧 Harden | How do we harden Windows hosts and the domain controller without a domain-wide mistake? |
 | 12 | [Dynamic bans](12-Dynamic-Bans.md) | 🟪 Deceive | How do trap hits become expiring bans that can never block the scoring engine? |
 | 13 | [Health monitor and checkpoints](13-Health-Monitor-and-Checkpoints.md) | 🟩 Sustain | How do we notice a scored service going down, and review the whole network in one command? |
-| 14 | [Backup and recovery](14-Backup-and-Recovery.md) | 🟩 Sustain | How do we restore a scored service after damage we did not cause? |
-| 15 | [Patching and service reduction](15-Patching-and-Service-Reduction.md) | 🟥 Lock out | How do we turn off unneeded services and patch the dangerous packages without breaking scoring? |
+| 14 | [Backup and recovery](14-Backup-and-Recovery.md) | 🟧 Harden, 🟩 Sustain | How do we restore a scored service after damage we did not cause? |
+| 15 | [Patching and service reduction](15-Patching-and-Service-Reduction.md) | 🟧 Harden | How do we turn off unneeded services and patch the dangerous packages without breaking scoring? |
 | 16 | [Network appliance runbooks](16-Network-Appliance-Runbooks.md) | 🟥 Lock out | How does a person lock down routers and firewall appliances safely? |
-| 17 | [Persistence sweep](17-Persistence-Sweep.md) | 🟥 Lock out | How do we find and remove the Red Team's footholds early, without breaking a scored service? |
-| 18 | [Service packs and config library](18-Service-Packs-and-Config-Library.md) | 🟥 Lock out | How do we harden the scored apps themselves, quickly and repeatably, without breaking them? |
+| 17 | [Persistence sweep](17-Persistence-Sweep.md) | 🟧 Harden | How do we find and remove the Red Team's footholds early, without breaking a scored service? |
+| 18 | [Service packs and config library](18-Service-Packs-and-Config-Library.md) | 🟧 Harden | How do we harden the scored apps themselves, quickly and repeatably, without breaking them? |
 | 19 | [Platform facts and adapters](19-Platform-Facts-and-Adapters.md) | All | How does a module learn what host it is on, and change firewalls and other parts that differ by platform? |
-| 20 | [Packages and third-party tools](20-Packages-and-Third-Party-Tools.md) | All | Which public tools does Labyrinth add to a host, from where, and how is each install checked and recorded? |
-| 21 | [Vulnerability tracker and mitigations](21-Vulnerability-Tracker-and-Mitigations.md) | 🟥 Lock out | How do we find the flaws the Red Team will look for, close them first, and keep each one tracked until it is closed? |
-| 22 | [Service replacement and containers](22-Service-Replacement-and-Containers.md) | 🟩 Sustain | Where an event allows it, how do we rebuild or containerize a scored service without losing its data, users or address? Off by default. |
+| 20 | [Packages and third-party tools](20-Packages-and-Third-Party-Tools.md) | 🟧 Harden | Which public tools does Labyrinth add to a host, from where, and how is each install checked and recorded? |
+| 21 | [Vulnerability tracker and mitigations](21-Vulnerability-Tracker-and-Mitigations.md) | 🟧 Harden | How do we find the flaws the Red Team will look for, close them first, and keep each one tracked until it is closed? |
+| 22 | [Service replacement and containers](22-Service-Replacement-and-Containers.md) | 🟧 Harden | Where an event allows it, how do we rebuild or containerize a scored service without losing its data, users or address? Off by default. |
 
 ## Diagrams
 
@@ -47,19 +47,19 @@ Each diagram is a Mermaid block inside the document it illustrates, with a one-s
 
 | Diagram | Where |
 |---|---|
-| The four phases in order (plain-language version) | [Overview, section 2.1](../Overview.md#21-the-strategy-four-phases-in-order) |
+| The five phases in order (plain-language version) | [Overview, section 2.1](../Overview.md#21-the-strategy-five-phases-in-order) |
 | The system at a glance: control node, hosts, SIEM, trip log, reports | [Overview, section 2.3](../Overview.md#23-the-system-at-a-glance) |
 | The life of one module (simplified) | [Overview, section 3.2](../Overview.md#32-the-life-of-one-module) |
-| Order of work: lock out, observe, deceive and sustain | [Blueprint, §1](../Blueprint.md#1-operating-doctrine--the-order-of-work) |
+| Order of work: lock out, harden, observe, deceive and sustain | [Blueprint, §1](../Blueprint.md#1-operating-doctrine--the-order-of-work) |
 | Every trap reports to one trip log | [Blueprint, §4](../Blueprint.md#trip-log-pattern) |
-| The four phases and what each contains | [00, section 2](00-Module-Contract-and-Layout.md#2-naming-phases-not-hardening) |
+| The five phases and what each contains | [00, section 2](00-Module-Contract-and-Layout.md#2-naming-phases-not-hardening) |
 | Repository and module layout | [00, section 3](00-Module-Contract-and-Layout.md#3-repository-layout) |
 | Module lifecycle with exit codes | [00, section 4](00-Module-Contract-and-Layout.md#4-the-module-contract) |
 | Risk tiers 0 to 3 and who runs each | [01, section 5](01-Lockout-Panic-Button.md#5-actions-by-risk-tier) |
-| Panic button: gates, the first-minute bundle, rings, approval and seal | [01, section 6](01-Lockout-Panic-Button.md#6-sequence) |
+| Panic button: gates, the first-minute bundle, the Harden phase, approval and seal | [01, section 6](01-Lockout-Panic-Button.md#6-sequence) |
 | Incident reporting pipeline | [02, section 3](02-Incident-Reporting-Automation.md#3-pipeline) |
 | Event seed derivation | [03, section 3](03-Event-Seed-and-Deception-Config.md#3-derivation) |
-| Baseline and integrity | [04, section 4](04-Baseline-and-Integrity.md#4-who-when-from-where) |
+| Baseline and integrity, with verification against official packages | [04, section 4](04-Baseline-and-Integrity.md#4-who-when-from-where) |
 | Password and SSH key rotation order | [05, section 4](05-Credentials-and-SSH-Keys.md#4-ssh-key-design) |
 | Status feed push | [06, section 2](06-Status-Feed-and-MOTD.md#2-design-push-from-the-control-node) |
 | Cleanup and tool integrity | [07, section 5](07-Cleanup-and-Tool-Integrity.md#5-replacement-signed-manifest-and-known-commit) |
@@ -78,7 +78,7 @@ Each diagram is a Mermaid block inside the document it illustrates, with a one-s
 ## Where things live
 
 - **This repository (Labyrinth):** design, code, reference. It becomes public because Rule 5.6.1 requires team-written tools to be public before use (NCCDC, 2025, Rule 5.6.1).
-- **CCDC-2027 (private):** strategy, rules baseline, topology notes, decision log.
+- **The team's private configuration:** strategy, rules baseline, topology notes, decision log.
 
 > [!CAUTION]
 > Never put strategy, per-event values, real hostnames, addresses or credentials in this repository.
@@ -86,7 +86,7 @@ Each diagram is a Mermaid block inside the document it illustrates, with a one-s
 ## Design constraints that apply to every document
 
 1. Public and frozen: code must be safe for rivals and the Red Team to read (NCCDC, 2025, Rules 5.6.2, 5.6.3).
-2. No outside resources at run time other than DNS (Domain Name System) lookups; the rule's example is cloud services and cloud processing (NCCDC, 2025, Rule 5.6.4). Public software from the host's repositories, an event mirror or a pinned download is installed only after the lockdown (design 20).
+2. No cloud services, cloud processing or other outside resources beyond simple DNS (Domain Name System) lookups (NCCDC, 2025, Rule 5.6.4): no reputation or enrichment APIs, and no private sources (Rule 5.2). Public software from the host's repositories, an event mirror or a pinned download (checked against its SHA-256) may be downloaded and installed, only after the lockdown, with an offline fallback (design 20).
 3. No deliberate breakage of expected functionality (NCCDC, 2025, Rule 5.6.5).
 4. Never impede the scoring engine: anything that interferes with it is the team's responsibility and lowers the score (NCCDC, 2025, Rules 4.11, 9.3). Never mislead it: that can bring disqualification or penalties (NCCDC, 2025, Rule 9.3).
 5. Officials must be given access immediately when they ask (NCCDC, 2025, Rule 4.1).
