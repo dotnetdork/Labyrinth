@@ -22,7 +22,7 @@ Labyrinth exists to solve one problem: **the opening minutes.** In a CCDC engage
 
 You cannot do that by hand, per host, from memory. Labyrinth is:
 
-- **A core strategy:** four phases (*Lock out → Observe → Deceive → Sustain*) and a set of OS-agnostic invariants, so the same reasoning applies to a Fedora web server and a Windows domain controller.
+- **A core strategy:** five phases (*Lock out → Harden → Observe → Deceive → Sustain*) and a set of OS-agnostic invariants, so the same reasoning applies to a Fedora web server and a Windows domain controller.
 - **A capability map:** each invariant expressed as a concrete control on Linux, on Windows/AD, and on the network edge, with a priority and a CCDC note.
 - **A deception catalog:** traps, canaries, honey-accounts, tarpits, and sinkholes that make an attacker's reconnaissance expensive, noisy, and logged. Deception buys time that patching cannot.
 - **An architecture:** native bash and PowerShell modules grouped into *phases*. A team can run a guarded lockout across the reachable hosts from one command, then layer observation and deception on top (§6, design 00).
@@ -33,7 +33,7 @@ Because Labyrinth is a team-written tool, the rules require that it:
 - is declared;
 - is frozen;
 - is shared with every team;
-- uses no outside resources;
+- uses no cloud services or private sources: public software and data are downloaded after the lockdown, with an offline fallback;
 - does not deliberately break expected functionality
 
 (NCCDC, 2025, Rules 5.6.1–5.6.5). Those five rules shape every section below.
@@ -61,25 +61,27 @@ Work the phases in order, and do the cheap, high-impact things first. The timing
 
 ```mermaid
 flowchart LR
-    A["<b>Lock out, part 1</b><br/><i>Establish trust</i><br/>• rotate admin credentials<br/>• lock unexpected accounts<br/>• verify, then baseline"]
-    B["<b>Lock out, part 2</b><br/><i>Shrink the surface</i><br/>• default-deny ingress<br/>• move or hide admin<br/>• disable unscored services<br/>• patch the obvious"]
+    A["<b>Lock out</b><br/><i>Take back trust</i><br/>• rotate admin credentials<br/>• lock unexpected accounts<br/>• end intruder sessions<br/>• default-deny in and out"]
+    B["<b>Harden</b><br/><i>Shrink the surface</i><br/>• install tools, take restore points<br/>• sweep, verify against official packages<br/>• patch, cut services, service packs<br/>• then reopen outbound"]
     C["<b>Observe</b><br/><i>See everything</i><br/>• ship logs to the SIEM<br/>• high-signal host logging<br/>• watch authentication"]
     D["<b>Deceive and sustain</b><br/>• deploy the trap layer<br/>• keep scored services green<br/>• hold and triage"]
     A --> B --> C --> D
     classDef lockout fill:#fde8e8,stroke:#c0392b,color:#4a1111
+    classDef harden fill:#fdeedc,stroke:#c2410c,color:#4a1d06
     classDef observe fill:#e3eefc,stroke:#2563eb,color:#0f2a5c
     classDef deceive fill:#efe7fb,stroke:#7c3aed,color:#351465
-    class A,B lockout
+    class A lockout
+    class B harden
     class C observe
     class D deceive
     style D stroke:#15803d,stroke-width:3px
 ```
 
-*Figure: the order of work in this section, from establishing trust through deception and sustainment, with the main steps of each stage. Colors follow the phase key: red is lock out, blue is observe, purple is deceive and green is sustain. The last box covers both deceive and sustain, so it is purple with a green border.*
+*Figure: the order of work in this section, from taking back trust through hardening, observation, deception and sustainment, with the main steps of each stage. Colors follow the phase key: red is lock out, orange is harden, blue is observe, purple is deceive and green is sustain. The last box covers both deceive and sustain, so it is purple with a green border.*
 
-### Lock out, part 1 — Establish trust
+### Lock out — Establish trust
 
-The attacker's power comes from credentials, existing sessions and footholds left before the event. Remove all three, on each host in one step: the first-minute bundle rotates admin passwords, removes unregistered keys and checks the SSH configuration, ends intruder sessions, then applies default-deny inbound and outbound, using only what the host already has (design 01, section 6.1). Packages are installed and persistence is swept behind that lockdown. Scored services are a primary Red Team target, so they are defended, with probes and revert timers, rather than left as found.
+The attacker's power comes from credentials, existing sessions and footholds left before the event. The first-minute bundle takes the first two away on each host in one step: it rotates admin passwords, removes unregistered keys and checks the SSH configuration, ends intruder sessions, then applies default-deny inbound and outbound. It installs nothing: installing is slow, and the lockdown must be in place before outbound opens again, so it uses only what the host already has (design 01, section 6.1). That is a matter of speed and order, not of a rule. On a Debian host with no firewall front end (nftables installed but not running, shipped rules that accept everything, UFW not installed), the lockdown uses raw nftables, and UFW takes over in the Harden phase with the same rules. Scored services are a primary Red Team target, so they are defended, with probes and revert timers, rather than left as found.
 
 - **Rotate administrator-class credentials you were handed or that ship by default:** local admins, appliance web logins, SNMP (Simple Network Management Protocol) strings, and service or database accounts once the dependency map is known. Do it first, everywhere.
 
@@ -89,19 +91,21 @@ The attacker's power comes from credentials, existing sessions and footholds lef
 
   **[RULES]** Never change every shell or end connections indiscriminately; the rules give those as examples of tools that break expected functionality (NCCDC, 2025, Rule 5.6.5). Disabling accounts wholesale is the same kind of blanket action. Officials must be able to get in on request (NCCDC, 2025, Rule 4.1), so a verified break-glass path comes first.
 
+- **Default-deny** inbound and outbound on every host firewall and at the edge. Allow only the scored services and your own admin path inbound, and only what the host and its scored services need outbound.
+
+### Harden — Shrink the surface
+
+With the network closed around each host, the Harden phase installs the team's tools, takes restore points, and does the slower cleanup, then reopens outbound traffic to the host's normal list.
+
+- **Install the team's tools** from public sources (design 20), and **take restore points** of the scored services before the first risky change (design 14).
 - **Sweep for persistence:** scheduled jobs, services, startup items, SSH and PAM changes, and web shells. Clear attacker footholds are quarantined automatically; anything a scored service might depend on waits for approval. Nothing is deleted (design 17).
-
-- **Verify, then baseline:** users, listening ports, processes, scheduled tasks/cron, startup items, firewall state. Check files against the package database before hashing them, so a compromised state is not recorded as normal (design 04). Once the lockout and sweep are verified, seal the baseline, so later checks compare against the cleaned host (design 04, section 6).
-
-### Lock out, part 2 — Shrink the surface
-
-- **Default-deny ingress** on every host firewall and at the edge. Allow only the scored services and your own admin path.
+- **Verify against the official packages, then baseline:** users, listening ports, processes, scheduled tasks/cron, startup items, firewall state. The package database on a host can be edited by root, so for a core set of packages (OpenSSH server, sudo, PAM, coreutils, util-linux, systemd, the shadow tools) and any package a local check flags, Labyrinth downloads the package from the host's configured repositories, checks its signature and compares its files' hashes with the files on disk. A mismatch is a finding for a person, never an automatic fix. Windows keeps Authenticode signer checks and `sfc /verifyonly`. Verify before hashing files, so a compromised state is not recorded as normal. Once the lockout and sweep are verified, seal the baseline, so later checks compare against the cleaned host (design 04, section 6).
 - **Move or hide admin:** where SSH (Secure Shell) or RDP (Remote Desktop Protocol) is not scored, get it off the obvious port, and consider port-knocking on hosts that support it (§3.4, §4.7). A scored admin service is never moved or hidden; it stays open to every source and is hardened in place.
 - **Disable services you are not graded on.** Every listener is a vector.
 
   **[RULES]** Anything that interferes with the scoring engine is the team's responsibility (NCCDC, 2025, Rule 4.11). As a design choice, services are disabled only from a per-profile candidate list, and only after the scored-service list is known (design 15).
 
-- **Patch the obvious:** the known-exploited, internet-facing things only. Do not start a 40-minute `dist-upgrade` mid-round.
+- **Patch the obvious:** the known-exploited, internet-facing things only, package by named package. Do not start a 40-minute `dist-upgrade` mid-round. Apply the service packs for the scored services (design 18) and the Windows and AD settings (design 11), and, only where an inject or the local rules allow it, replace or containerize a service (design 22).
 
 ### Observe — See everything
 
@@ -119,7 +123,7 @@ The attacker's power comes from credentials, existing sessions and footholds lef
 - **Hold and triage:** work your alert queue by confidence. Canary and honey-account hits come first (near-certain), then anomalies.
 
 > [!TIP]
-> **Rule of thumb:** *lock-out before observation, observation before deception, deception before comfort.* A trap is worthless if the attacker still has valid credentials and an open admin port.
+> **Rule of thumb:** *lock-out before hardening, hardening before observation, observation before deception, deception before comfort.* A trap is worthless if the attacker still has valid credentials and an open admin port.
 
 ---
 
@@ -175,7 +179,7 @@ This is the core of the reference. Each capability gives:
 ### 3.3 Host firewall / default-deny — **P0**
 
 - **Principle:** deny inbound by default; permit scored services from every source, plus your admin path and any official sources named in the event packet; log denials (that log feeds the honeypot in §4.1). A scored port is never filtered by source: some events penalize it, and officials and simulated users come from addresses nobody can list. On a flat network the host firewall is the only boundary between servers (design 01, section 6.1).
-- **Linux:** UFW (Uncomplicated Firewall) or nftables, default-deny in, allow out, with explicit allows per service. Use **medium logging** so every drop is logged as `[UFW BLOCK] … DPT=…`. On container hosts, also filter `DOCKER-USER`: Docker's published ports **bypass** the host `INPUT` chain, so bans and egress rules must live there too.
+- **Linux:** UFW (Uncomplicated Firewall) on Debian and Ubuntu (installed on a Debian host that has no front end) and firewalld on the RHEL family, default-deny in, allow out, with explicit allows per service. Raw nftables is used only for the first minute on a Debian host with no front end, until UFW takes over in the Harden phase with the same rules (design 19). Each run's summary shows the host's firewall in one format. Use **medium logging** so every drop is logged as `[UFW BLOCK] … DPT=…`. On container hosts, also filter `DOCKER-USER`: Docker's published ports **bypass** the host `INPUT` chain, so bans and egress rules must live there too.
 - **Windows:** Windows Defender Firewall, default-deny inbound per profile; allow only graded ports; enable connection logging.
 - **Edge:** default-deny WAN; an explicit allow per service; log denies to the SIEM.
 - **CCDC note:**
@@ -211,50 +215,53 @@ This is the core of the reference. Each capability gives:
 ### 3.6 Service minimization & patching — **P1**
 
 - **Principle:** fewer listeners, fewer known-exploited packages.
-- **Linux:** disable or mask unneeded units. Patch internet-facing, known-exploited packages surgically, not with a blind full upgrade mid-round. Track fixable CVEs (Common Vulnerabilities and Exposures) narrowed to what is *actually* upgradable today:
+- **Linux:** disable or mask unneeded units. Patch internet-facing, known-exploited packages surgically, not with a blind full upgrade mid-round. Assess fixable CVEs (Common Vulnerabilities and Exposures), report only, narrowed to what is *actually* upgradable today. Built-in tools come first:
   - `debsecan` on Debian;
-  - `pro fix` or the Ubuntu security notices on Ubuntu;
-  - `dnf updateinfo` on RHEL-family (Red Hat Enterprise Linux) hosts.
+  - `pro security-status` on Ubuntu;
+  - `dnf updateinfo list --security` on RHEL-family (Red Hat Enterprise Linux) hosts;
+  - the installed updates on Windows.
+
+  Then Lynis (from the distribution's repositories, EPEL on the RHEL family) and Trivy (a pinned release checked against its SHA-256; it downloads its public CVE database, which is allowed after the lockdown). OpenVAS and Greenbone are not used: their feed sync takes hours. Patching is an approval item that updates only the named packages, never a full upgrade.
 - **Windows:** stop unneeded services and features; apply the specific KBs (Microsoft Knowledge Base updates) for known-exploited CVEs; disable SMBv1 (Server Message Block version 1), LLMNR (Link-Local Multicast Name Resolution) and NBT-NS (NetBIOS Name Service).
 - **CCDC note:**
 
-  **[RULES]** Do not migrate or containerize scored services unless an inject or the local competition rules allow it (NCCDC, 2025, Rule 4.14). Where they do, rebuilding a service is design 22, off by default, and only after its data, users and address are preserved.
+  **[RULES]** Do not migrate or containerize scored services unless an inject or the local competition rules allow it (NCCDC, 2025, Rule 4.14). Where they do, rebuilding a service is design 22, off by default, and only with full proof that its users, mailboxes, pages, database contents and address are preserved and its scored check passes on a staging port before cutover (§3.7).
 
   A scored service you break costs points immediately; an unpatched, non-exploited CVE probably does not. Prioritize by exploitability plus exposure, not by count. Known-exploited domain controller flaws (for example ZeroLogon, CVE-2020-1472) rank above everything else. Web apps and their plugins are inventoried from the files on disk and ranked the same way; an unused vulnerable plugin can be deactivated after approval. A scored service with a flaw is never turned off to close it: it is mitigated in place (a setting or a web application firewall rule), then patched in place. Each finding is tracked from open to closed and shown at every checkpoint. Matching is done locally, never by sending versions to an outside service (NCCDC, 2025, Rule 5.6.4). Designs: 15, 21.
 
-### 3.7 Application / container least-privilege — **P2** (Linux app hosts)
+### 3.7 Application / container least-privilege — **P1** (Linux app hosts, where the event allows containers)
 
 - **Principle:** if an app is compromised, the blast radius is one unprivileged process with no capabilities.
-- **Linux:** every container drops **ALL** capabilities, runs as a non-root, non-sudo host UID (user ID), sets `no-new-privileges`, and uses a read-only root file system where possible. **Admission control** (`compose-guard`) refuses `privileged`, host namespaces, and bind mounts that are not allowlisted, *before* deploy.
+- **Linux:** the RHEL family uses Podman and Debian and Ubuntu use Docker (`docker.io`), both from the distribution's own repositories, with no new repository. Every container runs as a non-root user by default, drops **ALL** capabilities and adds back only what the service needs, sets `no-new-privileges`, and uses a read-only root file system where the service allows. An admission check refuses `privileged`, host namespaces, a mounted container-engine socket and bind mounts that are not allowlisted, *before* deploy. Services built to start as root and drop privileges themselves (Postfix, Dovecot) are on a named exception list; any other container running as root is refused. Ports below 1024 are published from a high port inside the container.
 - **Windows:** run app pools and services as least-privileged service accounts (gMSA, group Managed Service Accounts), not `LocalSystem`. Constrain them with Just-Enough-Admin where practical.
-- **CCDC note:** WordPress, Gitea and other web apps are prime targets. Once de-privileged, a webshell lands in a box that can barely do anything.
+- **CCDC note:** WordPress and other web apps are prime targets. Once de-privileged, a webshell lands in a box that can barely do anything.
 
-  **[RULES]** Containerizing a scored service is not allowed unless an inject or the local competition rules allow it (NCCDC, 2025, Rule 4.14). By default the container material here applies only to non-scored workloads or as practice, and the existing installation is hardened with service accounts, systemd sandboxing and file permissions. Where an event allows containers, design 22 applies these same controls to the rebuilt service.
+  **[RULES]** Containerizing a scored service is not allowed unless an inject or the local competition rules allow it (NCCDC, 2025, Rule 4.14). Local rules can allow it on the same host, and then the service keeps the same public address, DNS name and usernames, and its scored check passes before cutover (design 22, `ALLOW_CONTAINERS=yes:<reference>`). Without that permission, the existing installation is hardened with service accounts, systemd sandboxing and file permissions.
 
 ### 3.8 Web edge — **P1** (web hosts)
 
 - **Principle:** terminate and filter at a reverse proxy. Only real clients reach the app; scanners get punished (§4.3).
 - **Linux:** an nginx reverse proxy with:
-  - the real client IP restored from the trusted front end, so logs, rate limits and traps see the true IP;
+  - the real client IP restored from a front end such as a load balancer, where one exists, so logs, rate limits and traps see the true IP;
   - TLS (Transport Layer Security) and security headers;
   - per-site logging;
   - a request-time resolver, so one bad upstream returns 502s for one site instead of crashing nginx.
 
-  Where applicable, the origin is locked to the trusted front end.
+  Where a front end such as a load balancer exists, the origin is locked to it.
 - **CCDC note:** the scanner tarpit (§4.3) lives here. It is one of the highest-value, lowest-risk traps you can deploy on a graded web host.
 
 ### 3.9 Centralized logging & detection — **P1**
 
 - **Principle:** logs on the box die with the box. Get them off-host and make them high-signal.
 - **Linux:** `auditd` with rule keys for privileged commands, identity and sudoers, SSH keys, cron, systemd units, `/usr/local`, and **canary reads**; forward to Splunk.
-- **Windows/AD:** **Sysmon** (process creation, network, image loads) plus Windows Security auditing (4624/4625/4688/4720/4728…); forward to Splunk through the universal forwarder.
+- **Windows/AD:** **Sysmon** (process creation, network, image loads) plus Windows Security auditing (4624/4625/4688/4720/4728…); forward to Splunk through the universal forwarder. Hosts of both kinds install the Splunk Universal Forwarder from Splunk's public download site, pinned by version and SHA-256 in the run-time configuration and checked against the checksum file published beside it; the forwarder is never newer than the indexer. Receiving on 9997 stays off on the indexer until enabled, and the HEC script is the fallback (design 10).
 - **SIEM:** Splunk is the aggregation point. A few high-value saved searches (new local admin, canary hit, authentication to a locked account, boot-critical file changes, ZeroLogon and DCSync signs, unusual outbound traffic) beat a hundred noisy dashboards. The SIEM host is itself hardened: its admin password rotated, users and roles audited, its web and management ports open only to the admin source unless they are scored (then open to every source), its inputs only to managed hosts, `splunkd` moved off root after approval, and unknown apps and scripted inputs quarantined (design 10, section 7).
 - **CCDC note:** stand this up in the Observe phase, *before* deception, so the traps have somewhere to report. Design: 10.
 
 ### 3.10 Egress control — **P2**
 
 - **Principle:** unexpected *outbound* traffic is the C2 signature. Watch it even if you cannot block it.
-- **Linux:** containers normally reach out only to DNS, HTTP, HTTPS and NTP (Network Time Protocol). A new outbound SYN to any other external port is logged as `[CONTAINER OUT] …`. The rule is rate-limited, scoped to the external interface, placed above Docker's `RETURN`, and re-installed after Docker restarts.
+- **Linux:** containers normally reach out only to DNS, HTTP, HTTPS and NTP (Network Time Protocol). A new outbound SYN to any other external port is logged with a container-outbound log prefix. The rule is rate-limited, scoped to the external interface, placed above Docker's `RETURN`, and re-installed after Docker restarts.
 - **Windows:** Windows Firewall outbound logging; alert on beaconing patterns through Sysmon network events.
 - **Every host:** a rate-limited, log-only rule for new outbound connections (Tier 2; blocks nothing) feeds an unusual-outbound search, such as NTP or DNS to a server not in the run-time configuration. Outbound default-deny is part of the first-minute bundle, from the services file and the run-time `outbound-allow` list (design 01, section 6.1).
 - **CCDC note:** combine with DNS sinkholing (§4.5): see the beacon, then dead-end it without tipping off the attacker.
@@ -262,7 +269,7 @@ This is the core of the reference. Each capability gives:
 ### 3.11 Backups, rollback & break-glass — **P1**
 
 - **Principle:** every change is reversible, every service is restorable, and there is always a way back in.
-- **Linux:** timestamped config backups before each change (`*.bak-<ts>`), database dumps before patching, previous container images tagged `:pre-update` for instant rollback, and the virtual machine console as break-glass.
+- **Linux:** timestamped config backups before each change (`*.bak-<ts>`), database dumps before patching, the previous image, tagged before each update, for instant rollback, and the virtual machine console as break-glass.
 - **Windows/AD:** system state and AD backups; VSS (Volume Shadow Copy Service) snapshots; a documented DC (domain controller) recovery path.
 - **Off-host copies are required:** an attacker with root or SYSTEM can delete on-host backups, so each restore point is copied to the control node, or another team host named as the backup peer, and hash-checked before it counts as complete (design 14, section 5). Snapshots of the virtual machines may not be available; Labyrinth never relies on them.
 - **Restore:** `labyrinth restore <service>` (with `--database` or `--start`) runs after a person confirms the restore point predates the damage (Tier 3); the damaged state is kept as evidence. Domain controller restores and rescuing an unbootable host (for example, a deleted `/etc/fstab`) are person-run, from printed runbooks (design 14, section 6).
@@ -288,7 +295,7 @@ Trap ports are ports you run **nothing** on, so a single inbound packet is hosti
 
 A tarpit on the port every bot targets (22). It dribbles an endless SSH banner, so scanners hang for minutes. Real admin access is elsewhere (§3.4). The tarpit's own output names the offenders.
 
-In a competition, only put a tarpit on port 22 if SSH is not scored and the officials have been told the real admin path (NCCDC, 2025, Rule 4.1). The tarpit program must be vendored, not downloaded at the event.
+In a competition, only put a tarpit on port 22 if SSH is not scored and the officials have been told the real admin path (NCCDC, 2025, Rule 4.1). The tarpit program (endlessh) comes from the distribution's repositories after the lockdown, from EPEL on the RHEL family, and is not vendored (design 20).
 
 **[RULES]** Offenders are never reported to an outside reputation service: a team tool may not use outside resources apart from DNS (NCCDC, 2025, Rule 5.6.4). Offenders go to the local trip log only.
 
@@ -383,10 +390,11 @@ The national rules are the same at every event. Each event's own materials and l
 | Which accounts scoring logs in with | Some events said administrator-class accounts are never used for scoring. Others score logins with admin accounts too, and take new passwords only through their own change list | No account is assumed unscored. The operator marks each account a check logs in with as `scoring`, or `scored-admin` when it is also an admin account; a `scored-admin` password is rotated and goes into a `username,password` change list shown once (design 05, section 2.4) |
 | Filtering a scored port by source | Some events penalize filtering a public service by source address, or letting only the scoring engine reach it. Officials' manual checks, simulated users and traffic generators come from addresses nobody can list | Scored ports stay open to every source and are hardened in place. One hostile address at a time can be banned (design 12); the firewall adapter refuses a narrower allow on a scored port (design 19, section 5) |
 | Scoring engine addresses | Some events publish them; many do not, and some say they vary | The scoring allowlist is optional. Where given, it goes first (design 01, section 7) |
-| ICMP (ping) | Events commonly require ping to keep working on every device, sometimes with one exception | Default-deny always allows ICMP, unless the run-time configuration says otherwise (design 01) |
-| Internet access | Open internet, a web proxy that allows only listed sites (such as the team's declared repository), or none | The core needs only Labyrinth's own public release. Extras run only when their source answers, and are reported as skipped otherwise (§6.1, design 20) |
+| ICMP (ping) | Events commonly require ping to keep working on every device, sometimes with one exception | ICMP stays on every device unless officials direct otherwise (design 01) |
+| Internet access | Open internet, a web proxy that allows only listed sites (such as the team's declared repository), or none | After the lockdown, Labyrinth downloads public software and public data from the host's repositories, an event mirror or proxy, or a pinned release checked against its SHA-256. Offline paste is the fallback, and a download that cannot be reached is reported as skipped (§6.1, design 20) |
 | Recovery | Some events offer a scrub or revert of a VM, at a penalty; others offer no snapshots, only a power cycle or a fresh lab | Labyrinth never relies on VM snapshots. It makes its own restore points and copies them off the host (design 14) |
-| Moving or containerizing a scored service | Not allowed unless an inject or the local rules allow it (NCCDC, 2025, Rule 4.14). Some events allow containerizing on the same platform with the same address | Off by default; design 22, turned on in `event.conf` with a reference to the rule or inject |
+| Moving or containerizing a scored service | Not allowed unless an inject or the local rules allow it (NCCDC, 2025, Rule 4.14). Some events allow containerizing on the same platform with the same address | Off by default; design 22, turned on with `ALLOW_CONTAINERS=yes:<reference>` in `event.conf`, naming the rule or inject |
+| Replacing a scored service | Not allowed unless an inject or the local rules allow it (NCCDC, 2025, Rule 4.14) | Off by default; design 22, turned on with `ALLOW_SERVICE_REPLACE` in `event.conf`. It needs full proof: same users, mailboxes and message counts, same pages (hash-compared), same database contents, and the scored check passing on a staging port before cutover; otherwise it refuses |
 | How officials reach the hosts | Some events give officials a console on every VM through the event's lab system; others may name official source addresses | The break-glass login is the access path. Official sources named at run time are allowed through default-deny (design 01, section 2) |
 | Network shape | One flat inside network behind a single edge firewall, or several segments behind separate firewalls | On a flat network each host's own firewall is the only boundary between servers (design 01, section 6.1). Where there are segments, only the log-forwarding and admin flows are opened between them (design 06, section 3) |
 
@@ -398,9 +406,9 @@ The national rules are the same at every event. Each event's own materials and l
 
 **Native scripts, run locally or remotely.**
 
-**[RULES]** Team tools may not use outside resources such as cloud services or cloud processing (NCCDC, 2025, Rule 5.6.4), while free public software sources are allowed (NCCDC, 2025, Rules 5.1, 5.2). Events differ on what the hosts can reach (§5). So **the core needs only Labyrinth's own public release**: fetched from its release page where a host or console reaches it, or typed or carried in where nothing does (design 07, section 5.2). Everything else is an optional extra, such as packages from the host's repositories, a pinned download such as Sysmon, or a refreshed list of known-exploited flaws. Each extra runs only after the lockdown and only when its source answers, and is reported as skipped otherwise (design 20).
+**[RULES]** Team tools may not use outside resources such as cloud services or cloud processing (NCCDC, 2025, Rule 5.6.4), while free public software sources are allowed (NCCDC, 2025, Rules 5.1, 5.2). Events differ on what the hosts can reach (§5). So **Labyrinth itself needs only its own public release**: fetched from its release page where a host or console reaches it, or pasted in or carried in where nothing does (design 07, section 5.2). After the first-minute lockdown, it **downloads first and falls back to offline paste**: public software and public data come from the host's configured repositories, an event mirror or proxy, or a pinned release checked against its SHA-256. It never calls a cloud service, a reputation or enrichment API or a private source, and never runs a full upgrade. A download that cannot be reached is reported as skipped, and the lockdown stands (design 20).
 
-Labyrinth is therefore bash on Linux and PowerShell on Windows, self-contained in one repository with vendored third-party code. **Local mode is the standard:** each host's operator runs it on that host, so nothing holds access to every host at once. **Remote mode** comes later: a control node sends the same command over SSH or PowerShell remoting, starting with read-only `remote plan` across every host, and `remote apply` only once that has proven itself. A control node holds access to every host, so it is a prime target: it should be a hardened server, with keys made fresh at the event, which hosts accept only from the control node's address, and it keeps the plan-first and revert safeguards. In remote mode, the control node keeps a host's run only when it can still log in over the admin path and no scored service that passed before the run fails after it; otherwise the host's revert timer undoes it, except the changes kept once they verified. Ansible was considered and not adopted. Network appliances use templated configuration and a manual runbook. See design 00.
+Labyrinth is therefore bash on Linux and PowerShell on Windows, in one repository; third-party tools come from public sources after the lockdown, or are vendored where their license allows (design 20). **Local mode is the standard:** each host's operator runs it on that host, so nothing holds access to every host at once. **Remote mode** comes later: a control node sends the same command over SSH or PowerShell remoting, starting with read-only `remote plan` across every host, and `remote apply` only once that has proven itself. A control node holds access to every host, so it is a prime target: it should be a hardened server, with keys made fresh at the event, which hosts accept only from the control node's address, and it keeps the revert safeguards and the scored-service probes. In remote mode, the control node keeps a host's run only when it can still log in over the admin path and no scored service that passed before the run fails after it; otherwise the host's revert timer undoes it, except the changes kept once they verified. Ansible was considered and not adopted. Network appliances use templated configuration and a manual runbook. See design 00.
 
 ### 6.2 Layout
 
@@ -413,7 +421,7 @@ Classify each host and apply only the roles that fit:
 | Profile | Example host | Roles |
 |---|---|---|
 | `linux-server` | Any Linux server without a web role | identity, ssh, firewall, bans, deception, egress_log, audit_motd, patching |
-| `linux-web` | Linux web or webmail server | + nginx_edge (the scanner tarpit is P1 here). No `containers` role: scored services may not be containerized unless an inject or local rules allow it (NCCDC, 2025, Rule 4.14), and then only through design 22. |
+| `linux-web` | Linux web or webmail server | + nginx_edge (the scanner tarpit is P1 here). Containers only where an inject or the local rules allow it (NCCDC, 2025, Rule 4.14), through design 22. |
 | `windows-member` | Windows member servers and workstations | win_base, win_firewall, win_audit, honey-account, canary (design 11) |
 | `windows-dc` | Domain controller with DNS | + AD hardening checklist (design 11); the KRBTGT reset is an approval item and the DNS sinkhole is manual-only (§3.1, §4.6) |
 | `linux-siem` | SIEM server | identity, ssh, firewall + ingest config (the destination, hardened but light) |
@@ -424,7 +432,7 @@ Every host profile also runs the persistence sweep (design 17) and the service p
 
 ### 6.4 Phase playbooks = the doctrine, executable
 
-The lockout phase is the panic button.
+The lockout phase is the panic button; the Harden phase follows behind it on the same host.
 
 **[RULES]** A single pass that resets every credential, locks every account and default-denies every host would break expected functionality, which the rules prohibit (NCCDC, 2025, Rule 5.6.5).
 
@@ -457,6 +465,16 @@ Labyrinth provisions the *shape*; the operator supplies the values. **No real cr
 
   **[RULES]** A dead-man revert timer is armed before any firewall or SSH change (design 01).
 
+### 6.7 One command per host — specified, built later
+
+The runner does not do this yet; today `plan` and `apply` are separate steps. The intended change is that `apply` prints a compact plan and carries it out, and `plan` stays as a read-only command. Every existing command form keeps working. It is switched on with `AUTO_APPLY=yes` in `event.conf`; unset means today's behavior (design 01). When on:
+
+- **The group comes from the hosts file,** matched on the host's name and address. A mismatch or an ambiguity blocks the run (exit 20). `--confirm-group` is still accepted but no longer required.
+- **The break-glass account is the `breakglass`-class account from the protected set that exists on the host;** with none, or more than one, the run blocks (20). Labyrinth checks for a console session itself and warns if it finds none, rather than prompting.
+- **It never prompts mid-run.** Approval items that no pre-approval rule covers go to a queue under the state path. `labyrinth queue` lists them, and `labyrinth approve <ids>` applies the chosen ones in a new run with the same backups, manifest, timer and probes. Always queued: deleting an account, changing a scored service that has no probe, replacing or containerizing a service, and any Tier 3 item.
+- **Each module is kept automatically** once its verify and probes pass, except firewall and SSH changes, which stay under the revert timer until one `keep` per host run.
+- **Output is short:** one line per module (`OK`, `CHANGED`, `ROLLED BACK`, `QUEUED`, `BLOCKED`, `FAIL`). Full Found/Fix/More blocks appear only for failures and blocks; details go to the run log, and `--detail` shows the full blocks.
+
 ---
 
 ## 7. Priority scorecard
@@ -473,12 +491,12 @@ Triage under a clock. Do P0 everywhere before P1 anywhere. The **When** column i
 | Central logging + auditd/Sysmon (§3.9) | ★★★★ | Med | 🟠 P1 |
 | Service minimization + targeted patch (§3.6) | ★★★ | Med | 🟠 P1 |
 | Service packs for scored apps (design 18) | ★★★★ | Med | 🟠 P1 |
-
 | Web edge + scanner tarpit (§3.8, §4.3) | ★★★★ | Low | 🟠 P1 |
 | Backups / rollback / break-glass (§3.11) | ★★★★ | Low | 🟠 P1 |
+| Container least-privilege, where allowed (§3.7) | ★★★ | Med | 🟠 P1 |
+| Replacing a service, where allowed (design 22) | ★★★ | High | 🟠 P1 |
 | Canary tokens & honey-accounts (§4.4–4.5) | ★★★★★ | Low | 🟡 P2 |
 | Dynamic banning / ipset (§3.5) | ★★★ | Med | 🟡 P2 |
-| Container least-privilege (§3.7) | ★★★ | Med | 🟡 P2 |
 | Egress logging + DNS sinkhole (§3.10, §4.6) | ★★★ | Med | 🟡 P2 |
 | Port knocking (§4.7) | ★★ | Med | ⚪ P3 |
 
@@ -500,9 +518,9 @@ A portable runbook: confirm that each control actually took, and know how to und
 | Trap ports | Fire a packet at a trap port from a non-allowlisted IP → expect a ban | Remove the filter/jail |
 | Canary (files+key) | Read a decoy → expect an audit event; offer the planted key → expect a fingerprint match + ban | Remove the audit rule / jail |
 | Scanner tarpit | `curl -m5 https://host/.env` → should hang and log the IP | Remove the `location` block, validate, reload |
-| Egress logging | Make an odd outbound connection from a container → expect `[CONTAINER OUT]` | Remove the LOG rules / disable the unit |
+| Egress logging | Make an odd outbound connection from a container → expect the container-outbound log line | Remove the LOG rules / disable the unit |
 | Central logging | Confirm events are arriving in Splunk from each host | n/a |
-| Service health | curl/health-check every scored service after each change | Revert the change; restore the `:pre-update` image / config backup |
+| Service health | curl/health-check every scored service after each change | Revert the change; restore the previous image / config backup |
 
 *Always validate config that fronts a scored service before reloading (for example, `nginx -t` before `nginx -s reload`), and keep a break-glass path open until the new access path is proven.*
 

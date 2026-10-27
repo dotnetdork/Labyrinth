@@ -4,7 +4,7 @@ Phase: 🟥 Lock out · Priority: P0 (credentials, management plane), P1 (the re
 
 ## 1. Goal
 
-Routers and firewall appliances (for example VyOS, Palo Alto Networks PAN-OS and Cisco FTD (Firepower Threat Defense)) sit in front of every other host. A mistake on one can cut routing or scoring for the whole network at once. Labyrinth therefore does not change appliances itself: they are on the Tier 3 person-run list (design 01). What it does provide is a **runbook** for each appliance type, a tested, step-by-step procedure that a person follows, filled in with the run's own values (Blueprint §6.3).
+Routers and firewall appliances (for example VyOS or a Palo Alto firewall) sit in front of every other host. A mistake on one can cut routing or scoring for the whole network at once. Labyrinth therefore does not change appliances itself: they are on the Tier 3 person-run list (design 01). What it does provide is a **runbook** for each appliance type, a tested, step-by-step procedure that a person follows, filled in with the run's own values (Blueprint §6.3).
 
 ## 2. Why manual
 
@@ -34,7 +34,7 @@ Every vendor runbook follows the same order. Each step says what to do, how to c
 | 0 | **Prepare.** Open a second session (or the console). Export the running configuration as a backup. Learn how this appliance undoes an unconfirmed change, and on VyOS set the confirm action to `reload` first (design 01). | So any mistake can be reversed |
 | 1 | **Credentials.** Change the admin, web, SSH (Secure Shell) and API passwords. Change or disable SNMP (Simple Network Management Protocol) community strings (Blueprint §3.1). | Appliances often ship with well-known defaults |
 | 2 | **Management plane.** Allow management only on an inside interface and only from the admin source. On a flat network, where the operators share a segment with the servers, name the admin hosts or their DHCP range rather than the whole inside interface. Turn off management services that are not needed, such as plain HTTP or Telnet (Blueprint §3.2). Keep ICMP, and never change an interface address, a NAT mapping a scored service uses, or the appliance's host name. | No administration from the outside, and nothing scoring relies on moves |
-| 3 | **Scoring allowlist first.** Add the rules that allow the scoring engine to reach each scored service, before any deny rule (Blueprint §3.3). | Scoring must never be blocked |
+| 3 | **Scoring allowlist first, where an allowlist is given.** Add the rules that allow the scoring engine to reach each scored service, before any deny rule (Blueprint §3.3). | Scoring must never be blocked |
 | 4 | **Default-deny from outside.** Allow the scored services from every source, then deny and log everything else. A scored service is never limited by source address (design 01, section 6.1). | Shrink the surface |
 | 5 | **NAT review.** Record which address the inside hosts see for outside traffic. | Feeds the source-address gate for bans (design 12) |
 | 6 | **Logging.** Send the appliance's logs to the SIEM by syslog (design 10). | Edge denies are visible centrally |

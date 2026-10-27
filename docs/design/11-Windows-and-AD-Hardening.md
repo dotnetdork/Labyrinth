@@ -1,12 +1,12 @@
 # 11. Windows and Active Directory Hardening
 
-Phase: 🟥 Lock out · Priority: P0 (credentials, firewall), P1 (the rest)
+Phase: 🟧 Harden · Priority: P0 (credentials, firewall), P1 (the rest)
 
 ## 1. Goal
 
 Give the `windows-member` and `windows-dc` profiles (Blueprint §6.3) the same guarded treatment the Linux profiles get. Windows hosts and the AD (Active Directory) domain controller carry some of the highest-impact weaknesses in a typical competition network, and the domain controller is also the most dangerous host to change: a mistake there can break every logon and every DNS (Domain Name System) lookup at once.
 
-So this spec splits the work by blast radius. A change that affects one host is automated with the panic button's guard rails (design 01). A change that affects the whole domain is a printed checklist.
+So this spec splits the work by blast radius. A change that affects one host is automated with the panic button's guard rails (design 01), in the Harden phase after the first-minute lockdown. A change that affects the whole domain is a printed checklist.
 
 ## 2. Rules that shape it
 

@@ -8,7 +8,7 @@
 
 ## Why this exists
 
-In a live competition (or a real incident) you do not have time to remember 200 hardening steps per host across a mix of Ubuntu, Fedora, Oracle Linux, Windows Server, AD (Active Directory), and network appliances. You need:
+In a live competition (or a real incident) you do not have time to remember 200 hardening steps per host across a mix of Debian, Ubuntu, RHEL-family Linux, Windows Server, AD (Active Directory), and network appliances. You need:
 
 1. **A strategy that is the same everywhere** — the same handful of invariants applied to every OS, so you reason once and execute many.
 2. **A tool that applies it fast and can undo it** — safe to run twice, checks before it changes anything, and backs up first, so you can run it under pressure without breaking a scored service.
@@ -16,11 +16,12 @@ In a live competition (or a real incident) you do not have time to remember 200 
 
 Labyrinth is that strategy plus that tool.
 
-## The core strategy — *Lock out → Observe → Deceive → Sustain*
+## The core strategy — *Lock out → Harden → Observe → Deceive → Sustain*
 
 | Phase | Goal | In one line |
 |---|---|---|
-| **Lock out** (`lockout`) | Take back trust | Assume the attacker is already in: reset default and known admin credentials, end intruder sessions, sweep for footholds, default-deny the firewall. |
+| **Lock out** (`lockout`) | Take back trust | Assume the attacker is already in: reset default and known admin credentials, end intruder sessions, default-deny the firewall. |
+| **Harden** (`harden`) | Shrink the surface | Behind the lockdown: install the team's tools, take restore points, sweep for footholds, verify core files against the official packages, patch named packages, cut unneeded services, then reopen outbound. |
 | **Observe** (`observe`) | See everything | High-signal logging to a central SIEM (Security Information and Event Management system); watch logins, files, and process starts. |
 | **Deceive** (`deceive`) | Tax the attacker | Traps, canaries, honey-accounts, tarpits — every non-service touch is a tripwire. |
 | **Sustain** (`sustain`) | Keep services scoring | Keep the scored services healthy; patch and roll back cleanly; hold the line. |
@@ -37,7 +38,7 @@ The detailed designs for each part of the tool live in [`docs/design/`](docs/des
 
 A heterogeneous, contested network of the kind CCDC events use:
 
-- more than one Linux family (Debian and RHEL, Red Hat Enterprise Linux);
+- more than one Linux family (Debian and Ubuntu, and the RHEL family, Red Hat Enterprise Linux and its relatives);
 - Windows Server with Active Directory;
 - Windows and Linux workstations;
 - a SIEM;
@@ -85,7 +86,7 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md): one issue, one person, one branch, one
 
 ## Status
 
-Groundwork stage. The design specs are the blueprint the code is built against, and [`docs/Roadmap.md`](docs/Roadmap.md) gives the order they are built in. The core is built for Linux and Windows: logging, the run manifest, the safety gates, the revert timer (which undoes a run unless someone keeps it), scoring-style probes, and the main program's plan, apply, keep, rollback, runs and probe commands (docs/Conventions.md, section 3.1). The groundwork modules need is built too: platform facts, the firewall adapter, quarantine, approval items and the shipped profiles. It is tested on CI, but not yet in a lab. The guard checks every script for outside calls and blanket actions. No hardening module exists yet, and remote mode (driving many hosts from one control node) is not built.
+Groundwork stage. The design specs are the blueprint the code is built against, and [`docs/Roadmap.md`](docs/Roadmap.md) gives the order they are built in. The core is built for Linux and Windows: logging, the run manifest, the safety gates, the revert timer (which undoes a run unless someone keeps it), scoring-style probes, and the main program's plan, apply, keep, rollback, runs and probe commands (docs/Conventions.md, section 3.1). The groundwork modules need is built too: platform facts, the firewall adapter, quarantine, approval items and the shipped profiles. It is tested on CI, but not yet in a lab. The guard checks every script for outside calls and blanket actions. No hardening module exists yet, and remote mode (driving many hosts from one control node) is not built. The next piece of work is one command per host: `apply` prints a compact plan and carries it out, with an approval queue and short output. It is specified, not built ([`docs/Roadmap.md`](docs/Roadmap.md)).
 
 
 > [!IMPORTANT]
@@ -96,7 +97,7 @@ Labyrinth is a team-written tool under the national CCDC rules, so it:
 - is published at least three months before use;
 - is declared to officials and frozen for each event;
 - is shared with every competing team;
-- uses no outside resources other than DNS (the Domain Name System);
+- uses no cloud services or other outside processing, and after the first-minute lockdown downloads only public software and public data, with a fallback to pasting files in (DNS, the Domain Name System, lookups aside);
 - never deliberately breaks expected functionality
 
 (National Collegiate Cyber Defense Competition [NCCDC], 2025, Rules 5.6.1–5.6.5). Strategy and event-specific values live in the team's private repository.

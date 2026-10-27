@@ -1,6 +1,6 @@
 # 17. Persistence Sweep
 
-Phase: 🟥 Lock out · Priority: P0
+Phase: 🟧 Harden · Priority: P0
 
 ## 1. Goal
 
@@ -40,7 +40,7 @@ Each item found is checked three ways:
 | Class | Which items | What happens |
 |---|---|---|
 | **Known good** | Owned by a package and unmodified, or on the profile's known-good list | Left alone; baselined (design 04) |
-| **High confidence** | Not owned by a package, **and** nothing scored depends on it, **and** at least one strong sign | Quarantined automatically in the first-minute bundle (design 01, section 6). Tier 2, with probes and a revert timer. |
+| **High confidence** | Not owned by a package, **and** nothing scored depends on it, **and** at least one strong sign | Quarantined automatically in the Harden phase, right behind the first-minute lockdown (design 01, section 6). Tier 2, with probes and a revert timer. |
 | **Unexplained** | Any other item not owned by a package, a package file that fails verification, or an item belonging to a protected account | Listed in the plan with the reason. A person approves each item, or a whole category on one host; Labyrinth then quarantines them (Tier 3, design 01). |
 | **Scored-app content** | Files inside a scored app's own folders that look like web shells | Listed with the reason. A person confirms each one, because a false positive takes the site down. Labyrinth then quarantines it. |
 
@@ -63,7 +63,7 @@ flowchart TD
     PKG -->|no| DEP{"Does a scored<br/>service depend on it?"}
     DEP -->|yes| APP["Unexplained:<br/>a person approves"]
     DEP -->|no| SIG{"Strong sign<br/>of attack?"}
-    SIG -->|yes| AUTO["High confidence:<br/>quarantined in the first minute"]
+    SIG -->|yes| AUTO["High confidence:<br/>quarantined in the Harden phase"]
     SIG -->|no| APP
     APP -->|approved| Q["Labyrinth quarantines it"]
     AUTO --> EV[("Quarantine area:<br/>kept as evidence")]
@@ -129,7 +129,7 @@ Watching tools often abused for persistence, and blocking one on a single Window
 
 ## 7. When it runs
 
-- **First minute:** the high-confidence class runs inside the first-minute bundle, right after sessions are ended (design 01, section 6).
+- **Early:** the high-confidence class runs first in the Harden phase, right after the first-minute bundle has closed the network (design 01, section 6).
 - **Right after the bundle:** the full list of unexplained items is shown for approval.
 - **At every checkpoint** (design 13): the sweep runs again in report mode. After the baseline is sealed (design 04, section 6), any new persistence item is a high-ranked integrity finding.
 

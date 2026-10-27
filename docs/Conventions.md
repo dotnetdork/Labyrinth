@@ -10,7 +10,7 @@ These conventions turn the design specs into code that every module writes the s
 | Windows | Windows PowerShell | 5.1 | PowerShell 7-only syntax: `??`, `?.`, ternary `a ? b : c`, `&&`/`||` between commands, `ForEach-Object -Parallel`, `Clean {}` blocks |
 | Appliances | none | — | Any automation that writes to an appliance (design 16) |
 
-Team-written tools must not use resources outside the competition environment, apart from simple DNS lookups (National Collegiate Cyber Defense Competition [NCCDC], 2025, Rule 5.6.4). The rule's own example is cloud services and cloud processing, so Labyrinth never sends data to, or has anything processed by, an outside service. Installing public software is different: the `packages` module, and only it, installs the profile's packages after the first-minute lockdown, from the host's configured repositories, an event mirror or proxy, or a public download pinned by SHA-256 in the release (design 20). If a module needs a tool the host still lacks, it uses its fallback or reports exit code 20 (blocked) with a clear message.
+Team-written tools must not use resources outside the competition environment, apart from simple DNS lookups (National Collegiate Cyber Defense Competition [NCCDC], 2025, Rule 5.6.4). The rule's own example is cloud services and cloud processing, so Labyrinth never sends data to, or has anything processed by, an outside service. Downloading and installing public software is different: after the first-minute lockdown, the `packages` module and the core download helper, and only they, may fetch public software and public data from the host's configured repositories, an event mirror or proxy, or a release pinned by SHA-256 (design 20). Pasting a file in by hand is the fallback when none of those can be reached. Reputation and enrichment services, private sources and full upgrades are never used. If a module needs a tool the host still lacks, it uses its fallback or reports exit code 20 (blocked) with a clear message.
 
 ## 2. Files and data formats
 
@@ -41,7 +41,7 @@ Configuration is **data, never code**. It is never `source`d in bash or dot-sour
 
 | File | Format | Holds |
 |---|---|---|
-| `event.conf` | `KEY=value`, one per line | Single values: SIEM address, revert-timer minutes, ring size, package proxy and mirror. Planned: `BACKUP_PEER` (design 14, section 5), and `ALLOW_SERVICE_REPLACE` and `ALLOW_CONTAINERS`, each `no` or `yes:<reference>` naming the inject or local rule that allows it (design 22, section 3) |
+| `event.conf` | `KEY=value`, one per line | Single values: SIEM address, revert-timer minutes, ring size, package proxy and mirror. Planned: `BACKUP_PEER` (design 14, section 5); `ALLOW_SERVICE_REPLACE` and `ALLOW_CONTAINERS`, each `yes:<reference>` naming the inject or local rule that allows it, and off when unset (design 22, section 3); `AUTO_APPLY=yes` (section 3.3); and `SPLUNK_UF_VERSION`, `SPLUNK_UF_SHA256_LINUX` and `SPLUNK_UF_SHA256_WINDOWS` for the pinned forwarder download (design 10, section 4) |
 | `protected-accounts` | `account class` per line, optional `# reason`; class is `official`, `scoring`, `employee`, `operator`, `breakglass`, `service` or `builtin`, and (planned) `scored-admin`, an admin account a scoring check logs in with, rotated with a change list (design 05, section 2.4) | The protected set (design 01, section 4); the class decides what Labyrinth may do to the account |
 | `scoring-allowlist` | one address or CIDR per line | Scoring engine sources, applied before any deny rule. Optional for the runner; the firewall adapter still needs it until it checks for allows from any source (planned, design 19, section 5) |
 | `never-ban` | one address or CIDR per line | Addresses that bans must never touch (design 12) |
@@ -105,11 +105,13 @@ labyrinth <command> [<phase> | <run>] [options]
 | `keep [<run>]` | Keep a run's changes: cancel its revert timer, then record the keep. Without `<run>`, it takes the one run whose timer is armed; with none armed there is nothing to keep (`0`); if several are armed, it lists them and keeps nothing (`40`) |
 | `rollback <run>` | Undo what a run applied, newest module first, except the modules kept once they verified (`keep_on_verify`, below); `--all` undoes those too. The revert timer runs exactly `rollback <run>`. `<run>` is always needed: without it, the runs are listed (`40`). When it undid anything, it writes a notice to every terminal or session logged in on the host (`wall` on Linux, `msg` on Windows; best effort), so the team learns of a rollback no one was watching |
 | `runs` | List this host's runs, oldest first: ID, phase, start time (UTC) and state, which is `armed` (with the time it rolls back; on Linux, `armed: timer lost` when systemd no longer has the timer, because its unit files are missing or broken), `kept`, `rolled back`, `rolled back with errors`, or `not kept, no timer`. Changes nothing; needs root or Administrator (`20`) |
+| `queue` | Planned (section 3.3). List the approval items a run with `AUTO_APPLY=yes` queued instead of asking. Changes nothing |
+| `approve <ids>` | Planned (section 3.3). Apply chosen queued items in a new run, with the same backups, manifest, timer and probes |
 | `probe` | Probe every scored service once; exit `30` if one fails. Changes nothing |
 | `help [<topic>]` | Help for every command, or for one; also `-h` and `--help` (`-Help`). The topic `basics` explains the ideas in plain words, and a module ID prints that module's help page (design 00, section 4) |
 | `version` | Print the version, the runner, and the release hash (`Release: <sha256>`, or `not checked`); also `-V` and `--version` (`-Version`) |
 
-`<phase>` is `lockout`, `observe`, `deceive` or `sustain`. `<run>` is a run ID (`20261002T140301Z-4f2a`) or its last four characters (`4f2a`). A run that does not exist, or four characters that match more than one run, is an error (`40`) that points to `runs`. Commands, phases, option names and run IDs ignore case; other values do not.
+`<phase>` is `lockout`, `observe`, `deceive` or `sustain`. The Harden phase, `harden`, sits between `lockout` and `observe` and is specified and planned (Roadmap); until the runner has it, its modules run in the phases they are in now (section 3.3). `<run>` is a run ID (`20261002T140301Z-4f2a`) or its last four characters (`4f2a`). A run that does not exist, or four characters that match more than one run, is an error (`40`) that points to `runs`. Commands, phases, option names and run IDs ignore case; other values do not.
 
 #### Options
 
@@ -123,6 +125,7 @@ labyrinth <command> [<phase> | <run>] [options]
 | `--break-glass` | `-BreakGlass` | NAME: answers the break-glass prompt without typing | `apply` |
 | `--confirm-group` | `-ConfirmGroup` | GROUP: answers the confirmation prompt without typing | `apply` |
 | `--approve` | `-Approve` | LIST: approves items without the approval prompt (Approval items, below) | `apply` |
+| `--detail` | `-Detail` | none: planned (section 3.3); shows the full Found/Fix/More block for every module. Not `--verbose`, because `-Verbose` is a PowerShell common parameter, which the runner refuses | `plan`, `apply` |
 | `--all` | `-All` | none: also undo the modules kept once they verified | `rollback` |
 | `-h`, `-?`, `--help` | `-h`, `-Help` | none | all |
 | `-V`, `--version` | `-V`, `-Version` | none | all |
@@ -278,6 +281,20 @@ Every apply, keep and rollback writes `<state>/runs/<run>/output.log`, readable 
 - A run that stopped, or had a `FAIL` or `ERROR`, is marked with a `problems` file, and `runs` lists the logs of those runs.
 - A log that cannot be written never stops a run.
 
+### 3.3 Unattended runs and short output (specified, planned)
+
+The runner does not do this yet; it is specified here and scheduled in the Roadmap. Every command form above keeps working, and the compatibility suite is never edited to make room for it.
+
+- **One command per host.** `apply` already prints its plan and carries it out; with `AUTO_APPLY` there is no separate plan step to remember. `plan` stays as the read-only command.
+- **`AUTO_APPLY=yes` in `event.conf`** (unset means today's behavior). When on:
+  - The host's group comes from the `hosts` file, matched on the host's name and address. A mismatch or an ambiguous match blocks (`20`). `--confirm-group` is still accepted but no longer needed.
+  - The break-glass account is the `breakglass`-class account from the protected set that exists on the host; with none, or more than one, the run blocks (`20`). Labyrinth checks for a console session itself and warns if it finds none, instead of prompting.
+  - **It never prompts in the middle of a run.** An approval item that no pre-approval rule covers goes to a queue under the state path. `labyrinth queue` lists the queue, and `labyrinth approve <ids>` applies the chosen items in a new run with the same backups, manifest, revert timer and probes.
+  - **Always queued, whatever the rules say:** deleting an account; changing a scored service that has no probe; replacing or containerizing a service (design 22); any Tier 3 item.
+  - **Kept automatically.** Every module is kept once its verify and probes pass, except firewall and SSH changes. Those stay under the revert timer until one `keep` per host run.
+- **Short output.** Each module gets one line: `OK`, `CHANGED`, `ROLLED BACK`, `QUEUED`, `BLOCKED` or `FAIL`, then its title and ID. The full Found/Fix/More block is printed only for a failure or a block. Every detail is in the run log. `--detail` shows the full block for every module.
+- **The Harden phase.** Five phases in order: Lock out, Harden, Observe, Deceive, Sustain. Lock out is the first-minute bundle (designs 01, 05, 16). Harden holds the install (20), restore points (14), the persistence sweep (17), the CVE assessment and mitigations (21), patching and service reduction (15), the service packs (18), Windows and AD hardening (11), service replacement and containers (22) and the official-package check (04), and then reopens outbound.
+
 ## 4. Bash style
 
 - Start every script with `#!/usr/bin/env bash` and `set -Eeuo pipefail`. Handle expected non-zero results explicitly (`if cmd; then`), never by turning `-e` off for a whole script.
@@ -312,7 +329,7 @@ Every log line is one JSON object on one line (JSON lines), written through the 
 | `entry` | `apply` | Entry point |
 | `level` | `info` | `debug`, `info`, `warn`, `error` |
 | `event` | `rule_added` | Short machine-readable name |
-| `msg` | `allowed tcp/443 from scoring allowlist` | Human-readable |
+| `msg` | `allowed tcp/443 from any source` | Human-readable |
 
 Logs are written to `<logs>/<category>/<YYYYMMDD>.jsonl` (UTC date); warnings and errors are also printed to standard error. Plan mode writes no log files. Extra fields may follow. **Never log a secret:** passwords, keys, the event seed and tokens are never passed to the logger, not even masked. A module makes a new password with `lab_secret_new` / `Get-LabRandomSecret` and hands it over only with `lab_secret_show` / `Show-LabSecret`, which write to the terminal, never to standard output (design 05, section 2.3). Log categories are those in design 00, section 7.
 

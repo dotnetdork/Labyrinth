@@ -6,7 +6,7 @@ Phase: 🟩 Sustain (cross-phase `report/`) · Priority: P1
 
 A thorough incident report that correctly identifies and addresses a successful Red Team attack may reduce the Red Team penalty for that event, and incomplete or vague reports earn no partial points (National Collegiate Cyber Defense Competition [NCCDC], 2025, Rule 9.4).
 
-Hand-written reports are slow and tend to miss required fields. The aim is for the tools to assemble every fact they can observe, so a human only adds judgment and the final sentence.
+Incident reports are scored at most events (*Background*), and a report earns credit only when it rests on real evidence; padding a report with guesses or filler does not help. Hand-written reports are slow and tend to miss required fields. The aim is for the tools to assemble every fact they can observe, so a human only adds judgment and the final sentence.
 
 ## 2. Rules that shape it
 
@@ -61,7 +61,6 @@ flowchart LR
 | Damage done | Integrity findings, probe failures, deleted or changed files | Drafted, human edits |
 | What was affected | Affected hosts, services and accounts | Drafted, human edits |
 | Evidence (log excerpts, hashes) | Collected files; quarantined items with their original path and SHA-256 (design 17); saved evidence of deleted accounts (design 05, section 6.4); ended sessions (design 01, section 6.2) | Yes |
-
 | Impact on scored services | Probe results | Yes |
 | Actions taken and time | Run manifest (design 00) | Yes |
 | Remediation and prevention (the remediation plan) | Human | No |

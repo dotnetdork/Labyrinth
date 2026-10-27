@@ -24,6 +24,7 @@ Today the scoring-style probes (design 01, section 9) run only when a module fin
 
 - **Where it runs:** on the control node, as a scheduled job.
 - **What it probes:** every service in the run-time service list, using the same probes as the panic button (design 01, section 9). Scoring accounts are never used to log in (design 01, section 4).
+- **Only the team's own services.** Probes, from the control node or from a workstation, go only to the team's own services in the run-time service list. Labyrinth never probes or scans another team's systems or anything outside the team's own ranges (NCCDC, 2025, Rule 4.10).
 - **How often:** an interval set in configuration. The timing belongs to the team's own plan, not to this public document.
 - **Where results go:** the `health` log category (design 00, section 7), forwarded to the SIEM (design 10), and a one-line summary per host in the status feed (design 06).
 

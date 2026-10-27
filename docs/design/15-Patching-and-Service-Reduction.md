@@ -1,6 +1,6 @@
 # 15. Patching and Service Reduction
 
-Phase: 🟥 Lock out · Priority: P1
+Phase: 🟧 Harden · Priority: P1
 
 ## 1. Goal
 
@@ -16,7 +16,7 @@ Fewer listeners and fewer known-exploited packages (Blueprint §3.6), without br
 | Tools must not deliberately break expected functionality (National Collegiate Cyber Defense Competition [NCCDC], 2025, Rule 5.6.5). | Services are disabled only from a per-profile candidate list; nothing scored is on it. No blind full upgrade. |
 | Anything that interferes with the scoring engine is the team's responsibility (NCCDC, 2025, Rule 4.11). | Every change is followed by the scoring-style probes. |
 | Scored services may not be migrated or containerized unless an inject or the local competition rules allow it (NCCDC, 2025, Rule 4.14). | Patching updates a package in place. No major-version upgrade, no replacement service; a rebuild, where allowed, is design 22. |
-| Team tools may not use outside resources apart from DNS; the example is cloud services and cloud processing (NCCDC, 2025, Rule 5.6.4). | Updates come from the host's own package manager and its public repositories, or an event mirror, never a private source (design 20). |
+| Team tools may not use outside resources apart from DNS; the example is cloud services and cloud processing (NCCDC, 2025, Rule 5.6.4). | Updates come from the host's own package manager and its public repositories, or an event mirror, never a private source or a full upgrade (design 20). |
 
 ## 3. Service reduction
 
@@ -43,7 +43,7 @@ Services are disabled, never removed. Rollback starts them again with their prev
 
 ## 4. Patching
 
-**Finding and ranking** are in design 21. It lists the security updates available now, the scored web apps and plugins with their versions, and the Windows updates missing, and ranks each flaw: domain controller flaws first, then flaws in scored services, then exposed and known-exploited ones. This section covers closing a finding by patching.
+**Finding and ranking** are in design 21, whose CVE assessment is report only: it patches nothing. It lists the security updates available now, the scored web apps and plugins with their versions, and the Windows updates missing, and ranks each flaw: domain controller flaws first, then flaws in scored services, then exposed and known-exploited ones. This section covers closing a finding by patching. Each update is an approval item that updates only the named packages, never the whole system.
 
 **Scored services are patched, not turned off.** A flaw in a scored service is never closed by stopping or disabling the service (design 21, section 5.1). Where the mitigation catalog has a setting that closes the flaw with the service still running, that goes in first. Patching then replaces the flawed version, and the tracker records the finding as `patched` once a later check confirms it.
 
@@ -65,18 +65,18 @@ flowchart LR
     RUN --> VF{"Probes pass?"}
     VF -->|yes| OK(["Record in the run manifest"])
     VF -->|no| RS["Restore from<br/>the restore point"]
-    classDef lockout fill:#fde8e8,stroke:#c0392b,color:#4a1111
+    classDef harden fill:#fdeedc,stroke:#c2410c,color:#4a1d06
     classDef human fill:#fff4d6,stroke:#b7791f,color:#4a3108
     classDef sustain fill:#e3f6e8,stroke:#15803d,color:#0f3d20
     classDef ok fill:#e3f6e8,stroke:#15803d,color:#0f3d20
-    class CK,RK,VF lockout
+    class CK,RK,VF harden
     class PK,RS human
-    class RUN lockout
+    class RUN harden
     class BK sustain
     class OK ok
 ```
 
-*Figure: the tracker finds and ranks the security updates (design 21), a person approves each package or a pre-approval rule covers it, and Labyrinth takes a restore point, upgrades that one package and checks the result. Red is lock-out work done by Labyrinth, amber is a person's decision and green is the restore point and the recorded finish.*
+*Figure: the tracker finds and ranks the security updates (design 21), a person approves each package or a pre-approval rule covers it, and Labyrinth takes a restore point, upgrades that one package and checks the result. Orange is Harden work done by Labyrinth, amber is a person's decision and green is the restore point and the recorded finish.*
 
 ## 5. Pinned questions
 

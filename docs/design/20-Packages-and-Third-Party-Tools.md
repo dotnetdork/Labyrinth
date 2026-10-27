@@ -1,34 +1,34 @@
 # 20. Packages and Third-Party Tools
 
-Phase: All · Priority: P0
+Phase: 🟧 Harden (used by every phase) · Priority: P0
 
 ## 1. Goal
 
-Get the tools the team needs onto each host in the minutes after the first-minute lockdown (design 01, section 6.1), from public sources only, verified, recorded and safe to undo. Labyrinth installs what the profile lists; nobody types package commands under pressure.
+Get the tools the team needs onto each host after the first-minute lockdown (design 01, section 6.1), in the Harden phase, from public sources only, verified, recorded and safe to undo. Labyrinth downloads first; pasting a file in by hand is the fallback when no source can be reached. Labyrinth installs what the profile lists; nobody types package commands under pressure.
 
 ## 2. Rules that shape it
 
 | Rule | Effect |
 |---|---|
-| Team-written tools that use resources outside the competition environment, other than simple DNS lookups, are prohibited; the rule's own example is tools that use cloud services or cloud processing (National Collegiate Cyber Defense Competition [NCCDC], 2025, Rule 5.6.4). | Labyrinth never sends data to, or has anything processed by, an outside service. Installing public software through the host's own package manager is not cloud processing. The install feature is named in the tool's declaration (Rule 5.6.2), so officials approve or reject it before the event. |
+| Team-written tools that use resources outside the competition environment, other than simple DNS lookups, are prohibited; the rule's own example is tools that use cloud services or cloud processing (National Collegiate Cyber Defense Competition [NCCDC], 2025, Rule 5.6.4). | Labyrinth never sends data to, or has anything processed by, an outside service. Downloading and installing public software is not cloud processing, but sending data out for matching or enrichment is, so Labyrinth does neither. The install feature is named in the tool's declaration (Rule 5.6.2), so officials approve or reject it before the event. |
 | Free public resources that every team could reach are allowed, never one behind a fee, membership or contract; private staging areas for patches or software are prohibited (NCCDC, 2025, Rules 5.1, 5.2). | Sources are only the host's configured repositories, a mirror or proxy the event provides, and the public release pages pinned in the catalog (section 6). Never a team-controlled server, cloud drive or private repository. |
 | Team tools are declared and frozen (NCCDC, 2025, Rule 5.6.2). | Every package name is in the release, and every downloaded file is pinned by version and SHA-256 in the release, so what runs at the event is what officials approved. |
 | Tools must not deliberately break expected functionality (NCCDC, 2025, Rule 5.6.5). | Only listed packages, never a full upgrade, and an install that would remove or replace a package is refused (section 4). |
-| Scored services may not be migrated or containerized unless an inject or the local competition rules allow it (NCCDC, 2025, Rule 4.14). | No container runtime is installed unless design 22's `ALLOW_CONTAINERS` option is on, and then only Podman or Docker from the host's own repositories. Nothing here moves a scored service. |
+| Scored services may not be migrated or containerized unless an inject or the local competition rules allow it (NCCDC, 2025, Rule 4.14). | No container runtime is installed unless design 22's `ALLOW_CONTAINERS` option is on, and then only Podman (RHEL family) or Docker from the distribution repositories (Debian and Ubuntu). Nothing here moves a scored service. |
 | Events differ on what the hosts can reach: some provide a web proxy that includes the team's declared repository, some let hosts reach the internet directly, and some allow no outside access at all (*Background*; Blueprint §5). | The proxy address is run-time configuration. When no source is reachable, installs are skipped and the lockdown still stands (section 4). |
 
 ## 3. Sources, in order
 
-1. **Vendored in the release.** A tool whose license allows redistribution is copied into `vendor/<tool>/` with its license and a NOTICE file naming its author, version and source (design 08). It needs no network and is frozen with the release.
+1. **Vendored in the release.** A tool whose license allows redistribution may be copied into `vendor/<tool>/` with its license and a NOTICE file naming its author, version and source (design 08). It needs no network and is frozen with the release. A tool that the host's repositories carry (endlessh, for example) is installed from them instead, not vendored.
 2. **The host's own package manager** (`apt-get` on the Debian family, `dnf` on the RHEL family), from the repositories the host is already configured with.
 3. **An event mirror or proxy.** Run-time `event.conf` keys `PROXY` (for example `http://proxy.example:3128`) and `MIRROR`. Labyrinth passes the proxy to the package manager for that command only and never writes it into the host's configuration.
-4. **A pinned public download**, only for a tool whose license forbids redistribution (for example the Sysinternals tools). The catalog holds the URL, the version and the SHA-256. The file goes to Labyrinth's temporary path, is checked against the hash before use, and is discarded on a mismatch.
+4. **A pinned public download**, for a tool whose license forbids redistribution (for example the Sysinternals tools) or that is too large or changes too often to vendor (for example Trivy). The catalog holds the URL, the version and the SHA-256. The file goes to Labyrinth's temporary path, is checked against the hash before use, and is discarded on a mismatch.
 
-Labyrinth adds no repository, signing key or package source, with one exception. On a RHEL-family host whose profile asks for EPEL (Extra Packages for Enterprise Linux), and only when EPEL can be reached, it installs the `epel-release` package from the host's own repositories, which adds the EPEL repository and its key. Rocky Linux and AlmaLinux carry that package; where the host's repositories do not, EPEL is skipped. It is an optional extra, recorded like any install and reported as skipped when it cannot be reached. Otherwise a tool that the host's repositories lack (fail2ban on a RHEL-family host without EPEL, for example) is skipped, and the module that wanted it uses its fallback (design 12, section 6).
+Offline paste is the fallback: where no source can be reached, the operator carries the file onto the host and Labyrinth checks it against the same SHA-256. Labyrinth adds no repository, signing key or package source, with one exception. On a RHEL-family host whose profile asks for EPEL (Extra Packages for Enterprise Linux), and only when EPEL can be reached, it installs the `epel-release` package from the host's own repositories, which adds the EPEL repository and its key. Rocky Linux and AlmaLinux carry that package; where the host's repositories do not, EPEL is skipped. It is an optional extra, recorded like any install and reported as skipped when it cannot be reached. Otherwise a tool that the host's repositories lack (fail2ban on a RHEL-family host without EPEL, for example) is skipped, and the module that wanted it uses its fallback (design 12, section 6).
 
 ## 4. How an install runs
 
-The `packages` module runs in the lockout phase, straight after the first-minute bundle (design 01, section 6). It is Tier 2: automatic for the profile's list, under the revert timer, with probes before and after.
+The `packages` module runs in the Harden phase, as its first module, straight after the first-minute lockdown (design 01, section 6). The first-minute bundle itself installs nothing: that is for speed and to lock down before outbound opens, not because a rule forbids it. It is Tier 2: automatic for the profile's list, under the revert timer, with probes before and after.
 
 - **check** lists the profile's packages that are missing and says which source would supply each one. It changes nothing.
 - **plan** prints the exact commands.
@@ -44,7 +44,7 @@ The `packages` module runs in the lockout phase, straight after the first-minute
 
 Code that calls a package manager or downloads a file carries a guard allow comment naming this design (Conventions, section 8). Only the `packages` module and the core download helper may do so.
 
-**Windows.** Windows Server has no package manager that Labyrinth can rely on. Windows tools are vendored (PowerShell modules are copied into Labyrinth's tool path and imported from there, never through `Install-Module`), or fetched as pinned downloads (section 3). Microsoft Defender signature updates come from Microsoft through the host's own update client.
+**Windows.** Windows Server has no package manager that Labyrinth can rely on. Windows tools are vendored, or fetched as pinned downloads (section 3). PowerShell modules may be installed from the PowerShell Gallery at pinned versions with `Install-Module`. On Windows PowerShell 5.1 the first `Install-Module` needs the NuGet provider bootstrapped and TLS 1.2 enabled in the session; Labyrinth does both for that session only, and the module's version and hash are recorded in the manifest. Microsoft Defender signature updates come from Microsoft through the host's own update client.
 
 ## 5. Patching
 
@@ -64,7 +64,9 @@ Licenses were read from each project's repository (*Verified*), except where mar
 | debsums | Checks installed files against the Debian family's package hashes (`rpm -Va` does this natively on the RHEL family) | 04 | GPL-2.0 (*Background*) |
 | rkhunter, chkrootkit | Rootkit and known-backdoor checks; findings go to a person | 17 | GPL-2.0 (*Background*) |
 | unhide | Finds processes and ports hidden from the usual tools | 17 | GPL-3.0 (*Background*) |
-| Lynis | Read-only hardening audit; its findings feed the service packs and checklists | 18 | GPL-3.0 |
+| UFW | The firewall front end on Debian and Ubuntu, installed on a Debian host that has no front end (design 19, section 5). The RHEL family uses firewalld, which ships with it | 19 | GPL-3.0 (*Background*) |
+| endlessh | SSH tarpit for the deception layer, from the distribution repositories (EPEL on the RHEL family), not vendored | 09 | Unlicense (*Background*) |
+| Lynis | Read-only hardening audit; its findings feed the service packs and checklists and the vulnerability assessment. From the distribution repositories (EPEL on the RHEL family) | 18, 21 | GPL-3.0 |
 | ModSecurity with the OWASP Core Rule Set | Web application firewall inside the scored Apache or nginx, never in front of it. Detection-only first; blocking only after a person approves and the probes pass | 18 | Apache-2.0 (rule set) |
 | YARA | Scans web roots and temporary folders for web shells and known malware with vendored rules | 17 | BSD-3-Clause |
 | nmap | Service and version scan of the team's own hosts, from the control node, with no scripts | 21 | Nmap Public Source License (*Background*) |
@@ -91,13 +93,12 @@ Licenses were read from each project's repository (*Verified*), except where mar
 | Sysmon | Process, network and file events on Windows | 10 | The Sysinternals license does not allow redistribution (*Provisional*) |
 | Autoruns (`autorunsc`) | Every Windows autostart location, for the persistence sweep | 17 | Same |
 | PingCastle | Read-only Active Directory audit on the domain controller | 11 | Its license is the Non-Profit Open Software License 3.0 alongside a proprietary one, so it is fetched from its publisher, not copied |
-| Trivy | Finds flawed libraries bundled inside apps, which no package manager tracks | 21 | Apache-2.0, so it could be vendored, but its binary is large. Its vulnerability database changes daily and cannot be pinned by hash; whether it may be fetched at the event is a pinned question (design 21, section 6) |
+| Trivy | Finds flawed libraries bundled inside apps, which no package manager tracks, and matches installed packages to known flaws | 21 | Apache-2.0, so it could be vendored, but its binary is large. The release is pinned by version and SHA-256. It downloads its public vulnerability database, which cannot be pinned by hash; that is allowed after the lockdown (design 21, section 6) |
 
 **Considered and not adopted.**
 
 | Tool | Why not |
 |---|---|
-| UFW | Installing it on a host that already runs firewalld or nftables makes two firewalls, and the adapter then refuses to act (design 19, section 5). Labyrinth drives the native firewall directly. |
 | Velociraptor, Wazuh | Each needs its own server and an agent on every host, and duplicates the team's Splunk. Worth a later look for hunting, not for the first minutes. |
 | ansible-lockdown CIS roles | Need Ansible, which design 00 did not choose, and apply whole benchmarks at once. Mined for settings instead (design 08). |
 | SwiftOnSecurity sysmon-config | No license file, so it cannot be copied into a public repository. sysmon-modular is used instead. |
@@ -110,7 +111,8 @@ Licenses were read from each project's repository (*Verified*), except where mar
 
 - Run a full upgrade or a distribution upgrade.
 - Add a repository, a signing key or a package source, apart from EPEL through `epel-release` (section 3).
-- Install a container runtime.
+- Install a container runtime, except under design 22's `ALLOW_CONTAINERS` option.
+- Install a second firewall front end on a host that already has one (UFW on a host running firewalld, for example).
 - Remove, downgrade or replace a package.
 - Use a private server, cloud drive or private repository as a source.
 - Run a downloaded file whose SHA-256 does not match the release.
@@ -123,6 +125,7 @@ Licenses were read from each project's repository (*Verified*), except where mar
 - An install whose simulation would remove a package is refused (`20`).
 - With the package manager's lock held, the module waits, then refuses (`20`) without breaking the lock.
 - A pinned download with a wrong SHA-256 is discarded and not run.
+- On a Windows PowerShell 5.1 lab host, a pinned PowerShell Gallery module installs after the NuGet provider is bootstrapped and TLS 1.2 is enabled for the session, and those session settings are not left behind.
 - `rollback` stops and disables the services the install brought, and the packages stay installed.
 - With the proxy set in `event.conf`, the install goes through it, and the host's own package configuration is unchanged afterwards.
 - On a RHEL-family lab host whose profile asks for EPEL, `epel-release` is installed from the host's own repositories and recorded; with EPEL unreachable, or `epel-release` not offered, EPEL is reported as skipped, nothing else is added, and the module exits `0`.

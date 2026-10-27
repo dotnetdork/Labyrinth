@@ -9,20 +9,21 @@ This page lists the lab machines, how to build them, and what has been tested on
 
 ## 1. Machines
 
-Build each machine from the vendor's public install media, with the default minimal install unless the row says otherwise. Use a private virtual network with no route to the internet. Labyrinth must work without one (NCCDC, 2025, Rule 5.6.4).
+Build each machine from the vendor's public install media, with the default minimal install unless the row says otherwise. Use a private virtual network. Run each test twice where it matters: once with a route to the package mirror and the download sources, and once with none, because Labyrinth falls back to pasting files in by hand when nothing answers (NCCDC, 2025, Rule 5.6.4; design 20).
 
-| Role | Platforms | Used for |
+| Machine | Platform | Used for |
 |---|---|---|
-| Linux server | Ubuntu LTS, Debian stable | Lockout, observe and sustain modules; UFW and nftables |
-| RHEL-family server | Fedora, Rocky Linux or Oracle Linux | The same modules; firewalld; SELinux enforcing |
-| Linux web server | Either Linux family, with nginx or Apache, a PHP app and MySQL or MariaDB | Service packs (design 18), the persistence sweep's web shell tests (design 17), and planted known-exploited flaws such as an old WordPress plugin and a vulnerable `pkexec` (design 21) |
-| Linux mail and DNS | Either Linux family, with Postfix, Dovecot and BIND | Service packs; DNS probes |
-| Domain controller | Windows Server, two versions: the oldest still supported and the newest | Design 11: domain checks, LDAP and Netlogon settings, the domain checklist |
-| Member server | Windows Server, joined to the domain, with IIS | Windows member settings, ring order, logons after default-deny |
-| SIEM | A free Splunk edition, or the SIEM the event is expected to use | Log forwarding and saved searches (design 10) |
+| RHEL-family host | A current RHEL-family release (Rocky Linux or Oracle Linux), with a web stack (nginx or Apache, a PHP app, MariaDB) | Service packs (design 18), the persistence sweep's web shell tests (design 17), firewalld and SELinux enforcing, Podman containers (design 22), and planted known-exploited flaws such as an old WordPress plugin and a vulnerable `pkexec` (design 21) |
+| Ubuntu host | A supported Ubuntu LTS release, with a mail stack (Postfix and Dovecot) | Service packs; UFW; Docker containers from `docker.io` (design 22); mailbox and message-count proofs for service replacement |
+| Debian host | A supported Debian release, with a free Splunk edition | Log forwarding and saved searches (design 10); the forwarder download and checksum check; the Debian lockdown with no firewall front end, where raw nftables holds until UFW takes over (design 19) |
+| Domain controller | A supported Windows Server release | Design 11: domain checks, LDAP and Netlogon settings, the domain checklist |
+| Member server | An older supported Windows Server release, joined to the domain, with SQL Server | Windows member settings, the SQL Server service pack, ring order, logons after default-deny |
+| Router | An open-source router image | Runbook rehearsal (design 16); never automated |
+| Firewall appliance | A free or trial image where the vendor offers one | Runbook rehearsal only (design 16); never automated |
 | Control node | Any Linux host | Remote mode (design 00, section 5); the version scan of the team's own hosts (design 21) |
-| Package mirror | A local mirror or caching proxy for both Linux families, on the lab network | Installs and security updates (designs 15 and 20). Switched off for the tests that need no source |
-| Appliances | Free or trial images where the vendor offers them | Runbook rehearsal only (design 16); never automated |
+| Package mirror | A local mirror or caching proxy for both Linux families, on the lab network | Installs, security updates and the official-package checks (designs 04, 15 and 20). Switched off for the tests that need no source |
+
+Addresses in the lab are placeholders from the documentation ranges (192.0.2.0/24, 198.51.100.0/24, 203.0.113.0/24) and never go into this repository.
 
 A **scoring stand-in** runs the probes from the control node against the scored services, so each test can show that scored services keep passing.
 

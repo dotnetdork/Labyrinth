@@ -6,26 +6,22 @@ Labyrinth is a public, rules-bound hardening and deception tool for CCDC (Colleg
 
 Each rule below says where it comes from. **Rule** items restate the national CCDC rules for team-written tools (National Collegiate Cyber Defense Competition [NCCDC], 2025); breaking one can get the tool rejected or the team penalized. **Design** items are stricter choices made in the specs. They are just as binding here, but they are not the rules' wording, so never cite a rule number for them.
 
-1. **No outside resources at run time.** *Rule 5.6.4:* a team tool must not use resources outside the competition environment, apart from simple DNS lookups; cloud services and cloud processing are prohibited. So no `curl`/`wget`/`Invoke-WebRequest` to the internet, no `git clone`, no reputation or enrichment APIs. Installing public software is not cloud processing, so *Design (01, 20):* only the `packages` module and the core download helper may install, after the first-minute lockdown, from the host's configured repositories, an event mirror or proxy, or a download pinned by SHA-256 in the release. Never a full upgrade, a new repository (apart from EPEL through `epel-release`, design 20), `Install-Module`, or a private source (Rule 5.2). Those lines carry a guard allow comment. Probes that talk to the team's *own* scored services are allowed and are marked for the guard (see `docs/Conventions.md`).
+1. **No cloud services, no private sources.** *Rule 5.6.4:* a team tool must not use resources outside the competition environment, apart from simple DNS lookups; cloud services and cloud processing are prohibited. So no reputation or enrichment APIs, and no `git clone` of a private source. Public software and public data are not cloud processing, so *Design (01, 20):* after the first-minute lockdown, only the `packages` module and the core download helper may download or install them: software and data such as a CVE database from the host's configured repositories, an event mirror or proxy, or a release pinned by SHA-256, with offline paste as the fallback. PowerShell Gallery modules at pinned versions are allowed. Never a full upgrade, a new repository (apart from EPEL through `epel-release`, design 20), cloud processing, or a private source (Rule 5.2). Those lines carry a guard allow comment. Probes that talk to the team's *own* scored services are allowed and are marked for the guard (see `docs/Conventions.md`).
 2. **No secrets or event values in the repository.** *Rules 5.6.1, 5.6.3:* the code is public and its links go to every other team. *Design (00, 03):* no passwords, keys, addresses, hostnames, seeds or per-event values; only `*.example` templates with placeholders. Configuration is supplied at run time.
 3. **No blanket actions.** *Rule 5.6.5:* tools must not deliberately break expected functionality; the rules' examples are setting all user shells to `/bin/false` and indiscriminately terminating all outbound connections. *Design (01, 05, 17):* never disable accounts wholesale, change login shells, stop services outside an explicit candidate list, or reboot. Never delete a file outside Labyrinth's own temporary and state paths: remove it by quarantine (design 17, section 5). The one exception is the Linux revert timer's own two unit files, which Labyrinth wrote (`docs/Conventions.md`, section 3.1). Delete an account only in the account module, for an account a person approved, after a checkpoint shows every scored service passing and its evidence is saved (design 05, section 6.4). Every change works from an explicit list and skips the protected set.
-4. **Plan by default.** *Design (00, 01):* `apply` runs only after the plan is printed, the safety gates pass, and the operator confirms the target group: typed at the prompt, or given with `--confirm-group` in a first-minute run whose profile the team reviewed before the event (design 01, section 6.3).
+4. **Plan by default.** *Design (00, 01):* `apply` runs only after the plan is printed, the safety gates pass, and the target group is confirmed: typed at the prompt, given with `--confirm-group` in a first-minute run whose profile the team reviewed before the event (design 01, section 6.3), or, once automatic apply is built, read from the hosts file when `AUTO_APPLY=yes` (design 00, section 5.1; Conventions, section 3.3).
 5. **Never mislead the scoring engine, and never impede it.** *Rule 9.3:* changing a system to make the scoring engine think a service is up when it is not can bring disqualification or penalties; nothing fakes a service state. *Rules 4.11, 9.3:* anything that interferes with scoring is the team's responsibility and lowers the score. *Design (01, 19):* every scored service is allowed from any source, and any scoring allowlist is added, before any deny rule; a scored port is never filtered by source address. Never change a host name, an address, a scored DNS name or a username.
 6. **Officials get access.** *Rule 4.1:* Operations and White Team must be given access immediately when they ask. *Design (01, 05):* nothing removes the break-glass path.
 7. **Reversible.** *Design (00):* back up before changing; record every change in the run manifest; `rollback` must work from that manifest.
-8. **Confirm, then act.** *Design (00, 01):* an `approval` module changes only the items a person approved, at the prompt or in advance through a pre-approval rule in a category the module allows, with the same backups, manifest and rollback as any change. A `manual-only` module never changes anything.
+8. **Confirm, then act.** *Design (00, 01):* an `approval` module changes only the items a person approved, at the prompt, in advance through a pre-approval rule in a category the module allows, or, under automatic apply, later from the queue with `approve`, with the same backups, manifest and rollback as any change. A `manual-only` module never changes anything.
 
 ## Public boundary
 
-This repository is public. Never add team strategy, schedules, deadlines, event dates, real topology, hostnames, addresses, team member details, or anything from the private planning repository. Generic, reusable defense logic only. Never commit `PRODUCT.md` or any `.impeccable*` file. Before a branch is handed over for merge, have the `verifier` subagent check its diff against this boundary and the hard rules above.
+This repository is public. Public knowledge is fine: published rules, vendor documentation, known CVEs, widely used software. Never add internal or strategic information: team strategy, schedules, deadlines, event dates, team member details, a real event's topology, hostnames, addresses or credentials, or anything from the private planning repository. Generic, reusable defense logic only. Never commit `PRODUCT.md` or any `.impeccable*` file. Before a branch is handed over for merge, have the `verifier` subagent check its diff against this boundary and the hard rules above.
 
 ## Subagents
 
-- `scout`: finding where a module, helper or convention lives, or a rule's wording.
-- `builder`: implementing a module from its spec once the spec is settled, or mirroring a change across `labyrinth.sh` and `labyrinth.ps1` with tests in both suites.
-- `verifier`: checking a module against its spec's acceptance tests, and the boundary check above.
-
-These agents and the project's commands (`/start-issue`, `/new-module`, `/pre-pr`) live in `.claude/`, shared by everyone. Personal rules go in `CLAUDE.local.md` and personal settings in `.claude/settings.local.json`; git ignores both. Decisions go in the specs or in issues, never only in an assistant's memory, so every contributor sees them.
+The `scout`, `builder` and `verifier` agents and the project's commands (`/start-issue`, `/new-module`, `/pre-pr`) live in `.claude/`, shared by everyone. Personal rules go in `CLAUDE.local.md` and personal settings in `.claude/settings.local.json`; git ignores both. Decisions go in the specs or in issues, never only in an assistant's memory, so every contributor sees them.
 
 ## The module contract (design 00)
 
@@ -43,7 +39,7 @@ Each module is a folder `phases/<phase>/modules/<name>/` with `module.yml` and u
 
 ## Platform targets
 
-- **Linux:** bash 4.2 or newer and the tools present on a minimal Ubuntu, Debian, Fedora, RHEL, Oracle Linux or Rocky install. Do not assume `jq`, `python3`, `curl` or `dig`; detect them and degrade gracefully. Firewalls differ: UFW, firewalld or nftables, behind a platform adapter.
+- **Linux:** bash 4.2 or newer and the tools present on a minimal Ubuntu, Debian or RHEL-family (RHEL, Rocky, Oracle Linux, Alma) install. Do not assume `jq`, `python3`, `curl` or `dig`; detect them and degrade gracefully. Firewalls differ: UFW on Debian and Ubuntu, firewalld on the RHEL family, behind a platform adapter (raw nftables only for the first minute on a Debian host with no front end).
 - **Windows:** Windows PowerShell **5.1** (the version on Windows Server). Do not use PowerShell 7-only syntax (`??`, `?.`, ternaries, `&&`/`||` pipeline chains, `-Parallel`).
 - **Appliances:** never automated. Runbooks and templates only (design 16).
 
@@ -63,18 +59,6 @@ Each module is a folder `phases/<phase>/modules/<name>/` with `module.yml` and u
 - **Never edit the compatibility suite to make a change pass** (`tests/runner/compat.bats`, `tests/runner/Compat.Tests.ps1`). Armed revert timers run stored command lines, so every form it holds must keep working. Change the runner instead.
 - **Update the operator manual in the same commit** (`docs/manual/labyrinth.md`). Put platform-only text between `<!-- linux -->` or `<!-- windows -->` and `<!-- end -->`, and write in the plain style of `docs/Overview.md`. `tests/manual/manual.bats` must pass.
 - Make the same change in both runners, with tests in both suites.
-
-## Where the tests are
-
-| Path | Covers |
-|---|---|
-| `tests/core/` | The core library (`core.bats`, `Core.Tests.ps1`); platform facts (`platform.bats`, `Platform.Tests.ps1`); quarantine (`quarantine.bats`, `Quarantine.Tests.ps1`); approval items (`approval.bats`, `Approval.Tests.ps1`); new passwords (`secret.bats`, `Secret.Tests.ps1`); the release check (`release.bats`, `Release.Tests.ps1`); real-system timer tests (`realsystem.bats`, `RealSystem.Tests.ps1`, CI only) |
-| `tests/runner/` | The runners: `apply`, `labyrinth`, `args`, `help`, `runs`, `failures`, `hostcheck` and `output`, and `compat` (the compatibility suite); `args-cases.txt`, the command-line cases both suites read; helpers `lab_helper.bash` and `LabTestHelper.ps1` |
-| `tests/manual/` | The manual and its splitter |
-| `tests/lint/` | The guard and its fixtures |
-| `tests/platform/` | The platform adapters: the Linux firewall adapter (`firewall.bats`) and the Windows one (`Firewall.Tests.ps1`) |
-| `tests/profiles/` | The shipped profiles (`profiles.bats`, `Profiles.Tests.ps1`) |
-| `tests/fixtures/` | Fixture modules and the test doubles appended to a throwaway core |
 
 ## Lint pitfalls already met
 

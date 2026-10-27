@@ -1,10 +1,10 @@
 # 01. Lockout ("Panic Button") Design
 
-Phase: 🟥 Lock out · Priority: P0
+Phase: 🟥 Lock out (the first-minute bundle), then 🟧 Harden (the rest of the run) · Priority: P0
 
 ## 1. What it is
 
-One command that carries out the first-minutes lockout across the reachable hosts: fast, but only within the limits the rules allow.
+One command that carries out the first-minutes lockout across the reachable hosts, and then hardens them behind it: fast, but only within the limits the rules allow. The lockout is the first-minute bundle (section 6.1); everything after it, from installs to reopening outbound, is the Harden phase (section 6).
 
 The original idea ran against every reachable host in one pass, resetting credentials, locking accounts and applying default-deny in a single sweep. Locking every account and denying every host at once would break expected functionality, which Rule 5.6.5 forbids (National Collegiate Cyber Defense Competition [NCCDC], 2025). The rule does not name this sweep; its examples are setting all user shells to `/bin/false` and indiscriminately ending all outbound connections. So this design keeps the speed and adds guard rails.
 
@@ -17,8 +17,8 @@ The original idea ran against every reachable host in one pass, resetting creden
 | Anything that interferes with the scoring engine is the team's responsibility (NCCDC, 2025, Rule 4.11). | The scoring engine allowlist is applied first. Verification uses scoring-style probes. |
 | Do not mislead the scoring engine (NCCDC, 2025, Rule 9.3). | The panic button never fakes a service state. |
 | Events differ on which accounts scoring logs in with. Some say administrator-class passwords are not used for scoring and other user passwords follow a notification process; others score logins with administrator accounts as well, and take new passwords through a change process of their own (*Background*; Blueprint §5). | No account is assumed to be unscored. The operator marks each account a check logs in with as `scoring`, or as `scored-admin` when it is also an admin account the team must rotate (section 4). Admin-class accounts, `scored-admin` ones included, are rotated automatically; each new `scored-admin` password goes into a change list for the event's change process (design 05, section 2.4). User-level rotation waits for approval. |
-| Scored services may not be migrated or containerized unless an inject or the local competition rules allow it (NCCDC, 2025, Rule 4.14). | The panic button contains no container or replacement actions. Where an event allows them, they are a separate design, off by default, with its own approvals (design 22). |
-| Some events ask Blue Teams to keep ICMP working on all competition devices (*Background*; Blueprint §5). | Default-deny always allows ICMP, inbound and outbound, unless the run-time configuration says the event packet allows otherwise. |
+| Scored services may not be migrated or containerized unless an inject or the local competition rules allow it (NCCDC, 2025, Rule 4.14). | The first-minute bundle contains no container or replacement actions. Where an event allows them, they are a separate design in the Harden phase, off by default, with its own approvals and proof (design 22). |
+| Events ask Blue Teams to keep ICMP working on all competition devices unless the officials direct otherwise (*Background*; Blueprint §5). | Default-deny always allows ICMP, inbound and outbound, on every device, unless the officials direct otherwise. |
 | Events may penalize filtering a public service by source address, or letting only the scoring engine reach it; officials' manual checks and simulated users come from other addresses (*Background*; Blueprint §5). | A scored port is open to every source and hardened where it is (section 6.1). One hostile address at a time can still be banned (design 12). The firewall adapter refuses an allow with a narrower source on a scored port (design 19, section 5). |
 | Points can be lost for failed employee access (Northeast Collegiate Cyber Defense Competition [NECCDC], 2026, Scoring Overview; *Provisional*, another region's packet). | Accounts that simulated employees use are treated like scoring accounts: never locked, rotated or switched to key-only by automation (design 05). |
 | Team tools may not use resources outside the competition environment other than simple DNS lookups; the example is cloud services and cloud processing (NCCDC, 2025, Rule 5.6.4). | Labyrinth's own code runs from the release. Packages come only from public sources, after the lockdown, as named in the tool's declaration (design 20). |
@@ -84,14 +84,14 @@ flowchart LR
 1. Load protected set and configuration.
 2. Safety gates (section 7).
 3. Tier 0 on all targets.
-4. **Lock down:** the first-minute bundle (section 6.1).
-5. **Install** the profile's packages (design 20), and take a restore point of every scored service on the host (design 14).
-6. **Sweep and harden:** quarantine high-confidence persistence (design 17), then the rest of Tier 2, including the automatic service-pack settings that protect the scored services themselves (design 18) and the automatic mitigations for known-exploited flaws found on the host (design 21, section 5.2).
+4. 🟥 **Lock out:** the first-minute bundle (section 6.1). Nothing is installed.
+5. 🟧 **Harden:** **install** the profile's packages (design 20), and take a restore point of every scored service on the host (design 14).
+6. **Sweep and harden:** quarantine high-confidence persistence (design 17), then the rest of Tier 2, including patching and service reduction (design 15), the automatic service-pack settings that protect the scored services themselves (design 18), Windows and AD hardening (design 11), the automatic mitigations for known-exploited flaws found on the host (design 21, section 5.2), and, where the event allows it, service replacement and containers (design 22). **Verify the installed packages** against the official ones (design 04, section 2.1).
 7. **Reopen outbound** to the host's normal allowlist (section 6.1).
 8. Show the Tier 3 items for approval, carry out what is approved, and print the person-run checklist.
 9. Seal the baseline (design 04, section 6).
 
-Steps 4 to 7 run ring by ring in a normal run, and on every host at once in a first-minute run (section 6.3). Each host's steps 4 to 7 run under its own revert timer, re-armed before each module.
+Step 4 is the Lock out phase and steps 5 to 7 are the Harden phase. Steps 4 to 7 run ring by ring in a normal run, and on every host at once in a first-minute run (section 6.3). Each host's steps 4 to 7 run under its own revert timer, re-armed before each module.
 
 **Rings.** Ring 0 holds one low-impact host per platform, for example one Linux host and one Windows workstation, because a change that works on one platform proves little about another. Ring 1 is the next group. Later rings follow, never more than a set share of hosts at once. In the hosts file and on the command line a ring is called a *group* (docs/Conventions.md, section 2). A failed verify stops the run. The bundle takes seconds on the test host, so the rings delay the rest of the network very little.
 
@@ -99,13 +99,15 @@ Steps 4 to 7 run ring by ring in a normal run, and on every host at once in a fi
 
 ### 6.1 The first-minute bundle
 
-Red Teams report planting persistence within the first 30 seconds of an event (*Background*). An attacker can come back through a password, a key, an open session, an open port, or a callback from something already planted. Closing only some of these leaves the rest, so each host gets all of them as one step, using only what the host already has (no install):
+Red Teams report planting persistence within the first 30 seconds of an event (*Background*). An attacker can come back through a password, a key, an open session, an open port, or a callback from something already planted. Closing only some of these leaves the rest, so each host gets all of them as one step, using only what the host already has (no install). The reason is speed, and locking the host down before any outbound connection opens; it is not a rule, because installing public software is allowed once the lockdown is in (design 20):
 
 1. **Rotate** admin-class passwords (Tier 1; design 05, section 2). A `scored-admin` account's new password joins the change list, shown at the end of the bundle for the operator to submit at once (design 05, section 2.4).
 2. **Remove** unregistered SSH keys and **check** the SSH configuration for planted settings (Tiers 1 and 2; design 05, section 4).
 3. **End** intruder sessions (Tier 1; section 6.2).
 4. **Default-deny inbound** (Tier 2), allowing the scoring engine, the scored ports, any official sources named in the event packet, ICMP and the admin path. A scored port stays open to every source, never only to the scoring engine's address, because officials' manual scoring checks and simulated users come from other addresses (*Background*; Blueprint §5), and some events penalize any source filter on a public service (section 2). An admin path on a scored port, such as SSH where SSH is scored, is hardened in place (design 05, section 4.2), never moved, knocked or restricted by address.
 5. **Default-deny outbound** (Tier 2), allowing replies on established connections, loopback, ICMP, the DNS resolvers and NTP servers in the run-time configuration, the SIEM, the admin path, the package mirror or proxy (design 20), and every address a scored service connects out to, from `services` and the run-time `outbound-allow` list. On a Windows domain member, the domain controllers are allowed too.
+
+**A Debian host with no firewall front end.** A Debian host can have nftables installed but not running, with shipped rules that accept everything, and no UFW. Installing UFW would break the bundle's no-install design, so the lockdown there uses raw nftables. In the Harden phase, UFW is installed and takes over with the same rules (design 19, section 5).
 
 **Why this order.** Sessions are ended after passwords and keys change, so the attacker cannot simply log back in. The firewall closes before the persistence sweep, not after it: anything planted before the bundle is still on disk, but nobody can reach it from outside and its callbacks fail, so the sweep in step 6 can take the time it needs. A planted job that reopens a port or drops the rules is caught by the drift check (design 13, section 4.1) and by the sweep. One revert timer covers the whole bundle on each host. The steps that only take access away (the new passwords, the removed keys, the ended sessions) are kept as soon as each verifies with no scored service worse, so the timer undoes only the firewall and SSH settings, the steps that can lock the team out (design 00, section 4, rule 9).
 
@@ -138,7 +140,7 @@ flowchart TD
     subgraph fm["First-minute bundle, nothing installed (section 6.1)"]
         ARM["Arm revert timer"] --> B1["Rotate admin passwords"] --> B2["Remove unregistered keys;<br/>check SSH configuration"] --> B3["End intruder sessions"] --> B4["Default-deny inbound"] --> B5["Default-deny outbound"]
     end
-    subgraph after["Behind the lockdown"]
+    subgraph after["Harden phase, behind the lockdown"]
         I1["Install the profile's packages;<br/>restore points of scored services"] --> S1["Quarantine persistence;<br/>rest of Tier 2"] --> O1["Reopen outbound to<br/>the normal allowlist"] --> V1{"Verify passes?"}
     end
     T0 --> ARM
@@ -153,7 +155,7 @@ flowchart TD
     style after fill:#fff4d6,stroke:#b7791f,color:#4a3108
 ```
 
-*Figure: once every safety gate passes, each host gets the first-minute bundle with nothing installed, then the installs, restore points and sweep behind that lockdown, then outbound is reopened to its normal allowlist and the probes decide whether the run is kept. The red box is the first-minute bundle, amber marks the work behind it and a person's approval, and dashed red outlines mark where the run stops.*
+*Figure: once every safety gate passes, each host gets the first-minute bundle (Lock out) with nothing installed, then the installs, restore points and sweep behind that lockdown (Harden), then outbound is reopened to its normal allowlist and the probes decide whether the run is kept. The red box is the first-minute bundle, amber marks the Harden work behind it and a person's approval, and dashed red outlines mark where the run stops.*
 
 ### 6.3 First-minute runs
 
@@ -172,7 +174,9 @@ The options already exist (Conventions, section 3.1). Items the team decided on 
 | Per-item approval for the items a pre-approval rule covers | Probes before and after each module, with automatic rollback on a regression |
 | Rings: every host starts at once, each under its own revert timer | The protected set and the break-glass account are never changed |
 
-The break-glass answer is still the operator's word for each host (section 7). It is given before the event starts, from the team's offline record, and checked at the console straight after the bundle; if the operator cannot log in there, they let the timer roll that host back.
+**Automatic apply (specified now, built later).** With `AUTO_APPLY=yes` in `event.conf`, the same run needs no `--confirm-group` and no prompt: the group comes from the hosts file, matched on the host's name and address (a mismatch or ambiguity blocks with exit `20`); the break-glass account is the `breakglass`-class account from the protected set that exists on the host (with none, or more than one, the run blocks with exit `20`), checked for a console session instead of asked; and an approval item that no pre-approval rule covers goes to a queue (`labyrinth queue`, `labyrinth approve <ids>`) instead of waiting at a prompt. Deleting an account, changing a scored service that has no probe, replacing or containerizing a service, and every Tier 3 item always queue. A module is kept as soon as its verify and probes pass, except firewall and SSH changes, which stay under the revert timer until one `keep` per host run. The runner does not do this yet; the full text is in design 00, section 5.1.
+
+The break-glass answer is still the operator's word for each host (section 7). It is given before the event starts, from the team's offline record, and checked at the console straight after the bundle; if the operator cannot log in there, they let the timer roll that host back. Under `AUTO_APPLY=yes` Labyrinth checks for a console session of the account itself and warns if it finds none, instead of asking.
 
 ## 7. Safety gates (all must pass)
 
@@ -250,7 +254,7 @@ Without a probe account, a check that logs in is probed by connecting only, and 
 - After default-deny, the host still answers ping.
 - A second session stays usable throughout.
 - After the bundle, an intruder's SSH and RDP sessions are gone, while the console session, the operator's session and an admin-source session remain.
-- A planted reverse-shell cron job is quarantined in the bundle, and its connection does not return after the firewall closes.
+- A planted reverse-shell cron job is quarantined by the Harden phase sweep, and its connection does not return after the firewall closes.
 - A Tier 3 item a person approves is carried out by Labyrinth and recorded in the run manifest; an item not approved is left unchanged.
 
 ## References

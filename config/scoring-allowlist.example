@@ -1,4 +1,4 @@
-# Scoring engine source addresses, allowed before any deny rule (Rule 4.11).
+# Scoring engine source addresses, allowed before any deny rule (NCCDC, 2025, Rules 4.11, 9.3).
 # One address or CIDR per line. Placeholder (documentation) ranges only.
 
 198.51.100.0/28

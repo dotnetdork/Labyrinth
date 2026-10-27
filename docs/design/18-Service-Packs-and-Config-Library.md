@@ -1,6 +1,6 @@
 # 18. Service Packs and Config Library
 
-Phase: 🟥 Lock out · Priority: P1
+Phase: 🟧 Harden · Priority: P1
 
 ## 1. Goal
 
@@ -33,7 +33,7 @@ Re-running a pack finds nothing to change and exits 0 (design 00, section 4).
 
 | Class | Test for the class | Runs |
 |---|---|---|
-| **Automatic** | Does not change what users or the scoring engine see, and was tested on this app version in the lab | In the lockout phase, Tier 2 (design 01) |
+| **Automatic** | Does not change what users or the scoring engine see, and was tested on this app version in the lab | In the Harden phase, Tier 2 (design 01) |
 | **Approval** | Could change what the scoring engine sees, or the installed version was not tested | Shown in the plan; after a person approves, Labyrinth applies it (Tier 3) |
 | **Runbook** | Too specific to the event's own app or data | Printed steps for a person, kept in the release's runbook folder |
 

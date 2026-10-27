@@ -1,6 +1,6 @@
 # 04. Baseline and Integrity
 
-Phase: 🟦 Observe · Priority: P0 (first baseline), P1 (continuous)
+Phase: 🟦 Observe (baseline and comparison) and 🟧 Harden (verification against official packages, section 2.1) · Priority: P0 (first baseline), P1 (continuous)
 
 ## 1. Goal
 
@@ -17,6 +17,21 @@ A hash baseline taken after the Red Team already has a foothold records the comp
 | Baseline the rest | SHA-256 of critical files, permissions, owners | Same, plus registry autoruns and services |
 
 Configuration files legitimately differ from their packages, so differences in `/etc` are reviewed by a human, not accepted automatically.
+
+### 2.1 Verifying against official packages (Harden phase)
+
+`rpm -Va` and `dpkg --verify` compare the files on disk with hash lists that live on the same host, and root can edit those lists. So, in the Harden phase, behind the first-minute lockdown, a second check compares the files with copies that do not come from the host. It is specified here and built later; the local check above is what exists now.
+
+1. **Choose the packages.** A core set: the OpenSSH server, sudo, PAM, coreutils, util-linux, systemd and the shadow and passwd tools; plus any package whose files the local check above flags.
+2. **Download each from the host's configured repositories** (`apt-get download` on Debian and Ubuntu, `dnf download` on the RHEL family). This is the public software download that design 20 allows after the lockdown; no new repository is added. If the repositories cannot be reached, the offline fallback below is used.
+3. **Check the signature.** `rpm -K` on the RHEL family. `apt` verifies the repository's signatures and the package hashes during the download.
+4. **Compare** the hashes of the files inside the downloaded package with the files on disk.
+
+**Offline fallback: the reference hash pack.** When the downloads fail, the same comparison runs against a pack made earlier. Before the event, with internet, a Labyrinth script downloads the official packages for the core set above for each target OS release, checks each package's signature, and records every file's hash into a *reference hash pack*. The pack covers every version published for that release, because the exact version on an image is not known in advance: the Ubuntu and Debian archives keep old versions, and Rocky's vault keeps older ones. The pack ships with its own SHA-256, like a release (design 07, section 5), and the SHA-256 goes into the offline record. At the event, when the downloads fail, the Harden phase compares the files on disk with the pack instead. Which OS releases get packs is a run-time choice; the packs and their release list are never committed to the repository. This is specified now and built later.
+
+**Second offline check on Debian and Ubuntu.** Any `.deb` file left in `/var/cache/apt/archives` can be checked against the signed package indexes (apt's `Packages` files, whose signature `apt` verifies) and then compared with the files on disk.
+
+A mismatch is a finding for a person, never an automatic fix: the module does not replace the file. The downloaded packages are temporary files under Labyrinth's own state path and are removed by `cleanup`. Windows keeps the Authenticode signer checks and `sfc /verifyonly` from the table above.
 
 ## 3. What is baselined
 
@@ -44,7 +59,7 @@ The baseline is stored under the state path (design 00). Baselines are compared,
 
 ```mermaid
 flowchart TD
-    V["Verify files against the package or OS database<br/>(dpkg --verify · rpm -Va · signatures · sfc /verifyonly)"]
+    V["Verify files against the package or OS database<br/>(dpkg --verify · rpm -Va · downloaded official packages<br/>· signatures · sfc /verifyonly)"]
     V -->|differences| F["Findings for a human<br/>(never baselined)"]
     V -->|matches| B["Baseline: SHA-256, owners, permissions,<br/>accounts, keys, ports, services, tasks"]
     B --> CMP["Scheduled comparison"]
@@ -70,7 +85,7 @@ flowchart TD
 
 The first baseline is taken before the lockout, so it records the host as it was found, which may already include an attacker's changes. Comparing against it later would hide those changes and flag every one of ours. So, once the lockout and the persistence sweep (design 17) are finished and verified, the team **seals** the baseline:
 
-- `labyrinth seal` takes a new baseline of the cleaned host, after package verification as in section 3, and marks it as the reference. Its hash goes into the team's offline record and a copy goes off the host, as in section 3.
+- `labyrinth seal` takes a new baseline of the cleaned host, after package verification as in section 2, and marks it as the reference. Its hash goes into the team's offline record and a copy goes off the host, as in section 3.
 - `labyrinth reseal --reason "<reason>"` replaces the seal after a deliberate change, such as a patch (design 15) or an approved service-pack setting (design 18). The reason is required.
 - Every seal and reseal is logged with its time, the operator and the reason, so a reseal that hides an attacker's change can be traced.
 
@@ -89,6 +104,9 @@ Read-only observation does not affect scored services and needs no special permi
 
 - A file modified by hand in the lab is flagged with account, time and source address.
 - A binary replaced with a trojan is caught by the package verification step, not baselined.
+- A core-package file edited on a lab host, with the host's own hash list edited to match, is still flagged by the comparison with the downloaded official package, and nothing is replaced automatically.
+- With the repositories unreachable, the comparison runs against the reference hash pack; a pack whose SHA-256 does not match the offline record is refused. With neither available, the comparison is skipped, the plan says so, and the local check still runs.
+- A `.deb` in the apt cache whose hash is not in the signed package index is reported as a finding.
 - A change made by a Labyrinth module does not raise an alert.
 - Editing the baseline file on the host is detected by the check against the control node's copy.
 - After `labyrinth seal`, a cron job planted in the lab is reported at the next checkpoint, while the changes the lockout made are not.
