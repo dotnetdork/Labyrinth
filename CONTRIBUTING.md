@@ -14,6 +14,29 @@ Labyrinth is public, and every line of it is shared with every competing team. R
 
 Never push to `main`, force-push, rewrite published history, or delete a branch you did not create.
 
+## Issues, labels and milestones
+
+Open an issue from a template; each asks for the same three parts: **Location & Context**, **Current Behavior** and **Remediation Plan**. Write it so someone new, or their assistant, can pick it up without asking you anything.
+
+| Label group | Use |
+|---|---|
+| `type:` | One per issue: `bug`, `enhancement`, `tech-debt`, `docs`, or `security` (only for a hardening gap that is public knowledge; a weakness in Labyrinth itself goes through [private reporting](SECURITY.md)) |
+| `phase:` | The run phase it belongs to: `lockout`, `harden`, `observe`, `deceive`, `sustain` |
+| `area:` | The part of the code it touches, such as `firewall`, `accounts` or `command-line` |
+| `platform:` | `linux`, `windows`, both, or `appliance` |
+| `cve` | It concerns a published CVE. The CVE ID goes in the title, for example `[Enhancement] Mitigate CVE-2024-6387 in sshd` |
+| `good first issue` | Small and self-contained, a good place to start |
+
+The **milestone** is the build stage in [`docs/Roadmap.md`](docs/Roadmap.md), section 3. When one issue cannot start until another is done, mark it with GitHub's **blocked by** relationship; a Roadmap row split into steps becomes a parent issue with **sub-issues**.
+
+## Without Claude Code
+
+Copilot, another assistant or plain hands all work. The rules in [`CLAUDE.md`](CLAUDE.md) apply either way, and [`AGENTS.md`](AGENTS.md) and `.github/copilot-instructions.md` point other assistants to them. The shared commands in `.claude/commands/` are checklists you can follow yourself:
+
+1. **Claim the issue** (`/start-issue`): check nobody is assigned and no pull request covers it, assign yourself, update `main`, create the branch, and read the spec sections the issue names.
+2. **Build a module** (`/new-module`): create the folder and `module.yml` from the module contract (design 00), and write the tests from the spec's acceptance-test list first.
+3. **Before the pull request** (`/pre-pr`): read your own diff against the public boundary and the hard rules in `CLAUDE.md`, tick every box in the pull request template, and push the branch so CI runs.
+
 ## Tests
 
 CI runs on every push: ShellCheck, the guard (`tests/lint/guard.sh`), bats, PSScriptAnalyzer, Pester under Windows PowerShell 5.1, and the manual build. All must pass. You may run the suites locally if you already have the tools, but nobody needs to install anything: pushing the branch and reading the CI results is enough.
