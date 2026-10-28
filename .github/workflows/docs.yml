@@ -1,0 +1,54 @@
+# Build the documentation website from docs/ and publish it with GitHub
+# Pages (mkdocs.yml). The build tools are installed on the disposable runner
+# only. A pull request that touches the docs builds the site without
+# publishing it, so a broken page shows up before the merge.
+name: Docs
+
+on:
+  push:
+    branches: [main]
+    paths: ['docs/**', 'mkdocs.yml', '.github/workflows/docs.yml']
+  pull_request:
+    paths: ['docs/**', 'mkdocs.yml', '.github/workflows/docs.yml']
+
+concurrency:
+  group: docs-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Docs site
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - name: Install the site tools
+        run: |
+          python3 -m venv "$RUNNER_TEMP/venv"
+          "$RUNNER_TEMP/venv/bin/pip" install --quiet mkdocs-material==9.8.0 markdown-callouts==0.4.0
+      - name: Build
+        run: '"$RUNNER_TEMP/venv/bin/mkdocs" build'
+
+  publish:
+    name: Publish the docs site
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    # Only this job may write: it pushes the built site to the gh-pages branch.
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Install the site tools
+        run: |
+          python3 -m venv "$RUNNER_TEMP/venv"
+          "$RUNNER_TEMP/venv/bin/pip" install --quiet mkdocs-material==9.8.0 markdown-callouts==0.4.0
+      - name: Publish
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          "$RUNNER_TEMP/venv/bin/mkdocs" gh-deploy --force
