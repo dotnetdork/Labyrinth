@@ -452,7 +452,7 @@ Tier 3 actions wait in an approval queue (planned, Roadmap stage 4b; today the r
 
 ### 6.5 Secret handling
 
-Ship **placeholder templates** only (`.env.example`, cert paths, token *names*). Real values are supplied at run time from the event packet and the event seed, which is kept offline (design 16) and given in the private event config file or a flag at start, never typed mid-run.
+Ship **placeholder templates** only (`.env.example`, cert paths, token *names*). Real values are supplied at run time from the event packet and the event seed, which is kept offline (design 16) and given in the private event config file (a flag at start may name the file, never carry the seed), never typed mid-run.
 
 **[RULES]** The code is public (NCCDC, 2025, Rule 5.6.1), so decoy values are derived from a secret event seed kept offline (design 16) rather than stored in an encrypted repository file.
 
