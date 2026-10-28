@@ -1,6 +1,6 @@
 # Contributing to Labyrinth
 
-Labyrinth is public, and every line of it is shared with every competing team. Read [`CLAUDE.md`](CLAUDE.md) first: its hard rules and its public boundary apply to every change, whoever or whatever writes it.
+Labyrinth is public, and every line of it is shared with every competing team. Read [`AGENTS.md`](AGENTS.md) first: its hard rules and its public boundary apply to every change, whoever or whatever writes it.
 
 ## The workflow: one issue, one person, one branch, one small pull request
 
@@ -31,11 +31,11 @@ The **milestone** is the build stage in [`docs/Roadmap.md`](docs/Roadmap.md), se
 
 ## Without Claude Code
 
-Copilot, another assistant or plain hands all work. The rules in [`CLAUDE.md`](CLAUDE.md) apply either way, and [`AGENTS.md`](AGENTS.md) and `.github/copilot-instructions.md` point other assistants to them. The shared commands in `.claude/commands/` are checklists you can follow yourself:
+Copilot, another assistant or plain hands all work. The rules in [`AGENTS.md`](AGENTS.md) apply either way; most assistants read that file on their own, `CLAUDE.md` pulls it in for Claude Code, and `.github/copilot-instructions.md` points Copilot to it. The shared commands in `.claude/commands/` are checklists you can follow yourself:
 
 1. **Claim the issue** (`/start-issue`): check nobody is assigned and no pull request covers it, assign yourself, update `main`, create the branch, and read the spec sections the issue names.
 2. **Build a module** (`/new-module`): create the folder and `module.yml` from the module contract (design 00), and write the tests from the spec's acceptance-test list first.
-3. **Before the pull request** (`/pre-pr`): read your own diff against the public boundary and the hard rules in `CLAUDE.md`, tick every box in the pull request template, and push the branch so CI runs.
+3. **Before the pull request** (`/pre-pr`): read your own diff against the public boundary and the hard rules in `AGENTS.md`, tick every box in the pull request template, and push the branch so CI runs.
 
 ## Tests
 
@@ -47,7 +47,8 @@ The repository ships a shared setup in `.claude/`, so every contributor's assist
 
 | Shared | What it is for |
 |---|---|
-| `CLAUDE.md` | The rules every assistant follows: hard rules, the public boundary, the module contract and the workflow above |
+| `AGENTS.md` | The rules every contributor and assistant follows: hard rules, the public boundary, the module contract and the workflow above |
+| `CLAUDE.md` | Pulls in `AGENTS.md` for Claude Code and adds its subagents and commands |
 | `.claude/agents/` | `scout` for cheap lookups, `builder` for implementing a settled spec, `verifier` for an independent review before a pull request |
 | `.claude/commands/` | `/start-issue <number>` to claim an issue and branch, `/new-module <phase>/<name>` to scaffold a module from its spec, `/pre-pr` to check a branch before its pull request |
 | `.claude/settings.json` | Read-only git and GitHub commands run without asking; pushes, merges and branch deletions ask first; the usual forms of force-push and push to `main` are refused. GitHub's branch protection is what enforces the rules for everyone |
@@ -58,7 +59,7 @@ Keep personal preferences out of the shared files:
 - **Decisions go in the repository**, in a spec or an issue, never only in an assistant's memory. Another contributor's assistant cannot see your memory, so a decision kept there leads to work that drifts apart.
 - **Run `/pre-pr`** before opening a pull request. It has the `verifier` agent check the diff against the public boundary and the spec.
 
-Changes to `CLAUDE.md` or `.claude/` go through a pull request like any other change, so everyone's setup changes together.
+Changes to `AGENTS.md`, `CLAUDE.md` or `.claude/` go through a pull request like any other change, so everyone's setup changes together.
 
 ## The public boundary
 
