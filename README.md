@@ -34,6 +34,8 @@ The complete overview of the system (the whole doctrine, the transferable techni
 
 The detailed designs for each part of the tool live in [`docs/design/`](docs/design/README.md).
 
+All of these documents are also published as a website with a menu and search, rebuilt from the same files whenever they change: **[dotnetdork.github.io/Labyrinth](https://dotnetdork.github.io/Labyrinth/)**.
+
 ## The world Labyrinth is built for
 
 A heterogeneous, contested network of the kind CCDC events use:
