@@ -1,0 +1,254 @@
+/* Labyrinth docs site: an ink masthead with the five-phase course, warm
+   paper for reading, and binder tabs for the phases. Theme variables are
+   Material for MkDocs 9.8's; everything else is scoped with lab-. */
+
+@import url("https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@500;600;700&display=swap");
+
+:root {
+  --lab-ink: #15191e;
+  --lab-ink-2: #222830;
+  --lab-ink-line: #2c333c;
+  --lab-ink-text: #aeb6c1;
+  --lab-lockout: #d0413a;
+  --lab-harden: #e0661f;
+  --lab-observe: #3b7bf0;
+  --lab-deceive: #8b5cf6;
+  --lab-sustain: #1f9d55;
+  --lab-display: "Barlow Semi Condensed", "Arial Narrow", sans-serif;
+  --lab-measure: 70ch;
+}
+
+[data-md-color-scheme="default"] {
+  --lab-paper: #edebe4;
+  --lab-sheet: #f5f3ed;
+  --lab-plate: #f8f7f2;
+  --lab-focus: #205fae;
+  --lab-rule: #d4cec0;
+  --lab-muted: #5b6370;
+  --md-default-bg-color: var(--lab-paper);
+  --md-default-fg-color: #24282e;
+  --md-default-fg-color--light: #474e58;
+  --md-default-fg-color--lighter: #80868e;
+  --md-default-fg-color--lightest: #dbd7cb;
+  --md-typeset-color: #24282e;
+  --md-typeset-a-color: #24282e;
+  --md-code-bg-color: #e4e1d7;
+  --md-code-fg-color: #262b31;
+  --md-typeset-table-color: var(--lab-rule);
+  --md-typeset-mark-color: #fde7a6;
+  --lab-link-line: #a39c8d;
+}
+
+[data-md-color-scheme="slate"] {
+  --lab-paper: #14181d;
+  --lab-sheet: #1a1f25;
+  --lab-rule: #2f363f;
+  --lab-plate: #e4e1d8;
+  --lab-focus: #7ab4f0;
+  --lab-muted: #a2aab5;
+  --md-hue: 215;
+  --md-default-bg-color: var(--lab-paper);
+  --md-default-fg-color: #dedbd3;
+  --md-default-fg-color--light: #c3c7cd;
+  --md-default-fg-color--lighter: #8a929c;
+  --md-default-fg-color--lightest: #2a3038;
+  --md-typeset-color: #dedbd3;
+  --md-typeset-a-color: #dedbd3;
+  --md-code-bg-color: #1f252c;
+  --md-code-fg-color: #e2e0da;
+  --md-typeset-table-color: var(--lab-rule);
+  --lab-link-line: #6c7480;
+}
+
+:root, [data-md-color-scheme] {
+  --md-primary-fg-color: var(--lab-ink);
+  --md-primary-fg-color--light: var(--lab-ink-2);
+  --md-primary-fg-color--dark: #0d1014;
+  --md-primary-bg-color: #ffffff;
+  --md-primary-bg-color--light: var(--lab-ink-text);
+  --md-accent-fg-color: var(--lab-observe);
+  --md-accent-fg-color--transparent: rgba(59, 123, 240, .12);
+  --md-footer-bg-color: var(--lab-ink);
+  --md-footer-bg-color--dark: #0d1014;
+}
+
+::selection { background: #fde7a6; color: #15191e; }
+
+/* ---- Masthead: header, tabs and course band read as one ink band ---- */
+
+.md-header { box-shadow: none; }
+.md-header__title { font-family: var(--lab-display); font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+.md-header__button.md-logo img, .md-header__button.md-logo svg { height: 1.3rem; width: 1.3rem; }
+.md-search__form { background: var(--lab-ink-2); border: 1px solid var(--lab-ink-line); border-radius: .2rem; }
+.md-search__form:hover { background: #283039; }
+.md-search__input::placeholder { color: var(--lab-ink-text); }
+
+.md-tabs { background: var(--lab-ink); border-bottom: 1px solid var(--lab-ink-line); }
+.md-tabs__link {
+  font-family: var(--lab-display); font-weight: 600; font-size: .72rem;
+  letter-spacing: .08em; text-transform: uppercase; color: var(--lab-ink-text); opacity: 1;
+}
+.md-tabs__item--active .md-tabs__link { color: #fff; }
+.md-tabs__item--active { box-shadow: inset 0 -3px 0 #fff; }
+.md-tabs__link:hover, .md-tabs__link:focus { color: #fff; }
+
+/* The course band. The maze is a map texture, so it stays faint. */
+.lab-course {
+  background-color: var(--lab-ink);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160' fill='none' stroke='%23232a32' stroke-width='2'%3E%3Cpath d='M0 20h60M80 20h80M20 20v40M100 0v20M140 20v60M20 60h40v40M60 40h60v40M80 60h-20M0 100h20M40 120h40V80M100 100h40v40M120 120v40M0 140h60M80 140h20v20M140 100h20M160 40h-20'/%3E%3C/svg%3E");
+  border-bottom: 1px solid var(--lab-ink-line);
+  color: #fff;
+}
+.lab-course__inner { display: flex; align-items: center; gap: 2rem; padding: .4rem .8rem .5rem; }
+.lab-course__map { display: block; flex: none; width: min(100%, 40rem); height: auto; aspect-ratio: 1060 / 120; margin-left: auto; overflow: visible; }
+.lab-course__start { fill: none; stroke: var(--lab-lockout); stroke-width: 3; stroke-linejoin: round; }
+.lab-course__leg { fill: none; stroke-width: 4; stroke-linecap: round; }
+.lab-course__stop circle { fill: var(--lab-ink); stroke-width: 3.5; }
+.lab-course__num { font: 700 13px "JetBrains Mono", monospace; fill: #fff; text-anchor: middle; }
+.lab-course__label { font: 700 15px var(--lab-display); letter-spacing: .1em; text-transform: uppercase; fill: #fff; paint-order: stroke; stroke: var(--lab-ink); stroke-width: 6px; stroke-linejoin: round; }
+.lab-course__finish { fill: none !important; }
+.lab-course__leg--lockout { stroke: var(--lab-lockout); }
+.lab-course__leg--harden { stroke: var(--lab-harden); }
+.lab-course__leg--observe { stroke: var(--lab-observe); }
+.lab-course__leg--deceive { stroke: var(--lab-deceive); }
+.lab-course__leg--sustain { stroke: var(--lab-sustain); }
+.lab-course__stop--lockout circle { stroke: var(--lab-lockout); }
+.lab-course__stop--harden circle { stroke: var(--lab-harden); }
+.lab-course__stop--observe circle { stroke: var(--lab-observe); }
+.lab-course__stop--deceive circle { stroke: var(--lab-deceive); }
+.lab-course__stop--sustain circle { stroke: var(--lab-sustain); }
+/* On a phase's page, its stops fill in and the rest step back. */
+.lab-course.has-here .lab-course__stop:not(.is-here),
+.lab-course.has-here .lab-course__leg:not(.is-here) { opacity: .38; }
+.lab-course.has-here .lab-course__start, .lab-course.has-here .lab-course__leg--lockout { opacity: .38; }
+.lab-course__stop--lockout.is-here circle:first-child { fill: var(--lab-lockout); }
+.lab-course__stop--harden.is-here circle:first-child { fill: var(--lab-harden); }
+.lab-course__stop--observe.is-here circle:first-child { fill: var(--lab-observe); }
+.lab-course__stop--deceive.is-here circle:first-child { fill: var(--lab-deceive); }
+.lab-course__stop--sustain.is-here circle:first-child { fill: var(--lab-sustain); }
+.lab-course__stop.is-here .lab-course__finish { stroke: #fff; }
+.lab-course__stop.is-here .lab-course__label { text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 5px; }
+
+.lab-course--home .lab-course__inner { padding: 2.4rem .8rem 2.2rem; align-items: flex-end; }
+.lab-course--home .lab-course__map { width: min(100%, 44rem); }
+.lab-course__lede { max-width: 26rem; }
+.lab-course__name { margin: 0; font: 700 3rem/1 var(--lab-display); letter-spacing: .04em; text-transform: uppercase; }
+/* The home page's own title is the masthead name; its heading stays for
+   screen readers and search. */
+.md-container:has(.lab-course--home) .md-typeset > h1:first-child { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+.lab-course__claim { margin: .8rem 0 0; font-size: .9rem; line-height: 1.55; color: #d7dbe0; }
+
+/* ---- Reading ---- */
+
+.md-grid { max-width: 78rem; }
+.md-typeset { font-size: .86rem; line-height: 1.68; }
+.md-typeset > :is(p, ul, ol, dl, blockquote, h1, h2, h3, h4, h5, h6, details, .admonition) { max-width: var(--lab-measure); }
+
+.md-typeset :is(h1, h2, h3, h4) { font-family: var(--lab-display); color: var(--md-default-fg-color); letter-spacing: 0; }
+.md-typeset h1 { font-size: 2.7em; font-weight: 700; line-height: 1.08; margin: 0 0 .8em; }
+.md-typeset h2 { font-size: 1.75em; font-weight: 700; line-height: 1.15; margin: 2em 0 .6em; }
+.md-typeset h3 { font-size: 1.32em; font-weight: 700; line-height: 1.2; margin: 1.8em 0 .5em; }
+.md-typeset h4 { font-size: 1.05em; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; margin: 1.6em 0 .4em; }
+.md-typeset hr { border-bottom-color: var(--lab-rule); }
+.md-typeset .headerlink { color: var(--md-default-fg-color--lighter); }
+
+.md-typeset a { text-decoration: underline; text-decoration-color: var(--lab-link-line); text-decoration-thickness: 1px; text-underline-offset: .2em; }
+.md-typeset a:hover, .md-typeset a:focus { color: var(--md-typeset-a-color); text-decoration-color: currentColor; text-decoration-thickness: 2px; }
+.md-typeset a.headerlink, .md-typeset .md-content__button { text-decoration: none; }
+:focus-visible { outline: 2px solid var(--lab-focus); outline-offset: 2px; }
+/* The masthead, edge tabs and footer are ink in both schemes, so they take the light ring. */
+.md-header :focus-visible, .md-tabs :focus-visible, .lab-course :focus-visible,
+.lab-tabs :focus-visible, .md-footer :focus-visible { outline-color: #7ab4f0; }
+
+.md-typeset code { border-radius: .15rem; font-size: .84em; }
+.md-typeset pre > code { border: 1px solid var(--lab-rule); }
+
+/* Tables: an ink header bar and hairline rows, at reading size. */
+.md-typeset table:not([class]) {
+  font-size: .8rem; line-height: 1.55;
+  border: 1.5px solid var(--md-default-fg-color); border-radius: 0;
+  background: var(--lab-sheet);
+}
+.md-typeset table:not([class]) th {
+  background: var(--lab-ink); color: #fff; min-width: 4rem;
+  font-family: var(--lab-display); font-weight: 600; font-size: .72rem;
+  letter-spacing: .08em; text-transform: uppercase; vertical-align: bottom;
+}
+[data-md-color-scheme="slate"] .md-typeset table:not([class]) th { background: #0c0f13; }
+.md-typeset table:not([class]) td { border-top: 1px solid var(--lab-rule); vertical-align: top; padding: .7em 1.1em; }
+.md-typeset table:not([class]) tbody tr:hover { background: var(--md-default-fg-color--lightest); box-shadow: none; }
+.md-typeset table:not([class]) td :is(code) { white-space: nowrap; }
+
+/* Callouts: a full hairline frame in the callout's color, no thick edge. */
+.md-typeset :is(.admonition, details) {
+  border: 1px solid currentColor; border-left-width: 1px; border-radius: .15rem;
+  box-shadow: none; font-size: .8rem; background: var(--lab-sheet);
+}
+.md-typeset :is(.admonition-title, summary) { font-family: var(--lab-display); font-weight: 700; font-size: .78rem; letter-spacing: .08em; text-transform: uppercase; }
+
+/* Diagrams are drawn for a light page, so they sit on a paper plate in
+   both schemes, full content width rather than the reading measure. */
+.md-typeset .mermaid {
+  --md-mermaid-font-family: "Atkinson Hyperlegible", sans-serif;
+  --md-mermaid-edge-color: #5b6370;
+  --md-mermaid-node-bg-color: #eef1f5;
+  --md-mermaid-node-fg-color: #1d2127;
+  --md-mermaid-label-bg-color: var(--lab-plate);
+  --md-mermaid-label-fg-color: #1d2127;
+  background: var(--lab-plate); color: #1d2127;
+  border: 1px solid var(--lab-rule); border-radius: .15rem;
+  padding: 1.2rem 1rem; margin: 1.4em 0 .6em; overflow-x: auto;
+}
+.md-typeset .mermaid + p > em:only-child, .md-typeset .mermaid + p { color: var(--md-default-fg-color--light); }
+
+/* ---- Navigation ---- */
+
+.md-nav { font-size: .7rem; }
+.md-nav__title { font-family: var(--lab-display); font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--lab-muted); }
+.md-nav__item--active > .md-nav__link, .md-nav__link--active { color: var(--md-default-fg-color); font-weight: 700; }
+.md-nav__link:hover, .md-nav__link:focus { color: var(--md-default-fg-color); text-decoration: underline; text-underline-offset: .2em; }
+.md-nav--secondary .md-nav__link--active { box-shadow: inset 2px 0 0 var(--md-default-fg-color); padding-left: .5rem; margin-left: -.5rem; }
+/* Long entries wrap under their own text, not under the number. */
+.md-nav__link .md-ellipsis { padding-left: 1.1em; text-indent: -1.1em; text-wrap: pretty; }
+.md-sidebar--primary { border-right: 1px solid var(--lab-rule); }
+
+/* Phase tabs on the right edge, like a binder's thumb index. */
+.lab-tabs { display: none; }
+@media screen and (min-width: 76.25em) {
+  .md-main__inner { padding-right: 1.8rem; }
+  .lab-tabs {
+    display: flex; flex-direction: column; gap: 3px;
+    position: fixed; right: 0; top: 50%; transform: translateY(-50%); z-index: 2;
+  }
+  .lab-tabs__tab {
+    writing-mode: vertical-rl; padding: .9rem .32rem; border-radius: .3rem 0 0 .3rem;
+    font: 700 .62rem var(--lab-display); letter-spacing: .14em; text-transform: uppercase;
+    color: #fff !important; text-decoration: none !important; opacity: .32;
+    transition: opacity .2s cubic-bezier(.16, 1, .3, 1), padding .2s cubic-bezier(.16, 1, .3, 1);
+  }
+  .lab-tabs__tab span:first-child { font-family: "JetBrains Mono", monospace; }
+  .lab-tabs__tab:hover, .lab-tabs__tab:focus-visible, .lab-tabs__tab.is-here { opacity: 1; padding-right: .5rem; }
+  .lab-tabs__tab--lockout { background: var(--lab-lockout); }
+  .lab-tabs__tab--harden { background: var(--lab-harden); }
+  .lab-tabs__tab--observe { background: var(--lab-observe); }
+  .lab-tabs__tab--deceive { background: var(--lab-deceive); }
+  .lab-tabs__tab--sustain { background: var(--lab-sustain); }
+}
+.lab-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* ---- Footer and small screens ---- */
+
+.md-footer__title { font-family: var(--lab-display); }
+.md-footer__direction { font-family: var(--lab-display); letter-spacing: .08em; text-transform: uppercase; }
+
+@media screen and (max-width: 44.9375em) {
+  .lab-course__label { display: none; }
+  .lab-course__inner { padding: .5rem .8rem; }
+  .lab-course--home .lab-course__inner { display: block; padding: 1.6rem .8rem; }
+  .lab-course--home .lab-course__map { width: 100%; margin-top: 1.2rem; }
+  .lab-course__name { font-size: 2.2rem; }
+  .md-typeset h1 { font-size: 2.1em; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .lab-tabs__tab { transition: none; }
+}

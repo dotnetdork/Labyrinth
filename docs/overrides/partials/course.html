@@ -1,0 +1,35 @@
+{#- The course band: the five phases as numbered stops through a maze, in
+    run order. The page's own phase is filled in; a page with no phase
+    shows every stop alike. The home page gets the tall version. -#}
+{%- set here = config.extra.phases.get(page.file.src_uri, []) if page and page.file else [] %}
+{%- set home = page and page.is_homepage %}
+{%- set stops = [(70, 74), (300, 40), (530, 82), (760, 44), (990, 76)] %}
+<div class="lab-course{% if home %} lab-course--home{% endif %}{% if here %} has-here{% endif %}">
+  <div class="lab-course__inner md-grid">
+    {%- if home %}
+    <div class="lab-course__lede">
+      <p class="lab-course__name" aria-hidden="true">Labyrinth</p>
+      <p class="lab-course__claim">Labyrinth hardens the hosts a defending team is given, plants traps for attackers, and keeps the scored services working.</p>
+    </div>
+    {%- endif %}
+    <svg class="lab-course__map" viewBox="0 0 1060 120" role="img"
+         aria-label="The five phases in run order: 1 Lock out, 2 Harden, 3 Observe, 4 Deceive, 5 Sustain{% if here %}. This page: {{ here | map('title') | join(', ') | replace('Lockout', 'Lock out') }}{% endif %}">
+      <path class="lab-course__start" d="M8 98 L22 74 L36 98 Z"/>
+      <path class="lab-course__leg lab-course__leg--lockout" d="M30 86 L{{ stops[0][0] }} {{ stops[0][1] }}"/>
+      {%- for p in config.extra.phase_list %}
+        {%- if not loop.first %}
+      <path class="lab-course__leg lab-course__leg--{{ p.id }}{% if p.id in here %} is-here{% endif %}" d="M{{ stops[loop.index0 - 1][0] }} {{ stops[loop.index0 - 1][1] }} L{{ stops[loop.index0][0] }} {{ stops[loop.index0][1] }}"/>
+        {%- endif %}
+      {%- endfor %}
+      {%- for p in config.extra.phase_list %}
+        {%- set x, y = stops[loop.index0] %}
+      <g class="lab-course__stop lab-course__stop--{{ p.id }}{% if p.id in here %} is-here{% endif %}">
+        <circle cx="{{ x }}" cy="{{ y }}" r="15"/>
+        {%- if loop.last %}<circle class="lab-course__finish" cx="{{ x }}" cy="{{ y }}" r="9"/>{% endif %}
+        <text class="lab-course__num" x="{{ x }}" y="{{ y + 4.5 }}">{{ loop.index }}</text>
+        <text class="lab-course__label" x="{{ x + 24 }}" y="{{ y + 5 }}">{{ p.name }}</text>
+      </g>
+      {%- endfor %}
+    </svg>
+  </div>
+</div>
