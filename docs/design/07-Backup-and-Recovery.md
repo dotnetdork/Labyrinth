@@ -1,6 +1,6 @@
 # 07. Backup and Recovery
 
-Phase: 🟧 Harden (taking restore points) and 🟩 Sustain (restoring) · Priority: P1
+Phase: 🟧 Harden (taking restore points) and 🟩 Sustain (restoring) · Priority: P0
 
 ## 1. Goal
 
@@ -36,30 +36,30 @@ The list of what to back up comes from the profile. Paths are templates filled f
 
 - **Straight after the first-minute bundle**, for every scored service on the host, before the Red Team's later takedowns (design 03, section 6, step 5).
 - **Before patching** a service (design 10).
-- **Before the first Tier 2 change** on a host (design 03).
-- **On demand** through `labyrinth backup <service>`, and as a prompt in the checkpoint summary, which shows the time since each service's last backup (design 19).
+- **Before the first Tier 2 change** on a host in the Harden phase (design 03, section 6).
+- **On demand** through `labyrinth backup <service>` (planned; the command does not exist yet), and as a prompt in the checkpoint summary, which shows the time since each service's last backup (design 19).
 
 How often to take further restore points is for the team's own plan.
 
 ```mermaid
-flowchart LR
-    TRG["Trigger:<br/>before patching · before Tier 2<br/>· on demand"] --> SPC{"Enough free disk<br/>after the backup?"}
+flowchart TD
+    TRG["Trigger:<br/>after the first-minute bundle · before patching<br/>· before the first Tier 2 change · on demand"] --> SPC{"Enough free disk<br/>after the backup?"}
     SPC -->|no| REF(["Refuse; tell the operator"])
     SPC -->|yes| BK["Take the restore point<br/>(archive or dump)"]
     BK --> HS["Hash it into the<br/>backup manifest"]
-    HS --> ST[("Backup path, root or SYSTEM only,<br/>plus a copy on the control node")]
+    HS --> ST[("Backup path, root or SYSTEM only,<br/>plus a copy on the control node<br/>or the BACKUP_PEER host")]
     ST -.->|"when needed"| RS["labyrinth restore after approval:<br/>hash checked first"]
-    classDef sustain fill:#e3f6e8,stroke:#15803d,color:#0f3d20
+    classDef harden fill:#fdeedc,stroke:#c2410c,color:#4a1d06
     classDef human fill:#fff4d6,stroke:#b7791f,color:#4a3108
     classDef store fill:#eef1f5,stroke:#475569,color:#1e293b
     classDef stop fill:#f6f6f6,stroke:#b42318,color:#4a1111,stroke-dasharray:4 3
-    class TRG,SPC,BK,HS sustain
+    class TRG,SPC,BK,HS harden
     class RS human
     class ST store
     class REF stop
 ```
 
-*Figure: a restore point is taken only when the disk has room, is hashed into a manifest, stored where only an administrator can read it and copied off the host, and a restore checks that hash before Labyrinth carries it out with a person's approval. Green is sustain work, amber the approved restore, gray the storage and the dashed red outline a refusal.*
+*Figure: a restore point is taken only when the disk has room, is hashed into a manifest, stored where only an administrator can read it and copied off the host (to the control node, or to the backup peer when there is none), and a restore checks that hash before Labyrinth carries it out with a person's approval. Orange is Harden work (taking the restore point), amber the approved restore, gray the storage and the dashed red outline a refusal.*
 
 ## 5. Safety
 
@@ -70,6 +70,8 @@ flowchart LR
 - **Copy off the host (required).** An attacker with root or SYSTEM can delete backups stored on the host, and destructive actions are expected later in an event. So every restore point is copied to the control node over the existing admin path (design 15) as soon as it is taken, with its hash checked on arrival. A restore point counts as complete only once its copy is confirmed. In local mode with no control node, the operator may name a backup peer in `event.conf` (`BACKUP_PEER`, another team host reached over the admin path): restore points are copied there the same way, into a folder only root or the administrators can read, and hash-checked on arrival. The peer is a team host inside the event network, never an outside service (NCCDC, 2025, Rule 5.6.4). Without a control node or a peer, the checkpoint lists every service without an off-host copy as a top finding (design 19, section 5), so the team knows its exposure.
 
 ## 6. Restoring
+
+The `backup` and `restore` commands below are planned and do not exist yet (Roadmap); today a module's own `rollback` is the only restore.
 
 | What | How | Tier |
 |---|---|---|
@@ -86,7 +88,7 @@ flowchart LR
 
 ## 7. Acceptance tests
 
-- A defaced lab web root is restored by `labyrinth restore` after approval, the damaged copy is kept as evidence, and the probe passes.
+- (Planned, with the commands.) A defaced lab web root is restored by `labyrinth restore` after approval, the damaged copy is kept as evidence, and the probe passes.
 - `labyrinth restore` refuses to run without approval, and refuses a restore point whose hash does not match.
 - A restore point is not reported complete until its off-host copy's hash matches.
 - In the lab, a host with `/etc/fstab` deleted is brought back with the rescue runbook within the target time.

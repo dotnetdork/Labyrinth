@@ -26,7 +26,7 @@ The original idea ran against every reachable host in one pass, resetting creden
 ## 3. Design principles
 
 1. **Protect first.** Load the protected set before doing anything else. If it is missing or empty, stop.
-2. **Plan before apply.** Plan mode is the default. Apply needs a confirmation naming the target group, typed, or given on the command line in a first-minute run (section 6.3).
+2. **Plan before apply.** Plan mode is the default. Apply needs the target group, which comes from the hosts file once stage 4b is built and from `--confirm-group` today (section 6.3); nothing asks for it mid-run.
 3. **Small blast radius.** Apply in rings, one test host first, except in a first-minute run, where speed matters more and each host's revert timer is the safety net (section 6.3).
 4. **Reversible.** Every change is backed up and recorded in the run manifest.
 5. **Verify like the scoring engine.** After each module, run probes and compare with the probes taken before.
@@ -146,17 +146,19 @@ flowchart TD
     end
     T0 --> ARM
     B5 --> I1
-    V1 -->|"no, or no one keeps the run"| REV(["Timer reverts; stop run"])
-    V1 -->|"yes: login check kept"| T3["Tier 3: queued items,<br/>approved later"] --> SEAL(["Seal the baseline;<br/>print person-run checklist"])
+    V1 -->|"no"| REV(["Timer reverts; stop run"])
+    V1 -->|"yes"| T3["Tier 3: queue items,<br/>print person-run checklist"] --> KEEP{"End-of-run question:<br/>can you still log in?<br/>passwords recorded? keep (y/N)"}
+    KEEP -->|"no answer or N"| REV
+    KEEP -->|"y"| SEAL["Keep, then<br/>seal the baseline"] --> DONE(["Run kept"])
     classDef human fill:#fff4d6,stroke:#b7791f,color:#4a3108
     classDef stop fill:#f6f6f6,stroke:#b42318,color:#4a1111,stroke-dasharray:4 3
-    class GATES,T3 human
+    class KEEP human
     class STOP,REV stop
     style fm fill:#fde8e8,stroke:#c0392b,color:#4a1111
-    style after fill:#fff4d6,stroke:#b7791f,color:#4a3108
+    style after fill:#fdeedc,stroke:#c2410c,color:#4a1d06
 ```
 
-*Figure: once every safety gate passes, each host gets the first-minute bundle (Lock out) with nothing installed, then the installs, restore points and sweep behind that lockdown (Harden), then outbound is reopened to its normal allowlist and the probes decide whether the run is kept. The red box is the first-minute bundle, amber marks the Harden work behind it and a person's approval, and dashed red outlines mark where the run stops.*
+*Figure: once every safety gate passes, each host gets the first-minute bundle (Lock out) with nothing installed, then the installs, restore points and sweep behind that lockdown (Harden), then outbound is reopened to its normal allowlist and the probes decide whether the run goes on. Nobody types during the run; the only question is the one at the end, and with no answer the revert timer undoes the run. The red box is the first-minute bundle, orange marks the Harden work behind it, amber marks the one human step, and dashed red outlines mark where the run stops.*
 
 ### 6.3 First-minute runs
 
@@ -177,7 +179,7 @@ The group and the break-glass account come from the configuration, and items no 
 
 | Left out of a first-minute run | Kept in every run |
 |---|---|
-| Typing the confirmation and the break-glass answer: the options answer them today, and the configuration once stage 4b is built; the manifest records where each came from | The scoring allowlist goes in before any deny rule |
+| Typing the confirmation and the break-glass answer: the options answer them today, and the configuration once stage 4b is built; the manifest records where each came from | The scoring allowlist, where one is given, goes in before any deny rule |
 | A separate `plan` command: `apply` prints the plan and carries it out | A revert timer on every host, re-armed before each module |
 | Per-item approval for the items a pre-approval rule covers | Probes before and after each module, with automatic rollback on a regression |
 | Rings: every host starts at once, each under its own revert timer | The protected set and the break-glass account are never changed |
@@ -191,7 +193,7 @@ The break-glass account is still the team's choice for each host (section 7): it
 | Gate | Check |
 |---|---|
 | Protected set loaded | Non-empty and parsed |
-| Scored services reachable | In the firewall plan for every host that filters traffic, every scored service on the host has an allow from any source (section 6.1). The run-time `scoring-allowlist` is then optional: it is still applied first where present, and it feeds the never-ban list (design 18). The runner blocks a module with `touches_scored: true` that would leave a scored service on the host without such an allow |
+| Scored services reachable | In the firewall plan for every host that filters traffic, every scored service on the host has an allow from any source (section 6.1). The firewall adapter checks this and refuses a plan without it (design 01, section 5; planned: today the adapter still needs the `scoring-allowlist`). The runner's part is narrower: it blocks (`20`) a module with `touches_scored: true` when there is no `services` file. The run-time `scoring-allowlist` is optional: it is applied first where present, and it feeds the never-ban list (design 18) |
 | Break-glass confirmed | Today, the operator has confirmed, by typing, that the break-glass credential worked at this host's console. This is the operator's word, not proof: a script cannot reach the console, so it is asked once per host. The account must be in the protected set with class `breakglass`, the answer is kept in Labyrinth's state for later runs on that host, and every run records it in its manifest. When the answer is given, Labyrinth looks for a session of that account at the console (`loginctl` or `who` on Linux, `query user` on Windows) and records the session it found. If it finds none, or cannot look, it warns and goes on: the gate stays a confirmation, and the manifest says what backed it. Once stage 4b is built, the account is taken from the protected set instead of typed (section 6.3), and the console check and the record stay. |
 | Backup taken | Every file is copied before it changes, and the copy is recorded in the run manifest (`docs/Conventions.md`, section 7) |
 | Plan reviewed | Today, the operator confirms the plan by typing the group name, or gives it with `--confirm-group` in a first-minute run. Once stage 4b is built, the team reviews the profile before the event, `laby PHASE` previews it on the host, and the group comes from the hosts file (section 6.3) |
@@ -206,7 +208,7 @@ The break-glass account is still the team's choice for each host (section 7): it
   - `labyrinth runs` (`laby --history` once stage 4b is built) shows which runs still have a timer armed, and when each one fires.
   - VyOS: `commit-confirm <minutes>` followed by `confirm`. Read the VyOS warning below first.
 - **Passwords shown once.** New credentials are displayed once, on the operator's screen, for the team's offline record (design 04, section 2). Labyrinth never writes them to disk or logs and never echoes them over an unencrypted channel. Use a cryptographic random source (`/dev/urandom` or .NET `RandomNumberGenerator`), not `Get-Random`.
-- **Acknowledge before continuing.** The operator confirms the credential is recorded before the old one is invalidated.
+- **Recorded at the end.** There is no typed "recorded" confirmation during the run. New passwords are shown once, and recording them is part of the single end-of-run keep question: "passwords recorded and you can still log in? keep" (y/N). With no answer the revert timer undoes what it covers.
 
 > [!WARNING]
 > **VyOS reboots by default.** On VyOS 1.4 the default action when a commit is not confirmed is to *reboot* to the saved configuration, which drops routing for every host behind the router (VyOS, n.d.). First set, commit and save `set system config-management commit-confirm action reload`. If the installed version does not offer that option, do not rely on the timer: make the change by hand with a second session open.
@@ -217,12 +219,12 @@ After each module, probe as the scoring engine would:
 
 | Service | Probe | Pass condition |
 |---|---|---|
-| HTTP and HTTPS | Fetch the scored page by its path | Expected status and expected content string |
+| HTTP and HTTPS | Fetch the scored page by its path (planned, Roadmap stage 6; today the probe only connects) | Expected status and expected content string |
 | DNS | Query a known record | Expected answer |
 | SMTP (Simple Mail Transfer Protocol) | Connect and read the banner; optionally send a test message | Expected response |
 | POP3 (Post Office Protocol 3) and IMAP | Connect and read the banner (no scoring-account logins) | Expected response |
 | FTP (File Transfer Protocol) | Connect and read the banner | Expected response |
-| A check that logs in (SSH, a file share, SQL, remote management, a SIEM search, mail or FTP with a login) | Log in with a probe account the operator supplies at run time and do what the check does (design 19, section 3) | The login works and the action returns what is expected |
+| A check that logs in (SSH, a file share, SQL, remote management, a SIEM search, mail or FTP with a login) | Log in with a probe account the operator supplies at run time and do what the check does (design 19, section 3; planned, Roadmap stage 6) | The login works and the action returns what is expected |
 
 Without a probe account, a check that logs in is probed by connecting only, and the plan says so: a broken login, which is what a credential change can cause, then goes unseen. Take probes before and after. A regression triggers automatic rollback of that module and stops the run. Between runs, the health monitor repeats these probes on a schedule (design 19).
 

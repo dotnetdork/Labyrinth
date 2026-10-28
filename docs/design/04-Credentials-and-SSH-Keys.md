@@ -1,6 +1,6 @@
 # 04. Credentials and SSH Keys
 
-Phase: 🟥 Lock out · Priority: P0
+Phase: 🟥 Lock out, 🟧 Harden · Priority: P0
 
 ## 1. Rules that shape it
 
@@ -23,8 +23,8 @@ Phase: 🟥 Lock out · Priority: P0
 - **Order:**
   1. Set the new credential.
   2. Test it from a fresh session.
-  3. Acknowledge that it is recorded.
-  4. Only then close the old session.
+  3. Show it once on the terminal. Nobody types a confirmation: that it is recorded is part of the single end-of-run keep question (design 03, section 8).
+  4. Close the old session.
 - **User-level accounts:** rotated only after approval, from an explicit list, where the event takes a change list (section 2.4). Otherwise a manual checklist, following the event's notification process.
 - **Crown jewels** (domain admin, KRBTGT) rotate at set checkpoints, not continuously. KRBTGT needs two resets with a replication check between them; it is an approval item that Labyrinth carries out (design 12, section 5.1).
 
@@ -61,7 +61,7 @@ A module's output goes to the run log, and its standard input is empty (Conventi
 
 - **Make one.** `lab_secret_new [LENGTH]` (bash) and `Get-LabRandomSecret -Length` (PowerShell) return a password from the system's cryptographic random source (`/dev/urandom`; `RandomNumberGenerator` on Windows), 20 characters unless the module asks for more (14 to 64). The characters are upper- and lower-case letters, digits and `-_.+=`, with nothing that a person copying by hand can mistake for another character (`0 O 1 l I`) and nothing a shell or login prompt treats specially. Each password has at least one character of each kind and starts with a letter, so it meets Windows complexity and the rules a module sets (section 2.2).
 - **Check first.** `lab_secret_can_show` / `Test-LabSecretTerminal` succeeds only when the run has a terminal (`/dev/tty` on Linux, the console on Windows). A module calls it in `apply` *before* changing anything. Without a terminal, the module changes nothing and exits blocked (`20`), saying that a new password could not be shown. A rotation that nobody can record is never made.
-- **Show it once.** `lab_secret_show LABEL SECRET` / `Show-LabSecret -Label -Secret` write the password to the terminal directly, not to standard output or standard error, so it never reaches the runner, the run log or a pipe. The operator then types `recorded` once it is in the offline record (the order in section 2). Anything else shows the prompt again. If the terminal closes first, the helper fails, and the module rolls back the change: a password nobody recorded is not kept. Once `recorded` is typed, the password is cleared from the screen, including its scrollback where the terminal allows.
+- **Show it once.** `lab_secret_show LABEL SECRET` / `Show-LabSecret -Label -Secret` write the password to the terminal directly, not to standard output or standard error, so it never reaches the runner, the run log or a pipe. There is no typed "recorded" step: the operator copies the password into the offline record, and the single end-of-run keep question asks "passwords recorded and you can still log in? keep" (design 03, section 8). If the terminal closes before the password is shown, the helper fails, and the module rolls back the change: a password nobody saw is not kept. (Planned, Roadmap stage 4b: today the helper still asks the operator to type `recorded`.)
 
 A password is held only in a variable of the module's own process. It is never passed on a command line that other users can read (`/proc/<pid>/cmdline`); a module gives it to a tool on standard input (`chpasswd`) or through an API (`Set-LocalUser` with a `SecureString`). The log, the manifest and every backup hold none of it: the manifest records which account changed, not the password, and a backup of a file that stores a password is made before the new one is written. `tests/core/` checks this by running a module that rotates a test password, and searching the whole data root for it afterwards.
 
@@ -72,8 +72,8 @@ Remote mode (design 00, section 5) must give each host a terminal (`ssh -t`, or 
 Some events score logins with accounts the team is expected to secure, and take new passwords through a change process of their own, such as a form or an upload of `username,password` lines that the scoring system applies at once (*Background*). Rotating such an account without that step breaks its check until scoring has the new password. So:
 
 - **The class.** The operator lists each such admin account in the protected set with class `scored-admin` (design 03, section 4). It is rotated in the first minute like any admin account, never locked or removed, and its rotation is kept once verified (section 2).
-- **One list, shown once.** At the end of the module, Labyrinth shows every password it set for a `scored-admin` account, and for user-level accounts a person approved, as `username,password` lines on the terminal, through the same helper as any new password (section 2.3). The operator copies them into the event's change process and the offline record, then types `recorded`. The list is never written to disk, the log or the manifest.
-- **One password per name.** A change process that takes a username without naming a host or service applies one password to that name everywhere. A name that exists on several hosts must therefore get the same new password on each, and the plan lists every host it covers. Without a control node to carry the password between hosts, it is derived on each host from the event seed and the account name (design 16, section 3), so every host computes the same value and the team can work out the whole list on its own machine before the event. Without a seed, the operator types the new password once per host, at the terminal.
+- **One list, shown once.** At the end of the module, Labyrinth shows every password it set for a `scored-admin` account, and for user-level accounts a person approved, as `username,password` lines on the terminal, through the same helper as any new password (section 2.3). The operator copies them into the event's change process and the offline record; the end-of-run keep question covers that they are recorded (section 2.3). The list is never written to disk, the log or the manifest.
+- **One password per name.** A change process that takes a username without naming a host or service applies one password to that name everywhere. A name that exists on several hosts must therefore get the same new password on each, and the plan lists every host it covers. Without a control node to carry the password between hosts, it is derived on each host from the event seed and the account name (design 16, section 3), so every host computes the same value and the team can work out the whole list on its own machine before the event. Without a seed, an account that exists on several hosts is not rotated in the run: it is queued as an approval item, and a person rotates it later in a run that has the seed. The seed comes from the private event configuration or a flag given at the start, never a prompt during the run (design 16).
 - **Submit at once.** A check that logs in with the account fails from the rotation until the event applies the list, so the operator submits it as soon as it is shown. The probes that log in with the account use the new password, held in memory (design 19, section 3).
 - **What it cannot know.** Whether the event applied the list. The next authenticated probe, or the scoreboard, shows it.
 
@@ -134,7 +134,7 @@ flowchart TD
     subgraph pw["Password rotation (section 2)"]
         direction LR
         P1["Set the new credential"] --> P2["Test it from a fresh session"]
-        P2 --> P3["Operator acknowledges it<br/>is in the offline record"]
+        P2 --> P3["Show it once; recorded at<br/>the end-of-run keep question"]
         P3 --> P4(["Close the old session"])
     end
     subgraph key["SSH key rotation (section 4)"]
@@ -146,13 +146,12 @@ flowchart TD
     pw ~~~ key
     classDef human fill:#fff4d6,stroke:#b7791f,color:#4a3108
     classDef ok fill:#e3f6e8,stroke:#15803d,color:#0f3d20
-    class P3 human
     class P4,K4 ok
     style pw fill:#fde8e8,stroke:#c0392b,color:#4a1111
     style key fill:#fde8e8,stroke:#c0392b,color:#4a1111
 ```
 
-*Figure: passwords and SSH keys rotate in the same order: the new credential is created and tested before the old one is closed or removed. Both lanes are lock-out work (red); amber is the operator's own step and green is the safe end point.*
+*Figure: passwords and SSH keys rotate in the same order: the new credential is created and tested before the old one is closed or removed. Both lanes are lock-out work (red) and green is the safe end point; nobody types during either.*
 
 ## 5. Break-glass and official access
 
@@ -161,7 +160,7 @@ Break-glass is how the team gets back into a host it has locked itself out of. I
 A break-glass path must not become a backdoor, so:
 
 - **No new account and no key.** The break-glass credential is the rotated password of an existing admin-class account (root or the local Administrator), kept by the captain in the team's offline record (section 2). Labyrinth never creates an account or an SSH key for it.
-- **Console first.** Before Labyrinth changes a host, the operator confirms by typing that the break-glass credential worked at that host's console (design 03, section 7). A script cannot reach the console, so this is asked once per host, not before every change. Where the platform allows it without blocking the team's own admin path, the credential works only at the console; on Linux, `PermitRootLogin no` in the SSH drop-in (section 4) already does this.
+- **Console first.** Before Labyrinth changes a host, the break-glass credential must have worked at that host's console (design 03, section 7). A script cannot reach the console, so the operator's word is taken once per host, at the start and never mid-run: today as a start-up answer, and once stage 4b is built the account comes from the protected set and Labyrinth looks for its console session itself, so nothing is typed. Where the platform allows it without blocking the team's own admin path, the credential works only at the console; on Linux, `PermitRootLogin no` in the SSH drop-in (section 4) already does this.
 - **Rotated like any admin password.** Its rotation follows section 2. The new password is tested in a fresh session on the host, `su -` on Linux or `runas` on Windows, which checks the password itself without needing SSH. It is never locked or removed. Unregistered SSH keys on the account are still removed.
 - **Watched.** A successful logon with it raises an alert (design 14, section 5).
 - **Rotated after use** and after the event.
@@ -203,10 +202,10 @@ A locked account can be unlocked again by an attacker with admin rights, so a lo
 ## 7. Acceptance tests
 
 - After rotation, the new credential works from a fresh session and the old fails.
-- A new password appears on the terminal only: not in the module's output, and nowhere under the data root (logs, manifest, backups). Without a terminal, nothing is rotated; if the terminal goes before `recorded` is typed, the old password is put back.
+- A new password appears on the terminal only: not in the module's output, and nowhere under the data root (logs, manifest, backups). Without a terminal, nothing is rotated; if the terminal goes before the password is shown, the old password is put back.
 - A scoring account is unchanged.
 - An unregistered key is removed and backed up; a registered key stays.
-- An unregistered key removed in a run that is not kept stays removed after the revert timer fires, because its module is kept once verified (design 00, section 4); `rollback --all` puts it back.
+- An unregistered key removed in a run that is not kept stays removed after the revert timer fires, because its module is kept once verified (design 00, section 4); `rollback <run> --all` puts it back.
 - A key with a wrong source address cannot log in.
 - A bad `sshd` configuration is rejected by the syntax test and does not reload.
 - A dead-man revert restores SSH access when verify is failed on purpose.

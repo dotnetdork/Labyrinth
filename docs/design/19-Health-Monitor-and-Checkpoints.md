@@ -2,6 +2,9 @@
 
 Phase: 🟩 Sustain · Priority: P1
 
+> [!NOTE]
+> **Planned.** The health monitor, `checkpoint` and `restore` are not built yet (Roadmap, stage 6); the names and letters of the planned commands are decided when each is built (Conventions, section 3.3). Today `probe` (`laby --probe` in the new command line) probes every scored service once, and the `http`, `dns` and banner probes exist. The firewall-drift check, the login probes and the scheduled checkpoint arrive with the monitor.
+
 ## 1. Goal
 
 Two jobs for the long middle of an event, after the lockout:
@@ -17,7 +20,7 @@ Today the scoring-style probes (design 03, section 9) run only when a module fin
 |---|---|
 | Anything that interferes with the scoring engine is the team's responsibility (National Collegiate Cyber Defense Competition [NCCDC], 2025, Rule 4.11). | Probes are light: one per service per interval, with short timeouts. |
 | Do not mislead the scoring engine (NCCDC, 2025, Rule 9.3). | The monitor never fakes a response or changes what a service returns. |
-| Tools must not deliberately break expected functionality (NCCDC, 2025, Rule 5.6.5). | The monitor changes nothing except re-applying sealed firewall rules, a verified state, under a revert timer (section 4.1). Rollback is a person's decision (section 4). |
+| Tools must not deliberately break expected functionality (NCCDC, 2025, Rule 5.6.5). | The monitor changes nothing. It alerts, and a person decides what to roll back or re-apply (sections 4 and 4.1). |
 
 
 ## 3. The health monitor
@@ -29,7 +32,7 @@ Today the scoring-style probes (design 03, section 9) run only when a module fin
 - **Where results go:** the `health` log category (design 00, section 7), forwarded to the SIEM (design 14), and a one-line summary per host in the status feed (design 15).
 
 > [!IMPORTANT]
-> **Answering is not logging in.** The probes check that a service answers, not that a user can log in to it, because scoring accounts are never used. A mail service can pass every probe while its logins are broken, and still fail scoring. To narrow this gap, the team may create a test mailbox or user by hand that is *not* a scoring account and add it to the service list with a login probe. A scheduled job cannot hold that password without storing it in a file, so the login probe runs only when an operator starts it, for example with `labyrinth checkpoint` (section 5). The password is typed in and kept only in memory, like the event seed (design 16).
+> **Answering is not logging in.** The probes check that a service answers, not that a user can log in to it, because scoring accounts are never used. A mail service can pass every probe while its logins are broken, and still fail scoring. To narrow this gap, the team may create a test mailbox or user by hand that is *not* a scoring account and add it to the service list with a login probe. The scheduled job does not use that password, so the login probe runs only when an operator starts it, for example with `labyrinth checkpoint` (planned, section 5). The password comes from the private event configuration file or a flag given at the start, never typed during a run, and is kept only in memory, like the event seed (design 16).
 
 ### 3.1 Probes that log in and check content
 
@@ -45,12 +48,12 @@ Events differ in what a check does: some only connect, others log in and read a 
 | `winrm` | Opens a session and runs a no-op |
 | `siem` | Runs a fixed search through the SIEM's interface |
 
-- **The account.** A probe that logs in uses a probe account the operator creates for the purpose, never a scoring account (design 03, section 4). Its password is typed at run time and held only in memory, never in a file (design 16). Where a `scored-admin` account was rotated, the probe uses the new password from the same run (design 04, section 2.4).
+- **The account.** A probe that logs in uses a probe account the operator creates for the purpose, never a scoring account (design 03, section 4). Its password comes from the private event configuration file or a flag given at the start, never typed during a run, and is held only in memory (design 16). Where a `scored-admin` account was rotated, the probe uses the new password from the same run (design 04, section 2.4).
 - **No account given.** The probe connects only and the plan says so.
 - **Read-only.** A probe never writes, sends or deletes anything on the service.
 
 > [!IMPORTANT]
-> **Inside is not outside.** The control node probes from inside the network. The scoring engine checks from wherever it sits, often outside, through the edge firewall and NAT. A pass from inside does not prove the scoring engine sees a pass. Where possible, add one probe from the same side as the scoring engine, and trust the official scoreboard over the monitor. `labyrinth probe` may run from a machine outside the team's network, such as a console the event provides; it then probes only the addresses in the run-time `own-ranges` list and refuses any other, so it never touches a system outside the team's network (NCCDC, 2025, Rule 4.10).
+> **Inside is not outside.** The control node probes from inside the network. The scoring engine checks from wherever it sits, often outside, through the edge firewall and NAT. A pass from inside does not prove the scoring engine sees a pass. Where possible, add one probe from the same side as the scoring engine, and trust the official scoreboard over the monitor. `labyrinth probe` (`laby --probe` in the new command line) may run from a machine outside the team's network, such as a console the event provides; it then probes only the addresses in the run-time `own-ranges` list and refuses any other, so it never touches a system outside the team's network (NCCDC, 2025, Rule 4.10).
 
 ## 4. When a probe changes state
 
@@ -61,16 +64,13 @@ When a service goes from pass to fail, or back, the monitor:
 3. raises an alert in the status feed and the SIEM;
 4. records the outage time for the incident report's "impact on scored services" field (design 20).
 
-It does **not** roll back on its own. During a run, a failed verify triggers automatic rollback (design 00), because the cause is almost certainly the change just made. An hour later, the cause could be the Red Team, a teammate or the scoring side. Blindly reverting could undo a security fix, so a person decides. To restore a damaged service, the person runs `labyrinth restore` (design 07, section 6).
+It does **not** roll back on its own. During a run, a failed verify triggers automatic rollback (design 00), because the cause is almost certainly the change just made. An hour later, the cause could be the Red Team, a teammate or the scoring side. Blindly reverting could undo a security fix, so a person decides. To restore a damaged service, the person runs `labyrinth restore` (planned; design 07, section 6).
 
 ### 4.1 Firewall drift
 
-Red Teams have been seen dropping a team's firewall rules. So each interval, the monitor also compares every host's firewall rules with the set recorded in the sealed baseline (design 08, section 6). When they differ, it:
+Red Teams have been seen dropping a team's firewall rules. So each interval, the monitor also compares every host's firewall rules with the set recorded in the sealed baseline (design 08, section 6). When they differ, it logs and alerts on the difference, as a high-ranked integrity finding for the incident record (design 20), naming the host and the rules that changed.
 
-1. logs and alerts on the difference, as a high-ranked integrity finding for the incident record (design 20);
-2. **re-applies the sealed rule set automatically**, with the same before-and-after probes and revert timer as the original change (design 03, section 8).
-
-This is the one change the monitor makes on its own, because it puts back a state that was already verified and sealed, rather than guessing at a cause. If the team changed the firewall on purpose, it reseals first (design 08, section 6). If re-applying fails its probes, the timer reverts it and a person decides. Repeated drift on one host is flagged as a sign that the attacker still has admin rights there.
+The monitor **never re-applies firewall rules unattended**: putting rules back without a person could cut off an operator or a scored service that the drift itself changed. A person re-applies the sealed rule set with one command, which runs with the same before-and-after probes and revert timer as the original change (design 03, section 8). If the team changed the firewall on purpose, it reseals first (design 08, section 6). Repeated drift on one host is flagged as a sign that the attacker still has admin rights there.
 
 ```mermaid
 flowchart TD
@@ -80,19 +80,23 @@ flowchart TD
     CMP -->|"no: pass ↔ fail"| ACT["Log both results · name the last<br/>Labyrinth change as rollback candidate ·<br/>alert · record impact for reports"]
     ACT --> LOGQ
     ACT --> HUM["A person decides:<br/>roll back, fix, or report"]
+    PR --> FW{"Firewall rules match<br/>the sealed baseline?"}
+    FW -->|no| DRIFT["Alert with the rules<br/>that changed"]
+    DRIFT --> LOGQ
+    DRIFT --> HUM2["A person re-applies the<br/>sealed rules with one command"]
     classDef sustain fill:#e3f6e8,stroke:#15803d,color:#0f3d20
     classDef human fill:#fff4d6,stroke:#b7791f,color:#4a3108
     classDef store fill:#eef1f5,stroke:#475569,color:#1e293b
-    class TMR,PR,CMP,ACT sustain
-    class HUM human
+    class TMR,PR,CMP,ACT,FW,DRIFT sustain
+    class HUM,HUM2 human
     class LOGQ store
 ```
 
-*Figure: the control node probes every scored service on a schedule, and when a result changes it logs both results, names the likely cause and alerts, but leaves the rollback decision to a person. Green is sustain work, amber the person's decision and gray the log.*
+*Figure: the control node probes every scored service on a schedule, and when a result changes it logs both results, names the likely cause and alerts; when firewall rules drift from the sealed baseline it alerts too. Rollback and re-applying rules are left to a person. Green is sustain work, amber the person's decision and gray the log.*
 
 ## 5. The checkpoint command
 
-`labyrinth checkpoint` is read-only and prints one short summary, also saved to the `report` log category:
+`labyrinth checkpoint` (planned) is read-only and prints one short summary, also saved to the `report` log category:
 
 | Section | Source |
 |---|---|
@@ -106,13 +110,13 @@ flowchart TD
 | Trap trips and active bans | Trip log and ban set (designs 17, 18) |
 | Time since the last backup of each scored service | Backup record (design 07) |
 | Revert timers still armed | Safety core (design 03) |
-| Firewall drift found and re-applied since the last checkpoint | Section 4.1 |
+| Firewall drift found since the last checkpoint, and whether it was re-applied | Section 4.1 |
 | Services with no restore point copied off the host | Backup record (design 07, section 5) |
 | Tool integrity: signature and hashes still match | Design 21 |
 
 The command takes no action. It exists so that a regular review is quick and every review covers the same ground.
 
-**On a schedule.** The monitor also runs `checkpoint` on each host on an interval set in configuration, as the same scheduled job on the control node. It is read-only, like the command, and leaves out the login probe, because a scheduled job holds no password (section 3). When a section shows something new since the last scheduled checkpoint, the monitor raises one alert in the status feed and the SIEM, naming the host and the section: a new persistence item, an integrity change, a mitigation that has drifted, a new open flaw in rank groups 1 to 3, a new account, listener, service or task, or a revert timer left armed longer than its run. A finding that is still there next time does not alert again, and every scheduled summary is saved to the `report` log category for the next person who reviews it.
+**On a schedule.** The monitor also runs `checkpoint` on each host on an interval set in configuration, as the same scheduled job on the control node. It is read-only, like the command, and leaves out the login probe, because the scheduled job does not use the probe password (section 3). When a section shows something new since the last scheduled checkpoint, the monitor raises one alert in the status feed and the SIEM, naming the host and the section: a new persistence item, an integrity change, a mitigation that has drifted, a new open flaw in rank groups 1 to 3, a new account, listener, service or task, or a revert timer left armed longer than its run. A finding that is still there next time does not alert again, and every scheduled summary is saved to the `report` log category for the next person who reviews it.
 
 ## 6. Failure behavior
 
@@ -124,8 +128,8 @@ The command takes no action. It exists so that a regular review is quick and eve
 
 - Stopping a scored service in the lab raises an alert within one interval, naming the last Labyrinth change on that host.
 - Restarting it logs the recovery and the outage length.
-- The monitor never runs a rollback, a restart or any other change, except re-applying the sealed firewall rules (section 4.1).
-- Flushing a lab host's firewall is detected within one interval, the sealed rules are re-applied, and every probe still passes.
+- The monitor never runs a rollback, a restart, a firewall re-apply or any other change.
+- Flushing a lab host's firewall is detected within one interval and raises an alert naming the changed rules; the monitor does not re-apply them, and the one command a person runs puts the sealed rules back with every probe still passing.
 - `labyrinth checkpoint` completes on the full lab network within the target time and changes nothing (the inventory before and after is identical).
 - A scheduled checkpoint changes nothing; a planted listener raises one alert naming the host, and the next scheduled checkpoint does not raise it again.
 - Killing the monitor marks the status feed stale.
