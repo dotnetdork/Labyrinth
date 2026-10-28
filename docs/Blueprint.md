@@ -25,7 +25,7 @@ You cannot do that by hand, per host, from memory. Labyrinth is:
 - **A core strategy:** five phases (*Lock out → Harden → Observe → Deceive → Sustain*) and a set of OS-agnostic invariants, so the same reasoning applies to a Fedora web server and a Windows domain controller.
 - **A capability map:** each invariant expressed as a concrete control on Linux, on Windows/AD, and on the network edge, with a priority and a CCDC note.
 - **A deception catalog:** traps, canaries, honey-accounts, tarpits, and sinkholes that make an attacker's reconnaissance expensive, noisy, and logged. Deception buys time that patching cannot.
-- **An architecture:** native bash and PowerShell modules grouped into *phases*. A team can run a guarded lockout across the reachable hosts from one command, then layer observation and deception on top (§6, design 00).
+- **An architecture:** native bash and PowerShell modules grouped into *phases*. Each host gets its lockout and hardening from one command (planned, §6.7), and a team can run that across the reachable hosts, then layer observation and deception on top (§6, design 00).
 
 Because Labyrinth is a team-written tool, the rules require that it:
 
@@ -62,7 +62,7 @@ Work the phases in order, and do the cheap, high-impact things first. The timing
 ```mermaid
 flowchart LR
     A["<b>Lock out</b><br/><i>Take back trust</i><br/>• rotate admin credentials<br/>• lock unexpected accounts<br/>• end intruder sessions<br/>• default-deny in and out"]
-    B["<b>Harden</b><br/><i>Shrink the surface</i><br/>• install tools, take restore points<br/>• sweep, verify against official packages<br/>• patch, cut services, service packs<br/>• then reopen outbound"]
+    B["<b>Harden</b><br/><i>Shrink the surface</i><br/>• install tools, take restore points<br/>• sweep for persistence<br/>• patch, cut services, service packs<br/>• verify against official packages<br/>• then reopen outbound"]
     C["<b>Observe</b><br/><i>See everything</i><br/>• ship logs to the SIEM<br/>• high-signal host logging<br/>• watch authentication"]
     D["<b>Deceive and sustain</b><br/>• deploy the trap layer<br/>• keep scored services green<br/>• hold and triage"]
     A --> B --> C --> D
@@ -81,7 +81,7 @@ flowchart LR
 
 ### Lock out — Establish trust
 
-The attacker's power comes from credentials, existing sessions and footholds left before the event. The first-minute bundle takes the first two away on each host in one step: it rotates admin passwords, removes unregistered keys and checks the SSH configuration, ends intruder sessions, locks unexpected local admin accounts, then applies default-deny inbound and outbound. It installs nothing: installing is slow, and the lockdown must be in place before outbound opens again, so it uses only what the host already has (design 03, section 6.1). That is a matter of speed and order, not of a rule. On a Debian host with no firewall front end (nftables installed but not running, shipped rules that accept everything, UFW not installed), the lockdown uses raw nftables, and UFW takes over in the Harden phase with the same rules. Scored services are a primary Red Team target, so they are defended, with probes and revert timers, rather than left as found.
+The attacker's power comes from credentials, existing sessions and footholds left before the event. The first-minute bundle takes the first two away on each host in one step: it rotates admin passwords, removes unregistered keys and checks the SSH configuration, ends intruder sessions, locks unexpected local admin accounts, then applies default-deny inbound and outbound. The bundle is planned (Roadmap stage 4). It installs nothing: installing is slow, and the lockdown must be in place before outbound opens again, so it uses only what the host already has (design 03, section 6.1). That is a matter of speed and order, not of a rule. On a Debian host with no firewall front end (nftables installed but not running, shipped rules that accept everything, UFW not installed), the lockdown uses raw nftables, and UFW takes over in the Harden phase with the same rules. Scored services are a primary Red Team target, so they are defended, with probes and revert timers, rather than left as found.
 
 - **Rotate administrator-class credentials you were handed or that ship by default:** local admins, appliance web logins, SNMP (Simple Network Management Protocol) strings, and service or database accounts once the dependency map is known. Do it first, everywhere.
 
@@ -93,19 +93,21 @@ The attacker's power comes from credentials, existing sessions and footholds lef
 
 - **Default-deny** inbound and outbound on every host firewall and at the edge. Allow only the scored services and your own admin path inbound, and only what the host and its scored services need outbound.
 
-### Harden — Shrink the surface
+### Harden (planned) — Shrink the surface
+
+The Harden phase (`harden.*` modules) is specified but not built into the runner yet; until it is, its modules run in the phases they sit in today (Conventions, section 3.1).
 
 With the network closed around each host, the Harden phase installs the team's tools, takes restore points, and does the slower cleanup, then reopens outbound traffic to the host's normal list.
 
 - **Install the team's tools** from public sources (design 02), and **take restore points** of the scored services before the first risky change (design 07).
 - **Sweep for persistence:** scheduled jobs, services, startup items, SSH and PAM changes, and web shells. Clear attacker footholds are quarantined automatically; anything a scored service might depend on waits for approval. Nothing is deleted (design 06).
-- **Verify against the official packages, then baseline** (last in the Harden phase, after patching, so it checks the packages as they are left; design 03, section 6): users, listening ports, processes, scheduled tasks/cron, startup items, firewall state. The package database on a host can be edited by root, so for a core set of packages (OpenSSH server, sudo, PAM, coreutils, util-linux, systemd, the shadow tools) and any package a local check flags, Labyrinth downloads the package from the host's configured repositories, checks its signature and compares its files' hashes with the files on disk. A mismatch is a finding for a person, never an automatic fix. Windows keeps Authenticode signer checks and `sfc /verifyonly`. Verify before hashing files, so a compromised state is not recorded as normal. Once the lockout and sweep are verified, seal the baseline, so later checks compare against the cleaned host (design 08, section 6).
+- **Verify against the official packages, then baseline** (last in the Harden phase, after patching, so it checks the packages as they are left; design 03, section 6): users, listening ports, processes, scheduled tasks/cron, startup items, firewall state. The package database on a host can be edited by root, so for a core set of packages (OpenSSH server, sudo, PAM, coreutils, util-linux, systemd, the shadow tools) and any package a local check flags, Labyrinth downloads the package from the host's configured repositories, checks its signature and compares its files' hashes with the files on disk. A mismatch is a finding for a person, never an automatic fix. Windows keeps Authenticode signer checks and `sfc /verifyonly`. Verify before hashing files, so a compromised state is not recorded as normal. Once Lock out and Harden are both verified, seal the baseline, so later checks compare against the cleaned host (design 08, section 6).
 - **Move or hide admin:** where SSH (Secure Shell) or RDP (Remote Desktop Protocol) is not scored, get it off the obvious port, and consider port-knocking on hosts that support it (§3.4, §4.7). A scored admin service is never moved or hidden; it stays open to every source and is hardened in place.
 - **Disable services you are not graded on.** Every listener is a vector.
 
   **[RULES]** Anything that interferes with the scoring engine is the team's responsibility (NCCDC, 2025, Rule 4.11). As a design choice, services are disabled only from a per-profile candidate list, and only after the scored-service list is known (design 10).
 
-- **Patch the obvious:** the known-exploited, internet-facing things only, package by named package. Do not start a 40-minute `dist-upgrade` mid-round. Apply the service packs for the scored services (design 11) and the Windows and AD settings (design 12), and, only where an inject or the local rules allow it, replace or containerize a service (design 13).
+- **Patch the obvious:** the known-exploited, internet-facing things only, package by named package. Each update is a Tier 3 approval item (category `security-update`) that a pre-approval rule can cover (design 10). Do not start a 40-minute `dist-upgrade` mid-round. Apply the service packs for the scored services (design 11) and the Windows and AD settings (design 12), and, only where an inject or the local rules allow it, replace or containerize a service (design 13).
 
 ### Observe — See everything
 
@@ -153,23 +155,23 @@ This is the core of the reference. Each capability gives:
 ### 3.1 Credential reset & account control — **P0**
 
 - **Principle:** no attacker keeps access through a credential you have rotated.
-- **Linux:** use `passwd` / `chpasswd` for root and administrator-class accounts only, `scored-admin` accounts included with their change list (design 04, section 2.4). Use `usermod -L` to lock unexpected local accounts outside the protected set. Audit `sudoers` and group membership. Back up, then empty, unexpected `~/.ssh/authorized_keys`. After rotation, end remote sessions with `loginctl terminate-session`, except console, operator, admin-source and protected sessions (design 03, section 6.2). Automation never rotates or locks ordinary user accounts (for example, mailbox users).
-- **Windows/AD:** rotate the built-in local Administrator and other local administrator-class accounts, except any that a service or scheduled task logs on with (changing those breaks the service at its next start). Review `Domain Admins`, `Enterprise Admins` and local Administrators membership. By hand only, after confirming with the captain:
-  - rotate the domain Administrator, and any admin account a service or task logs on with, updating each dependent service;
+- **Linux:** use `passwd` / `chpasswd` for root and administrator-class accounts only, `scored-admin` accounts included with their change list (design 04, section 2.4). Use `usermod -L` to lock unexpected local accounts outside the protected set. Audit `sudoers` and group membership. Back up, then remove the keys in `authorized_keys` that are not registered; a registered key stays (design 04). After rotation, end remote sessions with `loginctl terminate-session`, except console, operator, admin-source and protected sessions (design 03, section 6.2). Automation never rotates or locks ordinary user accounts (for example, mailbox users).
+- **Windows/AD:** rotate the built-in local Administrator and other local administrator-class accounts, except any that a service or scheduled task logs on with (changing those breaks the service at its next start, so they are Tier 3: listed for approval, and once approved the dependent service is updated; design 04). Review `Domain Admins`, `Enterprise Admins` and local Administrators membership. By hand only, after confirming with the captain:
+  - rotate the domain Administrator (design 12 checklist);
   - reset service accounts once their dependencies are known;
   - disable accounts confirmed as unused.
 - **KRBTGT:** reset its password twice, with a replication check between, to invalidate golden tickets. This is a Tier 3 item: after approval, Labyrinth carries out both resets (design 12, section 5.1).
 - **Never rename** an account, and never change a host name, address or scored DNS name: scoring and the event's change process know each by name (design 03, section 3).
-- **Applications:** inventory each scored app's own admin accounts (CMS administrator, database root, phpMyAdmin) and the configuration files that store an app password. Rotating one is Tier 3: after approval, Labyrinth sets the new password, updates every listed file and runs the probes; never automatically, because scoring may log in to the app (design 04, section 2.1).
+- **Applications:** inventory each scored app's own admin accounts (CMS administrator, database root, phpMyAdmin) and the configuration files that store an app password. Rotating one is Tier 3 (category `default-app-password`): after approval, Labyrinth sets the new password, updates every listed file and runs the probes; never automatically, because scoring may log in to the app (design 04, section 2.1).
 - **Edge:** change the appliance admin, web, SSH and SNMP credentials immediately. Routers and firewalls often ship with well-known defaults.
 - **CCDC note:** the number-one foothold is a credential the Red Team already knows. Rotate administrator-class credentials first, everywhere, before anything clever.
 
-  **[RULES]** Events differ on which accounts scoring logs in with (§5), so none is assumed unscored. An admin account a check logs in with is a `scored-admin` account: it is rotated, and its new password goes into a `username,password` change list shown once for the event's change process (design 04, section 2.4). Domain-wide or user-level resets are manual-only by default: scored mail checks have logged in with Active Directory users (*Background*), so a mass reset can zero a scored service. As a design choice, the KRBTGT reset is an approval item that Labyrinth carries out: it is one account with a known procedure, and the first reset breaks nothing. Design: 03, 04, 12.
+  **[RULES]** Events differ on which accounts scoring logs in with (§5), so none is assumed unscored. An admin account a check logs in with is a `scored-admin` account: it is rotated, and its new password goes into a `username,password` change list shown once for the event's change process, and recording the new passwords is part of the single end-of-run keep question (design 04, section 2.4). Domain-wide or user-level resets are manual-only by default: scored mail checks have logged in with Active Directory users (*Background*), so a mass reset can zero a scored service. As a design choice, the KRBTGT reset is an approval item that Labyrinth carries out: it is one account with a known procedure, and the first reset breaks nothing. Design: 03, 04, 12.
 
 ### 3.2 Remote-admin hardening (SSH / RDP / WinRM) — **P0/P1**
 
 - **Principle:** shrink and strengthen the way *you* get in; deny every other way.
-- **Linux:** key-only (`PasswordAuthentication no`), `PermitRootLogin no`, an `AllowUsers` allowlist, `MaxAuthTries 3`, no X11 or agent forwarding, weak ciphers and MACs removed, `LogLevel VERBOSE` (needed for the planted-key canary). All of it in a drop-in file named to load first, with the base config untouched; planted add-on files and `Match` blocks are quarantined, and `sshd -T` confirms the settings in effect (design 04, section 4.1). Where SSH is scored, the scoring and `scored-admin` accounts keep password login through a `Match User` block, and every other account is key-only; root keeps it only when it is itself a `scored-admin` account (design 04, section 4.2).
+- **Linux:** key-only (`PasswordAuthentication no`), `PermitRootLogin no`, an `AllowUsers` allowlist (set only when the scored accounts are known, and then listing only the scoring and `scored-admin` accounts), `MaxAuthTries 3`, no X11 or agent forwarding, weak ciphers and MACs removed, `LogLevel VERBOSE` (needed for the planted-key canary). All of it in a drop-in file named to load first, with the base config untouched; planted add-on files and `Match` blocks are quarantined, and `sshd -T` confirms the settings in effect (design 04, section 4.1). Where SSH is scored, the scoring, `scored-admin` and employee accounts keep password login through a `Match User` block, and every other account is key-only (if the packet does not say which accounts employees use, every ordinary non-admin account keeps it until officials confirm); root keeps it only when it is itself a `scored-admin` account (design 04, section 4.2).
 - **Windows/AD:** restrict RDP to an admin jump source where RDP is not scored, and harden it in place where it is; enable NLA (Network Level Authentication); disable RDP where it is not needed; restrict WinRM (Windows Remote Management) where it is not scored, and harden its accounts in place where it is; remove `Everyone` and `Authenticated Users` from remote-logon rights; use LAPS (Local Administrator Password Solution) for the local admin.
 - **Edge:** bind the management plane to an inside interface only; no WAN admin.
 - **CCDC note:** pair this with §3.4 (move/hide). Hardening the login is worth more once it is not on port 22/3389.
@@ -179,7 +181,7 @@ This is the core of the reference. Each capability gives:
 ### 3.3 Host firewall / default-deny — **P0**
 
 - **Principle:** deny inbound by default; permit scored services from every source, plus your admin path and any official sources named in the event packet; log denials (that log feeds the honeypot in §4.1). A scored port is never filtered by source: some events penalize it, and officials and simulated users come from addresses nobody can list. On a flat network the host firewall is the only boundary between servers (design 03, section 6.1).
-- **Linux:** UFW (Uncomplicated Firewall) on Debian and Ubuntu (installed on a Debian host that has no front end) and firewalld on the RHEL family, default-deny in, allow out, with explicit allows per service. Raw nftables is used only for the first minute on a Debian host with no front end, until UFW takes over in the Harden phase with the same rules (design 01). Each run's summary shows the host's firewall in one format. Use **medium logging** so every drop is logged as `[UFW BLOCK] … DPT=…`. On container hosts, also filter `DOCKER-USER`: Docker's published ports **bypass** the host `INPUT` chain, so bans and egress rules must live there too.
+- **Linux:** UFW (Uncomplicated Firewall) on Debian and Ubuntu (installed on a Debian host that has no front end) and firewalld on the RHEL family, default-deny in and out, with explicit allows per service and the host's outbound allowlist (design 03, section 6.1). Raw nftables is used only for the first minute on a Debian host with no front end, until UFW takes over in the Harden phase with the same rules (design 01). Each run's summary shows the host's firewall in one format (planned). Use **medium logging** so every drop is logged as `[UFW BLOCK] … DPT=…`. On container hosts, also filter `DOCKER-USER`: Docker's published ports **bypass** the host `INPUT` chain, so bans and egress rules must live there too.
 - **Windows:** Windows Defender Firewall, default-deny inbound per profile; allow only graded ports; enable connection logging.
 - **Edge:** default-deny WAN; an explicit allow per service; log denies to the SIEM.
 - **CCDC note:**
@@ -188,7 +190,7 @@ This is the core of the reference. Each capability gives:
 
   "Docker bypasses the host firewall" is the classic way a "locked-down" web host is still wide open. Verify with the actual ingress path, not just `ufw status`.
 
-  **Drift.** Once sealed, the rule set is compared on a schedule. If it has drifted (for example, flushed by an attacker), the sealed rules are re-applied automatically with probes and a revert timer, and an alert is raised; repeated drift is flagged for a person (design 19, section 4.1).
+  **Drift.** Once sealed, the rule set is compared on a schedule. If it has drifted (for example, flushed by an attacker), an alert is raised and a person re-applies the sealed rules with one command, with probes and a revert timer; the health monitor never re-applies firewall rules unattended (design 19, section 4.1).
 
 ### 3.4 Move / hide administration — **P1**
 
@@ -221,8 +223,8 @@ This is the core of the reference. Each capability gives:
   - `dnf updateinfo list --security` on RHEL-family (Red Hat Enterprise Linux) hosts;
   - the installed updates on Windows.
 
-  Then Lynis (from the distribution's repositories, EPEL on the RHEL family) and Trivy (a pinned release checked against its SHA-256; it downloads its public CVE database, which is allowed after the lockdown). OpenVAS and Greenbone are not used: their feed sync takes hours. Patching is an approval item that updates only the named packages, never a full upgrade.
-- **Windows:** stop unneeded services and features; apply the specific KBs (Microsoft Knowledge Base updates) for known-exploited CVEs; disable SMBv1 (Server Message Block version 1), LLMNR (Link-Local Multicast Name Resolution) and NBT-NS (NetBIOS Name Service).
+  Then Lynis (from the distribution's repositories, EPEL on the RHEL family) and Trivy (a pinned release checked against its SHA-256; it downloads its public CVE database in the Harden phase through the install path's narrow opening to that one source, which is allowed after the lockdown). OpenVAS and Greenbone are not used: their feed sync takes hours. Patching is a Tier 3 approval item (category `security-update`) that updates only the named packages, never a full upgrade (design 10).
+- **Windows:** stop unneeded services and features; apply the specific KBs (Microsoft Knowledge Base updates) for known-exploited CVEs, by hand from a checklist (design 10); disable SMBv1 (Server Message Block version 1), LLMNR (Link-Local Multicast Name Resolution) and NBT-NS (NetBIOS Name Service).
 - **CCDC note:**
 
   **[RULES]** Do not migrate or containerize scored services unless an inject or the local competition rules allow it (NCCDC, 2025, Rule 4.14). Where they do, rebuilding a service is design 13, off by default, and only with full proof that its users, mailboxes, pages, database contents and address are preserved and its scored check passes on a staging port before cutover (§3.7).
@@ -254,7 +256,7 @@ This is the core of the reference. Each capability gives:
 
 - **Principle:** logs on the box die with the box. Get them off-host and make them high-signal.
 - **Linux:** `auditd` with rule keys for privileged commands, identity and sudoers, SSH keys, cron, systemd units, `/usr/local`, and **canary reads**; forward to Splunk.
-- **Windows/AD:** **Sysmon** (process creation, network, image loads) plus Windows Security auditing (4624/4625/4688/4720/4728…); forward to Splunk through the universal forwarder. Hosts of both kinds install the Splunk Universal Forwarder from Splunk's public download site, pinned by version and SHA-256 in the run-time configuration and checked against the checksum file published beside it; the forwarder is never newer than the indexer. Receiving on 9997 stays off on the indexer until enabled, and the HEC script is the fallback (design 14).
+- **Windows/AD:** **Sysmon** (process creation, network, image loads) plus Windows Security auditing (4624/4625/4688/4720/4728…); forward to Splunk through the universal forwarder. Hosts of both kinds install the Splunk Universal Forwarder in the Harden phase, through design 02's install path, from Splunk's public download site, pinned by version and SHA-256 in the run-time configuration and checked against the checksum file published beside it; the forwarder is never newer than the indexer. Observe only configures it. Receiving on 9997 stays off on the indexer until enabled, and the HEC script is the fallback (design 14).
 - **SIEM:** Splunk is the aggregation point. A few high-value saved searches (new local admin, canary hit, authentication to a locked account, boot-critical file changes, ZeroLogon and DCSync signs, unusual outbound traffic) beat a hundred noisy dashboards. The SIEM host is itself hardened: its admin password rotated, users and roles audited, its web and management ports open only to the admin source unless they are scored (then open to every source), its inputs only to managed hosts, `splunkd` moved off root after approval, and unknown apps and scripted inputs quarantined (design 14, section 7).
 - **CCDC note:** stand this up in the Observe phase, *before* deception, so the traps have somewhere to report. Design: 14.
 
@@ -266,13 +268,13 @@ This is the core of the reference. Each capability gives:
 - **Every host:** a rate-limited, log-only rule for new outbound connections (Tier 2; blocks nothing) feeds an unusual-outbound search, such as NTP or DNS to a server not in the run-time configuration. Outbound default-deny is part of the first-minute bundle, from the services file and the run-time `outbound-allow` list (design 03, section 6.1).
 - **CCDC note:** combine with DNS sinkholing (§4.5): see the beacon, then dead-end it without tipping off the attacker.
 
-### 3.11 Backups, rollback & break-glass — **P1**
+### 3.11 Backups, rollback & break-glass — **P0**
 
 - **Principle:** every change is reversible, every service is restorable, and there is always a way back in.
 - **Linux:** timestamped config backups before each change (`*.bak-<ts>`), database dumps before patching, the previous image, tagged before each update, for instant rollback, and the virtual machine console as break-glass.
 - **Windows/AD:** system state and AD backups; VSS (Volume Shadow Copy Service) snapshots; a documented DC (domain controller) recovery path.
 - **Off-host copies are required:** an attacker with root or SYSTEM can delete on-host backups, so each restore point is copied to the control node, or another team host named as the backup peer, and hash-checked before it counts as complete (design 07, section 5). Snapshots of the virtual machines may not be available; Labyrinth never relies on them.
-- **Restore:** `labyrinth restore <service>` (with `--database` or `--start`) runs after a person confirms the restore point predates the damage (Tier 3); the damaged state is kept as evidence. Domain controller restores and rescuing an unbootable host (for example, a deleted `/etc/fstab`) are person-run, from printed runbooks (design 07, section 6).
+- **Restore:** The restore command, `labyrinth restore <service>` (planned, with design 07; its name and flags are settled when it is built), runs after a person confirms the restore point predates the damage (Tier 3); the damaged state is kept as evidence. Domain controller restores and rescuing an unbootable host (for example, a deleted `/etc/fstab`) are person-run, from printed runbooks (design 07, section 6).
 - **CCDC note:** the team that can *revert* a bad change in seconds outscores the team that is afraid to make changes. Design: 07.
 
 ---
@@ -412,7 +414,7 @@ Labyrinth is therefore bash on Linux and PowerShell on Windows, in one repositor
 
 ### 6.2 Layout
 
-The repository layout is defined in design 00 (`core/`, `phases/<phase>/modules/`, `profiles/`, `platform/`, `config/`). The role names below (`ssh`, `firewall`, `nginx_edge` …) are the module names.
+The repository layout is defined in design 00 (`core/`, `phases/<phase>/modules/`, `profiles/`, `platform/`, `config/`). The roles below are named by their planned module IDs, in `<phase>.<name>` form (design README, "Planned module IDs").
 
 ### 6.3 Profiles
 
@@ -420,14 +422,14 @@ Classify each host and apply only the roles that fit:
 
 | Profile | Example host | Roles |
 |---|---|---|
-| `linux-server` | Any Linux server without a web role | identity, ssh, firewall, bans, deception, egress_log, audit_motd, patching |
-| `linux-web` | Linux web or webmail server | + nginx_edge (the scanner tarpit is P1 here). Containers only where an inject or the local rules allow it (NCCDC, 2025, Rule 4.14), through design 13. |
-| `windows-member` | Windows member servers and workstations | win_base, win_firewall, win_audit, honey-account, canary (design 12) |
-| `windows-dc` | Domain controller with DNS | + AD hardening checklist (design 12); the KRBTGT reset is an approval item and the DNS sinkhole is manual-only (§3.1, §4.6) |
-| `linux-siem` | SIEM server | identity, ssh, firewall + ingest config (the destination, hardened but light) |
-| `appliance` | Router or firewall appliance | Templated config + manual runbook (credentials, default-deny, management-plane lockdown; design 05) |
+| `linux-server` | Any Linux server without a web role | `lockout.credentials`, `lockout.ssh`, `lockout.accounts`, `lockout.sessions`, `lockout.firewall`, `harden.packages`, `harden.patching`, `harden.restore_points`, `harden.reopen_outbound`, `observe.auditd`, `deceive.bans`, `deceive.canaries` |
+| `linux-web` | Linux web or webmail server | + `harden.pack_web` and `deceive.maze` (the scanner tarpit is P1 here). Containers only where an inject or the local rules allow it (NCCDC, 2025, Rule 4.14), through design 13. |
+| `windows-member` | Windows member servers and workstations | `lockout.credentials`, `lockout.firewall`, `harden.win_base`, `harden.restore_points`, `harden.reopen_outbound`, `observe.win_audit`, `observe.sysmon`, `deceive.canaries` (design 12) |
+| `windows-dc` | Domain controller with DNS | + `harden.ad_checks` and `harden.win_tier3` (design 12); the KRBTGT reset is an approval item and the DNS sinkhole is manual-only (§3.1, §4.6) |
+| `linux-siem` | SIEM server | `lockout.credentials`, `lockout.ssh`, `lockout.firewall`, `harden.restore_points`, `harden.reopen_outbound`, `harden.siem` (the destination, hardened but light) |
+| `appliance` | Router or firewall appliance | `lockout.appliance_runbooks` (manual-only): templated config and a manual runbook (credentials, default-deny, management-plane lockdown; design 05) |
 
-Every host profile also runs the persistence sweep (design 06) and the service packs that match its scored services (design 11).
+Every host profile except `appliance` also runs the persistence sweep (`harden.persistence_sweep`, design 06) and the service packs that match its scored services (design 11). Network appliances are excluded from both: their runbooks are manual-only.
 
 
 ### 6.4 Phase playbooks = the doctrine, executable
@@ -445,12 +447,12 @@ The design keeps the speed and adds guard rails:
 - dead-man revert timers;
 - scoring-style probes after each module.
 
-Tier 3 actions wait in a queue for a person's approval, unless a pre-approval rule covers them; Labyrinth then carries them out, except a short person-run list (Group Policy, DNS changes on a domain controller, domain controller restores, rescuing an unbootable host, Windows patching and appliances). Items the team decided on before the event, such as security updates for named scored packages, can be pre-approved, so a first-minute run applies them without a prompt (Conventions, section 3.1). Nothing is deleted without approval: files are quarantined, and accounts are deleted only after approval once services pass. See designs 03 and 06. After the lockout, seal the baseline and layer `observe → deceive → sustain`.
+Tier 3 actions wait in an approval queue (planned, Roadmap stage 4b; today the runner asks at an approval prompt) for a person's approval, unless a pre-approval rule covers them; Labyrinth then carries them out, except a person-run list (Group Policy, DNS changes on a domain controller, domain controller restores, rescuing an unbootable host, Windows patching, the domain Administrator password, unexpected domain accounts and group members, domain honey-accounts, and network appliances). Items the team decided on before the event, such as security updates for named scored packages, can be pre-approved, so a first-minute run applies them without a prompt (Conventions, section 3.1). Nothing is deleted without approval: files are quarantined, and accounts are deleted only after approval once services pass. See designs 03 and 06. After Lock out and Harden, seal the baseline and layer `observe → deceive → sustain`.
 
 
 ### 6.5 Secret handling
 
-Ship **placeholder templates** only (`.env.example`, cert paths, token *names*). Real values are supplied at run time from the event packet and the event seed, which is kept offline (design 16).
+Ship **placeholder templates** only (`.env.example`, cert paths, token *names*). Real values are supplied at run time from the event packet and the event seed, which is kept offline (design 16) and given in the private event config file or a flag at start, never typed mid-run.
 
 **[RULES]** The code is public (NCCDC, 2025, Rule 5.6.1), so decoy values are derived from a secret event seed kept offline (design 16) rather than stored in an encrypted repository file.
 
@@ -458,7 +460,7 @@ Labyrinth provisions the *shape*; the operator supplies the values. **No real cr
 
 ### 6.6 Speed & safety discipline
 
-- **Idempotent, and plan mode first:** every module runs in `plan` mode (a dry run) before `apply`, especially near scored services (design 00).
+- **Idempotent, and plan mode first:** every module is previewed in plan mode (a dry run) before it is run, especially near scored services: `laby PHASE` previews and `laby -r PHASE` runs (Conventions, section 3.3; design 00).
 - **Reversible:** every role backs up what it changes (timestamped) and documents its rollback.
 - **Tested on throwaway VMs** (or the CCDC practice image) before you trust it live.
 - **Fail-safe ordering:** never lock your own admin path before the new one is proven, and keep the break-glass path.
@@ -469,10 +471,10 @@ Labyrinth provisions the *shape*; the operator supplies the values. **No real cr
 
 The runner does not do this yet; today `plan` and `apply` are separate steps with prompts. The intended change (Conventions, section 3.3) is a flag-style command line under the short name `laby`, and automatic runs with no switch to turn them off. Every existing command form keeps working.
 
-- **Short commands:** `laby` shows the host's status and the next step, `laby init` previews Lock out and Harden, and `laby -r init` runs them as one run. Later phases work the same way (`laby -r observe`). `-q` lists the queue, `-q -a 1,3` approves items and `-q -d 2` declines one, `-k` keeps a run, `-u` undoes one, and adding `-h` to any of them shows its help without running anything.
+- **Short commands:** `laby` shows the host's status and the next step, `laby init` previews Lock out and Harden, and `laby -r init` runs them as one run. Later phases work the same way (`laby -r observe`). `-q` lists the queue, `-q -a 1,3` approves items and `-q -d 2` declines one, `-k ID` keeps the changes of a run (firewall, SSH settings, stopped services and others that could lock the team out) whose login check was missed, `-u ID` undoes a run, and adding `-h` to any of them shows its help without running anything.
 - **The group comes from the hosts file,** matched on the host's name and address, and the break-glass account is the single `breakglass`-class account from the protected set that exists on the host. Anything else blocks the run (exit 20). Labyrinth checks for a console session itself and warns if it finds none, rather than prompting.
 - **It never prompts mid-run.** An approval item runs when a pre-approval rule covers it in a category its module allows, and otherwise goes to a queue, where a person approves it later in a new run with the same backups, manifest, timer and probes. Deleting an account, changing a scored service that has no probe, and replacing or containerizing a service always queue.
-- **Each module is kept automatically** once its verify and probes pass, except firewall and SSH changes. The run ends by asking the operator to open a new login and confirm it works; with no answer, the revert timer undoes them.
+- **Each module is kept automatically** once its verify and probes pass, except firewall and SSH changes, and a stopped service is never kept early (design 00, section 4, rule 9). The run ends with one question: can you still log in, and are the new passwords recorded? Keep (y/N); with no answer, the revert timer undoes them.
 - **Output is short:** one line per module (`OK`, `CHANGED`, `ROLLED BACK`, `QUEUED`, `BLOCKED`, `FAIL`). Full Found/Fix/More blocks appear only for failures and blocks; details go to the run log, and `-v` shows the full blocks.
 
 ---
@@ -492,7 +494,7 @@ Triage under a clock. Do P0 everywhere before P1 anywhere. The **When** column i
 | Service minimization + targeted patch (§3.6) | ★★★ | Med | 🟠 P1 |
 | Service packs for scored apps (design 11) | ★★★★ | Med | 🟠 P1 |
 | Web edge + scanner tarpit (§3.8, §4.3) | ★★★★ | Low | 🟠 P1 |
-| Backups / rollback / break-glass (§3.11) | ★★★★ | Low | 🟠 P1 |
+| Backups / rollback / break-glass (§3.11) | ★★★★ | Low | 🔴 P0 |
 | Container least-privilege, where allowed (§3.7) | ★★★ | Med | 🟠 P1 |
 | Replacing a service, where allowed (design 13) | ★★★ | High | 🟠 P1 |
 | Canary tokens & honey-accounts (§4.4–4.5) | ★★★★★ | Low | 🟡 P2 |

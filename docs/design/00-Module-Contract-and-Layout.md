@@ -65,9 +65,8 @@ Labyrinth/
 │   │       ├── credentials/     # one folder per module (contract below)
 │   │       ├── accounts/
 │   │       ├── firewall/
-│   │       ├── ssh/
-│   │       └── services/
-│   ├── harden/   (same shape; specified, not built yet)
+│   │       └── ssh/
+│   ├── harden/   (same shape; planned, with the `service_reduction` module (`harden.service_reduction`), which stops services and so belongs here, not in lockout)
 │   ├── observe/  (same shape)
 │   ├── deceive/  (same shape)
 │   └── sustain/  (same shape)
@@ -164,7 +163,7 @@ Exit codes:
 flowchart TD
     C["check<br/>(read-only)"] -->|"exit 0: nothing to do"| DONE(["done"])
     C -->|"exit 10: change needed"| P["plan<br/>(read-only, default mode)"]
-    P --> G{"safety gates pass<br/>and human confirms?"}
+    P --> G{"safety gates pass<br/>and plan reviewed?"}
     G -->|"no: exit 20"| BLOCK(["blocked, nothing changed"])
     G -->|yes| A["apply<br/>backup first, write run manifest"]
     A --> V{"verify<br/>(scoring-style probes)"}
@@ -179,15 +178,15 @@ flowchart TD
     classDef human fill:#fff4d6,stroke:#b7791f,color:#4a3108
     classDef stop fill:#f6f6f6,stroke:#b42318,color:#4a1111,stroke-dasharray:4 3
     class DONE,CL ok
-    class G,RB human
+    class RB human
     class BLOCK,ERR stop
 ```
 
-*Figure: one module run moves from check to plan to a human-confirmed apply, then verify decides between cleanup and rollback; each arrow shows its exit code, and exit 40 can end the run at any step. Green marks a clean finish, amber a human decision or an undo, and a dashed red outline a stop.*
+*Figure: one module run moves from check to plan to an apply behind the safety gates, with no one typing during the run, then verify decides between cleanup and rollback; each arrow shows its exit code, and exit 40 can end the run at any step. Green marks a clean finish, amber an undo, and a dashed red outline a stop.*
 
 Rules for module authors:
 
-1. `touches_scored: true` modules run only after the scoring allowlist and the protected set are loaded.
+1. `touches_scored: true` modules run only after the protected set and the services file are loaded. The scoring allowlist is optional: where present it is applied first, but the gate is that every scored service has an allow from any source (design 03, section 7).
 2. An `approval` module lists each item it would change, with the reason, and changes only the items a person approves, per item or per category on one host, or that the team approved before the event with a pre-approval rule (Conventions, section 3.1). Approved items go through the same backup, manifest, verify and rollback as any other change.
 3. A `manual-only` module never changes anything. It prints a checklist for a human. This is kept for actions too broad or too hard to undo for Labyrinth to carry out even with approval: Group Policy changes, DNS changes on a domain controller, domain controller restores, rescuing an unbootable host, Windows patching and appliance changes.
 4. No module calls an outside service or sends data out of the competition environment (National Collegiate Cyber Defense Competition [NCCDC], 2025, Rule 5.6.4). Only the `packages` module and the core download helper install or download software, after the first-minute lockdown, from the public sources of design 02.
@@ -195,7 +194,7 @@ Rules for module authors:
 6. No module deletes a file. Anything removed is quarantined (design 06, section 5). An account is deleted only by the account module, after approval (design 04, section 6).
 7. A module writes its output for a beginner, as `key: text` lines with a key from `found`, `will do`, `did`, `why`, `risk`, `problem`, `cause`, `fix` and `undo`: `found: password logins are on`, `will do: turn them off`. Any other line is shown as a note. An entry point that exits `20`, `30` or `40` prints a `problem:` line last, saying what stopped it; without one, the operator sees only that the script gave no reason. The runner adds the module's title, its status and a pointer to its help page (docs/Conventions.md, section 3.2).
 8. An entry point never reads standard input. The runner gives it none (`/dev/null` on Linux, an empty, closed input on Windows), so a module can never take an answer the operator typed for Labyrinth.
-9. **Kept once verified.** The revert timer exists to undo a change that locks the team out or cuts off scoring. Undoing a change that only takes access away from an intruder does the opposite: it gives the intruder their access back, and it can leave the team's offline record wrong, because an old password returns. So a module whose change only takes access away sets `keep_on_verify: true`. Examples are rotating an admin password the team keeps in the offline record, removing an SSH key the key registry does not list, ending an intruder's session, quarantining a high-confidence persistence item and locking an unexpected local account. The runner keeps such a module (`module_kept` in the run manifest) once its `verify` passes and the scored services were probed with none worse than before. The revert timer and `rollback <run>` then leave it alone, and only `rollback <run> --all` undoes it. Without a service list nothing is kept early, and the timer still covers the change. A firewall change, an SSH or remote-administration setting, a stopped service and anything else that can lock the team out never sets it, whatever its risk class; the design review of each module checks this. The runner refuses `keep_on_verify` on a `read-only` or `manual-only` module, which has nothing to keep (`40`).
+9. **Kept once verified.** The revert timer exists to undo a change that locks the team out or cuts off scoring. Undoing a change that only takes access away from an intruder does the opposite: it gives the intruder their access back, and it can leave the team's offline record wrong, because an old password returns. So a module whose change only takes access away sets `keep_on_verify: true`. Examples are rotating an admin password the team keeps in the offline record, removing an SSH key the key registry does not list, ending an intruder's session, quarantining a high-confidence persistence item and locking an unexpected local account. The runner keeps such a module (`module_kept` in the run manifest) once its `verify` passes and the scored services were probed with none worse than before. The revert timer and `rollback <run>` then leave it alone, and only `rollback <run> --all` undoes it. Without a service list nothing is kept early, and the timer still covers the change. A firewall change, an SSH or remote-administration setting, a stopped service (never `keep_on_verify`) and anything else that can lock the team out never sets it, whatever its risk class; the design review of each module checks this. The runner refuses `keep_on_verify` on a `read-only` or `manual-only` module, which has nothing to keep (`40`).
 
 ## 5. Execution model
 
@@ -203,7 +202,7 @@ Labyrinth runs in two modes that share the same modules:
 
 - **Local mode.** `labyrinth.sh` or `labyrinth.ps1` runs on the host it changes. This is the standard way to run Labyrinth: it needs nothing but the host itself, nothing holds access to every host at once, and it still works when remote access is lost.
 - **Remote mode.** Built after local mode, read-only first: `remote plan` comes before `remote apply`, which follows only once the read-only part has run safely in the lab. The control node holds access to every host, so it is a hardened server (Blueprint §6.1). `labyrinth remote plan <phase> --group <group>` or `labyrinth remote apply <phase> --group <group>` runs on a control node. For each target it copies the release, checks it (design 21, section 5), runs the *same* local command over SSH (Linux) or PowerShell remoting or OpenSSH (Windows), and brings back the logs and the run manifest. It must cope with being cut off, because the lockout rotates the very credentials and SSH settings it connects with.
-- **Keeping a run in remote mode.** A local apply ends by asking the operator to type `keep`. In remote mode the control node answers for each host, from what it can check itself: it keeps the host's run (`keep <run>`) only when, after the run, it can still log in to the host over the admin path with a new connection, and no scored service on that host that passed its probe from the control node before the run fails it after. This is the same rule as the checks after each module: a service the Red Team had already broken does not undo the team's changes. Otherwise it keeps nothing, and the revert timer rolls the host back, except the modules already kept once they verified (section 4, rule 9). Either way the control node prints and records which hosts it kept and why. The break-glass check at the console still follows the run (design 03, section 6.3); an operator who cannot log in there runs `rollback` for that host.
+- **Keeping a run in remote mode.** A local apply ends with the single keep question (y/N; today the operator types `keep`). In remote mode the control node answers for each host, from what it can check itself: it keeps the host's run (`keep <run>`) only when, after the run, it can still log in to the host over the admin path with a new connection, and no scored service on that host that passed its probe from the control node before the run fails it after. This is the same rule as the checks after each module: a service the Red Team had already broken does not undo the team's changes. Otherwise it keeps nothing, and the revert timer rolls the host back, except the modules already kept once they verified (section 4, rule 9). Either way the control node prints and records which hosts it kept and why. The break-glass check at the console still follows the run (design 03, section 6.3); an operator who cannot log in there runs `rollback` for that host.
 
   Acceptance tests for remote mode, written when it is built (Roadmap, stage 5):
   - A host whose scored service already failed its probe before the run, and still fails after it, is kept when the admin login works with a new connection and no other service regressed. The control node reports the failing service.
@@ -214,16 +213,21 @@ Either way, one run does this:
 ```
 labyrinth plan|apply <phase> [--profile <name>]        # local; remote adds --group <group>
    1. load profile → ordered module list
-   2. safety gates (protected set loaded, break-glass confirmed; the scoring allowlist
-      for modules that touch scored services)
+   2. safety gates (protected set loaded, break-glass account found; for modules that
+      touch scored services, the services file and an allow from any source for each)
    3. plan all modules and print the combined plan
-   4. human confirms (typed, or given on the command line in a first-minute run)
+   4. no prompt: the group and break-glass account come from the hosts file and the
+      protected set; approval items run if a pre-approval rule covers them, else queue
       → apply in rings, or on every host at once in a first-minute run (design 03)
    5. verify each module with scoring-style probes; auto-rollback a module on regression
-   6. write run manifest; run cleanup
+   6. write run manifest; run cleanup; one end-of-run question (y/N) with the revert
+      timer counting down: can you still log in, and are new passwords recorded? keep
 ```
 
-The steps above are the outline; `docs/Conventions.md` section 3.1 gives the exact order of the gates and steps in an apply, and it wins where the two differ.
+The steps above are the design; `docs/Conventions.md` sections 3.1 and 3.3 give the exact order of the gates and steps in an apply, and they win where the two differ.
+
+> [!NOTE]
+> Today the runner still asks for the group at a prompt (or takes `--confirm-group`) and the break-glass answer, and the local apply ends by asking the operator to type `keep`. The prompt-free run and the approval queue arrive in Roadmap stage 4b.
 
 **Commands.** `labyrinth` means the installed command, or `labyrinth.sh` / `labyrinth.ps1` run directly from a release. Every command has the same shape, *verb, object, options*: `labyrinth <command> [<phase> | <run> | <name>] [options]`. Both runners accept the same commands and options (Conventions, section 3.1):
 
@@ -242,13 +246,13 @@ The commands below `help` are planned and do not exist yet. When built, they tak
 
 ### 5.1 The new command line and automatic runs (specified now, built later)
 
-The runner does not do this yet. Everything above describes today's behavior; this section describes the next work (stage 4b, `docs/Roadmap.md`). Conventions, section 3.3 holds the full contract and wins where the two differ. It exists so that one short command per host carries out a whole phase without a person answering prompts, while keeping every gate.
+The runner does not do this yet (planned, stage 4b, `docs/Roadmap.md`); the notes above say where today's runner differs. Conventions, section 3.3 holds the full contract and wins where the two differ. It exists so that one short command per host carries out a whole phase without a person answering prompts, while keeping every gate.
 
 - **Flags, with short and long forms,** under the name `laby` as well as `labyrinth`: `laby` shows the host's status and the next step, `laby PHASE` previews a phase, and `laby -r PHASE` runs it. `init` is Lock out then Harden as one run. The queue is `-q`, approving and declining are `-q -a LIST` and `-q -d LIST`, keeping is `-k ID`, undoing is `-u ID`, and `--probe` and `--history` stay long. Every form above stays accepted.
 - **Automatic is the only mode.** There is no switch. The group comes from the hosts file, matched on the host's name and address, and the break-glass account is the `breakglass`-class account from the protected set that exists on the host; a mismatch, or no single match, blocks the run (`20`). Labyrinth looks for a console session of that account itself and warns if it finds none (design 03, section 7).
 - **No prompts during a run.** An approval item runs when a pre-approval rule covers it in a category its module allows (`pre_approvable`, section 4). Every other item goes to the host's queue, where items keep stable numbers, and a person approves chosen ones in a new run with the same backups, manifest, revert timer and probes.
 - **Never pre-approvable, always queued:** deleting an account; changing a scored service that has no probe; replacing or containerizing a service (design 13).
-- **The login check.** Every module is kept once its verify and probes pass, except firewall and SSH changes. A run that made any ends by asking the operator to open a new login and confirm it works (`y`/`N`), with the revert timer counting down; no answer means the timer undoes them. `-y` never answers it; `-k` keeps them if the question was missed.
+- **The login check.** A module that sets `keep_on_verify` is kept once its verify and probes pass. Everything else, including every firewall change, SSH setting and stopped service (rule 9), stays under the revert timer. A run that made any such change ends by asking the operator to open a new login and confirm it works (`y`/`N`), with the revert timer counting down; no answer means the timer undoes them. The question is also asked when the run showed new passwords, even with none of those changes; then `y` just confirms they are recorded, and nothing is on a timer. `-y` never answers it; `-k` keeps them if the question was missed.
 - **Help never runs anything,** and adding `-h` to any action shows that action's help. `laby --manual` and, on Linux, `man laby` open the manual.
 - **Short output.** One line per module: `OK`, `CHANGED`, `ROLLED BACK`, `QUEUED`, `BLOCKED` or `FAIL`. The full *found / fix / more* blocks appear only for failures and blocks; the details go to the run log, and `-v` shows the full blocks (Conventions, section 3.2).
 

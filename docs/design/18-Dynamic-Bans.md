@@ -29,7 +29,7 @@ Turn repeated hostile touches into automatic, expiring blocks, and keep the bloc
 | Repeat offender | Ban history | Longer ban |
 | A host connecting out to a likely command-and-control address | Unusual-outbound search (design 14, section 5) | Alert; an outbound ban only after a person approves it (section 6.1) |
 
-Thresholds, windows and ban lengths are **configuration**, not code, so the operator can tune them during the event without changing the frozen release (NCCDC, 2025, Rule 5.6.2). `config/bans.example` shows their shape.
+Thresholds, windows and ban lengths are **configuration**, not code, so the operator can tune them during the event without changing the frozen release (NCCDC, 2025, Rule 5.6.2). `config/bans.example` (planned) will show their shape; `config/never-ban.example` exists today.
 
 ## 4. The never-ban list
 
@@ -72,7 +72,9 @@ The refusal is exit code 20 (blocked by a safety gate, design 00) with a message
 flowchart TD
     GATE{"Source-address gate:<br/>can this host tell<br/>sources apart?"}
     GATE -->|no| OFF(["Bans stay off;<br/>alerts only"])
-    GATE -->|yes| EV["Trigger: trap hit, planted key,<br/>honey-account, failed logins"]
+    GATE -->|yes| SC["Failed logins on a<br/>scored service's login"]
+    SC --> AL
+    GATE -->|yes| EV["Trigger: trap hit, planted key, honey-account,<br/>or failed logins on an unscored login"]
     EV --> NB{"Source on the<br/>never-ban list?"}
     NB -->|yes| AL["Alert a person;<br/>no ban"]
     NB -->|no| TH{"Threshold met?"}
@@ -84,20 +86,20 @@ flowchart TD
     classDef human fill:#fff4d6,stroke:#b7791f,color:#4a3108
     classDef store fill:#eef1f5,stroke:#475569,color:#1e293b
     classDef stop fill:#f6f6f6,stroke:#b42318,color:#4a1111,stroke-dasharray:4 3
-    class EV,TH,WAIT,BAN deceive
+    class EV,SC,TH,WAIT,BAN deceive
     class GATE,NB,AL human
     class LOG store
     class OFF stop
 ```
 
-*Figure: bans are enabled only when the host can tell its traffic sources apart, a source on the never-ban list is only alerted, and every other trigger that meets its threshold becomes an expiring ban recorded in the trip log. Purple is the ban logic, amber a safety check or a hand-off to a person, gray the log and the dashed red outline the case where bans stay off.*
+*Figure: bans are enabled only when the host can tell its traffic sources apart, failed logins on a scored service's login and any source on the never-ban list are only alerted, and every other trigger that meets its threshold becomes an expiring ban recorded in the trip log. Purple is the ban logic, amber a safety check or a hand-off to a person, gray the log and the dashed red outline the case where bans stay off.*
 
 ### 6.1 Outbound bans
 
 Red Teams hide command-and-control traffic in ordinary-looking flows and rotate callback addresses (design 14, section 5), and an inbound default deny does not stop a host from calling out. An address is banned outbound in two ways:
 
 - **With an inbound ban.** Every ban covers both directions (section 6), so an attacker who tripped a trap cannot be reached by a callback either. This needs no extra step.
-- **On its own, after approval.** A hit from the unusual-outbound search is an alert, not a ban, because its confidence is medium and a wrong outbound ban can break a service that depends on that address. The alert becomes an approval item (Conventions, section 3.1) naming the host, the address, the port, the process if known, and the run-time configuration entry it failed to match. Once a person approves it, the address joins the same ban set with an expiry, so it is dropped in both directions, recorded in the run manifest and undone by `rollback`.
+- **On its own, after approval.** A hit from the unusual-outbound search is an alert, not a ban, because its confidence is medium and a wrong outbound ban can break a service that depends on that address. The alert becomes an approval item (queued and approved with `laby -q` and `laby -q -a`; planned, Roadmap stage 4b, and until then a pre-approval rule or the approval prompt) naming the host, the address, the port, the process if known, and the run-time configuration entry it failed to match. Once a person approves it, the address joins the same ban set with an expiry, so it is dropped in both directions, recorded in the run manifest and undone by `rollback`.
 
 An outbound ban is always one address, never a range or a port on its own. An address on the never-ban list (section 4) is refused (`20`) and stays an alert. Filtering all of a host's outbound traffic is a different control, default-deny outbound, which is offered per host after approval (design 14, section 5).
 

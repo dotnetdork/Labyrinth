@@ -42,7 +42,7 @@ Work goes top to bottom. A stage starts when the one above it is merged, except 
 - Write tests first, from the spec's acceptance-test list. Every module gets the negative test: protected accounts and scored services are untouched.
 - Make the change in bash and PowerShell together wherever the spec covers both platforms.
 - `tests/lint/guard.sh` and CI must be clean. A real-host acceptance test names where it runs: a CI runner or the lab (`docs/lab/README.md`).
-- A new command or option goes into both runners, the manual and both test suites in one commit. The compatibility suite is never edited to make a change pass.
+- A new command or option goes into both runners, the manual and both test suites in one branch. The compatibility suite is never edited to make a change pass.
 
 ## 3. Build stages
 
@@ -89,7 +89,7 @@ Specified now and built next, ahead of the rest of the stage 4 modules that it c
 | Branch | Spec | Delivers |
 |---|---|---|
 | `phase-4/command-line` | Conventions §3.3, 00 §5.1 | The flag-style command line in both runners: `laby` and `labyrinth`, status, preview, `-r`, `-k`, `-u` with `--all`, `--probe`, `--history`, `-P`, `-v`, `-y`, `--no-revert`, short-letter stacking, and every old form still accepted. Help: the one-screen `-h`, help for each action, help that never runs anything (with a test for every action), and `--manual`. The guided install (`install.sh`, `install.ps1`) shows its plan, asks, then puts `labyrinth`, `laby` and the manual (`man laby`, `Get-Help about_Labyrinth`) where the system finds them and sets up the data root. The manual and both test suites in the same branch |
-| `phase-4/auto-apply` | Conventions §3.3, 00, 03 | Automatic runs, with no switch: the host's group from the `hosts` file, the break-glass account taken from the protected set with a console check instead of a prompt, no mid-run prompts, pre-approval only for categories a module allows (never account deletion, an unprobed scored service or a replacement), the queue with stable numbers and `-q`, `-q -a`, `-q -d`. Every module is kept once it verifies, except firewall and SSH changes, which wait for the login check |
+| `phase-4/auto-apply` | Conventions §3.3, 00, 03 | Automatic runs, with no switch: the host's group from the `hosts` file, the break-glass account taken from the protected set with a console check instead of a prompt, no mid-run prompts, pre-approval only for categories a module allows (never account deletion, an unprobed scored service or a replacement), the queue with stable numbers and `-q`, `-q -a`, `-q -d`. A module whose change only takes access away (`keep_on_verify`) is kept once it verifies; firewall and SSH changes, a stopped service and anything else that can lock the team out wait for the login check |
 | `phase-4/short-output` | Conventions §3.3 | One line per module, full blocks only for failures and blocks, `-v`, in both runners with the manual and both test suites |
 | `phase-4/harden-phase` | 03, 10, 02, 09, 13 | The `harden` phase between `lockout` and `observe`, and `init` (Lock out then Harden as one run): the install, with outbound opened only to its exact sources for the install (02 §4), restore points, the persistence sweep, the CVE assessment, patching, service packs, Windows and AD hardening, service replacement and containers, then reopening outbound; the shipped profiles and the first-minute run updated to match |
 | `phase-4/baseline-verify` | 08 | In the Harden phase, the official-package check: for a core set of packages and any package the local check flags, download the package from the host's configured repositories, check its signature, and compare its files' hashes with the files on disk. Mismatches are findings for a person. Windows keeps its signer checks and `sfc /verifyonly` |
@@ -102,7 +102,7 @@ Local mode is the standard, so the lockout already works on every host without t
 | Branch | Spec | Delivers |
 |---|---|---|
 | `phase-5/remote-plan` | 00 §5, 21 §5 | `remote plan --group <group>` over SSH and PowerShell remoting: it copies and checks the release, runs the local `plan`, and brings back the plans and logs. It changes nothing |
-| `phase-5/remote-apply` | 00 §5 | `remote apply --group <group>`, after `remote plan` has run safely in the lab: it runs the local `apply` and brings back logs and manifests. It collects approval items from the plan and passes each host its own `--approve` entries. It copes with losing the connection while credentials and SSH settings rotate. It keeps a host's run only when it can still log in over the admin path and no scored service that passed before the run fails after it; otherwise the timer reverts that host, except the modules kept once they verified (design 00, section 5) |
+| `phase-5/remote-apply` | 00 §5 | `remote apply --group <group>`, after `remote plan` has run safely in the lab: it runs the local `apply` and brings back logs and manifests. Remote mode is planned: each host keeps its own approval queue (Conventions section 3.3), so the control node lists a host's queue with `-q` on that host and applies the chosen items there with `-q -a`. Until then, `--approve` entries copied from a plan are the way to pass approvals. It copes with losing the connection while credentials and SSH settings rotate. It keeps a host's run only when it can still log in over the admin path and no scored service that passed before the run fails after it; otherwise the timer reverts that host, except the modules kept once they verified (design 00, section 5) |
 
 ### Stage 6: observe and checkpoints
 
@@ -110,9 +110,9 @@ Local mode is the standard, so the lockout already works on every host without t
 |---|---|---|
 | `phase-6/seal` | 08 §6 | `seal`, `reseal --reason`, and integrity findings against the sealed baseline |
 | `phase-6/checkpoint` | 19 | The read-only `checkpoint` summary; the sweep re-runs in report mode; the known-flaw section reads the tracker once stage 7 builds it |
-| `phase-6/probes` | 19 §3.1 | The `http` path and the probes that log in (`imap`, `ssh`, `smb`, `sql`, `winrm`, `siem`), with a probe account typed at run time and never stored |
+| `phase-6/probes` | 19 §3.1 | The `http` path and the probes that log in (`imap`, `ssh`, `smb`, `sql`, `winrm`, `siem`), with a probe account given in the event configuration file or a flag at the start of the run, never typed mid-run and never stored in the repository |
 | `phase-6/outside-probe` | 19 §3 | `probe` from a machine outside the team's network, limited to the `own-ranges` list |
-| `phase-6/health-monitor` | 19 §3–§5 | The scheduled job on the control node: probes of every scored service with state-change alerts and rollback candidates, firewall drift re-applied from the seal, and scheduled checkpoints that alert once on each new finding |
+| `phase-6/health-monitor` | 19 §3–§5 | The scheduled job on the control node: probes of every scored service with state-change alerts and rollback candidates, alerts on firewall drift (a person re-applies the sealed rules with one command, design 19), and scheduled checkpoints that alert once on each new finding |
 | `phase-6/linux-audit` | 14 | auditd, installed by `packages`, with the vendored rule set |
 | `phase-6/win-audit` | 14 | Audit policy, script block logging, log sizes, and Sysmon from its pinned download |
 | `phase-6/log-forwarding` | 14 §4 | The Splunk Universal Forwarder on Linux and Windows, already present or from its pinned download, with syslog on Linux and the HEC script on Windows as fallbacks; saved searches, including the outbound log rule |
@@ -159,7 +159,7 @@ Local mode is the standard, so the lockout already works on every host without t
 
 | Question | Decision | Recorded in |
 |---|---|---|
-| How are approvals given? | Typed at the prompt by default. Each item carries a fingerprint from the plan, and `--approve` passes approvals without the prompt for remote mode. An item that changed since the plan is refused. | Conventions §3.1 |
+| How are approvals given? | Items covered by a pre-approval rule are applied; every other item goes to the host's own queue, listed by `laby -q` and approved with `laby -q -a` (planned, stage 4b). Each item carries a fingerprint, and an item that changed since it was planned or queued is refused. Today the runner asks at the prompt, and `--approve` passes approvals without it. | Conventions §3.1, §3.3 |
 | How do Windows hosts ship logs? | The Splunk Universal Forwarder, installed from Splunk's public download site and pinned by version and SHA-256 in the run-time configuration; the PowerShell script posting to Splunk's HTTP Event Collector is the fallback. | Design 14 §4, design 00 §9 |
 | How is Labyrinth run, and when is remote mode built? | Local mode is the standard: each host's operator runs it on that host. Remote mode comes after the P0 lockout works locally, read-only `remote plan` first, and `remote apply` only once that has run safely in the lab (stage 5). | Blueprint §6.1, this page, design 00 §5, §9 |
 | Where do real-host tests run? | CI runners for Ubuntu, Windows Server and a single domain controller; a local lab for everything else, before each release. | Conventions §9, `docs/lab/README.md` |
@@ -189,7 +189,7 @@ Local mode is the standard, so the lockout already works on every host without t
 | Are admin accounts ever scored? | Events differ. None is assumed unscored. An admin account a check logs in with is a `scored-admin` account: rotated in the first minute, with its new password in a `username,password` change list shown once. | Designs 03, 04 §2.4 |
 | May a scored port be limited by source? | No. Some events penalize it, and officials and simulated users come from addresses nobody can list. Scored ports are open to every source and hardened in place; a ban blocks one address on every port. | Designs 01 §5, 03 §6.1, 18 |
 | Is the scoring allowlist still required? | Only where given. The gate passes when every scored service is allowed from any source. | Designs 01 §5, 03 §7 |
-| Do probes log in? | Where the operator gives a probe account at run time; it is never stored. Otherwise they connect only, and the plan says so. | Design 19 §3.1 |
+| Do probes log in? | Where the operator gives a probe account in the event configuration file or a flag at the start; it is never typed mid-run and never stored in the repository. Otherwise they connect only, and the plan says so. | Design 19 §3.1 |
 | May a scored service be rebuilt or containerized? | Only where an inject or the local competition rules allow it (Rule 4.14), on the same host with the same public address and DNS name, through design 13 (P1, Harden phase), off by default and named in `event.conf`. | Design 13 |
 | Which rule numbers apply? | The rules page has ten sections: misleading scoring is 9.3, incident reports 9.4, materials 8.5. | Blueprint, design README |
 

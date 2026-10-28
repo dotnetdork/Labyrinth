@@ -6,6 +6,9 @@ Phase: 🟦 Observe (baseline and comparison) and 🟧 Harden (verification agai
 
 Know what a host looks like, then learn quickly what changed, who changed it, when, and from where. This information feeds the incident reports (design 20) and the decoy and status systems.
 
+> [!NOTE]
+> Nothing in this design is built yet. The baseline, the package verification, `labyrinth seal` and `labyrinth reseal` are all planned.
+
 ## 2. The trap in "hash everything at minute zero"
 
 A hash baseline taken after the Red Team already has a foothold records the compromised state as normal. So the first step is to verify files against a trusted source, and only then take the baseline.
@@ -20,10 +23,10 @@ Configuration files legitimately differ from their packages, so differences in `
 
 ### 2.1 Verifying against official packages (Harden phase)
 
-`rpm -Va` and `dpkg --verify` compare the files on disk with hash lists that live on the same host, and root can edit those lists. So, in the Harden phase, behind the first-minute lockdown, a second check compares the files with copies that do not come from the host. It is specified here and built later; the local check above is what exists now.
+`rpm -Va` and `dpkg --verify` compare the files on disk with hash lists that live on the same host, and root can edit those lists. So, in the Harden phase, behind the first-minute lockdown, a second check compares the files with copies that do not come from the host. It is specified here and built later; the local check above is planned as well.
 
 1. **Choose the packages.** A core set: the OpenSSH server, sudo, PAM, coreutils, util-linux, systemd and the shadow and passwd tools; plus any package whose files the local check above flags.
-2. **Download each from the host's configured repositories** (`apt-get download` on Debian and Ubuntu, `dnf download` on the RHEL family). This is the public software download that design 02 allows after the lockdown; no new repository is added. If the repositories cannot be reached, the offline fallback below is used.
+2. **Download each from the host's configured repositories** (`apt-get download` on Debian and Ubuntu, `dnf download` on the RHEL family). The downloads go through design 02's install path, the public software download that design 02 allows after the lockdown, because outbound traffic is closed otherwise; no new repository is added. If the repositories cannot be reached, the offline fallback below is used.
 3. **Check the signature.** `rpm -K` on the RHEL family. `apt` verifies the repository's signatures and the package hashes during the download.
 4. **Compare** the hashes of the files inside the downloaded package with the files on disk.
 
@@ -79,14 +82,14 @@ flowchart TD
 
 - **Linux:** auditd rules for the critical set, kept small to avoid log floods.
 - **Windows:** object access auditing on the critical set, process creation with command line, and Sysmon if it is available inside the environment. Only tools available to all teams and within the rules may be used (National Collegiate Cyber Defense Competition [NCCDC], 2025, Rule 5.1).
-- **All hosts:** every host forwards a small set of high-signal events first (designs 14 and 15).
+- **All hosts:** every host forwards a small set of high-signal events first (design 14).
 
 ## 6. Sealed baseline and continuous integrity
 
 The first baseline is taken before the lockout, so it records the host as it was found, which may already include an attacker's changes. Comparing against it later would hide those changes and flag every one of ours. So, once the lockout and the persistence sweep (design 06) are finished and verified, the team **seals** the baseline:
 
-- `labyrinth seal` takes a new baseline of the cleaned host, after package verification as in section 2, and marks it as the reference. Its hash goes into the team's offline record and a copy goes off the host, as in section 3.
-- `labyrinth reseal --reason "<reason>"` replaces the seal after a deliberate change, such as a patch (design 10) or an approved service-pack setting (design 11). The reason is required.
+- `labyrinth seal` (planned) takes a new baseline of the cleaned host, after package verification as in section 2, and marks it as the reference. Its hash goes into the team's offline record and a copy goes off the host, as in section 3.
+- `labyrinth reseal` (planned) `--reason "<reason>"` replaces the seal after a deliberate change, such as a patch (design 10) or an approved service-pack setting (design 11). The reason is required.
 - Every seal and reseal is logged with its time, the operator and the reason, so a reseal that hides an attacker's change can be traced.
 
 Then:
