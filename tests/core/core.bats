@@ -47,6 +47,18 @@ stub() {
   printf 'root breakglass\nroot scoring\n' > "$LAB_CONFIG_DIR/protected-accounts"
   run lab_protected_load
   [ "$status" -eq 1 ]
+  for c in scored- -admin scored--admin scored-admin-x Scored-Admin; do
+    printf 'root breakglass\nwebadmin %s\n' "$c" > "$LAB_CONFIG_DIR/protected-accounts"
+    run lab_protected_load
+    [ "$status" -eq 1 ] || { echo "accepted $c"; return 1; }
+  done
+}
+
+@test "config: the scored-admin class loads" {
+  printf 'root breakglass\nweb admin   scored-admin   # scored login\n' > "$LAB_CONFIG_DIR/protected-accounts"
+  lab_protected_load
+  [ "$(lab_protected_class 'web admin')" = scored-admin ]
+  [ "$(lab_protected_class root)" = breakglass ]
 }
 
 @test "config: addresses and CIDRs are checked" {

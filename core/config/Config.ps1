@@ -49,12 +49,12 @@ function Read-LabEventConfig {
 # The account is everything before the last word, so it may hold spaces.
 # Account names compare case-insensitively, as Windows does.
 function Read-LabProtectedSet {
-    $classes = @('official', 'scoring', 'employee', 'operator', 'breakglass', 'service', 'builtin')
+    $classes = @('official', 'scoring', 'scored-admin', 'employee', 'operator', 'breakglass', 'service', 'builtin')
     $file = Join-Path $env:LAB_CONFIG_DIR 'protected-accounts'
     if (-not (Test-Path -LiteralPath $file -PathType Leaf)) { return $null }
     $set = @{}
     foreach ($l in @(Get-LabConfigLine $file)) {
-        if ($l.Text -cnotmatch '^(.*\S)\s+([a-z]+)$') { throw "${file}:$($l.No): expected: account class" }
+        if ($l.Text -cnotmatch '^(.*\S)\s+([a-z]+(?:-[a-z]+)?)$') { throw "${file}:$($l.No): expected: account class" }
         $name = $Matches[1]; $class = $Matches[2]
         if ($classes -cnotcontains $class) { throw "${file}:$($l.No): unknown class $class" }
         if ($set.ContainsKey($name) -and $set[$name] -cne $class) { throw "${file}:$($l.No): $name is listed with two classes" }
