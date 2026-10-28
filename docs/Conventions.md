@@ -157,7 +157,7 @@ The whole line must parse before help or the version is shown. A value option th
 - A `--config` folder that does not exist is an error (`40`), and so is a missing `<root>/etc` when `--config` is not given.
 - Every file in the configuration folder must be readable. One that is not is refused with "needs root (or an elevated Administrator session) to read <file>" (`20`), because a file that cannot be read would otherwise look missing or empty and could quietly weaken a gate.
 - A `services` file that is malformed is an error (`40`) in `plan` as in `apply`, before anything is asked. A `services` file with no service in it counts as missing.
-- This host's line in `hosts` must name a platform the runner serves: `ubuntu` (the whole Debian family; `debian` is a planned alias) or `rhel-family` (Fedora, RHEL, Rocky, Oracle Linux, AlmaLinux) for `labyrinth.sh`, `windows` for `labyrinth.ps1`. Otherwise the run is blocked (`20`).
+- This host's line in `hosts` must name a platform the runner serves: `ubuntu` (the whole Debian family; `debian` is read as `ubuntu`) or `rhel-family` (Fedora, RHEL, Rocky, Oracle Linux, AlmaLinux) for `labyrinth.sh`, `windows` for `labyrinth.ps1`. Otherwise the run is blocked (`20`).
 - An `appliance` is never changed (design 05).
 
 `keep`, `rollback` and `runs` skip these checks, so a stored revert-timer command still works after the configuration changes.

@@ -2,7 +2,7 @@
 # Format: host group profile platform
 #   group    : ring0 holds one low-impact canary host per platform; ring1, ring2 ... follow.
 #              A host that is the only one of its kind goes in the last ring (design 03, section 6).
-#   platform : ubuntu (the whole Debian family) | rhel-family | windows | appliance
+#   platform : ubuntu (the whole Debian family; debian means the same) | rhel-family | windows | appliance
 # Placeholder names only.
 
 ws01     ring0   windows-member   windows
