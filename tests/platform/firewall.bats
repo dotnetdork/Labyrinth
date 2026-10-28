@@ -165,21 +165,26 @@ ufw_host() {
   never_ran 'default deny'
 }
 
-@test "firewall: default deny needs each scored service's port allowed from every scoring address" {
-  ufw_host
+# scored_here: web-main (http, 80) and dns-main (dns, 53) on this host;
+# mail-smtp on another host.
+scored_here() {
   printf 'web-main http %s 80 Welcome\ndns-main dns %s 53 www.example.test=192.0.2.20\nmail-smtp smtp other.example.test 25 -\n' \
     "$(lab_host)" "$(lab_host)" > "$LAB_CONFIG_DIR/services"
+}
+
+@test "firewall: default deny needs each scored service's port allowed from any" {
+  ufw_host
+  scored_here
   lab_fw snapshot
   lab_fw allow tcp 22 198.51.100.7
   lab_fw allow tcp 22 2001:db8::7
   run lab_fw default_deny_in
   [ "$status" -eq 20 ]
-  [[ "$output" == *"web-main tcp/80 from 198.51.100.7"* && "$output" == *"dns-main udp/53 from 2001:db8::7"* ]]
+  [[ "$output" == *"web-main tcp/80"* && "$output" == *"dns-main tcp/53"* && "$output" == *"dns-main udp/53"* ]]
   [[ "$output" != *mail-smtp* ]]
   never_ran 'default deny'
   lab_fw allow tcp 80 any
-  lab_fw allow tcp 53 198.51.100.7
-  lab_fw allow tcp 53 2001:db8::7
+  lab_fw allow tcp 53 any
   run lab_fw default_deny_in
   [ "$status" -eq 20 ]
   [[ "$output" == *"dns-main udp/53"* && "$output" != *web-main* ]]
@@ -196,13 +201,53 @@ ufw_host() {
   called 'ufw default deny incoming'
 }
 
-@test "firewall: default deny is refused without a scoring allowlist" {
+@test "firewall: an allow narrower than any on a scored port is refused" {
+  ufw_host
+  scored_here
+  lab_fw snapshot
+  run lab_fw allow tcp 80 198.51.100.7
+  [ "$status" -eq 20 ]
+  [[ "$output" == *"tcp/80 belongs to scored service web-main"*"allow it from any"* ]]
+  run lab_fw allow udp 53 198.51.100.0/28
+  [ "$status" -eq 20 ]
+  [[ "$output" == *"udp/53 belongs to scored service dns-main"* ]]
+  never_ran prepend
+  [ "$(manifest_actions)" = 'firewall_snapshot ' ]
+  lab_fw allow tcp 25 198.51.100.7
+  lab_fw allow tcp 8080 198.51.100.7
+  lab_fw allow tcp 80 any
+  called 'ufw prepend allow proto tcp from 198.51.100.7 to any port 25'
+  called 'ufw prepend allow proto tcp from any to any port 80'
+  [ "$(manifest_actions)" = 'firewall_snapshot firewall_allow firewall_allow firewall_allow ' ]
+  printf 'not a services line\n' > "$LAB_CONFIG_DIR/services"
+  run lab_fw allow tcp 8443 198.51.100.7
+  [ "$status" -eq 40 ]
+}
+
+@test "firewall: without a scoring allowlist, allows from any on every scored port are enough" {
+  ufw_host
+  rm "$LAB_CONFIG_DIR/scoring-allowlist"
+  scored_here
+  lab_fw snapshot
+  lab_fw allow tcp 80 any
+  lab_fw allow tcp 53 any
+  run lab_fw default_deny_in
+  [ "$status" -eq 20 ]
+  [[ "$output" == *"dns-main udp/53"* && "$output" != *web-main* ]]
+  never_ran 'default deny'
+  lab_fw allow udp 53 any
+  lab_fw default_deny_in
+  called 'ufw default deny incoming'
+}
+
+@test "firewall: default deny is refused with neither a scoring allowlist nor a scored service here" {
   ufw_host
   rm "$LAB_CONFIG_DIR/scoring-allowlist"
   lab_fw snapshot
+  lab_fw allow tcp 80 any
   run lab_fw default_deny_in
   [ "$status" -eq 20 ]
-  [[ "$output" == *"scoring allowlist is missing or empty"* ]]
+  [[ "$output" == *"scoring allowlist is missing or empty, and the services file names no scored service on this host"* ]]
   never_ran 'default deny'
 }
 
