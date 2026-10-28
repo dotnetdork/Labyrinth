@@ -1,0 +1,23 @@
+{#- Labyrinth's site theme: the course band under the tabs, and the phase
+    tabs on the right edge. Each page's phase comes from extra.phases in
+    mkdocs.yml, keyed by the page's path under docs/. -#}
+{% extends "base.html" %}
+
+{% block tabs %}
+  {{ super() }}
+  {% include "partials/course.html" %}
+{% endblock %}
+
+{% block content %}
+  {{ super() }}
+  {%- set here = config.extra.phases.get(page.file.src_uri, []) if page and page.file else [] %}
+  <nav class="lab-tabs" aria-label="Design specs by phase">
+    {%- for p in config.extra.phase_list %}
+    <a class="lab-tabs__tab lab-tabs__tab--{{ p.id }}{% if p.id in here %} is-here{% endif %}"
+       href="{{ p.start | url }}">
+      <span>{{ loop.index }}</span> {{ p.name }}
+      {%- if p.id in here %}<span class="lab-sr"> (this page)</span>{% endif %}
+    </a>
+    {%- endfor %}
+  </nav>
+{% endblock %}
