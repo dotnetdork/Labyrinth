@@ -127,6 +127,27 @@ function Restore-LabFirewallSnapshot {
     return 0
 }
 
+# Test-LabFirewallOpenSource: 20 for an allow narrower than any on a scored
+# service's port, because a scored port stays open to every source (design
+# 01, section 5); 40 if the services file does not load; else 0.
+function Test-LabFirewallOpenSource {
+    param([string] $Protocol, [int] $Port, [string] $Source)
+    if ($Source -ceq 'any') { return 0 }
+    try {
+        $scored = Get-LabFirewallScoredPort
+    } catch {
+        Write-LabFirewallError 'allow is refused: the services file does not load'
+        return 40
+    }
+    foreach ($s in $scored) {
+        if ($s[0] -ceq $Protocol -and $s[1] -ceq [string]$Port) {
+            Write-LabFirewallError "allow is refused: $Protocol/$Port belongs to scored service $($s[2]), which stays open to every source; allow it from any"
+            return 20
+        }
+    }
+    return 0
+}
+
 function Add-LabFirewallAllow {
     param(
         [Parameter(Mandatory)] [string] $Protocol,
@@ -136,6 +157,8 @@ function Add-LabFirewallAllow {
     if ($Protocol -cne 'tcp' -and $Protocol -cne 'udp') { Write-LabFirewallError "protocol must be tcp or udp: $Protocol"; return 40 }
     if ($Port -lt 1 -or $Port -gt 65535) { Write-LabFirewallError "not a port: $Port"; return 40 }
     if ($Source -cne 'any' -and -not (Test-LabAddress $Source)) { Write-LabFirewallError "not an address or CIDR: $Source"; return 40 }
+    $rc = Test-LabFirewallOpenSource -Protocol $Protocol -Port $Port -Source $Source
+    if ($rc -ne 0) { return $rc }
     $rc = Test-LabFirewallChange -Action 'allow'
     if ($rc -ne 0) { return $rc }
     if (-not (Test-LabFirewallSnapshotTaken -Action 'allow')) { return 20 }
@@ -186,12 +209,29 @@ function Test-LabLocalTarget {
     return $false
 }
 
-# Test-LabFirewallScoringCovered: may the inbound default be deny? For each
-# scored service on this host (services file), every scoring address must
-# have an allow on that service's port and protocol, or the allow's source
-# must be 'any'. With no scored service found on this host, every scoring
-# address must still have some allow. 0 when covered, else 20 (or 40 if a
-# list does not load), with the missing pairs on standard error.
+# Get-LabFirewallScoredPort: one @(protocol, port, name) for each scored
+# service on this host (services file): TCP, plus UDP for dns. A missing
+# services file gives none; one that does not load throws.
+function Get-LabFirewallScoredPort {
+    # Not wrapped in @(): the list comes back as one array, and @() would
+    # make it the only item of another.
+    $services = Read-LabServiceList
+    $ports = @()
+    foreach ($svc in $services) {
+        if ($null -eq $svc -or -not (Test-LabLocalTarget $svc.Target)) { continue }
+        $ports += , @('tcp', [string]$svc.Port, $svc.Name)
+        if ($svc.Proto -ceq 'dns') { $ports += , @('udp', [string]$svc.Port, $svc.Name) }
+    }
+    return , $ports
+}
+
+# Test-LabFirewallScoringCovered: may the inbound default be deny? Each
+# scored service on this host must have an allow from any on its port,
+# because a scored port is never filtered by source. With no scored service
+# found on this host, every scoring-allowlist address must still have some
+# allow, or one from any; with no scoring allowlist either, nothing shows the
+# scoring engine can still get in, so the deny is refused. 0 when covered,
+# else 20 (or 40 if a list does not load), with the gaps on standard error.
 function Test-LabFirewallScoringCovered {
     try {
         $list = Read-LabAddressList 'scoring-allowlist'
@@ -199,23 +239,11 @@ function Test-LabFirewallScoringCovered {
         Write-LabFirewallError 'default deny is refused: the scoring allowlist does not load'
         return 40
     }
-    if (-not $list) {
-        Write-LabFirewallError 'default deny is refused: the scoring allowlist is missing or empty'
-        return 20
-    }
     try {
-        # Not wrapped in @(): the list comes back as one array, and @() would
-        # make it the only item of another.
-        $services = Read-LabServiceList
+        $need = Get-LabFirewallScoredPort
     } catch {
         Write-LabFirewallError 'default deny is refused: the services file does not load'
         return 40
-    }
-    $need = @()
-    foreach ($svc in $services) {
-        if ($null -eq $svc -or -not (Test-LabLocalTarget $svc.Target)) { continue }
-        $need += , @('tcp', [string]$svc.Port, $svc.Name)
-        if ($svc.Proto -ceq 'dns') { $need += , @('udp', [string]$svc.Port, $svc.Name) }
     }
     $have = @{}
     $seen = @{}
@@ -229,16 +257,17 @@ function Test-LabFirewallScoringCovered {
     if ($need.Count -gt 0) {
         $gaps = @()
         foreach ($n in $need) {
-            if ($have.ContainsKey("$($n[0]) $($n[1]) any")) { continue }
-            foreach ($a in $list) {
-                if (-not $have.ContainsKey("$($n[0]) $($n[1]) $a")) { $gaps += "$($n[2]) $($n[0])/$($n[1]) from $a" }
-            }
+            if (-not $have.ContainsKey("$($n[0]) $($n[1]) any")) { $gaps += "$($n[2]) $($n[0])/$($n[1])" }
         }
         if ($gaps.Count -gt 0) {
-            Write-LabFirewallError "default deny is refused: no allow yet for scored service(s): $($gaps -join '; ')"
+            Write-LabFirewallError "default deny is refused: no allow from any yet for scored service(s): $($gaps -join '; ')"
             return 20
         }
         return 0
+    }
+    if (-not $list) {
+        Write-LabFirewallError 'default deny is refused: the scoring allowlist is missing or empty, and the services file names no scored service on this host'
+        return 20
     }
     if ($seen.ContainsKey('any')) { return 0 }
     $missing = @($list | Where-Object { -not $seen.ContainsKey($_) })
