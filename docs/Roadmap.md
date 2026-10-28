@@ -73,7 +73,7 @@ Each module ships its read-only `check` and `plan` first. The branches are liste
 | `phase-4/credentials` | 04 | Rotation from an explicit list; password and lockout policy (§2.2); the `scored-admin` class, its seed-derived password and the change list shown once (§2.4) |
 | `phase-4/ssh` | 04 §4 | Remote-admin hardening and the SSH key registry |
 | `phase-4/sessions` | 03 §6.2 | Ending intruder sessions outside the protected set |
-| `phase-4/firewall` | 03 §6.1, 12, 01 §5 | Default-deny inbound and outbound through the adapter, under a revert timer. The adapter gains an outbound default and the `outbound-allow` list, on every backend, the gate that passes with no scoring allowlist when every scored service is allowed from any source, and the refusal of a narrower source on a scored port |
+| `phase-4/firewall` | 03 §6.1, 12, 01 §5 | Default-deny inbound and outbound through the adapter, under a revert timer. The adapter gains an outbound default and the `outbound-allow` list, on every backend |
 | `phase-4/packages` | 02 | Installing the profile's packages behind the lockdown: source order, lock wait, simulation check, services kept stopped, `package_install` entries; vendored tools and pinned downloads with the core download helper |
 | `phase-4/restore-points` | 07 | `backup <service>` and `restore <service>`, so a restore point exists before the sweep and before any patch |
 | `phase-4/persistence-sweep` | 06 | Classification, automatic quarantine of high-confidence items, and limits on who can schedule jobs |
