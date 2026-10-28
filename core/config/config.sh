@@ -12,7 +12,7 @@
 # entries (the caller decides whether that blocks the run, exit 20).
 # Results are kept in globals, because bash 4.2 has no namerefs.
 
-readonly LAB_ACCOUNT_CLASSES='official scoring employee operator breakglass service builtin'
+readonly LAB_ACCOUNT_CLASSES='official scoring scored-admin employee operator breakglass service builtin'
 readonly LAB_PROBE_PROTOS='http https dns smtp pop3 ftp tcp'
 readonly LAB_HOST_PLATFORMS='ubuntu rhel-family windows appliance'
 
@@ -107,7 +107,7 @@ lab_protected_load() {
   lab_config_lines "$file" || return 1
   for ((i = 0; i < ${#LAB_CFG_LINES[@]}; i++)); do
     line="${LAB_CFG_LINES[i]}"
-    [[ "$line" =~ ^(.*[^[:space:]])[[:space:]]+([a-z]+)$ ]] \
+    [[ "$line" =~ ^(.*[^[:space:]])[[:space:]]+([a-z]+(-[a-z]+)?)$ ]] \
       || { lab_cfg_error "$file" "${LAB_CFG_NOS[i]}" 'expected: account class'; return 1; }
     name="${BASH_REMATCH[1]}"
     class="${BASH_REMATCH[2]}"

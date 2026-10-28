@@ -3,6 +3,8 @@
 # Classes and what Labyrinth may do to each:
 #   official    never changed without the White Team's permission; logons alerted on
 #   scoring     never touched by automation
+#   scored-admin  an admin account a scoring check logs in with; rotated only by the
+#               credentials module, its new password shown in a change list (design 04, section 2.4)
 #   employee    used by simulated employees; never touched by automation, keeps password login
 #   operator    never locked or removed
 #   breakglass  never locked or removed; password rotated only in design 04's order;
@@ -13,6 +15,7 @@
 
 whiteteam        official    # official account named in the event packet
 scoring_user1    scoring     # account the scoring engine logs in with
+scored_admin1    scored-admin  # admin account a scoring check logs in with
 employee1        employee    # account a simulated employee logs in with
 operator1        operator    # named team operator
 root             breakglass  # existing admin account; rotated password kept in the offline record
