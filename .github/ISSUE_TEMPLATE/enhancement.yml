@@ -1,0 +1,33 @@
+name: Enhancement
+description: A new feature, or a Roadmap item to build
+title: "[Enhancement] "
+labels: ["type: enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Most work starts from a row in `docs/Roadmap.md`. Name its branch (for example `phase-4/ssh`) and the spec it builds.
+        If it is about a published CVE, put the CVE ID in the title and the maintainers will add the `cve` label.
+        This repository is public: no event values, real hostnames, addresses or credentials.
+  - type: textarea
+    id: location
+    attributes:
+      label: Location & Context
+      description: The Roadmap row and spec sections, and the files it will touch.
+      placeholder: "Roadmap phase-4/ssh; design 04, section 4; platform/linux/..., labyrinth.ps1"
+    validations:
+      required: true
+  - type: textarea
+    id: current
+    attributes:
+      label: Current Behavior
+      description: What Labyrinth does today, and why that falls short.
+    validations:
+      required: true
+  - type: textarea
+    id: plan
+    attributes:
+      label: Remediation Plan
+      description: The steps to build it, and the acceptance tests from the spec, including the negative test that protected accounts and scored services are untouched.
+    validations:
+      required: true

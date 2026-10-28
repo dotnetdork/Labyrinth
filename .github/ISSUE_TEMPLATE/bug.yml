@@ -1,0 +1,39 @@
+name: Bug
+description: Labyrinth does something its spec or manual says it should not
+title: "[Bug] "
+labels: ["type: bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        A weakness someone could exploit goes through [private reporting](https://github.com/dotnetdork/Labyrinth/security/advisories/new) instead (SECURITY.md).
+        This repository is public: no event values, real hostnames, addresses or credentials. Use placeholders.
+  - type: textarea
+    id: location
+    attributes:
+      label: Location & Context
+      description: The file and lines or function, the commit, and the spec section that covers it.
+      placeholder: "core/config/config.sh:15, lab_protected_load; commit abc1234; design 04, section 2.4"
+    validations:
+      required: true
+  - type: textarea
+    id: current
+    attributes:
+      label: Current Behavior
+      description: What happens, what should happen, and the risk. Include the command and its output.
+    validations:
+      required: true
+  - type: textarea
+    id: plan
+    attributes:
+      label: Remediation Plan
+      description: Short technical steps to fix it, and the tests that prove the fix (bats and Pester where both platforms are covered).
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options: ["Linux", "Windows", "Both"]
+    validations:
+      required: true
