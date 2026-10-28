@@ -6,7 +6,10 @@
 name: CI
 
 # Every push runs CI once, on any branch. A pull request adds no second run
-# of the same commit: its branch's push run is the one to read.
+# of the same commit: its branch's push run is the one to read. On a working
+# branch, the tests run only when the branch changes something they check
+# (the 'changes' job); a branch that only edits documentation skips them.
+# Every push to main runs them all.
 on:
   push:
 
@@ -20,8 +23,45 @@ permissions:
   contents: read
 
 jobs:
+  changes:
+    name: What changed
+    runs-on: ubuntu-24.04
+    outputs:
+      code: ${{ steps.diff.outputs.code }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Does this branch change anything the tests check?
+        id: diff
+        # The whole branch is compared with main, not only the last push, so
+        # every commit of a branch that touches code is tested. Only the
+        # paths listed here are skipped; anything else, including a new
+        # folder, runs the tests. The manual is checked, so docs/manual counts.
+        run: |
+          code=false
+          if [ "$GITHUB_REF" = refs/heads/main ]; then
+            code=true
+          else
+            base="$(git merge-base origin/main HEAD)"
+            while IFS= read -r f; do
+              [ -n "$f" ] || continue
+              case "$f" in
+                docs/manual/*) code=true ;;
+                docs/* | *.md | LICENSE | .gitignore | mkdocs.yml | .claude/* | .github/ISSUE_TEMPLATE/* | .github/workflows/docs.yml) ;;
+                *) code=true ;;
+              esac
+            done < <(git diff --name-only "$base" HEAD)
+          fi
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          echo "Tests needed: $code"
+
   linux:
     name: Linux (bash, ShellCheck, guard, bats)
+    needs: changes
+    # A skipped job counts as passing for the branch's required checks.
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
@@ -51,6 +91,8 @@ jobs:
 
   manual:
     name: Manuals (Linux and Windows PDFs, man page, help topic)
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
@@ -82,6 +124,8 @@ jobs:
 
   windows:
     name: Windows (PowerShell 5.1, PSScriptAnalyzer, Pester)
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: windows-latest
     defaults:
       run:
