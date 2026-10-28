@@ -32,7 +32,7 @@ Today the scoring-style probes (design 03, section 9) run only when a module fin
 - **Where results go:** the `health` log category (design 00, section 7), forwarded to the SIEM (design 14), and a one-line summary per host in the status feed (design 15).
 
 > [!IMPORTANT]
-> **Answering is not logging in.** The probes check that a service answers, not that a user can log in to it, because scoring accounts are never used. A mail service can pass every probe while its logins are broken, and still fail scoring. To narrow this gap, the team may create a test mailbox or user by hand that is *not* a scoring account and add it to the service list with a login probe. The scheduled job does not use that password, so the login probe runs only when an operator starts it, for example with `labyrinth checkpoint` (planned, section 5). The password comes from the private event configuration file or a flag given at the start, never typed during a run, and is kept only in memory, like the event seed (design 16).
+> **Answering is not logging in.** The probes check that a service answers, not that a user can log in to it, because scoring accounts are never used. A mail service can pass every probe while its logins are broken, and still fail scoring. To narrow this gap, the team may create a test mailbox or user by hand that is *not* a scoring account and add it to the service list with a login probe. The scheduled job does not use that password, so the login probe runs only when an operator starts it, for example with `labyrinth checkpoint` (planned, section 5). The password comes from the private event configuration file (a flag at the start may name the file, never carry the password), never typed during a run, and is kept only in memory, like the event seed (design 16).
 
 ### 3.1 Probes that log in and check content
 
@@ -48,7 +48,7 @@ Events differ in what a check does: some only connect, others log in and read a 
 | `winrm` | Opens a session and runs a no-op |
 | `siem` | Runs a fixed search through the SIEM's interface |
 
-- **The account.** A probe that logs in uses a probe account the operator creates for the purpose, never a scoring account (design 03, section 4). Its password comes from the private event configuration file or a flag given at the start, never typed during a run, and is held only in memory (design 16). Where a `scored-admin` account was rotated, the probe uses the new password from the same run (design 04, section 2.4).
+- **The account.** A probe that logs in uses a probe account the operator creates for the purpose, never a scoring account (design 03, section 4). Its password comes from the private event configuration file, which a flag at the start may name (the flag never carries the password itself, so it stays out of shell history and the process list); it is never typed during a run and is held only in memory (design 16). Where a `scored-admin` account was rotated, the probe uses the new password from the same run (design 04, section 2.4).
 - **No account given.** The probe connects only and the plan says so.
 - **Read-only.** A probe never writes, sends or deletes anything on the service.
 

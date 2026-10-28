@@ -304,7 +304,7 @@ Changes made by Labyrinth itself are in the run manifest, so they do not raise f
 
 **How it works.**
 
-- The seed is kept by the team captain in the offline record. It reaches Labyrinth through the team's private event settings file, or a flag given when the run starts, and is never asked for in the middle of a run. Labyrinth itself never writes it to its logs or run manifest.
+- The seed is kept by the team captain in the offline record. It reaches Labyrinth through the team's private event settings file, which a flag may name when the run starts (the seed itself is never typed on the command line), and is never asked for in the middle of a run. Labyrinth itself never writes it to its logs or run manifest.
 - Labyrinth combines the seed with a label such as "decoy port number 3" using a **keyed hash** (HMAC-SHA256). The result looks random, cannot be reversed to reveal the seed, and is always the same for the same seed and label.
 - Every result is checked. A port that clashes with a scored service, or a name that clashes with a real or protected account, is skipped and reported.
 - If the seed leaks, the team picks a new one and redeploys the traps. That is designed to be a cheap, routine run.
