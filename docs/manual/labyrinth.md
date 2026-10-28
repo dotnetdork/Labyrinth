@@ -301,12 +301,12 @@ Some modules never change anything on their own: they print a checklist for a pe
 
 An id that is not in the plan is ignored, and Labyrinth says so. If anything else is typed, the module is blocked and changes nothing.
 
-To approve without the prompt, for example from a script, list the items when you start the apply:
+To approve without the prompt, for example from a script, list the items when you start the apply, separated by commas:
 <!-- linux -->
-`--approve harden.persistence_sweep:cron-3f1a@2a2c17aaaf66,harden.persistence_sweep:cron-77b0@5821d4d89f00`
+`--approve harden.persistence_sweep:cron-3f1a@2a2c17aaaf66`
 <!-- end -->
 <!-- windows -->
-`-Approve harden.persistence_sweep:task-3f1a@2a2c17aaaf66,harden.persistence_sweep:task-77b0@5821d4d89f00`
+`-Approve harden.persistence_sweep:task-3f1a@2a2c17aaaf66`
 <!-- end -->
 Each entry is the module ID, a colon, then the item as its `Item:` line shows it, id and fingerprint together. Copy them from a plan. Categories are not accepted here, because they could include items you never saw. The prompt is then not asked.
 
