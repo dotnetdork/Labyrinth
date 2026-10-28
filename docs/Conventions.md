@@ -41,7 +41,7 @@ Configuration is **data, never code**. It is never `source`d in bash or dot-sour
 
 | File | Format | Holds |
 |---|---|---|
-| `event.conf` | `KEY=value`, one per line | Single values: SIEM address, revert-timer minutes, ring size, package proxy and mirror. Planned: `BACKUP_PEER` (design 07, section 5); `ALLOW_SERVICE_REPLACE` and `ALLOW_CONTAINERS`, each `yes:<reference>` naming the inject or local rule that allows it, and off when unset (design 13, section 3); `AUTO_APPLY=yes` (section 3.3); and `SPLUNK_UF_VERSION`, `SPLUNK_UF_SHA256_LINUX` and `SPLUNK_UF_SHA256_WINDOWS` for the pinned forwarder download (design 14, section 4) |
+| `event.conf` | `KEY=value`, one per line | Single values: SIEM address, revert-timer minutes, ring size, package proxy and mirror. Planned: `BACKUP_PEER` (design 07, section 5); `ALLOW_SERVICE_REPLACE` and `ALLOW_CONTAINERS`, each `yes:<reference>` naming the inject or local rule that allows it, and off when unset (design 13, section 3); and `SPLUNK_UF_VERSION`, `SPLUNK_UF_SHA256_LINUX` and `SPLUNK_UF_SHA256_WINDOWS` for the pinned forwarder download (design 14, section 4) |
 | `protected-accounts` | `account class` per line, optional `# reason`; class is `official`, `scoring`, `employee`, `operator`, `breakglass`, `service` or `builtin`, and (planned) `scored-admin`, an admin account a scoring check logs in with, rotated with a change list (design 04, section 2.4) | The protected set (design 03, section 4); the class decides what Labyrinth may do to the account |
 | `scoring-allowlist` | one address or CIDR per line | Scoring engine sources, applied before any deny rule. Optional for the runner; the firewall adapter still needs it until it checks for allows from any source (planned, design 01, section 5) |
 | `never-ban` | one address or CIDR per line | Addresses that bans must never touch (design 18) |
@@ -90,7 +90,7 @@ Entry points load the core library from `LAB_ROOT/core/` and never from a relati
 
 ### 3.1 Commands, options, gates and the order of an apply
 
-Both runners share one vocabulary. In this section `labyrinth` stands for the installed command, or for `labyrinth.sh` / `labyrinth.ps1` run directly (design 00, section 5).
+Both runners share one vocabulary. In this section `labyrinth` stands for the installed command, or for `labyrinth.sh` / `labyrinth.ps1` run directly (design 00, section 5). This section describes the runner as built today; stage 4b replaces it with the flag-style command line of section 3.3, which keeps every form below working.
 
 ```
 labyrinth <command> [<phase> | <run>] [options]
@@ -105,8 +105,6 @@ labyrinth <command> [<phase> | <run>] [options]
 | `keep [<run>]` | Keep a run's changes: cancel its revert timer, then record the keep. Without `<run>`, it takes the one run whose timer is armed; with none armed there is nothing to keep (`0`); if several are armed, it lists them and keeps nothing (`40`) |
 | `rollback <run>` | Undo what a run applied, newest module first, except the modules kept once they verified (`keep_on_verify`, below); `--all` undoes those too. The revert timer runs exactly `rollback <run>`. `<run>` is always needed: without it, the runs are listed (`40`). When it undid anything, it writes a notice to every terminal or session logged in on the host (`wall` on Linux, `msg` on Windows; best effort), so the team learns of a rollback no one was watching |
 | `runs` | List this host's runs, oldest first: ID, phase, start time (UTC) and state, which is `armed` (with the time it rolls back; on Linux, `armed: timer lost` when systemd no longer has the timer, because its unit files are missing or broken), `kept`, `rolled back`, `rolled back with errors`, or `not kept, no timer`. Changes nothing; needs root or Administrator (`20`) |
-| `queue` | Planned (section 3.3). List the approval items a run with `AUTO_APPLY=yes` queued instead of asking. Changes nothing |
-| `approve <ids>` | Planned (section 3.3). Apply chosen queued items in a new run, with the same backups, manifest, timer and probes |
 | `probe` | Probe every scored service once; exit `30` if one fails. Changes nothing |
 | `help [<topic>]` | Help for every command, or for one; also `-h` and `--help` (`-Help`). The topic `basics` explains the ideas in plain words, and a module ID prints that module's help page (design 00, section 4) |
 | `version` | Print the version, the runner, and the release hash (`Release: <sha256>`, or `not checked`); also `-V` and `--version` (`-Version`) |
@@ -125,7 +123,6 @@ labyrinth <command> [<phase> | <run>] [options]
 | `--break-glass` | `-BreakGlass` | NAME: answers the break-glass prompt without typing | `apply` |
 | `--confirm-group` | `-ConfirmGroup` | GROUP: answers the confirmation prompt without typing | `apply` |
 | `--approve` | `-Approve` | LIST: approves items without the approval prompt (Approval items, below) | `apply` |
-| `--detail` | `-Detail` | none: planned (section 3.3); shows the full Found/Fix/More block for every module. Not `--verbose`, because `-Verbose` is a PowerShell common parameter, which the runner refuses | `plan`, `apply` |
 | `--all` | `-All` | none: also undo the modules kept once they verified | `rollback` |
 | `-h`, `-?`, `--help` | `-h`, `-Help` | none | all |
 | `-V`, `--version` | `-V`, `-Version` | none | all |
@@ -281,19 +278,118 @@ Every apply, keep and rollback writes `<state>/runs/<run>/output.log`, readable 
 - A run that stopped, or had a `FAIL` or `ERROR`, is marked with a `problems` file, and `runs` lists the logs of those runs.
 - A log that cannot be written never stops a run.
 
-### 3.3 Unattended runs and short output (specified, planned)
+### 3.3 The new command line and automatic runs (specified, planned)
 
-The runner does not do this yet; it is specified here and scheduled in the Roadmap. Every command form above keeps working, and the compatibility suite is never edited to make room for it.
+The runner does not do this yet; it is specified here and built in stage 4b (Roadmap). Until then, section 3.1 describes the runner as it is. When this is built, section 3.1 is rewritten from this section. Every form of section 3.1 stays accepted (Old forms, below), and the compatibility suite is never edited to make room for it.
 
-- **One command per host.** `apply` already prints its plan and carries it out; with `AUTO_APPLY` there is no separate plan step to remember. `plan` stays as the read-only command.
-- **`AUTO_APPLY=yes` in `event.conf`** (unset means today's behavior). When on:
-  - The host's group comes from the `hosts` file, matched on the host's name and address. A mismatch or an ambiguous match blocks (`20`). `--confirm-group` is still accepted but no longer needed.
-  - The break-glass account is the `breakglass`-class account from the protected set that exists on the host; with none, or more than one, the run blocks (`20`). Labyrinth checks for a console session itself and warns if it finds none, instead of prompting.
-  - **It never prompts in the middle of a run.** An approval item that no pre-approval rule covers goes to a queue under the state path. `labyrinth queue` lists the queue, and `labyrinth approve <ids>` applies the chosen items in a new run with the same backups, manifest, revert timer and probes.
-  - **Always queued, whatever the rules say:** deleting an account; changing a scored service that has no probe; replacing or containerizing a service (design 13); any Tier 3 item.
-  - **Kept automatically.** Every module is kept once its verify and probes pass, except firewall and SSH changes. Those stay under the revert timer until one `keep` per host run.
+#### The command
+
+Labyrinth installs as `labyrinth`, with the short name `laby`. The install leaves `laby` out, and says so, when a command of that name already exists on the host. Everything here works with either name, and with `labyrinth.sh` / `labyrinth.ps1` run directly.
+
+```
+laby                    this host's status and the next step
+laby PHASE              preview a phase: nothing changes, nothing is written
+laby -r PHASE           run a phase (-r may come before or after the phase)
+```
+
+`PHASE` is `init`, `harden`, `observe`, `deceive` or `sustain`. `init` is Lock out then Harden as one run with one run ID: the first-minute bundle, then the Harden phase behind it (design 03, section 6). `lockout` alone stays accepted, for a host where only the lockdown should run.
+
+#### Actions and options
+
+| Short | Long | Value | Does |
+|---|---|---|---|
+| `-r` | `--run` | none; the phase is a word | Make the changes. Without it, a phase is only previewed |
+| `-k` | `--keep` | ID, optional when one run is armed | Keep the firewall and SSH changes of a run whose login check was missed (below) |
+| `-q` | `--queue` | none | List the queue: the approval items waiting for a person. Changes nothing |
+| `-a` | `--approve` | LIST | With `-q` only: apply the chosen items in a new run, with the same backups, manifest, revert timer and probes as any run |
+| `-d` | `--decline` | LIST | With `-q` only: take the chosen items out of the queue, recorded, changing nothing |
+| `-u` | `--undo` | ID | Undo a run, newest change first, as `rollback` does today |
+| | `--all` | none | With `-u` only: also undo the changes kept once they verified |
+| | `--probe` | none | Probe every scored service once; exit `30` if one fails. Changes nothing |
+| | `--history` | none | List this host's runs and their IDs, as `runs` does today |
+| `-P` | `--profile` | NAME | Use this profile; for a run it must match the host's line in `hosts`, as today |
+| `-v` | `--verbose` | none | The full Found/Fix/More block for every module |
+| `-y` | `--yes` | none | Yes to the ordinary questions (below); never to the login check |
+| | `--no-revert` | none | Arm no revert timer and ask no login check: for test machines, and remote runs whose risk the team accepts. Recorded in the manifest and shown in the summary |
+| `-h`, `-?`, `/?` | `--help` | none | Help (below) |
+| | `--manual` | none | The full manual, scrollable (below) |
+| `-V` | `--version` | none | The version, the runner and the release hash |
+| | `--root`, `--config` | folder | As in section 3.1 |
+
+An ID is a run ID or its last four characters, as today. A LIST is item numbers from the queue, separated by commas, with ranges: `1,3`, `1-4,7` or `all`. It may also name `category:<name>` for every queued item of that category on this host, as the approval prompt allows today. `-p` is left free for a possible port option. Exit codes are those of section 3.1.
+
+The planned commands of design 00, section 5 take the same style when they are built: `--seal`, `--reseal --reason TEXT`, `--checkpoint`, `--backup SERVICE`, `--restore SERVICE` (with `--database` or `--start`), and `--remote GROUP` added to a preview or a run. A new action gets a short letter only if operators will type it often under time pressure.
+
+#### How the line is read
+
+- **One action per line:** `-r`, `-k`, `-q` (alone, or with `-a` or `-d`), `-u`, `--probe`, `--history`, `--manual` or `-V`. Two actions are a usage error (`40`). `-h` comes before all of them: a line with `-h` is always help (below). `-a` or `-d` without `-q` is refused with the right form: `laby: -a needs -q, as in: laby -q -a 1,3`. The one exception is the old form `apply ... --approve <entries>` (Old forms, below), recognized by the word `apply` and entries of the form `<module-id>:<item-id>@<fingerprint>`.
+- **Case.** Short letters are case-sensitive: `-v` is verbose, `-V` the version and `-P` the profile, and `-p` is an error. Long names ignore case and dashes, so PowerShell's `-Run`, `-NoRevert` and `-Verbose` work. `labyrinth.ps1` has no `param` block, so `-Verbose` reaches it like any other word and is read as `--verbose`, no longer refused.
+- **Stacking.** Short letters may be joined: `-rv`, `-qa 1,3`. A letter that takes a value comes last. A single dash before a word is read as a long name when the word is a long name (`-Undo`), and otherwise as a stack of letters, where a letter that is not a short flag is a usage error.
+- **Values** are given as `-k 7f3a`, `--keep 7f3a` or `--keep=7f3a`, and `--` ends the options, as in section 3.1. `-k`'s value is optional: it takes the next word only when that word is a run ID or four characters that could end one, so `laby -k`, `laby -kv` and `laby -k 7f3a` all work.
+- **Usage errors** follow section 3.1: one line naming the word at fault, a suggestion for a near miss, and a `Try` line that names the help for the action at fault: `Try 'laby -u -h'.` A word that is neither a phase nor an old form is an error, and nothing runs. When it is an action's long name, the line gives the real form: `laby: 'undo' is not a phase. Did you mean 'laby -u 7f3a'?`
+- **PowerShell** takes an unquoted `-?` for itself and shows the script's comment-based help, so that help is one short page that points to `laby -h`. `/?` reaches the runner and works like `-h`.
+
+#### Old forms
+
+Every form of section 3.1 stays accepted for good, because stored revert timers and the compatibility suite rely on them: `plan`, `apply`, `keep`, `rollback`, `runs`, `probe`, `help`, `version`, `--apply`, and `apply` with `--approve` entries copied from a plan (`<module-id>:<item-id>@<fingerprint>`). `--confirm-group` and `--break-glass` are still accepted, and must agree with what Labyrinth finds in the configuration (else `20`). Help and the manual teach only the new forms.
+
+#### No prompts during a run
+
+Automatic is the only way a run works; there is no switch to turn it off.
+
+- **The group comes from the `hosts` file,** matched on the host's name and address. A mismatch or an ambiguous match blocks (`20`).
+- **The break-glass account** is the `breakglass`-class account from the protected set that exists on the host; with none, or more than one, the run blocks (`20`). Labyrinth looks for a console session of that account, records what it found in the manifest (`breakglass_verified`), and warns if it finds none.
+- **No approval prompt.** An approval item that a pre-approval rule covers, in a category its module allows (section 3.1), is applied. Every other item goes to the queue.
+- **Never pre-approvable, always queued:** deleting an account; changing a scored service that has no probe; replacing or containerizing a service (design 13). A `module.yml` that lists an account-deletion or replacement category in `pre_approvable` is invalid (`40`). An item that changes a scored service names that service on its `item` line, and the runner queues it, whatever the rules say, when the `services` file has no probe for that service.
+- **Kept automatically.** Every module is kept once its verify and probes pass, except firewall and SSH changes, which wait for the login check.
+- The only question during a run is the login check at its end.
+
+#### The login check
+
+A run that leaves firewall or SSH changes under the revert timer ends with one question:
+
+```
+Firewall and SSH changes are on a timer: undone at 14:32 UTC (in 5 min).
+Open a NEW login to this host now and check that it works.
+Keep the changes? [y/N]
+```
+
+- `y` keeps them, as `keep` does. `n` undoes them now. With no answer, the question ends when the timer fires, and the timer undoes them. Ctrl+C leaves the timer armed.
+- `-y` never answers it. Without a terminal (remote mode, or input from a pipe) it is not asked: the timer stays armed, and the `Next:` line says to check a new login and run `laby -k <id>`.
+- `-k` keeps a run's changes after a missed question, before the timer fires; after it fired, keeping is refused as too late (`20`), as today.
+- `--no-revert` arms nothing and asks nothing.
+
+**Ordinary questions** are asked only before an action that is hard to take back in bulk: `-u ID --all`, which also undoes changes such as rotated passwords and can hand an intruder their access back, and `-a all` or `-d all`, which show the item count first. The default is no. `-y` answers yes. Without a terminal and without `-y`, the action is refused (`40`) with a line saying to add `-y`.
+
+#### The queue
+
+- Each host keeps its own queue under `<state>/queue`. An item gets a number when it is first queued. The number stays with that item (its module and item id) and is never reused on the host, so the numbers a person reads stay right while more items arrive.
+- `laby -q` lists each item's number, module, item id, category and reason, and the run that queued it.
+- `-a` applies the chosen items in a new run. Each item's fingerprint is checked again first: an item that changed since it was queued is left alone, stays in the queue marked `changed`, and the next run that plans its module updates it under the same number.
+- `-d` takes items out of the queue and records who declined them and when. A declined item comes back only if its state changes.
+- In remote mode each host keeps its own queue, and the control node runs the same `-q` command on one host.
+
+#### Status
+
+`laby` alone shows the host, its group and profile; each phase as not run, run (ID and time) or kept; any armed timer and when it fires; the number of queued items; and a `Next:` line with the one command to run next. Like `--history`, it needs root or Administrator; without, it prints the usage lines and how to run it as root. It exits `0`.
+
+#### Help
+
+- **`laby -h`** is written by hand and fits one screen: at most 24 lines and 78 columns, plain text, no color, the same on both platforms. Its groups are headed `Usage:`, `Actions:` and `Options:`, and it ends with `Full manual: laby --manual   (Linux also: man laby)`.
+- **Help for one action:** add `-h` to what you would type, before or after it: `laby -u -h`, `laby -h -u`, `laby --undo --help`, `laby -q -a -h`, `laby observe -h`. The action's value is not needed. Inside help only, the long name as a word works too: `laby -h undo`, `laby undo -h`. A topic is an action's or option's long name, a phase, `basics`, a module ID (design 00, section 4), or an old command word (`plan`, `apply`, `keep`, `rollback`, `runs`), which shows the help of its new form.
+- **Each topic** is at most 18 lines (`basics` 24) and starts with the real flag form, such as `Usage: laby -u ID [--all] [-v]`, then one `Exit:` line, examples and a `See also:` line. The help and the manual teach only the flag forms.
+- **Help never runs anything.** If `-h`, `--help`, `-?` or `/?` appears anywhere on the line before `--`, other than as an option's value, the runner prints help and nothing else, whatever the rest of the line says, even if it holds an error: `laby -r init -h` shows the help for `-r` and changes nothing. Help takes no lock, writes no log, makes no run ID, reads no configuration or state, needs no root or Administrator, and exits `0`. An unknown topic prints a one-line hint, then the main help, and still exits `0`. `--manual` and `-V` change nothing in the same way: no lock, no log, no run ID, no root needed, exit `0`. Unlike `-h`, they count as actions, so either one with another action is a usage error. This replaces section 3.1's rule that the whole line must parse first. Tests check, for every action and phase, that the line with `-h` added leaves the host and the data root unchanged.
+
+#### The manual
+
+- It is built from `docs/manual/labyrinth.md` as today (section 9): the man page `labyrinth.1` and the Windows help topic `about_Labyrinth.help.txt`. Both keep upper-case section headings, as man pages and help topics do.
+- **Installed** where the system looks: on Linux, `labyrinth.1.gz` in `/usr/local/share/man/man1/` with `laby.1` pointing to it, then `mandb` where present, so `man laby` and `man labyrinth` work; on Windows, the help topic where `Get-Help about_Labyrinth` finds it.
+- **`laby --manual`** opens it scrollable. On Linux it runs `man laby`; if `man` or the installed page is missing, it opens the release's own `labyrinth.1` with `man -l`, then with `less`, then prints it. On Windows it shows the help topic one screen at a time (`Out-Host -Paging`), or prints it when the output is not a console.
+
+#### Output and phases
+
 - **Firewall line.** The end of each run gains a `Firewall:` line, after `Summary:`, with the host's firewall in one format whatever the backend: the backend name, whether it is active and the inbound default, for example `ufw active deny-in` or `windows on deny-in`, or `none`, `conflict` or `unknown` (design 01, section 5).
-- **Short output.** Each module gets one line: `OK`, `CHANGED`, `ROLLED BACK`, `QUEUED`, `BLOCKED` or `FAIL`, then its title and ID. The full Found/Fix/More block is printed only for a failure or a block. Every detail is in the run log. `--detail` shows the full block for every module.
+- **Short output.** Each module gets one line: `OK`, `CHANGED`, `ROLLED BACK`, `QUEUED`, `BLOCKED` or `FAIL`, then its title and ID. The full Found/Fix/More block is printed only for a failure or a block. Every detail is in the run log. `-v` shows the full block for every module.
 - **The Harden phase.** Five phases in order: Lock out, Harden, Observe, Deceive, Sustain. Lock out is the first-minute bundle (designs 03, 04, 05). Harden holds the install (02), restore points (07), the persistence sweep (06), the CVE assessment and mitigations (09), patching and service reduction (10), the service packs (11), Windows and AD hardening (12), service replacement and containers (13) and the official-package check (08), and then reopens outbound.
 
 ## 4. Bash style
