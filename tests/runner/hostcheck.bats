@@ -47,6 +47,9 @@ lab() { run bash "$LAB/labyrinth.sh" --root "$ROOT" --config "$ETC" "$@" < /dev/
   listed ubuntu
   lab plan observe
   [ "$status" -eq 10 ]
+  listed debian
+  lab plan observe
+  [ "$status" -eq 10 ]
   rm "$ETC/hosts"
   lab --profile test plan observe
   [ "$status" -eq 10 ]
