@@ -15,6 +15,15 @@ BeforeAll {
     function Get-TestManifestAction {
         return @(Get-LabManifestEntry | ForEach-Object { $_.action })
     }
+
+    # Write-TestScoredHere: web-main (http, 80) and dns-main (dns, 53) on
+    # this host; mail-smtp on another host.
+    function Write-TestScoredHere {
+        $me = Get-LabHostName
+        [IO.File]::WriteAllText((Join-Path $env:LAB_CONFIG_DIR 'services'),
+            "web-main http $me 80 Welcome`ndns-main dns $me 53 www.example.test=192.0.2.20`nmail-smtp smtp other.example.test 25 -`n")
+        Mock Get-LabLocalAddress { @('192.0.2.250') }
+    }
 }
 
 Describe 'Windows Firewall adapter' {
@@ -99,18 +108,15 @@ Describe 'Windows Firewall adapter' {
         (Get-TestManifestAction) -join ' ' | Should -Be 'firewall_snapshot firewall_allow firewall_allow firewall_default_deny'
     }
 
-    It 'default deny needs each scored service''s port allowed from every scoring address' {
-        $me = Get-LabHostName
-        [IO.File]::WriteAllText((Join-Path $env:LAB_CONFIG_DIR 'services'),
-            "web-main http $me 80 Welcome`ndns-main dns $me 53 www.example.test=192.0.2.20`nmail-smtp smtp other.example.test 25 -`n")
-        Mock Get-LabLocalAddress { @('192.0.2.250') }
+    It 'default deny needs each scored service''s port allowed from any' {
+        Write-TestScoredHere
         Save-LabFirewallSnapshot | Should -Be 0
         Add-LabFirewallAllow -Protocol tcp -Port 22 -Source '198.51.100.7' | Should -Be 0
         Add-LabFirewallAllow -Protocol tcp -Port 22 -Source '2001:db8::7' | Should -Be 0
         Mock Write-LabFirewallError { }
         Enable-LabFirewallDefaultDeny | Should -Be 20
         Should -Invoke Write-LabFirewallError -Times 1 -Exactly -ParameterFilter {
-            $Message -match 'web-main tcp/80 from 198\.51\.100\.7' -and $Message -match 'dns-main udp/53 from 2001:db8::7' -and
+            $Message -match 'web-main tcp/80' -and $Message -match 'dns-main tcp/53' -and $Message -match 'dns-main udp/53' -and
             $Message -notmatch 'mail-smtp'
         }
         Should -Invoke Set-NetFirewallProfile -Times 0 -Exactly
@@ -144,10 +150,49 @@ Describe 'Windows Firewall adapter' {
         Enable-LabFirewallDefaultDeny | Should -Be 0
     }
 
-    It 'default deny is refused without a scoring allowlist' {
+    It 'an allow narrower than any on a scored port is refused' {
+        Write-TestScoredHere
+        Save-LabFirewallSnapshot | Should -Be 0
+        Mock Write-LabFirewallError { }
+        Add-LabFirewallAllow -Protocol tcp -Port 80 -Source '198.51.100.7' | Should -Be 20
+        Should -Invoke Write-LabFirewallError -Times 1 -Exactly -ParameterFilter {
+            $Message -match 'tcp/80 belongs to scored service web-main' -and $Message -match 'allow it from any'
+        }
+        Add-LabFirewallAllow -Protocol udp -Port 53 -Source '198.51.100.0/28' | Should -Be 20
+        Should -Invoke New-NetFirewallRule -Times 0 -Exactly
+        (Get-TestManifestAction) -join ' ' | Should -Be 'firewall_snapshot'
+        Add-LabFirewallAllow -Protocol tcp -Port 25 -Source '198.51.100.7' | Should -Be 0
+        Add-LabFirewallAllow -Protocol tcp -Port 8080 -Source '198.51.100.7' | Should -Be 0
+        Add-LabFirewallAllow -Protocol tcp -Port 80 -Source any | Should -Be 0
+        Should -Invoke New-NetFirewallRule -Times 3 -Exactly
+        [IO.File]::WriteAllText((Join-Path $env:LAB_CONFIG_DIR 'services'), "not a services line`n")
+        Add-LabFirewallAllow -Protocol tcp -Port 8443 -Source '198.51.100.7' | Should -Be 40
+    }
+
+    It 'without a scoring allowlist, allows from any on every scored port are enough' {
+        Remove-Item -LiteralPath (Join-Path $env:LAB_CONFIG_DIR 'scoring-allowlist')
+        Write-TestScoredHere
+        Save-LabFirewallSnapshot | Should -Be 0
+        Add-LabFirewallAllow -Protocol tcp -Port 80 -Source any | Should -Be 0
+        Add-LabFirewallAllow -Protocol tcp -Port 53 -Source any | Should -Be 0
+        Mock Write-LabFirewallError { }
+        Enable-LabFirewallDefaultDeny | Should -Be 20
+        Should -Invoke Write-LabFirewallError -Times 1 -Exactly -ParameterFilter { $Message -match 'dns-main udp/53' -and $Message -notmatch 'web-main' }
+        Should -Invoke Set-NetFirewallProfile -Times 0 -Exactly
+        Add-LabFirewallAllow -Protocol udp -Port 53 -Source any | Should -Be 0
+        Enable-LabFirewallDefaultDeny | Should -Be 0
+        Should -Invoke Set-NetFirewallProfile -Times 1 -Exactly
+    }
+
+    It 'default deny is refused with neither a scoring allowlist nor a scored service here' {
         Remove-Item -LiteralPath (Join-Path $env:LAB_CONFIG_DIR 'scoring-allowlist')
         Save-LabFirewallSnapshot | Should -Be 0
+        Add-LabFirewallAllow -Protocol tcp -Port 80 -Source any | Should -Be 0
+        Mock Write-LabFirewallError { }
         Enable-LabFirewallDefaultDeny | Should -Be 20
+        Should -Invoke Write-LabFirewallError -Times 1 -Exactly -ParameterFilter {
+            $Message -match 'scoring allowlist is missing or empty, and the services file names no scored service on this host'
+        }
         Should -Invoke Set-NetFirewallProfile -Times 0 -Exactly
     }
 

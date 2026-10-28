@@ -7,9 +7,9 @@
 # and calls lab_fw FUNCTION ARGS. The dispatcher picks the backend from the
 # firewall fact and keeps the rules every backend shares: no change without a
 # snapshot taken by the same module in the same run, every change recorded
-# in the manifest before it is made, and no default deny until every address
-# in the scoring allowlist has an allow. The backend files hold only the
-# commands that touch their own firewall.
+# in the manifest before it is made, no allow narrower than any on a scored
+# port, and no default deny until the scoring engine can still get in. The
+# backend files hold only the commands that touch their own firewall.
 #
 # Return codes: 0 done, 20 refused, 30 restore did not give back the saved
 # state, 40 error. The reason goes to standard error.
@@ -138,11 +138,29 @@ _lab_fw_valid() {
   [[ "$source" == any ]] || lab_addr_valid "$source" || { _lab_fw_err "not an address or CIDR: $source"; return 40; }
 }
 
+# _lab_fw_open_source PROTO PORT SOURCE: refuse (20) an allow narrower than
+# any on a scored service's port; a scored port stays open to every source
+# (design 01, section 5).
+_lab_fw_open_source() {
+  local proto="$1" port="$2" source="$3" i p n s
+  [[ "$source" == any ]] && return 0
+  _lab_fw_scored_ports || { _lab_fw_err 'allow is refused: the services file does not load'; return 40; }
+  (( ${#_LAB_FW_SCORED[@]} > 0 )) || return 0
+  for i in "${_LAB_FW_SCORED[@]}"; do
+    read -r p n s <<< "$i"
+    if [[ "$p" == "$proto" && "$n" == "$port" ]]; then
+      _lab_fw_err "allow is refused: $proto/$port belongs to scored service $s, which stays open to every source; allow it from any"
+      return 20
+    fi
+  done
+}
+
 _lab_fw_allow() {
   local backend="$1" proto="${2:-}" port="${3:-}" source="${4:-}" f entry
   [[ $# -eq 4 ]] || { _lab_fw_err 'usage: allow PROTO PORT SOURCE'; return 40; }
   _lab_fw_valid "$proto" "$port" "$source" || return
   port="$((10#$port))"
+  _lab_fw_open_source "$proto" "$port" "$source" || return
   _lab_fw_changing allow || return
   _lab_fw_need_snapshot allow || return
   f="$(_lab_fw_allows_file)"
@@ -187,32 +205,38 @@ _lab_fw_is_local() {
   return 1
 }
 
-# _lab_fw_scoring_covered: may the inbound default be deny? For each scored
-# service on this host (services file), every scoring address must have an
-# allow on that service's port and transport, or the allow's source must be
-# 'any'. With no scored service found on this host, every scoring address
-# must still have some allow. The missing pairs go to standard error.
+# _lab_fw_scored_ports: set _LAB_FW_SCORED to "PROTO PORT NAME" for each
+# scored service on this host (services file): TCP, plus UDP for dns. A
+# missing services file gives none; one that does not load returns 40.
+_lab_fw_scored_ports() {
+  local rc=0 i
+  _LAB_FW_SCORED=()
+  lab_services_load > /dev/null 2>&1 || rc=$?
+  if [[ "$rc" == 1 ]]; then return 40; fi
+  for ((i = 0; i < ${#LAB_SVC_NAME[@]}; i++)); do
+    _lab_fw_is_local "${LAB_SVC_HOST[i]}" || continue
+    _LAB_FW_SCORED+=("tcp ${LAB_SVC_PORT[i]} ${LAB_SVC_NAME[i]}")
+    if [[ "${LAB_SVC_PROTO[i]}" == dns ]]; then _LAB_FW_SCORED+=("udp ${LAB_SVC_PORT[i]} ${LAB_SVC_NAME[i]}"); fi
+  done
+}
+
+# _lab_fw_scoring_covered: may the inbound default be deny? Each scored
+# service on this host must have an allow from any on its port, because a
+# scored port is never filtered by source. With no scored service found on
+# this host, every scoring-allowlist address must still have some allow, or
+# one from any; with no scoring allowlist either, nothing shows the scoring
+# engine can still get in, so the deny is refused. The gaps go to standard
+# error.
 _lab_fw_scoring_covered() {
-  local f rc=0 a p n s i missing=''
+  local f rc=0 listed=1 a p n s i missing=''
   local -A have=() seen=()
-  local -a need=()
   lab_addrs_load scoring-allowlist > /dev/null 2>&1 || rc=$?
   case "$rc" in
     0) ;;
-    2) _lab_fw_err 'default deny is refused: the scoring allowlist is missing or empty'; return 20 ;;
+    2) listed=0 ;;
     *) _lab_fw_err 'default deny is refused: the scoring allowlist does not load'; return 40 ;;
   esac
-  rc=0
-  lab_services_load > /dev/null 2>&1 || rc=$?
-  if [[ "$rc" == 1 ]]; then
-    _lab_fw_err 'default deny is refused: the services file does not load'
-    return 40
-  fi
-  for ((i = 0; i < ${#LAB_SVC_NAME[@]}; i++)); do
-    _lab_fw_is_local "${LAB_SVC_HOST[i]}" || continue
-    need+=("tcp ${LAB_SVC_PORT[i]} ${LAB_SVC_NAME[i]}")
-    if [[ "${LAB_SVC_PROTO[i]}" == dns ]]; then need+=("udp ${LAB_SVC_PORT[i]} ${LAB_SVC_NAME[i]}"); fi
-  done
+  _lab_fw_scored_ports || { _lab_fw_err 'default deny is refused: the services file does not load'; return 40; }
   f="$(_lab_fw_allows_file)"
   if [[ -f "$f" ]]; then
     while read -r p n s; do
@@ -221,19 +245,20 @@ _lab_fw_scoring_covered() {
       seen["$s"]=1
     done < "$f"
   fi
-  if (( ${#need[@]} > 0 )); then
-    for i in "${need[@]}"; do
+  if (( ${#_LAB_FW_SCORED[@]} > 0 )); then
+    for i in "${_LAB_FW_SCORED[@]}"; do
       read -r p n s <<< "$i"
-      [[ -n "${have[$p $n any]+set}" ]] && continue
-      for a in "${LAB_ADDRS[@]}"; do
-        [[ -n "${have[$p $n $a]+set}" ]] || missing+=" $s $p/$n from $a;"
-      done
+      [[ -n "${have[$p $n any]+set}" ]] || missing+=" $s $p/$n;"
     done
     if [[ -n "$missing" ]]; then
-      _lab_fw_err "default deny is refused: no allow yet for scored service(s):${missing%;}"
+      _lab_fw_err "default deny is refused: no allow from any yet for scored service(s):${missing%;}"
       return 20
     fi
     return 0
+  fi
+  if [[ "$listed" == 0 ]]; then
+    _lab_fw_err 'default deny is refused: the scoring allowlist is missing or empty, and the services file names no scored service on this host'
+    return 20
   fi
   [[ -n "${seen[any]+set}" ]] && return 0
   for a in "${LAB_ADDRS[@]}"; do
