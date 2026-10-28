@@ -8,27 +8,45 @@ edit_uri: edit/main/docs/
 
 theme:
   name: material
+  custom_dir: docs/overrides
+  logo: assets/logo.svg
+  favicon: assets/favicon.svg
+  font:
+    text: Atkinson Hyperlegible
+    code: JetBrains Mono
   features:
-    - navigation.sections
+    - navigation.tabs
+    - navigation.indexes
     - navigation.top
+    - navigation.footer
+    - toc.follow
     - search.highlight
+    - search.suggest
     - content.code.copy
   palette:
     - media: "(prefers-color-scheme: light)"
       scheme: default
+      primary: custom
+      accent: custom
       toggle:
         icon: material/brightness-7
         name: Switch to dark mode
     - media: "(prefers-color-scheme: dark)"
       scheme: slate
+      primary: custom
+      accent: custom
       toggle:
         icon: material/brightness-4
         name: Switch to light mode
+
+extra_css:
+  - stylesheets/labyrinth.css
 
 # The manual is built separately (tools/manual/), with its platform text and
 # placeholders filled in per platform, so the raw source is left out here.
 exclude_docs: |
   manual/
+  overrides/
 
 nav:
   - Home: index.md
@@ -38,30 +56,62 @@ nav:
   - Conventions: Conventions.md
   - Design specs:
       - design/README.md
-      - design/00-Module-Contract-and-Layout.md
-      - design/01-Platform-Facts-and-Adapters.md
-      - design/02-Packages-and-Third-Party-Tools.md
-      - design/03-Lockout-Panic-Button.md
-      - design/04-Credentials-and-SSH-Keys.md
-      - design/05-Network-Appliance-Runbooks.md
-      - design/06-Persistence-Sweep.md
-      - design/07-Backup-and-Recovery.md
-      - design/08-Baseline-and-Integrity.md
-      - design/09-Vulnerability-Tracker-and-Mitigations.md
-      - design/10-Patching-and-Service-Reduction.md
-      - design/11-Service-Packs-and-Config-Library.md
-      - design/12-Windows-and-AD-Hardening.md
-      - design/13-Service-Replacement-and-Containers.md
-      - design/14-Log-Forwarding-and-Detection.md
-      - design/15-Status-Feed-and-MOTD.md
-      - design/16-Event-Seed-and-Deception-Config.md
-      - design/17-Deception-Maze-and-CVE-Decoys.md
-      - design/18-Dynamic-Bans.md
-      - design/19-Health-Monitor-and-Checkpoints.md
-      - design/20-Incident-Reporting-Automation.md
-      - design/21-Cleanup-and-Tool-Integrity.md
-      - design/22-Reference-Mining.md
+      - 00 Module contract and layout: design/00-Module-Contract-and-Layout.md
+      - 01 Platform facts and adapters: design/01-Platform-Facts-and-Adapters.md
+      - 02 Packages and tools: design/02-Packages-and-Third-Party-Tools.md
+      - 03 Lockout (panic button): design/03-Lockout-Panic-Button.md
+      - 04 Credentials and SSH keys: design/04-Credentials-and-SSH-Keys.md
+      - 05 Appliance runbooks: design/05-Network-Appliance-Runbooks.md
+      - 06 Persistence sweep: design/06-Persistence-Sweep.md
+      - 07 Backup and recovery: design/07-Backup-and-Recovery.md
+      - 08 Baseline and integrity: design/08-Baseline-and-Integrity.md
+      - 09 Vulnerability tracker: design/09-Vulnerability-Tracker-and-Mitigations.md
+      - 10 Patching and services: design/10-Patching-and-Service-Reduction.md
+      - 11 Service packs: design/11-Service-Packs-and-Config-Library.md
+      - 12 Windows and AD: design/12-Windows-and-AD-Hardening.md
+      - 13 Service replacement: design/13-Service-Replacement-and-Containers.md
+      - 14 Log forwarding: design/14-Log-Forwarding-and-Detection.md
+      - 15 Status feed and MOTD: design/15-Status-Feed-and-MOTD.md
+      - 16 Event seed: design/16-Event-Seed-and-Deception-Config.md
+      - 17 Deception maze: design/17-Deception-Maze-and-CVE-Decoys.md
+      - 18 Dynamic bans: design/18-Dynamic-Bans.md
+      - 19 Health monitor: design/19-Health-Monitor-and-Checkpoints.md
+      - 20 Incident reports: design/20-Incident-Reporting-Automation.md
+      - 21 Cleanup and integrity: design/21-Cleanup-and-Tool-Integrity.md
+      - 22 Reference mining: design/22-Reference-Mining.md
   - Test lab: lab/README.md
+
+# The five phases in run order, and each design spec's phases (design/README.md
+# names them). The theme draws the course band and the edge tabs from these;
+# each edge tab opens its phase's first spec (start).
+extra:
+  phase_list:
+    - {id: lockout, name: Lock out, start: design/03-Lockout-Panic-Button/}
+    - {id: harden, name: Harden, start: design/02-Packages-and-Third-Party-Tools/}
+    - {id: observe, name: Observe, start: design/14-Log-Forwarding-and-Detection/}
+    - {id: deceive, name: Deceive, start: design/16-Event-Seed-and-Deception-Config/}
+    - {id: sustain, name: Sustain, start: design/19-Health-Monitor-and-Checkpoints/}
+  phases:
+    design/02-Packages-and-Third-Party-Tools.md: [harden]
+    design/03-Lockout-Panic-Button.md: [lockout, harden]
+    design/04-Credentials-and-SSH-Keys.md: [lockout]
+    design/05-Network-Appliance-Runbooks.md: [lockout]
+    design/06-Persistence-Sweep.md: [harden]
+    design/07-Backup-and-Recovery.md: [harden, sustain]
+    design/08-Baseline-and-Integrity.md: [harden, observe]
+    design/09-Vulnerability-Tracker-and-Mitigations.md: [harden]
+    design/10-Patching-and-Service-Reduction.md: [harden]
+    design/11-Service-Packs-and-Config-Library.md: [harden]
+    design/12-Windows-and-AD-Hardening.md: [harden]
+    design/13-Service-Replacement-and-Containers.md: [harden]
+    design/14-Log-Forwarding-and-Detection.md: [observe]
+    design/15-Status-Feed-and-MOTD.md: [observe]
+    design/16-Event-Seed-and-Deception-Config.md: [deceive]
+    design/17-Deception-Maze-and-CVE-Decoys.md: [deceive]
+    design/18-Dynamic-Bans.md: [deceive]
+    design/19-Health-Monitor-and-Checkpoints.md: [sustain]
+    design/20-Incident-Reporting-Automation.md: [sustain]
+    design/21-Cleanup-and-Tool-Integrity.md: [sustain]
 
 # Links that leave docs/ (the README, the code, the manual) work on GitHub
 # but not on the site, so they are reported quietly instead of as warnings.
