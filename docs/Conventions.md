@@ -225,6 +225,8 @@ Cancelling a timer checks that it is really gone. If it is still armed, or on Li
 
 What the runners print is part of the contract: operators read it under time pressure, many of them new to the tool, and the tests pin it. The output is written for a beginner: plain words, one idea per line, and every problem says what to do next.
 
+This section is the contract for the full output block, the form the runner prints today. Stage 4b (section 3.3) changes the default to one line per module ("Short output", below); the full Found/Fix/More block stays for failures and blocks, and `-v` shows it for every module. The prompts named below (break-glass, group name, items to approve, keep) are today's: the planned automatic runs (section 3.3) ask only the login check.
+
 - **Status words.** Every module result starts with one of `OK`, `CHANGE`, `WARN`, `BLOCKED`, `FAIL` or `ERROR`, padded to 9 characters, then the module's title and its ID in brackets: `CHANGE   Toggle setting sample (observe.toggle)`. A module whose `module.yml` cannot be read has no title, so its line shows the ID alone.
   - **In plan mode:**
     - `OK`: nothing to do (`0`);
@@ -263,7 +265,7 @@ What the runners print is part of the contract: operators read it under time pre
 - **Recaps.** Before the group-name prompt: the host, the group, one line per module (`Will change:`, `Blocked:` or `Manual:`), that a revert timer will be armed, that changes which only take access away are kept once they verify (when the run has any), and, when a change may interrupt a service and the operator is connected remotely, to keep a second session open. Before the keep prompt: when the revert timer rolls the run back, in UTC and in minutes from now.
 - **Messages** say what failed, why, and how to recover, in one sentence each. An error that stops the runner (exit `20` or `40`) is one line on stderr, `labyrinth: <what failed>: <why>`, and, unless the fix is already in that line, a second line saying how to recover. A failure that leaves changes in place always says how to undo them and how to keep them, in that order, and that if in doubt, undo them. A warning is one line on stderr, `labyrinth: warning: <what>`. Core helpers that refuse, such as a held run lock, follow the same form. An apply whose plan has errors still ends with `Summary:` and `apply finished:`.
 - **Text.** Fixed text is at most 78 columns, plain ASCII, with no colour. That includes prompts: what a prompt asks for goes on the lines above it, and the prompt itself is short (`Break-glass account name: `, `Items to approve (Enter for none): `). A line may be longer only by the length of a path it names, and the path comes last, or by the length of the command in a hint.
-- **Hints** name the command the way the operator started it, so it can be copied and run. On Linux that is the path as typed (`./labyrinth.sh`, `/opt/labyrinth/labyrinth.sh`), with `./` added to a bare name that is not on the `PATH`, quoted if it needs it, and `sudo` in front when `SUDO_USER` is set. On Windows it is `.\labyrinth.ps1` when the current folder is Labyrinth's, and its full path otherwise, after `&` and in quotes when the path needs them. Help, usage errors, `Next:` lines and recovery steps all use it.
+- **Hints** name the command the way the operator started it, so it can be copied and run. On Linux that is the path as typed (`./labyrinth.sh`, `/opt/labyrinth/bin/labyrinth.sh`), with `./` added to a bare name that is not on the `PATH`, quoted if it needs it, and `sudo` in front when `SUDO_USER` is set. On Windows it is `.\labyrinth.ps1` when the current folder is Labyrinth's, and its full path otherwise, after `&` and in quotes when the path needs them. Help, usage errors, `Next:` lines and recovery steps all use it.
 - **Help.** Each help topic is at most 18 lines (`basics` 24), with one `Exit:` line and one `Example:` line. Option lists are headed `Options:`. A topic says when its command must run as root or an Administrator, and `apply`, `keep` and `rollback` follow their `Exit:` line with a `Blocked:` line naming the causes of `20`. The general page says where the options are (`help <command>`, or `-h` after a command) and where the manual is: the platform's parts of `docs/manual/labyrinth.md` in Labyrinth's folder. `version` names the runner as well as the version.
 
 For module authors: when an entry point exits `20`, `30` or `40`, its last line of output is a `problem:` line. An entry point never leaves a background process holding standard output, because the runner waits for it to close.
@@ -348,20 +350,22 @@ Automatic is the only way a run works; there is no switch to turn it off.
 - **The break-glass account** is the `breakglass`-class account from the protected set that exists on the host; with none, or more than one, the run blocks (`20`). Labyrinth looks for a console session of that account, records what it found in the manifest (`breakglass_verified`), and warns if it finds none.
 - **No approval prompt.** An approval item that a pre-approval rule covers, in a category its module allows (section 3.1), is applied. Every other item goes to the queue.
 - **Never pre-approvable, always queued:** deleting an account; changing a scored service that has no probe; replacing or containerizing a service (design 13). A `module.yml` that lists an account-deletion or replacement category in `pre_approvable` is invalid (`40`). An item that changes a scored service names that service on its `item` line, and the runner queues it, whatever the rules say, when the `services` file has no probe for that service.
-- **Kept automatically.** Every module is kept once its verify and probes pass, except firewall and SSH changes, which wait for the login check.
+- **Kept automatically.** A module that sets `keep_on_verify: true`, because its change only takes access away from an intruder, is kept once its verify and probes pass. A stopped service is never `keep_on_verify`, nor is a firewall change or an SSH setting (design 00, section 4, rule 9): these, and anything else that can lock the team out or cut off scoring, stay under the revert timer and wait for the login check.
 - The only question during a run is the login check at its end.
 
 #### The login check
 
-A run that leaves firewall or SSH changes under the revert timer ends with one question:
+A run that leaves firewall, SSH or other lockout-capable changes (such as a stopped service) under the revert timer, or that showed new passwords, ends with one question:
 
 ```
 Firewall and SSH changes are on a timer: undone at 14:32 UTC (in 5 min).
 Open a NEW login to this host now and check that it works.
+Are the new passwords recorded?
 Keep the changes? [y/N]
 ```
 
-- `y` keeps them, as `keep` does. `n` undoes the firewall and SSH changes at once, instead of waiting for the timer; the changes already kept stay. With no answer, the question ends when the timer fires, and the timer undoes them. Ctrl+C leaves the timer armed.
+- The question is also asked whenever the run showed new passwords, even with no firewall, SSH or stopped-service changes; then `y` just confirms they are recorded, and nothing is on a timer.
+- `y` keeps them, as `keep` does. `n` undoes the changes on the timer at once, instead of waiting for it; the changes already kept stay. With no answer, the question ends when the timer fires, and the timer undoes them. Ctrl+C leaves the timer armed.
 - `-y` never answers it. Without a terminal (remote mode, or input from a pipe) it is not asked: the timer stays armed, and the `Next:` line says to check a new login and run `laby -k <id>`.
 - `-k` keeps a run's changes after a missed question, before the timer fires; after it fired, keeping is refused as too late (`20`), as today.
 - `--no-revert` arms nothing and asks nothing.
@@ -397,7 +401,7 @@ Keep the changes? [y/N]
 
 - **Firewall line.** The end of each run gains a `Firewall:` line, after `Summary:`, with the host's firewall in one format whatever the backend: the backend name, whether it is active and the inbound default, for example `ufw active deny-in` or `windows on deny-in`, or `none`, `conflict` or `unknown` (design 01, section 5).
 - **Short output.** Each module gets one line: `OK`, `CHANGED`, `ROLLED BACK`, `QUEUED`, `BLOCKED` or `FAIL`, then its title and ID. The full Found/Fix/More block is printed only for a failure or a block. Every detail is in the run log. `-v` shows the full block for every module.
-- **The Harden phase.** Five phases in order: Lock out, Harden, Observe, Deceive, Sustain. Lock out is the first-minute bundle (designs 03, 04, 05). Harden holds the install (02), restore points (07), the persistence sweep (06), the CVE assessment and mitigations (09), patching and service reduction (10), the service packs (11), Windows and AD hardening (12), service replacement and containers (13) and the official-package check (08), and then reopens outbound.
+- **The Harden phase.** Five phases in order: Lock out, Harden, Observe, Deceive, Sustain. Lock out is the first-minute bundle (designs 03, 04, 05). Harden holds the install (02), restore points (07), the persistence sweep (06), account clean-up (04: removing unexpected admin accounts' admin rights, `harden.accounts`), the CVE assessment and mitigations (09), patching and service reduction (10), the service packs (11), Windows and AD hardening (12), service replacement and containers (13) and the official-package check (08), and then reopens outbound.
 
 ## 4. Bash style
 

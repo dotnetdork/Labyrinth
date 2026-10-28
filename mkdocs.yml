@@ -94,7 +94,7 @@ extra:
   phases:
     design/02-Packages-and-Third-Party-Tools.md: [harden]
     design/03-Lockout-Panic-Button.md: [lockout, harden]
-    design/04-Credentials-and-SSH-Keys.md: [lockout]
+    design/04-Credentials-and-SSH-Keys.md: [lockout, harden]
     design/05-Network-Appliance-Runbooks.md: [lockout]
     design/06-Persistence-Sweep.md: [harden]
     design/07-Backup-and-Recovery.md: [harden, sustain]
@@ -104,7 +104,7 @@ extra:
     design/11-Service-Packs-and-Config-Library.md: [harden]
     design/12-Windows-and-AD-Hardening.md: [harden]
     design/13-Service-Replacement-and-Containers.md: [harden]
-    design/14-Log-Forwarding-and-Detection.md: [observe]
+    design/14-Log-Forwarding-and-Detection.md: [harden, observe]
     design/15-Status-Feed-and-MOTD.md: [observe]
     design/16-Event-Seed-and-Deception-Config.md: [deceive]
     design/17-Deception-Maze-and-CVE-Decoys.md: [deceive]

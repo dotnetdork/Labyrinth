@@ -18,18 +18,21 @@ This is the operator manual for Labyrinth, @MANUAL@. It explains how to run Laby
 
 **Who this is for:** the person at the keyboard during the event, who knows what a server and a command line are but has not used Labyrinth under pressure before. [How Labyrinth Works](../Overview.md) explains the ideas behind the tool; this manual explains how to use it.
 
-**Status:** Labyrinth is being built. This manual describes the commands as they are specified in [the conventions](../Conventions.md#31-commands-options-gates-and-the-order-of-an-apply).
+**Status:** Labyrinth is being built. This manual describes the commands as they are specified in [the conventions](../Conventions.md#31-commands-options-gates-and-the-order-of-an-apply). A status line (what has run on this host and the next step) arrives with the new command line in Roadmap stage 4b; until then, `runs` is the way to see what has run.
 
 # 1. What Labyrinth does
 
-Labyrinth makes security changes to a host quickly, safely and reversibly. The work is split into four **phases**, run in this order:
+Labyrinth makes security changes to a host quickly, safely and reversibly. The work is split into five **phases**, run in this order:
 
 | Phase | In one line |
 |---|---|
 | `lockout` | Take control back from the attacker. |
+| `harden` (planned) | Close the holes behind the lockout: install what the host needs, patch, remove what is not needed. |
 | `observe` | See what is happening on the host. |
 | `deceive` | Plant traps that give the attacker away. |
 | `sustain` | Keep everything running and be able to undo mistakes. |
+
+The `harden` phase is specified but not built yet: its modules (named `harden.*`) arrive in Roadmap stage 4b. Until stage 4b, the runner accepts `lockout`, `observe`, `deceive` and `sustain`, and the Harden modules run in their current phases.
 
 Each phase is made of **modules**: small, single-purpose pieces of automation, such as "change the default administrator password". Which modules run on a host depends on its **profile**, the kind of host it is (for example, a Linux web server). Labyrinth ships six profiles: `linux-server`, `linux-web`, `linux-siem`, `windows-member`, `windows-dc` and `appliance`. A profile of the same name in the `profiles` folder of the configuration replaces the shipped one for that run, but it can only list modules Labyrinth ships. The `appliance` profile never changes a router or firewall appliance; its modules only print steps for a person to carry out.
 
@@ -57,7 +60,7 @@ You need:
 
 | Word | Meaning |
 |---|---|
-| Phase | A stage of defense. There are four, run in order: `lockout`, `observe`, `deceive` and `sustain`. |
+| Phase | A stage of defense. There are five, run in order: `lockout`, `harden`, `observe`, `deceive` and `sustain`. |
 | Module | One small job in a phase, such as turning off password logins. Each has a plain name and an ID, such as `lockout.firewall`: the phase, a dot, then its short name. `@CMD@ help <module-id>` explains it. |
 | Host group | A set of hosts that Labyrinth changes together, such as `ring1`. The team's hosts file gives each host its group; the first group holds one test host of each kind, so a mistake shows up there before it reaches the rest. `apply` asks you to type the group's name before it changes anything. |
 | Run | One use of `plan` or `apply` on one host. |
@@ -124,7 +127,7 @@ Ends with 0 when nothing needs changing, 10 when something does, 20 when a safet
 
 Plans, then makes the changes behind the safety checks described in section 7. It must be run as @ADMIN@. Before anything changes, it asks you to name the break-glass account (the first apply on a host only) and to type this host's group name.
 
-Ends with 0 when every change was made and checked, or the highest problem code otherwise: 20 blocked, 30 a check after a change failed, 40 an error. An apply is blocked when it is not run as @ADMIN@, when another Labyrinth run holds the lock, when this host is not in the `hosts` file, or when a safety check fails.
+Ends with 0 when every change was made and checked, 10 when only steps for a person to carry out are left, or the highest problem code otherwise: 20 blocked, 30 a check after a change failed, 40 an error. An apply is blocked when it is not run as @ADMIN@, when another Labyrinth run holds the lock, when this host is not in the `hosts` file, or when a safety check fails.
 
 ## keep [*run*]
 
@@ -186,7 +189,7 @@ does the same, once the rest of the line is correct.
 
 Commands in help and in hints are printed the way you started Labyrinth, so you can copy and run them:
 <!-- linux -->
-the path you typed, such as `./labyrinth.sh` or `/opt/labyrinth/labyrinth.sh`, with `sudo` in front when you used sudo.
+the path you typed, such as `./labyrinth.sh` or `/opt/labyrinth/bin/labyrinth.sh`, with `sudo` in front when you used sudo.
 <!-- end -->
 <!-- windows -->
 `.\labyrinth.ps1` when you are in Labyrinth's folder, and its full path otherwise.
@@ -298,12 +301,12 @@ Some modules never change anything on their own: they print a checklist for a pe
 
 An id that is not in the plan is ignored, and Labyrinth says so. If anything else is typed, the module is blocked and changes nothing.
 
-To approve without the prompt, for example from a script, list the items when you start the apply:
+To approve without the prompt, for example from a script, list the items when you start the apply, separated by commas:
 <!-- linux -->
-`--approve lockout.persistence:cron-3f1a@2a2c17aaaf66,lockout.persistence:cron-77b0@5821d4d89f00`
+`--approve harden.persistence_sweep:cron-3f1a@2a2c17aaaf66`
 <!-- end -->
 <!-- windows -->
-`-Approve lockout.persistence:task-3f1a@2a2c17aaaf66,lockout.persistence:task-77b0@5821d4d89f00`
+`-Approve harden.persistence_sweep:task-3f1a@2a2c17aaaf66`
 <!-- end -->
 Each entry is the module ID, a colon, then the item as its `Item:` line shows it, id and fingerprint together. Copy them from a plan. Categories are not accepted here, because they could include items you never saw. The prompt is then not asked.
 
@@ -321,7 +324,7 @@ If an item has changed since the plan you copied it from, its fingerprint no lon
   Type 'recorded' once it is in the offline record:
 ```
 
-Copy it into the team's offline record, check the copy, then type `recorded`. Anything else asks again. Labyrinth then clears the password from the screen. It cannot clear copies kept elsewhere: the scrollback of tmux or screen, a terminal's own log, or a transcript (`Start-Transcript`) still holds the password. Do not run password modules inside them, or clear and close them once the password is recorded. If the window closes before you type `recorded`, the module puts the old password back, because nobody has the new one. Answer within the revert time: when the revert timer fires, it stops the run, even at this prompt, and undoes it, the new password included. A module that sets passwords needs a terminal to show them on; started without one, for example from a script with no window, it changes nothing and is blocked.
+Copy it into the team's offline record, check the copy, then type `recorded`. Anything else asks again. Labyrinth then clears the password from the screen. It cannot clear copies kept elsewhere: the scrollback of tmux or screen, a terminal's own log, or a transcript (`Start-Transcript`) still holds the password. Do not run password modules inside them, or clear and close them once the password is recorded. If the window closes before you type `recorded`, the module puts the old password back, because nobody has the new one. Answer within the revert time: when the revert timer fires, it stops the run, even at this prompt, and undoes it, the new password included. A module that sets passwords needs a terminal to show them on; started without one, for example from a script with no window, it changes nothing and is blocked. (Planned, stage 4b: the typed `recorded` goes away. The password is shown once, and recording it is part of the single end-of-run question, which asks you to confirm that the passwords are recorded and you can still log in.)
 
 # 8. Reading the output
 

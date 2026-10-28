@@ -68,17 +68,17 @@ flowchart TD
     APP -->|approved| Q["Labyrinth quarantines it"]
     AUTO --> EV[("Quarantine area:<br/>kept as evidence")]
     Q --> EV
-    classDef lockout fill:#fde8e8,stroke:#c0392b,color:#4a1111
+    classDef harden fill:#fdeedc,stroke:#c2410c,color:#4a1d06
     classDef human fill:#fff4d6,stroke:#b7791f,color:#4a3108
     classDef ok fill:#e3f6e8,stroke:#15803d,color:#0f3d20
     classDef store fill:#eef1f5,stroke:#475569,color:#1e293b
-    class F,AUTO,Q lockout
+    class F,AUTO,Q harden
     class APP human
     class OK ok
     class EV store
 ```
 
-*Figure: every item found is sorted by package ownership, scored-service dependency and signs of attack; only clear, unshared attacker footholds are quarantined automatically, and everything else waits for a person's approval. Red is lock-out work, amber a person's decision, green an item left alone and gray the quarantine area.*
+*Figure: every item found is sorted by package ownership, scored-service dependency and signs of attack; only clear, unshared attacker footholds are quarantined automatically, and everything else waits for a person's approval. Orange is Harden work, amber a person's decision, green an item left alone and gray the quarantine area.*
 
 ## 5. Quarantine, never delete
 
@@ -130,7 +130,7 @@ Watching tools often abused for persistence, and blocking one on a single Window
 ## 7. When it runs
 
 - **Early:** the high-confidence class runs first in the Harden phase, right after the first-minute bundle has closed the network (design 03, section 6).
-- **Right after the bundle:** the full list of unexplained items is shown for approval.
+- **Right after the bundle:** the full list of unexplained items goes to the host's approval queue, where a person approves chosen items in a later run (planned, Roadmap stage 4b). Today the list is shown in the plan and approved at the prompt or with `--approve`.
 - **At every checkpoint** (design 19): the sweep runs again in report mode. After the baseline is sealed (design 08, section 6), any new persistence item is a high-ranked integrity finding.
 
 ## 8. What it will never do

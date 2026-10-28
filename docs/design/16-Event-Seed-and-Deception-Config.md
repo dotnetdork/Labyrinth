@@ -54,7 +54,7 @@ flowchart LR
 - **Never on a scored port.** Derived ports are checked against the scored-service list (`services`) and the host's current listeners, and skipped if they collide (NCCDC, 2025, Rule 9.3). The scoring allowlist holds the scoring engine's addresses, not ports, so it is not used for this check.
 - **Never a real account name.** Derived names are checked against the protected set and existing users.
 - **Seed strength.** At least 128 bits from a cryptographic random source, written as a short readable string with a checksum group so a typo is detected.
-- **Seed handling.** The seed is never committed and never appears in shell history or logs. It is supplied by prompt at run time, held in memory and cleared after use. The offline record holds the only copy.
+- **Seed handling.** The seed is never committed and never appears in shell history or logs. It comes from the private event configuration file, or from a flag that names that file (never the seed itself on the command line), so it never appears in shell history or the process list. It is never typed at a prompt during a run, and it is held in memory and cleared after use. The copies are the configuration file and the offline record.
 - **Agreement.** The seed is chosen shortly before the event and recorded in the offline record by the team captain.
 
 ## 5. Why not encrypt the values in the repository
