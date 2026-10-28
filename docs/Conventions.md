@@ -284,7 +284,9 @@ The runner does not do this yet; it is specified here and built in stage 4b (Roa
 
 #### The command
 
-Labyrinth installs as `labyrinth`, with the short name `laby`. The install leaves `laby` out, and says so, when a command of that name already exists on the host. Everything here works with either name, and with `labyrinth.sh` / `labyrinth.ps1` run directly.
+Labyrinth installs as `labyrinth`, with the short name `laby`. The install leaves `laby` out, and says so, when a command of that name already exists on the host.
+
+**The install walks through setup.** From the release folder, `./install.sh` (or `.\install.ps1` as Administrator) checks the release against `release.sha256`, then shows its plan and asks before it changes anything: where the code and the data root go, the commands it adds to the `PATH`, and the manual it installs. It then creates the data root with its permissions, copies the `config/*.example` templates into `<root>/etc` without overwriting a file already there, and ends with what to fill in and the next command (`laby`). It is safe to run again. The exact steps are decided in the `phase-4/command-line` branch. Everything here works with either name, and with `labyrinth.sh` / `labyrinth.ps1` run directly.
 
 ```
 laby                    this host's status and the next step
@@ -299,7 +301,7 @@ laby -r PHASE           run a phase (-r may come before or after the phase)
 | Short | Long | Value | Does |
 |---|---|---|---|
 | `-r` | `--run` | none; the phase is a word | Make the changes. Without it, a phase is only previewed |
-| `-k` | `--keep` | ID, optional when one run is armed | Keep the firewall and SSH changes of a run whose login check was missed (below) |
+| `-k` | `--keep` | ID, always | Keep the firewall and SSH changes of a run whose login check was missed (below) |
 | `-q` | `--queue` | none | List the queue: the approval items waiting for a person. Changes nothing |
 | `-a` | `--approve` | LIST | With `-q` only: apply the chosen items in a new run, with the same backups, manifest, revert timer and probes as any run |
 | `-d` | `--decline` | LIST | With `-q` only: take the chosen items out of the queue, recorded, changing nothing |
@@ -318,14 +320,19 @@ laby -r PHASE           run a phase (-r may come before or after the phase)
 
 An ID is a run ID or its last four characters, as today. A LIST is item numbers from the queue, separated by commas, with ranges: `1,3`, `1-4,7` or `all`. It may also name `category:<name>` for every queued item of that category on this host, as the approval prompt allows today. `-p` is left free for a possible port option. Exit codes are those of section 3.1.
 
-The planned commands of design 00, section 5 take the same style when they are built: `--seal`, `--reseal --reason TEXT`, `--checkpoint`, `--backup SERVICE`, `--restore SERVICE` (with `--database` or `--start`), and `--remote GROUP` added to a preview or a run. A new action gets a short letter only if operators will type it often under time pressure.
+The planned commands of design 00, section 5 (`seal`, `reseal`, `checkpoint`, `backup`, `restore` and `remote`) take this flag style, but their names and letters are decided when each is built, and recorded here first. Until then, these rules hold for any new action or option:
+
+- It is a flag with a long name, a plain English word or two joined by `-` (`--no-revert`), meaning the same thing wherever it appears.
+- It gets a short letter only if operators will type it often under time pressure, and never a letter already taken above. `-p` is kept for a port option.
+- It follows the help rule (help never runs it), has its own help topic, and lands in both runners, the manual and both test suites in one branch (Roadmap, section 2).
+- It is added to the table above in the same branch, so this table stays the one list of every flag.
 
 #### How the line is read
 
 - **One action per line:** `-r`, `-k`, `-q` (alone, or with `-a` or `-d`), `-u`, `--probe`, `--history`, `--manual` or `-V`. Two actions are a usage error (`40`). `-h` comes before all of them: a line with `-h` is always help (below). `-a` or `-d` without `-q` is refused with the right form: `laby: -a needs -q, as in: laby -q -a 1,3`. The one exception is the old form `apply ... --approve <entries>` (Old forms, below), recognized by the word `apply` and entries of the form `<module-id>:<item-id>@<fingerprint>`.
 - **Case.** Short letters are case-sensitive: `-v` is verbose, `-V` the version and `-P` the profile, and `-p` is an error. Long names ignore case and dashes, so PowerShell's `-Run`, `-NoRevert` and `-Verbose` work. `labyrinth.ps1` has no `param` block, so `-Verbose` reaches it like any other word and is read as `--verbose`, no longer refused.
 - **Stacking.** Short letters may be joined: `-rv`, `-qa 1,3`. A letter that takes a value comes last. A single dash before a word is read as a long name when the word is a long name (`-Undo`), and otherwise as a stack of letters, where a letter that is not a short flag is a usage error.
-- **Values** are given as `-k 7f3a`, `--keep 7f3a` or `--keep=7f3a`, and `--` ends the options, as in section 3.1. `-k`'s value is optional: it takes the next word only when that word is a run ID or four characters that could end one, so `laby -k`, `laby -kv` and `laby -k 7f3a` all work.
+- **Values** are given as `-k 7f3a`, `--keep 7f3a` or `--keep=7f3a`, and `--` ends the options, as in section 3.1. Every action that names a run needs its ID, so a run is never kept or undone by guess: `laby -k` alone is a usage error that lists the armed runs and their IDs.
 - **Usage errors** follow section 3.1: one line naming the word at fault, a suggestion for a near miss, and a `Try` line that names the help for the action at fault: `Try 'laby -u -h'.` A word that is neither a phase nor an old form is an error, and nothing runs. When it is an action's long name, the line gives the real form: `laby: 'undo' is not a phase. Did you mean 'laby -u 7f3a'?`
 - **PowerShell** takes an unquoted `-?` for itself and shows the script's comment-based help, so that help is one short page that points to `laby -h`. `/?` reaches the runner and works like `-h`.
 
@@ -354,7 +361,7 @@ Open a NEW login to this host now and check that it works.
 Keep the changes? [y/N]
 ```
 
-- `y` keeps them, as `keep` does. `n` undoes them now. With no answer, the question ends when the timer fires, and the timer undoes them. Ctrl+C leaves the timer armed.
+- `y` keeps them, as `keep` does. `n` undoes the firewall and SSH changes at once, instead of waiting for the timer; the changes already kept stay. With no answer, the question ends when the timer fires, and the timer undoes them. Ctrl+C leaves the timer armed.
 - `-y` never answers it. Without a terminal (remote mode, or input from a pipe) it is not asked: the timer stays armed, and the `Next:` line says to check a new login and run `laby -k <id>`.
 - `-k` keeps a run's changes after a missed question, before the timer fires; after it fired, keeping is refused as too late (`20`), as today.
 - `--no-revert` arms nothing and asks nothing.

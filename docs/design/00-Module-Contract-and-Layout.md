@@ -238,7 +238,7 @@ The steps above are the outline; `docs/Conventions.md` section 3.1 gives the exa
 | `checkpoint` | Print the read-only health summary | Design 19 |
 | `backup <service>`, `restore <service> [--database \| --start]` | Back up a service, or restore it from a backup | Designs 07 and 10 |
 
-The commands below `help` are planned and do not exist yet. When built, they take the flag style of section 5.1 (`--seal`, `--checkpoint`, `--backup SERVICE`, `--remote GROUP` and so on; Conventions, section 3.3). An option that means the same thing in two actions has the same name in both.
+The commands below `help` are planned and do not exist yet. When built, they take the flag style of section 5.1; their names and letters are decided then, under the rules in Conventions, section 3.3. An option that means the same thing in two actions has the same name in both.
 
 ### 5.1 The new command line and automatic runs (specified now, built later)
 

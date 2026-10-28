@@ -32,7 +32,7 @@ Work goes top to bottom. A stage starts when the one above it is merged, except 
 **Not built:**
 - real modules (`phases/*/modules` holds only placeholders);
 - `report/`, `core/seed/` and `vendor/`;
-- the planned commands: `seal`, `reseal`, `checkpoint`, `backup`, `restore` and `remote`, which take the flag style when built (`--seal` and so on; Conventions section 3.3);
+- the planned commands: `seal`, `reseal`, `checkpoint`, `backup`, `restore` and `remote`, which take the flag style, with names decided when each is built (Conventions section 3.3);
 - the Harden phase, the new command line (`laby`, flags, the queue, the login check, help and the installed manual), automatic runs and the short output (Conventions section 3.3).
 
 ## 2. Rules for every branch
@@ -88,7 +88,7 @@ Specified now and built next, ahead of the rest of the stage 4 modules that it c
 
 | Branch | Spec | Delivers |
 |---|---|---|
-| `phase-4/command-line` | Conventions §3.3, 00 §5.1 | The flag-style command line in both runners: `laby` and `labyrinth`, status, preview, `-r`, `-k`, `-u` with `--all`, `--probe`, `--history`, `-P`, `-v`, `-y`, `--no-revert`, short-letter stacking, and every old form still accepted. Help: the one-screen `-h`, help for each action, help that never runs anything (with a test for every action), and `--manual`. The install puts `labyrinth`, `laby` and the manual (`man laby`, `Get-Help about_Labyrinth`) where the system finds them. The manual and both test suites in the same branch |
+| `phase-4/command-line` | Conventions §3.3, 00 §5.1 | The flag-style command line in both runners: `laby` and `labyrinth`, status, preview, `-r`, `-k`, `-u` with `--all`, `--probe`, `--history`, `-P`, `-v`, `-y`, `--no-revert`, short-letter stacking, and every old form still accepted. Help: the one-screen `-h`, help for each action, help that never runs anything (with a test for every action), and `--manual`. The guided install (`install.sh`, `install.ps1`) shows its plan, asks, then puts `labyrinth`, `laby` and the manual (`man laby`, `Get-Help about_Labyrinth`) where the system finds them and sets up the data root. The manual and both test suites in the same branch |
 | `phase-4/auto-apply` | Conventions §3.3, 00, 03 | Automatic runs, with no switch: the host's group from the `hosts` file, the break-glass account taken from the protected set with a console check instead of a prompt, no mid-run prompts, pre-approval only for categories a module allows (never account deletion, an unprobed scored service or a replacement), the queue with stable numbers and `-q`, `-q -a`, `-q -d`. Every module is kept once it verifies, except firewall and SSH changes, which wait for the login check |
 | `phase-4/short-output` | Conventions §3.3 | One line per module, full blocks only for failures and blocks, `-v`, in both runners with the manual and both test suites |
 | `phase-4/harden-phase` | 03, 10, 02, 09, 13 | The `harden` phase between `lockout` and `observe`, and `init` (Lock out then Harden as one run): the install, with outbound opened only to its exact sources for the install (02 §4), restore points, the persistence sweep, the CVE assessment, patching, service packs, Windows and AD hardening, service replacement and containers, then reopening outbound; the shipped profiles and the first-minute run updated to match |
