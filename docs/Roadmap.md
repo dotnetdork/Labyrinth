@@ -32,8 +32,8 @@ Work goes top to bottom. A stage starts when the one above it is merged, except 
 **Not built:**
 - real modules (`phases/*/modules` holds only placeholders);
 - `report/`, `core/seed/` and `vendor/`;
-- the planned commands: `seal`, `reseal`, `checkpoint`, `backup`, `restore`, `remote`, `queue` and `approve`;
-- the Harden phase, the `AUTO_APPLY` switch and the short output (Conventions section 3.3).
+- the planned commands: `seal`, `reseal`, `checkpoint`, `backup`, `restore` and `remote`, which take the flag style when built (`--seal` and so on; Conventions section 3.3);
+- the Harden phase, the new command line (`laby`, flags, the queue, the login check, help and the installed manual), automatic runs and the short output (Conventions section 3.3).
 
 ## 2. Rules for every branch
 
@@ -46,7 +46,7 @@ Work goes top to bottom. A stage starts when the one above it is merged, except 
 
 ## 3. Build stages
 
-The build stages are numbered on from the stages already done: 0 (foundations), 1 (the core) and 2 (the command line). Branches are named `phase-<stage>/<name>`. A build stage is not a run phase: the run phases are lockout, harden, observe, deceive and sustain (Harden is specified and planned, stage 4b), the word in `labyrinth plan <phase>`, and modules of one run phase are built across several stages.
+The build stages are numbered on from the stages already done: 0 (foundations), 1 (the core) and 2 (the command line). Branches are named `phase-<stage>/<name>`. A build stage is not a run phase: the run phases are lockout, harden, observe, deceive and sustain (Harden is specified and planned, stage 4b), the word in `labyrinth plan <phase>` (`laby <phase>` once stage 4b is built), and modules of one run phase are built across several stages.
 
 ### Stage 3: groundwork that modules need (done)
 
@@ -77,20 +77,21 @@ Each module ships its read-only `check` and `plan` first. The branches are liste
 | `phase-4/packages` | 02 | Installing the profile's packages behind the lockdown: source order, lock wait, simulation check, services kept stopped, `package_install` entries; vendored tools and pinned downloads with the core download helper |
 | `phase-4/restore-points` | 07 | `backup <service>` and `restore <service>`, so a restore point exists before the sweep and before any patch |
 | `phase-4/persistence-sweep` | 06 | Classification, automatic quarantine of high-confidence items, and limits on who can schedule jobs |
-| `phase-4/accounts` | 04 §6 | Locking accounts from a list; deletion only after approval and a passing checkpoint |
+| `phase-4/accounts` | 04 §6 | Locking unexpected admin accounts in the bundle; removing their admin rights and the rest in Harden; deletion only after approval from the queue and a passing checkpoint |
 | `phase-4/win-base` | 12 §3, §3.3 | Windows protocol and credential settings, including SMBv1 and Print Spooler |
 | `phase-4/ad-readonly` | 12 §3.1, §3.2 | Domain read-only checks and the printed domain checklist |
 | `phase-4/first-minute` | 03 §6, §6.3 | The first-minute bundle in its order (lock down; the install, sweep and reopening of outbound then belong to the Harden phase, stage 4b), first-minute runs with every answer on the command line, ring order and test hosts |
 
 ### Stage 4b: automation and baseline verification (next)
 
-Specified now and built next, ahead of the rest of the stage 4 modules that it changes. The runner gains the five-phase order (Lock out, Harden, Observe, Deceive, Sustain) and every existing command form keeps working.
+Specified now and built next, ahead of the rest of the stage 4 modules that it changes. The runner gains the five-phase order (Lock out, Harden, Observe, Deceive, Sustain) and the new command line, and every existing command form keeps working.
 
 | Branch | Spec | Delivers |
 |---|---|---|
-| `phase-4/auto-apply` | Conventions §3.3, 00, 03 | The `AUTO_APPLY` switch: the host's group from the `hosts` file, the break-glass account taken from the protected set with a console check instead of a prompt, no mid-run prompts, a queue for items no rule covers, and the `queue` and `approve <ids>` commands. Every module is kept once it verifies, except firewall and SSH changes, which wait for one `keep` per host run |
-| `phase-4/short-output` | Conventions §3.3 | One line per module, full blocks only for failures and blocks, `--detail`, in both runners with the manual and both test suites |
-| `phase-4/harden-phase` | 03, 10, 02, 09, 13 | The `harden` phase between `lockout` and `observe`: the install, restore points, the persistence sweep, the CVE assessment, patching, service packs, Windows and AD hardening, service replacement and containers, then reopening outbound; the shipped profiles and the first-minute run updated to match |
+| `phase-4/command-line` | Conventions §3.3, 00 §5.1 | The flag-style command line in both runners: `laby` and `labyrinth`, status, preview, `-r`, `-k`, `-u` with `--all`, `--probe`, `--history`, `-P`, `-v`, `-y`, `--no-revert`, short-letter stacking, and every old form still accepted. Help: the one-screen `-h`, help for each action, help that never runs anything (with a test for every action), and `--manual`. The install puts `labyrinth`, `laby` and the manual (`man laby`, `Get-Help about_Labyrinth`) where the system finds them. The manual and both test suites in the same branch |
+| `phase-4/auto-apply` | Conventions §3.3, 00, 03 | Automatic runs, with no switch: the host's group from the `hosts` file, the break-glass account taken from the protected set with a console check instead of a prompt, no mid-run prompts, pre-approval only for categories a module allows (never account deletion, an unprobed scored service or a replacement), the queue with stable numbers and `-q`, `-q -a`, `-q -d`. Every module is kept once it verifies, except firewall and SSH changes, which wait for the login check |
+| `phase-4/short-output` | Conventions §3.3 | One line per module, full blocks only for failures and blocks, `-v`, in both runners with the manual and both test suites |
+| `phase-4/harden-phase` | 03, 10, 02, 09, 13 | The `harden` phase between `lockout` and `observe`, and `init` (Lock out then Harden as one run): the install, with outbound opened only to its exact sources for the install (02 §4), restore points, the persistence sweep, the CVE assessment, patching, service packs, Windows and AD hardening, service replacement and containers, then reopening outbound; the shipped profiles and the first-minute run updated to match |
 | `phase-4/baseline-verify` | 08 | In the Harden phase, the official-package check: for a core set of packages and any package the local check flags, download the package from the host's configured repositories, check its signature, and compare its files' hashes with the files on disk. Mismatches are findings for a person. Windows keeps its signer checks and `sfc /verifyonly` |
 | `phase-4/hash-pack` | 08 | The reference hash pack generator. Before an event, with internet, it downloads the official packages for the core set (OpenSSH server, sudo, PAM, coreutils, util-linux, systemd, shadow tools) for chosen OS releases, every published version, checks their signatures, and records each file's hash in a pack shipped with its own SHA-256. The Harden phase uses the pack when the event is offline. Which releases get packs is a run-time choice, not kept in the repository |
 
@@ -170,8 +171,11 @@ Local mode is the standard, so the lockout already works on every host without t
 |---|---|---|
 | May Labyrinth install software? | Yes, public software and public data, after the first-minute lockdown: download first, with an offline paste as the fallback, from the host's repositories, an event mirror or proxy, or a release pinned by SHA-256. PowerShell Gallery modules at pinned versions are allowed. Rule 5.6.4's example is cloud services and cloud processing, which downloading software is not. Never a private source (Rule 5.2), a new repository (apart from EPEL, design 02 §3), a reputation or enrichment service or a full upgrade. | Design 02, CLAUDE.md |
 | What does Labyrinth need from the network? | Only its own public release. Packages, pinned downloads such as Sysmon, EPEL and refreshed lists of known flaws are optional extras: each runs after the lockdown when its source answers, and is reported as skipped otherwise. | Blueprint §6.1, design 02 |
-| What runs in the first minute? | Lock out with what the host has (rotate, keys, sessions, default-deny inbound and outbound), installing nothing, for speed and to lock down before outbound opens. Then the Harden phase: install, sweep, assess, patch, then reopen outbound to the normal allowlist. | Design 03 §6, §6.1 |
-| How does a first-minute run avoid prompts? | The existing options answer them (`--confirm-group`, `--break-glass`, `--approve`), and pre-approval rules cover the items the team approved before the event. Revert timers, probes, the scoring allowlist and the protected set stay. Planned (stage 4b): with `AUTO_APPLY=yes` no run prompts at all; items without a rule go to a queue, listed by the new `labyrinth queue` command and applied by `labyrinth approve`. | Design 03 §6.3 |
+| What runs in the first minute? | Lock out with what the host has (rotate, keys, sessions, lock unexpected admin accounts, default-deny inbound and outbound), installing nothing, for speed and to lock down before outbound opens. Then the Harden phase: install, sweep, assess, patch, then reopen outbound to the normal allowlist. | Design 03 §6, §6.1 |
+| How does a first-minute run avoid prompts? | Today the existing options answer them (`--confirm-group`, `--break-glass`, `--approve`), and pre-approval rules cover the items the team approved before the event. Planned (stage 4b): automatic is the only mode, with no switch. No run prompts during the run; items without a rule go to a queue, listed by `laby -q` and approved with `laby -q -a`; the one question is the login check at the end. Revert timers, probes, the scoring allowlist and the protected set stay. | Design 03 §6.3, Conventions §3.3 |
+| What does the command line look like? | Flags with short and long forms, as in nmap and pacman, under the short name `laby`: `laby init` previews, `laby -r init` runs, `-q`, `-k`, `-u`, `--probe`, `--history`. Help never runs anything, `-h` added to an action gives its help, and `laby --manual` or `man laby` opens the manual. Every old form stays accepted. | Conventions §3.3, design 00 §5.1 |
+| How do installs get out through the lockdown with no proxy? | The install opens outbound to the exact resolved addresses of the host's repositories and the pinned download hosts, for the install only, then closes them. Never all web traffic. | Design 02 §4 |
+| Where are unexpected admin accounts handled? | Locked in Lock out, because locking only takes access away; their admin rights are removed in Harden; deletion always waits for a person. | Design 04 §6.3, design 03 §6.1 |
 | Can a ban block outbound traffic? | Yes. Every ban drops the address in both directions; an address from the unusual-outbound search is banned outbound only after approval. | Design 18 §6.1 |
 | How are known flaws handled? | Found and ranked locally, tracked until closed, and closed by mitigation or patch. A scored service is never turned off to close a flaw. | Design 09 |
 | Are design choices labeled as rules? | No longer. Watching abused tools, manual Group Policy, manual DNS on the domain controller, the candidate list and keeping login shells are design choices, and the docs now say so. | CLAUDE.md, Blueprint |

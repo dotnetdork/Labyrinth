@@ -7,7 +7,7 @@ Phase: 🟧 Harden · Priority: P1
 Fewer listeners and fewer known-exploited packages (Blueprint §3.6), without breaking a scored service. Which flaws need closing, and in what order, comes from the vulnerability tracker (design 09). The two parts are handled differently:
 
 - **Service reduction** can be undone in seconds (start the service again), so it is automated as a Tier 2 action (design 03).
-- **Patching** often cannot be undone cleanly, because an older package version may not be available to reinstall. So each patch needs a person's approval (Tier 3), and Labyrinth then takes a restore point, applies that one package and verifies it.
+- **Patching** often cannot be undone cleanly, because an older package version may not be available to reinstall. So each patch is Tier 3: it needs a person's approval, or a pre-approval rule the team wrote before the event, and Labyrinth then takes a restore point, applies that one package and verifies it.
 
 ## 2. Rules that shape it
 

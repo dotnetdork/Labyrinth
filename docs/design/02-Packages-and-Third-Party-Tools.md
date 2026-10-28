@@ -33,7 +33,7 @@ The `packages` module runs in the Harden phase, as its first module, straight af
 - **check** lists the profile's packages that are missing and says which source would supply each one. It changes nothing.
 - **plan** prints the exact commands.
 - **apply**:
-  1. refuses (`20`) if the outbound lockdown does not allow the repository, mirror or proxy (design 03, section 6.1);
+  1. opens the outbound lockdown to the exact sources it needs, for the install only, where the lockdown does not already allow them: the event's mirror or proxy when there is one; otherwise the addresses that the host's configured repositories and the catalog's pinned download hosts (section 6) resolve to now, on the ports they use. It records each opening in the run manifest and closes it when the install ends, failed or not, so the window never outlives the module. It never opens all web traffic, which would let a planted callback out before the sweep. A source whose address cannot be resolved counts as not answering (below);
   2. waits up to a set time for the package manager's lock, which an unattended update often holds just after boot, then refuses (`20`) rather than breaking the lock;
   3. simulates the install first (`apt-get -s`, `dnf --assumeno`) and refuses any package whose install would remove, downgrade or replace an installed package;
   4. installs non-interactively, with no recommended extras (`--no-install-recommends`, `--setopt=install_weak_deps=False`) and a time limit per package;
@@ -48,7 +48,7 @@ Code that calls a package manager or downloads a file carries a guard allow comm
 
 ## 5. Patching
 
-Security updates use the same sources and the same checks. Design 09 ranks them, and Labyrinth applies each one a person approves (Tier 3), one package at a time, after a restore point. A full upgrade is never run.
+Security updates use the same sources and the same checks. Design 09 ranks them, and Labyrinth applies each one a person approves from the queue, or a pre-approval rule covers (Tier 3; design 10, section 4), one package at a time, after a restore point. A full upgrade is never run.
 
 ## 6. Catalog
 
@@ -123,6 +123,7 @@ Licenses were read from each project's repository (*Verified*), except where mar
 - fail2ban, once installed, is not running until the bans module has written the never-ban list into its `ignoreip`.
 - With no repository reachable, the module lists each skipped package and exits `0`, and the firewall lockdown is unchanged.
 - An install whose simulation would remove a package is refused (`20`).
+- With no mirror or proxy, an install opens outbound only to the resolved addresses of the host's repositories and the pinned download hosts, and the openings are gone when the install ends, including after a failure; a reverse shell planted before the run still cannot connect out during the install.
 - With the package manager's lock held, the module waits, then refuses (`20`) without breaking the lock.
 - A pinned download with a wrong SHA-256 is discarded and not run.
 - On a Windows PowerShell 5.1 lab host, a pinned PowerShell Gallery module installs after the NuGet provider is bootstrapped and TLS 1.2 is enabled for the session, and those session settings are not left behind.

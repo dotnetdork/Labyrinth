@@ -27,11 +27,6 @@ PROBE_TIMEOUT=5
 # Replacing a scored service, with full proof before cutover (design 13).
 # ALLOW_SERVICE_REPLACE=yes:inject-example
 
-# One command per host: apply prints a short plan and carries it out, and
-# approval items no pre-approval rule covers wait in a queue (design 03).
-# Specified, not built yet. Unset keeps today's behavior.
-# AUTO_APPLY=yes
-
 # Splunk Universal Forwarder download, pinned by version and SHA-256, never
 # newer than the indexer (design 14). The hashes are of the Linux amd64 .tgz
 # and the Windows x64 .msi. Placeholders only.

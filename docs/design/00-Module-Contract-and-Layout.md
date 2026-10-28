@@ -10,7 +10,7 @@ One main Labyrinth program enables each phase. Each phase is an entry script tha
 
 | Folder | Phase | Contains |
 |---|---|---|
-| `lockout` | 🟥 Lock out | The first-minute bundle: credentials, unregistered keys, remote-admin hardening, ending intruder sessions, default-deny firewall. Nothing is installed (design 03) |
+| `lockout` | 🟥 Lock out | The first-minute bundle: credentials, unregistered keys, remote-admin hardening, ending intruder sessions, locking unexpected admin accounts, default-deny firewall. Nothing is installed (design 03) |
 | `harden` | 🟧 Harden | Behind the lockdown: installs, restore points, persistence sweep, vulnerability mitigations, patching and service reduction, service packs, Windows and AD hardening, service replacement and containers, official-package verification, then reopening outbound |
 | `observe` | 🟦 Observe | Log forwarding, auditing, integrity baseline, status feed |
 | `deceive` | 🟪 Deceive | Canaries, honey-accounts, trap ports, tarpits, decoy services |
@@ -18,7 +18,7 @@ One main Labyrinth program enables each phase. Each phase is an entry script tha
 
 ```mermaid
 flowchart LR
-    L["<b>1. Lock out</b><br/>first-minute bundle<br/>credentials · keys · sessions<br/>default-deny firewall"]
+    L["<b>1. Lock out</b><br/>first-minute bundle<br/>credentials · keys · sessions<br/>unexpected admins · default-deny firewall"]
     H["<b>2. Harden</b><br/>installs · restore points<br/>persistence sweep · patching<br/>service packs · Windows and AD"]
     O["<b>3. Observe</b><br/>log forwarding · auditing<br/>integrity baseline<br/>status feed"]
     D["<b>4. Deceive</b><br/>canaries · honey-accounts<br/>trap ports · tarpits<br/>decoy services"]
@@ -237,22 +237,20 @@ The steps above are the outline; `docs/Conventions.md` section 3.1 gives the exa
 | `seal`, `reseal --reason <text>` | Seal the baseline, or reseal it after an approved change | Design 08 |
 | `checkpoint` | Print the read-only health summary | Design 19 |
 | `backup <service>`, `restore <service> [--database \| --start]` | Back up a service, or restore it from a backup | Designs 07 and 10 |
-| `queue`, `approve <ids>` | List the approval items queued under `AUTO_APPLY`, or apply chosen ones in a new run | Section 5.1 |
 
-The commands below `help` are planned and do not exist yet (`queue` and `approve` are specified in section 5.1 and built later). A new command takes a verb not used above, and an option that means the same thing in two commands has the same name in both.
+The commands below `help` are planned and do not exist yet. When built, they take the flag style of section 5.1 (`--seal`, `--checkpoint`, `--backup SERVICE`, `--remote GROUP` and so on; Conventions, section 3.3). An option that means the same thing in two actions has the same name in both.
 
-### 5.1 Automatic apply (specified now, built later)
+### 5.1 The new command line and automatic runs (specified now, built later)
 
-The runner does not do this yet. Everything above describes today's behavior; this section describes the next work (`docs/Roadmap.md`). It exists so that one command per host can carry out a whole phase without a person answering prompts, while keeping every gate.
+The runner does not do this yet. Everything above describes today's behavior; this section describes the next work (stage 4b, `docs/Roadmap.md`). Conventions, section 3.3 holds the full contract and wins where the two differ. It exists so that one short command per host carries out a whole phase without a person answering prompts, while keeping every gate.
 
-- **One command per host, no separate plan step.** `apply` prints a compact plan and carries it out. `plan` stays as the read-only command. Every existing command form keeps working.
-- **The switch.** `AUTO_APPLY=yes` in `event.conf`. When it is unset, behavior is exactly as in section 5.
-- **The group comes from the hosts file**, matched on the host's name and address. A mismatch or an ambiguous match blocks the run (`20`). `--confirm-group` is still accepted but no longer required.
-- **The break-glass account** is the `breakglass`-class account from the protected set that exists on the host; with none, or more than one, the run blocks. Labyrinth looks for a console session itself and warns if it finds none, instead of prompting (design 03, section 7).
-- **It never prompts mid-run.** An approval item that no pre-approval rule covers goes to a queue under the state path. `labyrinth queue` lists the queued items; `labyrinth approve <ids>` applies the chosen ones in a new run, with the same backups, manifest, revert timer and probes as any run.
-- **The risky list always queues,** whatever the pre-approval rules say: deleting an account; changing a scored service that has no probe; replacing or containerizing a service; and any Tier 3 item (design 03, section 5).
-- **Kept automatically.** Every module is kept once its verify and probes pass, except firewall and SSH changes. Those stay under the revert timer until one `keep` per host run.
-- **Short output.** One line per module: `OK`, `CHANGED`, `ROLLED BACK`, `QUEUED`, `BLOCKED` or `FAIL`. The full *found / fix / more* blocks appear only for failures and blocks; the details go to the run log, and `--detail` shows the full blocks (Conventions, section 3.2).
+- **Flags, with short and long forms,** under the name `laby` as well as `labyrinth`: `laby` shows the host's status and the next step, `laby PHASE` previews a phase, and `laby -r PHASE` runs it. `init` is Lock out then Harden as one run. The queue is `-q`, approving and declining are `-q -a LIST` and `-q -d LIST`, keeping is `-k ID`, undoing is `-u ID`, and `--probe` and `--history` stay long. Every form above stays accepted.
+- **Automatic is the only mode.** There is no switch. The group comes from the hosts file, matched on the host's name and address, and the break-glass account is the `breakglass`-class account from the protected set that exists on the host; a mismatch, or no single match, blocks the run (`20`). Labyrinth looks for a console session of that account itself and warns if it finds none (design 03, section 7).
+- **No prompts during a run.** An approval item runs when a pre-approval rule covers it in a category its module allows (`pre_approvable`, section 4). Every other item goes to the host's queue, where items keep stable numbers, and a person approves chosen ones in a new run with the same backups, manifest, revert timer and probes.
+- **Never pre-approvable, always queued:** deleting an account; changing a scored service that has no probe; replacing or containerizing a service (design 13).
+- **The login check.** Every module is kept once its verify and probes pass, except firewall and SSH changes. A run that made any ends by asking the operator to open a new login and confirm it works (`y`/`N`), with the revert timer counting down; no answer means the timer undoes them. `-y` never answers it; `-k` keeps them if the question was missed.
+- **Help never runs anything,** and adding `-h` to any action shows that action's help. `laby --manual` and, on Linux, `man laby` open the manual.
+- **Short output.** One line per module: `OK`, `CHANGED`, `ROLLED BACK`, `QUEUED`, `BLOCKED` or `FAIL`. The full *found / fix / more* blocks appear only for failures and blocks; the details go to the run log, and `-v` shows the full blocks (Conventions, section 3.2).
 
 ## 6. Code and configuration are separate
 
@@ -290,7 +288,9 @@ Nothing else changes.
 
 - **Ansible or native scripts.** Resolved: native scripts. They work in local mode with nothing installed, and the remote mode (section 5) gives the reach Ansible would have given.
 - **Windows log shipping method.** Resolved: install the Splunk Universal Forwarder from Splunk's public download site, pinned by version and SHA-256 in the run-time configuration (design 14, section 4); a PowerShell script posting to Splunk's HTTP Event Collector is the fallback.
-- **Approvals in remote mode.** Resolved: approvals can be passed with `--approve` (`-Approve`), and each approval is tied to the plan by a fingerprint, so an item that changed after the plan is refused. The prompt stays the default (Conventions, section 3.1).
+- **Approvals in remote mode.** Resolved: approvals can be passed with `--approve` (`-Approve`), and each approval is tied to the plan by a fingerprint, so an item that changed after the plan is refused (Conventions, section 3.1). Once the queue is built (section 5.1), each host keeps its own queue and the control node approves from it on one host; the fingerprint check stays.
+- **Command style.** Resolved: flags with short and long forms, as in nmap and pacman, under the short name `laby` as well as `labyrinth`, instead of command words. A phase is previewed unless `-r` is given, help never runs anything, and the old command words stay accepted for stored revert timers (section 5.1; Conventions, section 3.3).
+- **Automatic or prompted runs.** Resolved: automatic only, with no switch. Prompts host by host cannot keep up in the first minute, and every gate stays: the group and break-glass account come from configuration, items no pre-approval rule covers wait in a queue, and the one question left is the login check at the end (section 5.1).
 - **Pre-approval.** Resolved: a first-minute run needs some items approved before anyone has seen the plan, such as a security update for a named scored package. `--approve` cannot carry them, because its entries need the fingerprint from a plan. So a module declares the categories that may be pre-approved (`pre_approvable`), and the run-time `pre-approved` file names the items or categories the team approved before the event (Conventions, section 3.1).
 - **Build order.** Resolved: local mode is the standard. Remote mode comes after the P0 lockout modules work locally, read-only `remote plan` first, and `remote apply` only once that has run safely in the lab (`docs/Roadmap.md`).
 - **Where real-host tests run.** Resolved: CI runners for what they can host, a local lab of virtual machines for the rest (Conventions, section 9).

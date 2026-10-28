@@ -55,7 +55,7 @@ Module IDs are `phase.name`, so the ID shows where the module runs. The IDs belo
 | 01 | Platform facts and the firewall adapter | (core) | 3, 4 | 00 | — | Built; the outbound default comes with `lockout.firewall` |
 | 02 | Packages and third-party tools | `harden.packages` | 4 | 01, 03 | M | Next |
 | 03 | Lockout and the first-minute bundle | `lockout.sessions`, `lockout.firewall`, `harden.reopen_outbound` | 4, 4b | 00, 01, 04 | L | Next |
-| 04 | Credentials and SSH keys | `lockout.credentials`, `lockout.ssh`, `harden.accounts` | 4 | 00 | L | Next; new passwords shown once are built |
+| 04 | Credentials and SSH keys | `lockout.credentials`, `lockout.ssh`, `lockout.accounts`, `harden.accounts` | 4 | 00 | L | Next; new passwords shown once are built |
 | 05 | Network appliance runbooks | `lockout.appliance_runbooks` (manual-only) | Any time | — | S | Next; good first issue (templates, no code) |
 | 06 | Persistence sweep | `harden.persistence_sweep` | 4 | 01, 07 | L | Next; the quarantine helper is built |
 | 07 | Backup and recovery | `harden.restore_points` | 4 | 00 | M | Next |

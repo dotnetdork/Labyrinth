@@ -56,17 +56,17 @@ The protected set is a list the operator supplies at run time, from the event pa
 | Tier | Nature | Actions | How run |
 |---|---|---|---|
 | **0. Observe only** | Read-only | Inventory of users, groups, listeners, processes, sessions, scheduled tasks, startup items, keys and sudoers; baseline (design 08) | Automatic |
-| **1. Safe and reversible** | Cannot stop a scored service | Rotate admin-class passwords (root, Administrator and equivalents) that no service or scheduled task logs on with, `scored-admin` accounts included, with their change list (design 04, sections 2 and 2.4); back up, then clear, authorized keys that are not in the key registry, on accounts outside the protected set; end remote sessions after rotation (section 6.2) | Automatic after plan review |
+| **1. Safe and reversible** | Cannot stop a scored service | Rotate admin-class passwords (root, Administrator and equivalents) that no service or scheduled task logs on with, `scored-admin` accounts included, with their change list (design 04, sections 2 and 2.4); back up, then clear, authorized keys that are not in the key registry, on accounts outside the protected set; end remote sessions after rotation (section 6.2) | Automatic |
 | **2. Service-affecting** | Could interrupt a scored service | SSH (Secure Shell) configuration check and key-only drop-in (design 04, section 4); high-confidence persistence quarantine (design 06); default-deny inbound firewall with the scored ports, the scoring engine, any official sources named in the event packet, ICMP and the admin path allowed; default-deny outbound with the allowlist of section 6.1; installing the profile's packages (design 02); restore points of scored services (design 07); remove admin rights from unexpected *local* accounts and lock them (design 04, section 6); Windows protocol settings (design 12); rules for new passwords (design 04, section 2.2); automatic service-pack settings (design 11); automatic mitigations from the vulnerability catalog (design 09); disable services from a per-profile candidate list (design 10); a log-only outbound firewall rule (design 14, section 5); re-applying the sealed firewall rules when they drift (design 19, section 4.1) | Applied per ring with verify and a revert timer |
-| **3. Approve, then act** | High consequence, or not provably safe | **Labyrinth acts after a person approves:** unexplained persistence items (design 06); deleting a locked account once services are confirmed working (design 04, section 6); approval-class service-pack settings (design 11); lockout settings and PAM stack changes (design 04, section 2.2); approval-class Windows and domain controller settings (design 12); rotating an admin-class password that a service or scheduled task logs on with, once its dependents are listed; rotating application admin credentials (design 04, section 2.1); restoring a service from its restore point (design 07); lifting outbound default-deny on one host; applying a Linux security update (designs 02 and 10); banning a single address outbound from an unusual-outbound alert (design 18, section 6.1); blocking one abused tool's outbound traffic on one Windows host (design 14, section 5); a web application firewall blocking rule for one flaw (design 11, section 6.1); ending a SYSTEM process on Windows (design 12); resetting the KRBTGT password twice, with a replication check between the resets (design 12, section 5.1); rotating listed local or application users' passwords where the event takes a change list (design 04, section 2.4); rebuilding or containerizing one scored service where the event allows it (design 13). **A person acts, from a printed checklist:** other user-level password changes (notification required); domain account and group changes other than KRBTGT; Group Policy changes; DNS changes on a domain controller; domain controller restores and rescuing an unbootable host (design 07); Windows patching (design 10); appliance changes (design 05)
- | Shown in the plan; approved per item, or per category on one host |
+| **3. Approve, then act** | High consequence, or not provably safe | **Labyrinth acts after a person approves:** unexplained persistence items (design 06); deleting a locked account once services are confirmed working (design 04, section 6); approval-class service-pack settings (design 11); lockout settings and PAM stack changes (design 04, section 2.2); approval-class Windows and domain controller settings (design 12); rotating an admin-class password that a service or scheduled task logs on with, once its dependents are listed; rotating application admin credentials (design 04, section 2.1); restoring a service from its restore point (design 07); lifting outbound default-deny on one host; applying a Linux security update (designs 02 and 10); banning a single address outbound from an unusual-outbound alert (design 18, section 6.1); blocking one abused tool's outbound traffic on one Windows host (design 14, section 5); a web application firewall blocking rule for one flaw (design 11, section 6.1); ending a SYSTEM process on Windows (design 12); resetting the KRBTGT password twice, with a replication check between the resets (design 12, section 5.1); rotating listed local or application users' passwords where the event takes a change list (design 04, section 2.4); rebuilding or containerizing one scored service where the event allows it (design 13). Patching is Tier 3 because an update often cannot be undone cleanly. **A person acts, from a printed checklist:** other user-level password changes (notification required); domain account and group changes other than KRBTGT; Group Policy changes; DNS changes on a domain controller; domain controller restores and rescuing an unbootable host (design 07); Windows patching (design 10); appliance changes (design 05)
+ | Applied when a pre-approval rule covers it, in a category its module allows; otherwise queued until a person approves it from the queue. Deleting an account, changing a scored service with no probe, and replacing or containerizing a service are never pre-approvable and always queue (Conventions, section 3.3) |
 
 ```mermaid
 flowchart LR
     T0["<b>Tier 0</b><br/>Observe only<br/>read-only"] --> R0["Runs automatically"]
-    T1["<b>Tier 1</b><br/>Safe and reversible<br/>admin passwords, keys, sessions"] --> R1["Runs automatically<br/>after plan review"]
+    T1["<b>Tier 1</b><br/>Safe and reversible<br/>admin passwords, keys, sessions"] --> R1["Runs automatically"]
     T2["<b>Tier 2</b><br/>Service-affecting<br/>SSH, persistence, firewall, local admins"] --> R2["Runs per ring with verify<br/>and a revert timer"]
-    T3["<b>Tier 3</b><br/>Approve, then act<br/>unexplained items, deletions, domain"] --> R3["Labyrinth acts after approval;<br/>a few items a person runs"]
+    T3["<b>Tier 3</b><br/>Approve, then act<br/>unexplained items, deletions, patches"] --> R3["Labyrinth acts once approved<br/>or pre-approved; a few items a person runs"]
     classDef observe fill:#e3eefc,stroke:#2563eb,color:#0f2a5c
     classDef ok fill:#e3f6e8,stroke:#15803d,color:#0f3d20
     classDef human fill:#fff4d6,stroke:#b7791f,color:#4a3108
@@ -77,7 +77,7 @@ flowchart LR
     class T3 lockout
 ```
 
-*Figure: each risk tier, from read-only Tier 0 to Tier 3, which waits for a person's approval, and who or what carries out its actions. Colors rise with risk: blue is read-only, green safe, amber service-affecting and red approval-only.*
+*Figure: each risk tier, from read-only Tier 0 to Tier 3, which waits for a person's approval unless a pre-approval rule covers it, and who or what carries out its actions. Colors rise with risk: blue is read-only, green safe, amber service-affecting and red approval-only.*
 
 ## 6. Sequence
 
@@ -86,12 +86,12 @@ flowchart LR
 3. Tier 0 on all targets.
 4. 🟥 **Lock out:** the first-minute bundle (section 6.1). Nothing is installed.
 5. 🟧 **Harden:** **install** the profile's packages (design 02), and take a restore point of every scored service on the host (design 07).
-6. **Sweep and harden:** quarantine high-confidence persistence (design 06), then the rest of Tier 2, including patching and service reduction (design 10), the automatic service-pack settings that protect the scored services themselves (design 11), Windows and AD hardening (design 12), the automatic mitigations for known-exploited flaws found on the host (design 09, section 5.2), and, where the event allows it, service replacement and containers (design 13). **Verify the installed packages** against the official ones (design 08, section 2.1).
+6. **Sweep and harden:** quarantine high-confidence persistence (design 06), then the rest of Tier 2, including service reduction (design 10), the security updates a pre-approval rule covers (Tier 3; design 10, section 4), the automatic service-pack settings that protect the scored services themselves (design 11), Windows and AD hardening (design 12), the automatic mitigations for known-exploited flaws found on the host (design 09, section 5.2), and, where the event allows it, service replacement and containers (design 13). **Verify the installed packages** against the official ones (design 08, section 2.1).
 7. **Reopen outbound** to the host's normal allowlist (section 6.1).
-8. Show the Tier 3 items for approval, carry out what is approved, and print the person-run checklist.
+8. Queue the Tier 3 items no pre-approval rule covers, and print the person-run checklist. A person approves queued items later, each in a new run (Conventions, section 3.3).
 9. Seal the baseline (design 08, section 6).
 
-Step 4 is the Lock out phase and steps 5 to 7 are the Harden phase. Steps 4 to 7 run ring by ring in a normal run, and on every host at once in a first-minute run (section 6.3). Each host's steps 4 to 7 run under its own revert timer, re-armed before each module.
+Step 4 is the Lock out phase and steps 5 to 7 are the Harden phase; `laby -r init` runs both as one run. Steps 4 to 7 run ring by ring in a normal run, and on every host at once in a first-minute run (section 6.3). Each host's steps 4 to 7 run under its own revert timer, re-armed before each module.
 
 **Rings.** Ring 0 holds one low-impact host per platform, for example one Linux host and one Windows workstation, because a change that works on one platform proves little about another. Ring 1 is the next group. Later rings follow, never more than a set share of hosts at once. In the hosts file and on the command line a ring is called a *group* (docs/Conventions.md, section 2). A failed verify stops the run. The bundle takes seconds on the test host, so the rings delay the rest of the network very little.
 
@@ -104,12 +104,13 @@ Red Teams report planting persistence within the first 30 seconds of an event (*
 1. **Rotate** admin-class passwords (Tier 1; design 04, section 2). A `scored-admin` account's new password joins the change list, shown at the end of the bundle for the operator to submit at once (design 04, section 2.4).
 2. **Remove** unregistered SSH keys and **check** the SSH configuration for planted settings (Tiers 1 and 2; design 04, section 4).
 3. **End** intruder sessions (Tier 1; section 6.2).
-4. **Default-deny inbound** (Tier 2), allowing the scoring engine, the scored ports, any official sources named in the event packet, ICMP and the admin path. A scored port stays open to every source, never only to the scoring engine's address, because officials' manual scoring checks and simulated users come from other addresses (*Background*; Blueprint §5), and some events penalize any source filter on a public service (section 2). An admin path on a scored port, such as SSH where SSH is scored, is hardened in place (design 04, section 4.2), never moved, knocked or restricted by address.
-5. **Default-deny outbound** (Tier 2), allowing replies on established connections, loopback, ICMP, the DNS resolvers and NTP servers in the run-time configuration, the SIEM, the admin path, the package mirror or proxy (design 02), and every address a scored service connects out to, from `services` and the run-time `outbound-allow` list. On a Windows domain member, the domain controllers are allowed too.
+4. **Lock** unexpected local accounts with admin rights or a hidden-admin sign (Tier 2; design 04, section 6.3). Locking only takes access away, so it is kept once it verifies; removing their admin rights, and everything else about accounts, is Harden work, and deleting one always waits for a person.
+5. **Default-deny inbound** (Tier 2), allowing the scoring engine, the scored ports, any official sources named in the event packet, ICMP and the admin path. A scored port stays open to every source, never only to the scoring engine's address, because officials' manual scoring checks and simulated users come from other addresses (*Background*; Blueprint §5), and some events penalize any source filter on a public service (section 2). An admin path on a scored port, such as SSH where SSH is scored, is hardened in place (design 04, section 4.2), never moved, knocked or restricted by address.
+6. **Default-deny outbound** (Tier 2), allowing replies on established connections, loopback, ICMP, the DNS resolvers and NTP servers in the run-time configuration, the SIEM, the admin path, the package mirror or proxy (design 02), and every address a scored service connects out to, from `services` and the run-time `outbound-allow` list. On a Windows domain member, the domain controllers are allowed too. Where the event has no mirror or proxy, the Harden phase's install opens the exact sources it needs for the install only, then closes them (design 02, section 4).
 
 **A Debian host with no firewall front end.** A Debian host can have nftables installed but not running, with shipped rules that accept everything, and no UFW. Installing UFW would break the bundle's no-install design, so the lockdown there uses raw nftables. In the Harden phase, UFW is installed and takes over with the same rules (design 01, section 5).
 
-**Why this order.** Sessions are ended after passwords and keys change, so the attacker cannot simply log back in. The firewall closes before the persistence sweep, not after it: anything planted before the bundle is still on disk, but nobody can reach it from outside and its callbacks fail, so the sweep in step 6 can take the time it needs. A planted job that reopens a port or drops the rules is caught by the drift check (design 19, section 4.1) and by the sweep. One revert timer covers the whole bundle on each host. The steps that only take access away (the new passwords, the removed keys, the ended sessions) are kept as soon as each verifies with no scored service worse, so the timer undoes only the firewall and SSH settings, the steps that can lock the team out (design 00, section 4, rule 9).
+**Why this order.** Sessions are ended after passwords and keys change, and unexpected admin accounts are locked with them, so the attacker cannot simply log back in. The firewall closes before the persistence sweep, not after it: anything planted before the bundle is still on disk, but nobody can reach it from outside and its callbacks fail, so the sweep (section 6, step 6) can take the time it needs. A planted job that reopens a port or drops the rules is caught by the drift check (design 19, section 4.1) and by the sweep. One revert timer covers the whole bundle on each host. The steps that only take access away (the new passwords, the removed keys, the ended sessions, the locked accounts) are kept as soon as each verifies with no scored service worse, so the timer undoes only the firewall and SSH settings, the steps that can lock the team out (design 00, section 4, rule 9).
 
 **Why outbound.** Scoring checks connect in, and their replies leave on connections the scoring engine opened, so an outbound default deny does not stop them. It does stop beacons, reverse shells and downloads of second-stage tools. This is targeted blocking from an explicit allowlist, not the indiscriminate ending of all outbound connections that the rules give as an example of breakage (NCCDC, 2025, Rule 5.6.5).
 
@@ -138,7 +139,7 @@ flowchart TD
     GATES -->|no| STOP(["Stop: nothing changed"])
     GATES -->|yes| T0["Tier 0 on all targets<br/>(read-only inventory and baseline)"]
     subgraph fm["First-minute bundle, nothing installed (section 6.1)"]
-        ARM["Arm revert timer"] --> B1["Rotate admin passwords"] --> B2["Remove unregistered keys;<br/>check SSH configuration"] --> B3["End intruder sessions"] --> B4["Default-deny inbound"] --> B5["Default-deny outbound"]
+        ARM["Arm revert timer"] --> B1["Rotate admin passwords"] --> B2["Remove unregistered keys;<br/>check SSH configuration"] --> B3["End intruder sessions;<br/>lock unexpected admins"] --> B4["Default-deny inbound"] --> B5["Default-deny outbound"]
     end
     subgraph after["Harden phase, behind the lockdown"]
         I1["Install the profile's packages;<br/>restore points of scored services"] --> S1["Quarantine persistence;<br/>rest of Tier 2"] --> O1["Reopen outbound to<br/>the normal allowlist"] --> V1{"Verify passes?"}
@@ -146,7 +147,7 @@ flowchart TD
     T0 --> ARM
     B5 --> I1
     V1 -->|"no, or no one keeps the run"| REV(["Timer reverts; stop run"])
-    V1 -->|"yes: keep"| T3["Tier 3: a person approves;<br/>Labyrinth acts"] --> SEAL(["Seal the baseline;<br/>print person-run checklist"])
+    V1 -->|"yes: login check kept"| T3["Tier 3: queued items,<br/>approved later"] --> SEAL(["Seal the baseline;<br/>print person-run checklist"])
     classDef human fill:#fff4d6,stroke:#b7791f,color:#4a3108
     classDef stop fill:#f6f6f6,stroke:#b42318,color:#4a1111,stroke-dasharray:4 3
     class GATES,T3 human
@@ -159,24 +160,31 @@ flowchart TD
 
 ### 6.3 First-minute runs
 
-The opening seconds decide whether the Red Team keeps its foothold, and a person answering prompts host by host cannot keep up. A first-minute run applies a profile the team reviewed before the event, with every answer given on the command line, started on every host at once (by an operator on each host in local mode, or from a control node once remote apply exists; design 00, section 5):
+The opening seconds decide whether the Red Team keeps its foothold, and a person answering prompts host by host cannot keep up. A first-minute run applies a profile the team reviewed before the event, started on every host at once (by an operator on each host in local mode, or from a control node once remote apply exists; design 00, section 5). Today every answer is given on the command line:
 
 ```
 labyrinth apply lockout --profile <name> --confirm-group <group> --break-glass <account> [--approve <list>]
 ```
 
-The options already exist (Conventions, section 3.1). Items the team decided on before the event, such as known default application passwords (design 04, section 2.1), security updates for named scored packages (design 10, section 4) and settings tested on the event's own versions (design 11, section 4), are pre-approval rules in the run-time `pre-approved` file. A rule counts only for a category its module declares safe to pre-approve, and each item is still checked against this run's plan before it is changed. `--approve` cannot carry them, because its entries need a fingerprint from a plan; it adds items copied from a plan, for example in a later remote run. Anything else waits for a person, as usual. In remote mode, standard input is closed, so nothing else is approved, and the control node decides whether to keep each host's run (design 00, section 5).
+Once stage 4b is built it is one short command per host, with nothing to answer during the run (Conventions, section 3.3):
+
+```
+laby init        # preview: what Lock out and Harden would change
+laby -r init     # run both as one run, then the login check
+```
+
+The group and the break-glass account come from the configuration, and items no pre-approval rule covers go to the host's queue (`laby -q`) instead of waiting at a prompt. Items the team decided on before the event, such as known default application passwords (design 04, section 2.1), security updates for named scored packages (design 10, section 4) and settings tested on the event's own versions (design 11, section 4), are pre-approval rules in the run-time `pre-approved` file. A rule counts only for a category its module declares safe to pre-approve, and each item is still checked against this run's plan before it is changed. `--approve` cannot carry them, because its entries need a fingerprint from a plan; it adds items copied from a plan, for example in a later remote run. Anything else waits for a person, as usual. In remote mode, standard input is closed, so nothing else is approved, and the control node decides whether to keep each host's run (design 00, section 5).
 
 | Left out of a first-minute run | Kept in every run |
 |---|---|
-| Typing the confirmation and the break-glass answer: the options answer them, and the manifest records that they were given on the command line | The scoring allowlist goes in before any deny rule |
+| Typing the confirmation and the break-glass answer: the options answer them today, and the configuration once stage 4b is built; the manifest records where each came from | The scoring allowlist goes in before any deny rule |
 | A separate `plan` command: `apply` prints the plan and carries it out | A revert timer on every host, re-armed before each module |
 | Per-item approval for the items a pre-approval rule covers | Probes before and after each module, with automatic rollback on a regression |
 | Rings: every host starts at once, each under its own revert timer | The protected set and the break-glass account are never changed |
 
-**Automatic apply (specified now, built later).** With `AUTO_APPLY=yes` in `event.conf`, the same run needs no `--confirm-group` and no prompt: the group comes from the hosts file, matched on the host's name and address (a mismatch or ambiguity blocks with exit `20`); the break-glass account is the `breakglass`-class account from the protected set that exists on the host (with none, or more than one, the run blocks with exit `20`), checked for a console session instead of asked; and an approval item that no pre-approval rule covers goes to a queue (`labyrinth queue`, `labyrinth approve <ids>`) instead of waiting at a prompt. Deleting an account, changing a scored service that has no probe, replacing or containerizing a service, and every Tier 3 item always queue. A module is kept as soon as its verify and probes pass, except firewall and SSH changes, which stay under the revert timer until one `keep` per host run. The runner does not do this yet; the full text is in design 00, section 5.1.
+**Automatic runs (specified now, built later).** Automatic is the only mode once stage 4b is built; there is no switch. The group comes from the hosts file, matched on the host's name and address (a mismatch or ambiguity blocks with exit `20`). The break-glass account is the `breakglass`-class account from the protected set that exists on the host (with none, or more than one, the run blocks with exit `20`), checked for a console session instead of asked. An approval item runs when a pre-approval rule covers it in a category its module allows, and otherwise goes to the queue. Deleting an account, changing a scored service that has no probe, and replacing or containerizing a service are never pre-approvable and always queue. A module is kept as soon as its verify and probes pass, except firewall and SSH changes: the run ends by asking the operator to open a new login and confirm it works, and with no answer the revert timer undoes them. The full text is in Conventions, section 3.3.
 
-The break-glass answer is still the operator's word for each host (section 7). It is given before the event starts, from the team's offline record, and checked at the console straight after the bundle; if the operator cannot log in there, they let the timer roll that host back. Under `AUTO_APPLY=yes` Labyrinth checks for a console session of the account itself and warns if it finds none, instead of asking.
+The break-glass account is still the team's choice for each host (section 7): it is named in the protected set before the event, from the team's offline record, and checked at the console before the login check at the end of the run. If the operator cannot log in there, they answer no at the login check, or let the timer roll that host back.
 
 ## 7. Safety gates (all must pass)
 
@@ -184,18 +192,18 @@ The break-glass answer is still the operator's word for each host (section 7). I
 |---|---|
 | Protected set loaded | Non-empty and parsed |
 | Scored services reachable | In the firewall plan for every host that filters traffic, every scored service on the host has an allow from any source (section 6.1). The run-time `scoring-allowlist` is then optional: it is still applied first where present, and it feeds the never-ban list (design 18). The runner blocks a module with `touches_scored: true` that would leave a scored service on the host without such an allow |
-| Break-glass confirmed | The operator has confirmed, by typing, that the break-glass credential worked at this host's console. This is the operator's word, not proof: a script cannot reach the console, so it is asked once per host. The account must be in the protected set with class `breakglass`, the answer is kept in Labyrinth's state for later runs on that host, and every run records it in its manifest. When the answer is given, Labyrinth looks for a session of that account at the console (`loginctl` or `who` on Linux, `query user` on Windows) and records the session it found. If it finds none, or cannot look, it warns and goes on: the gate stays a confirmation, and the manifest says what backed it. |
+| Break-glass confirmed | Today, the operator has confirmed, by typing, that the break-glass credential worked at this host's console. This is the operator's word, not proof: a script cannot reach the console, so it is asked once per host. The account must be in the protected set with class `breakglass`, the answer is kept in Labyrinth's state for later runs on that host, and every run records it in its manifest. When the answer is given, Labyrinth looks for a session of that account at the console (`loginctl` or `who` on Linux, `query user` on Windows) and records the session it found. If it finds none, or cannot look, it warns and goes on: the gate stays a confirmation, and the manifest says what backed it. Once stage 4b is built, the account is taken from the protected set instead of typed (section 6.3), and the console check and the record stay. |
 | Backup taken | Every file is copied before it changes, and the copy is recorded in the run manifest (`docs/Conventions.md`, section 7) |
-| Plan reviewed | Operator confirmed the plan by typing the group name, or gave it with `--confirm-group` in a first-minute run (section 6.3) |
-| Revert timer armed | Before every change that is not `read-only`, re-armed before each module (section 8) |
+| Plan reviewed | Today, the operator confirms the plan by typing the group name, or gives it with `--confirm-group` in a first-minute run. Once stage 4b is built, the team reviews the profile before the event, `laby PHASE` previews it on the host, and the group comes from the hosts file (section 6.3) |
+| Revert timer armed | Before every change that is not `read-only`, re-armed before each module (section 8). The one exception, once stage 4b is built, is `--no-revert`, for test machines and remote runs whose risk the team accepts; the manifest and the summary record it (Conventions, section 3.3) |
 
 ## 8. Preventing self-lockout
 
 - **Two-session rule.** Keep one session open while testing from a fresh one.
-- **Dead-man revert.** Before any change that is not `read-only`, such as a firewall or SSH change, arm a timer that rolls the run back unless the operator keeps it after verify. It runs `labyrinth rollback <run>` (`docs/Conventions.md`, section 3.1). A module that only takes access away from an intruder is kept once it verifies with no scored service worse, so the timer never hands an intruder their access back (design 00, section 4, rule 9). When the timer rolls a run back, every logged-in terminal or session on the host gets a notice.
+- **Dead-man revert.** Before any change that is not `read-only`, such as a firewall or SSH change, arm a timer that rolls the run back unless the operator keeps it after verify. It runs `labyrinth rollback <run>` (`docs/Conventions.md`, section 3.1). Once stage 4b is built, the operator keeps the run by answering the login check, or with `laby -k <run>` (Conventions, section 3.3). A module that only takes access away from an intruder is kept once it verifies with no scored service worse, so the timer never hands an intruder their access back (design 00, section 4, rule 9). When the timer rolls a run back, every logged-in terminal or session on the host gets a notice.
   - Linux: an enabled systemd timer and service, `lab-revert-<run>-<n>`, written to `/etc/systemd/system` with `OnCalendar=<due time>`, `Persistent=true` and `OnActiveSec=<minutes>m`. It survives a restart and fires at once if its time passed while the host was off. Keeping or rolling back the run stops and disables it and deletes its two unit files (`docs/Conventions.md`, section 3.1).
   - Windows: a one-time scheduled task, `\Labyrinth\lab-revert-<run>-<n>`, running as SYSTEM, unregistered when the run is kept. It also survives a restart.
-  - `labyrinth runs` shows which runs still have a timer armed, and when each one fires.
+  - `labyrinth runs` (`laby --history` once stage 4b is built) shows which runs still have a timer armed, and when each one fires.
   - VyOS: `commit-confirm <minutes>` followed by `confirm`. Read the VyOS warning below first.
 - **Passwords shown once.** New credentials are displayed once, on the operator's screen, for the team's offline record (design 04, section 2). Labyrinth never writes them to disk or logs and never echoes them over an unencrypted channel. Use a cryptographic random source (`/dev/urandom` or .NET `RandomNumberGenerator`), not `Get-Random`.
 - **Acknowledge before continuing.** The operator confirms the credential is recorded before the old one is invalidated.
@@ -238,13 +246,13 @@ Without a probe account, a check that logs in is probed by connecting only, and 
 - Protected accounts are unchanged before and after.
 - A mailbox user can still authenticate after the run.
 - An admin-class account that a service or scheduled task logs on with is not rotated automatically and is listed for approval in Tier 3.
-- A run on a host with no break-glass confirmation refuses to change it.
+- A run on a host with no break-glass confirmation refuses to change it; once stage 4b is built, so does a run on a host with no `breakglass`-class account, or more than one.
 - An official source named in the event packet can still connect after default-deny.
 - Every scored-service probe passes after the run, on every ring.
 - In a first-minute run on every lab host at once, each host finishes the bundle within 30 seconds of its command starting, with no prompt, and every probe still passes.
 - After the bundle, a reverse shell planted before the run cannot connect out, while the scoring engine's checks and the package mirror still work.
 - A scored service whose outbound dependency is missing from the allowlist fails its probe, and the module is rolled back.
-- A first-minute run without `--confirm-group` stops at the confirmation prompt, as a normal run does.
+- A first-minute run without `--confirm-group` stops at the confirmation prompt, as a normal run does. Once stage 4b is built: `laby -r init` asks nothing before the login check, and a host whose name and address match no line of the hosts file, or more than one, is blocked (`20`).
 - The revert timer restores the firewall when verify is deliberately failed.
 - A run with an empty protected set refuses to start.
 - A `scored-admin` account is rotated in the bundle, its new password appears once in the change list on the terminal, and it appears nowhere under the data root.
@@ -256,6 +264,8 @@ Without a probe account, a check that logs in is probed by connecting only, and 
 - After the bundle, an intruder's SSH and RDP sessions are gone, while the console session, the operator's session and an admin-source session remain.
 - A planted reverse-shell cron job is quarantined by the Harden phase sweep, and its connection does not return after the firewall closes.
 - A Tier 3 item a person approves is carried out by Labyrinth and recorded in the run manifest; an item not approved is left unchanged.
+- An unexpected local admin account is locked in the bundle and stays locked when the revert timer undoes the firewall changes; it is not deleted.
+- Once stage 4b is built: a pre-approved item in a pre-approvable category is applied without a prompt, an item no rule covers is queued, and a pre-approval rule for deleting an account is ignored and the item queued.
 
 ## References
 

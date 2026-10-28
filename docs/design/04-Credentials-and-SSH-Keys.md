@@ -189,8 +189,8 @@ Administrator rights can hide in places a simple group listing misses. The inven
 
 | Account | Action | Tier |
 |---|---|---|
-| Unexpected *local* account with admin rights or a hidden-admin sign | Admin rights removed and the account locked, in the first-minute bundle's tier | 2, automatic |
-| Other unexpected *local* account | Listed with its evidence; locked after a person approves | 3 |
+| Unexpected *local* account with admin rights or a hidden-admin sign | Locked in the first-minute bundle by `lockout.accounts`, because locking only takes access away (design 03, section 6.1; kept once verified, design 00, section 4, rule 9). Its admin rights are removed in the Harden phase by `harden.accounts`, which also handles the rows below | 2, automatic |
+| Other unexpected *local* account | Listed with its evidence and queued; locked after a person approves | 3 |
 | Unexpected *domain* account or group member | Printed on the domain checklist (design 12, section 5) | 3, person-run |
 | Expected account | Unchanged | — |
 
@@ -198,7 +198,7 @@ Locking means: on Linux, `usermod -L` and an expiry date in the past, with the l
 
 ### 6.4 Delete once confirmed
 
-A locked account can be unlocked again by an attacker with admin rights, so a lock is not the end state. After the next checkpoint shows every scored service passing (design 19), Labyrinth offers each locked account for deletion. A person approves each one. Before deleting, Labyrinth saves its evidence: groups, keys, creation information and an archive of the home folder, kept in the quarantine area (design 06, section 5). It then deletes the account and checks for files still owned by the old UID or SID, which are listed for a person. Domain accounts stay on the person-run checklist.
+A locked account can be unlocked again by an attacker with admin rights, so a lock is not the end state. After the next checkpoint shows every scored service passing (design 19), Labyrinth queues each locked account for deletion. A person approves each one; account deletion is never pre-approvable (Conventions, section 3.3). Before deleting, Labyrinth saves its evidence: groups, keys, creation information and an archive of the home folder, kept in the quarantine area (design 06, section 5). It then deletes the account and checks for files still owned by the old UID or SID, which are listed for a person. Domain accounts stay on the person-run checklist.
 
 ## 7. Acceptance tests
 
