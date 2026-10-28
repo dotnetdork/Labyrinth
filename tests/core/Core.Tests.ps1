@@ -118,6 +118,16 @@ Describe 'core library' {
         { Find-LabHost 'web01' } | Should -Throw
     }
 
+    It 'config: debian in the hosts file is read as ubuntu' {
+        $hosts = Join-Path $env:LAB_CONFIG_DIR 'hosts'
+        Write-TestFile $hosts @('web01 ring1 linux-web debian', 'ws01 ring0 windows-member windows')
+        (Find-LabHost 'web01').Platform | Should -Be 'ubuntu'
+        foreach ($p in 'Debian', 'debian11', 'debian-family') {
+            Write-TestFile $hosts @("web01 ring1 linux-web $p")
+            { Find-LabHost 'web01' } | Should -Throw
+        }
+    }
+
     It 'json: escaping round-trips through ConvertFrom-Json' {
         $s = "quote `" back \ tab `t nl `n bell $([char]7) end"
         $json = '{"k":' + (ConvertTo-LabJsonString $s) + '}'

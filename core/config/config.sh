@@ -263,11 +263,12 @@ lab_services_load() {
 }
 
 # lab_host_lookup HOST: find HOST (case-insensitive) in the hosts file and
-# set LAB_HOST_GROUP, LAB_HOST_PROFILE and LAB_HOST_PLATFORM. Returns 2 if
-# the file is missing or the host is not listed.
+# set LAB_HOST_GROUP, LAB_HOST_PROFILE and LAB_HOST_PLATFORM. The platform
+# debian is read as ubuntu, which covers the whole Debian family. Returns 2
+# if the file is missing or the host is not listed.
 # shellcheck disable=SC2034 # the variables it sets are read by the runner and modules
 lab_host_lookup() {
-  local file="$LAB_CONFIG_DIR/hosts" want="${1,,}" i line
+  local file="$LAB_CONFIG_DIR/hosts" want="${1,,}" i line platform
   local re='^([A-Za-z0-9_.-]+)[[:space:]]+(ring[0-9]+|manual)[[:space:]]+([a-z0-9-]+)[[:space:]]+([a-z-]+)$'
   LAB_HOST_GROUP='' LAB_HOST_PROFILE='' LAB_HOST_PLATFORM=''
   [[ -f "$file" ]] || return 2
@@ -276,12 +277,14 @@ lab_host_lookup() {
     line="${LAB_CFG_LINES[i]}"
     [[ "$line" =~ $re ]] \
       || { lab_cfg_error "$file" "${LAB_CFG_NOS[i]}" 'expected: host group profile platform'; return 1; }
-    lab_in_list "${BASH_REMATCH[4]}" "$LAB_HOST_PLATFORMS" \
-      || { lab_cfg_error "$file" "${LAB_CFG_NOS[i]}" "unknown platform ${BASH_REMATCH[4]}"; return 1; }
+    platform="${BASH_REMATCH[4]}"
+    [[ "$platform" == debian ]] && platform=ubuntu
+    lab_in_list "$platform" "$LAB_HOST_PLATFORMS" \
+      || { lab_cfg_error "$file" "${LAB_CFG_NOS[i]}" "unknown platform $platform"; return 1; }
     if [[ "${BASH_REMATCH[1],,}" == "$want" ]]; then
       LAB_HOST_GROUP="${BASH_REMATCH[2]}"
       LAB_HOST_PROFILE="${BASH_REMATCH[3]}"
-      LAB_HOST_PLATFORM="${BASH_REMATCH[4]}"
+      LAB_HOST_PLATFORM="$platform"
     fi
   done
   [[ -n "$LAB_HOST_GROUP" ]] || return 2

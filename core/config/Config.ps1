@@ -146,7 +146,8 @@ function Read-LabServiceList {
 
 # Find-LabHost NAME: this host's line in the hosts file, as an object with
 # Group, Profile and Platform; $null if the file is missing or the host is
-# not listed. Host names compare case-insensitively.
+# not listed. Host names compare case-insensitively. The platform debian is
+# read as ubuntu, which covers the whole Debian family.
 function Find-LabHost {
     param([Parameter(Mandatory)] [string] $Name)
     $platforms = @('ubuntu', 'rhel-family', 'windows', 'appliance')
@@ -157,9 +158,11 @@ function Find-LabHost {
         if ($l.Text -cnotmatch '^([A-Za-z0-9_.-]+)\s+(ring[0-9]+|manual)\s+([a-z0-9-]+)\s+([a-z-]+)$') {
             throw "${file}:$($l.No): expected: host group profile platform"
         }
-        if ($platforms -cnotcontains $Matches[4]) { throw "${file}:$($l.No): unknown platform $($Matches[4])" }
+        $platform = $Matches[4]
+        if ($platform -ceq 'debian') { $platform = 'ubuntu' }
+        if ($platforms -cnotcontains $platform) { throw "${file}:$($l.No): unknown platform $platform" }
         if ($Matches[1] -eq $Name) {
-            $found = [pscustomobject]@{ Group = $Matches[2]; Profile = $Matches[3]; Platform = $Matches[4] }
+            $found = [pscustomobject]@{ Group = $Matches[2]; Profile = $Matches[3]; Platform = $platform }
         }
     }
     return $found
