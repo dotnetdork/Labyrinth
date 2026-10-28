@@ -17,6 +17,6 @@ This site is built from the Markdown files in the repository's `docs/` folder, s
 ## Using and contributing
 
 - **Running Labyrinth:** the operator manual is built as a man page and as PDFs for Linux and Windows; its source is [`docs/manual/labyrinth.md`](https://github.com/dotnetdork/Labyrinth/blob/main/docs/manual/labyrinth.md) in the repository.
-- **Contributing:** see [`CONTRIBUTING.md`](https://github.com/dotnetdork/Labyrinth/blob/main/CONTRIBUTING.md) and the rules in [`CLAUDE.md`](https://github.com/dotnetdork/Labyrinth/blob/main/CLAUDE.md), which apply whatever tool you use.
+- **Contributing:** see [`CONTRIBUTING.md`](https://github.com/dotnetdork/Labyrinth/blob/main/CONTRIBUTING.md) and the rules in [`AGENTS.md`](https://github.com/dotnetdork/Labyrinth/blob/main/AGENTS.md), which apply whatever tool you use.
 - **Reporting a weakness in Labyrinth:** privately, as [`SECURITY.md`](https://github.com/dotnetdork/Labyrinth/blob/main/SECURITY.md) describes.
 - **Questions and ideas:** [Discussions](https://github.com/dotnetdork/Labyrinth/discussions).

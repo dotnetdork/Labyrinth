@@ -55,8 +55,8 @@ Labyrinth classifies each host into a **profile** and applies the roles that fit
 ```
 Labyrinth/
 ├── README.md                     ← you are here
-├── CLAUDE.md                     ← working rules for contributors and AI assistants
-├── AGENTS.md                     ← points other assistants (Copilot and the like) to CLAUDE.md
+├── AGENTS.md                     ← working rules for contributors and AI assistants
+├── CLAUDE.md                     ← pulls in AGENTS.md for Claude Code, plus its own setup
 ├── CONTRIBUTING.md               ← how to pick up an issue and open a pull request
 ├── SECURITY.md                   ← how to report a weakness in Labyrinth privately
 ├── .claude/                      ← shared Claude Code agents, commands and settings
