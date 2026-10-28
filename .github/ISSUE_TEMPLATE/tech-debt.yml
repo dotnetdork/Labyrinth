@@ -1,0 +1,26 @@
+name: Tech debt
+description: Cleanup or refactoring that changes no behavior
+title: "[Tech Debt] "
+labels: ["type: tech-debt"]
+body:
+  - type: textarea
+    id: location
+    attributes:
+      label: Location & Context
+      description: The files, lines or functions, and the commit.
+    validations:
+      required: true
+  - type: textarea
+    id: current
+    attributes:
+      label: Current Behavior
+      description: What is wrong with the code as it is, and what it costs.
+    validations:
+      required: true
+  - type: textarea
+    id: plan
+    attributes:
+      label: Remediation Plan
+      description: The steps, and how the tests show nothing changed.
+    validations:
+      required: true
