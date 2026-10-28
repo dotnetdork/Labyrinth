@@ -49,6 +49,17 @@ Describe 'core library' {
         { Read-LabProtectedSet } | Should -Throw
         Write-TestFile $protected @('Administrator breakglass', 'Administrator scoring')
         { Read-LabProtectedSet } | Should -Throw
+        foreach ($c in 'scored-', '-admin', 'scored--admin', 'scored-admin-x', 'Scored-Admin') {
+            Write-TestFile $protected @('Administrator breakglass', "webadmin $c")
+            { Read-LabProtectedSet } | Should -Throw
+        }
+    }
+
+    It 'config: the scored-admin class loads' {
+        Write-TestFile $protected @('Administrator breakglass', 'web admin   scored-admin   # scored login')
+        $set = Read-LabProtectedSet
+        $set['web admin'] | Should -Be 'scored-admin'
+        $set['Administrator'] | Should -Be 'breakglass'
     }
 
     It 'config: addresses and CIDRs are checked' {
