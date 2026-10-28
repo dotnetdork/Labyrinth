@@ -34,7 +34,7 @@ Re-running a pack finds nothing to change and exits 0 (design 00, section 4).
 | Class | Test for the class | Runs |
 |---|---|---|
 | **Automatic** | Does not change what users or the scoring engine see, and was tested on this app version in the lab | In the Harden phase, Tier 2 (design 03) |
-| **Approval** | Could change what the scoring engine sees, or the installed version was not tested | Shown in the plan; after a person approves, Labyrinth applies it (Tier 3) |
+| **Approval** | Could change what the scoring engine sees, or the installed version was not tested | Shown in the plan; after a person approves, Labyrinth applies it (Tier 3). The approval queue is planned (Roadmap stage 4b); until then approval is at the prompt or by a pre-approval rule |
 | **Runbook** | Too specific to the event's own app or data | Printed steps for a person, kept in the release's runbook folder |
 
 **Pre-approvable.** A setting that is in the approval class only because the installed version was not tested in the release's lab (section 7), and would be automatic on a tested version, is offered in category `untested-version`. The pack lets a pre-approval rule cover that category (Conventions, section 3.1), so a team that has tested the setting on the event's own version in its own lab before the event can approve it in advance, and a first-minute run applies it with the same syntax check, probes and revert timer. A setting that could change what the scoring engine sees is in category `scoring-visible`, which is never pre-approvable.

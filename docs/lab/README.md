@@ -2,7 +2,7 @@
 
 Labyrinth's unit tests run in CI with test doubles. Tests that change a real host run in two places (Conventions, section 9):
 
-- **CI runners:** Ubuntu, and Windows Server, including a throwaway single domain controller. They run on every pull request that touches the module.
+- **CI runners:** Ubuntu, and Windows Server; a runner with a throwaway single domain controller is planned. They run on every pull request that touches the module.
 - **This lab:** local virtual machines, run by a person before each release, for everything a CI runner cannot host.
 
 This page lists the lab machines, how to build them, and what has been tested on each. It holds no addresses, passwords or event details. Like everything in this repository, it is public.

@@ -23,7 +23,7 @@ The numbers follow the order a run uses the parts: the foundations every module 
 | 01 | [Platform facts and adapters](01-Platform-Facts-and-Adapters.md) | All | How does a module learn what host it is on, and change firewalls and other parts that differ by platform? |
 | 02 | [Packages and third-party tools](02-Packages-and-Third-Party-Tools.md) | 🟧 Harden | Which public tools does Labyrinth add to a host, from where, and how is each install checked and recorded? |
 | 03 | [Lockout ("panic button")](03-Lockout-Panic-Button.md) | 🟥 Lock out, 🟧 Harden | How do we do the first-minutes lockout safely and inside the rules, and harden behind it? |
-| 04 | [Credentials and SSH keys](04-Credentials-and-SSH-Keys.md) | 🟥 Lock out | How do we rotate credentials and deploy SSH (Secure Shell) keys without locking ourselves out? |
+| 04 | [Credentials and SSH keys](04-Credentials-and-SSH-Keys.md) | 🟥 Lock out, 🟧 Harden | How do we rotate credentials and deploy SSH (Secure Shell) keys without locking ourselves out? |
 | 05 | [Network appliance runbooks](05-Network-Appliance-Runbooks.md) | 🟥 Lock out | How does a person lock down routers and firewall appliances safely? |
 | 06 | [Persistence sweep](06-Persistence-Sweep.md) | 🟧 Harden | How do we find and remove the Red Team's footholds early, without breaking a scored service? |
 | 07 | [Backup and recovery](07-Backup-and-Recovery.md) | 🟧 Harden, 🟩 Sustain | How do we restore a scored service after damage we did not cause? |
@@ -33,7 +33,7 @@ The numbers follow the order a run uses the parts: the foundations every module 
 | 11 | [Service packs and config library](11-Service-Packs-and-Config-Library.md) | 🟧 Harden | How do we harden the scored apps themselves, quickly and repeatably, without breaking them? |
 | 12 | [Windows and AD hardening](12-Windows-and-AD-Hardening.md) | 🟧 Harden | How do we harden Windows hosts and the domain controller without a domain-wide mistake? |
 | 13 | [Service replacement and containers](13-Service-Replacement-and-Containers.md) | 🟧 Harden | Where an event allows it, how do we rebuild or containerize a scored service without losing its data, users or address? Off by default. |
-| 14 | [Log forwarding and detection](14-Log-Forwarding-and-Detection.md) | 🟦 Observe | Which logs leave each host, how they reach the SIEM, and which few searches run over them? |
+| 14 | [Log forwarding and detection](14-Log-Forwarding-and-Detection.md) | 🟦 Observe, 🟧 Harden | Which logs leave each host, how they reach the SIEM, and which few searches run over them? |
 | 15 | [Status feed and MOTD](15-Status-Feed-and-MOTD.md) | 🟦 Observe | How does the SIEM (Security Information and Event Management system) inform every host without new trust paths? |
 | 16 | [Event seed and deception config](16-Event-Seed-and-Deception-Config.md) | 🟪 Deceive | How can the code be public but the deception still be unpredictable? |
 | 17 | [Deception maze and CVE decoys](17-Deception-Maze-and-CVE-Decoys.md) | 🟪 Deceive | How do we build the maze, and where are the limits? |
@@ -55,7 +55,7 @@ Module IDs are `phase.name`, so the ID shows where the module runs. The IDs belo
 | 01 | Platform facts and the firewall adapter | (core) | 3, 4 | 00 | — | Built; the outbound default comes with `lockout.firewall` |
 | 02 | Packages and third-party tools | `harden.packages` | 4 | 01, 03 | M | Next |
 | 03 | Lockout and the first-minute bundle | `lockout.sessions`, `lockout.firewall`, `harden.reopen_outbound` | 4, 4b | 00, 01, 04 | L | Next |
-| 04 | Credentials and SSH keys | `lockout.credentials`, `lockout.ssh`, `lockout.accounts`, `harden.accounts` | 4 | 00 | L | Next; new passwords shown once are built |
+| 04 | Credentials and SSH keys | `lockout.credentials`, `lockout.ssh`, `lockout.accounts`, `harden.accounts` | 4 | 00, 16 (the seed core) | L | Next; new passwords shown once are built |
 | 05 | Network appliance runbooks | `lockout.appliance_runbooks` (manual-only) | Any time | — | S | Next; good first issue (templates, no code) |
 | 06 | Persistence sweep | `harden.persistence_sweep` | 4 | 01, 07 | L | Next; the quarantine helper is built |
 | 07 | Backup and recovery | `harden.restore_points` | 4 | 00 | M | Next |
@@ -67,7 +67,7 @@ Module IDs are `phase.name`, so the ID shows where the module runs. The IDs belo
 | 13 | Service replacement and containers | `harden.service_replace` | 7 | 02, 07, 11, 19 | L | Waiting |
 | 14 | Log forwarding and detection | `observe.auditd`, `observe.win_audit`, `observe.sysmon`, `observe.forward_linux`, `observe.forward_windows`, `observe.searches`, `harden.siem` | 6, 7 | 02, 03 | M | Waiting |
 | 15 | Status feed and MOTD | `observe.status_feed` | 9 | 14, 19 | S | Waiting; a good first issue once 19 is built |
-| 16 | Event seed | (core: `core/seed/`), `deceive.canaries` | 9 | 00 | S | Waiting; good first issue (self-contained) |
+| 16 | Event seed | (core: `core/seed/`), `deceive.canaries` | 4 (the seed core), 9 | 00 | S | Waiting; the seed core is needed by stage 4 (design 04); good first issue (self-contained) |
 | 17 | Deception maze and CVE decoys | `deceive.maze`, `deceive.decoys` | 9 | 14, 16 | L | Waiting |
 | 18 | Dynamic bans | `deceive.bans` | 9 | 01, 14, 17 | M | Waiting |
 | 19 | Health monitor and checkpoints | `sustain.health_monitor` | 6 | 00 | M | Waiting; the http, dns and banner probes are built |
@@ -147,7 +147,7 @@ Each diagram is a Mermaid block inside the document it illustrates, with a one-s
 5. Officials must be given access immediately when they ask (NCCDC, 2025, Rule 4.1).
 6. No new devices (NCCDC, 2025, Rule 4.2). No migrating or containerizing a scored service unless an inject or the local competition rules allow it (NCCDC, 2025, Rule 4.14); where they do, design 13 governs it, off by default.
 7. Assume breach, and defend scored services rather than avoid them. Scoring rewards controlling and preventing unauthorized access, and successful Red Team penetrations cost points (NCCDC, 2025, Scoring section). Scored services are a primary Red Team target, so leaving them as found is not the safe choice; changing them with probes, backups and a revert timer is.
-8. Confirm, then act. What a person approves, at the prompt or before the event with a pre-approval rule, Labyrinth carries out with the same backups, records and rollback. Only actions too broad or too hard to undo (Group Policy, DNS changes on a domain controller, domain controller restores, rescuing an unbootable host, Windows patching, appliances) stay in a person's hands.
+8. Confirm, then act. What a person approves, before the event with a pre-approval rule, at the prompt (today), or later from the approval queue (planned, Roadmap stage 4b), Labyrinth carries out with the same backups, records and rollback. Only actions too broad or too hard to undo (Group Policy, DNS changes on a domain controller, domain controller restores, rescuing an unbootable host, Windows patching, appliances) stay in a person's hands.
 9. Keep every name and address. No host name, address, scored DNS name or username is changed, and no scored port is filtered by source address: scoring, officials and simulated users reach it from addresses nobody can list (design 03, section 6.1).
 
 ## References

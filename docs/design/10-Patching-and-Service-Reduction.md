@@ -47,19 +47,19 @@ Services are disabled, never removed. Rollback starts them again with their prev
 
 **Scored services are patched, not turned off.** A flaw in a scored service is never closed by stopping or disabling the service (design 09, section 5.1). Where the mitigation catalog has a setting that closes the flaw with the service still running, that goes in first. Patching then replaces the flawed version, and the tracker records the finding as `patched` once a later check confirms it.
 
-**Plan and apply.** The operator approves picks from the ranked list (Tier 3). Each update is an item in category `security-update`, whose id is the package name with any character other than a lowercase letter, a digit or `-` replaced by `-`. The module lets a pre-approval rule cover this category (Conventions, section 3.1), so a security update for a scored package that a rule names counts as approved, and a first-minute run applies it without a prompt (design 03, section 6.3). The rule names the package, not a version, because the version available at the event is not known when the team decides. It covers only an update from the host's own release stream that passes the simulation check (design 02, section 4); a new major version, or an update that would remove or replace a package, still waits for a person. The restore point comes first, and a failed probe after the update raises an alert and offers the restore at once. For each approved pick, Labyrinth:
+**Plan and apply.** The operator approves picks from the ranked list (Tier 3) at the prompt, through a pre-approval rule, or from the approval queue (planned; Roadmap stage 4b). Today the runner has no queue, so an item that no rule covers is approved at the prompt. Each update is an item in category `security-update`, whose id is the package name with any character other than a lowercase letter, a digit or `-` replaced by `-`. The module lets a pre-approval rule cover this category (Conventions, section 3.1), so a security update for a scored package that a rule names counts as approved, and a first-minute run applies it without a prompt (design 03, section 6.3). The rule names the package, not a version, because the version available at the event is not known when the team decides. It covers only an update from the host's own release stream that passes the simulation check (design 02, section 4); a new major version, or an update that would remove or replace a package, still waits for a person. The restore point comes first, and a failed probe after the update raises an alert and offers the restore at once. For each approved pick, Labyrinth:
 
 1. takes a restore point of the service (design 07);
 2. upgrades only that package with the host's package manager, never the whole system, after the same simulation check as an install (design 02, section 4);
 3. restarts the service if the package needs it;
 4. runs the probes and records the result in the run manifest, and the tracker marks the finding `patched` after the next check (design 09, section 4).
 
-If a probe fails, `labyrinth restore` puts the service back from that restore point once a person approves (design 07, section 6).
+If a probe fails, `labyrinth restore` (planned) puts the service back from that restore point once a person approves (design 07, section 6).
 
 ```mermaid
 flowchart LR
     CK["Find: security updates<br/>available now (design 09)"] --> RK["Rank: domain controller ·<br/>scored · exposed · known exploited"]
-    RK --> PK["A person approves<br/>one package"]
+    RK --> PK["A person approves one package<br/>or a pre-approval rule covers it"]
     PK --> BK["Restore point<br/>(design 07)"]
     BK --> RUN["Labyrinth upgrades<br/>that one package"]
     RUN --> VF{"Probes pass?"}
@@ -67,16 +67,13 @@ flowchart LR
     VF -->|no| RS["Restore from<br/>the restore point"]
     classDef harden fill:#fdeedc,stroke:#c2410c,color:#4a1d06
     classDef human fill:#fff4d6,stroke:#b7791f,color:#4a3108
-    classDef sustain fill:#e3f6e8,stroke:#15803d,color:#0f3d20
     classDef ok fill:#e3f6e8,stroke:#15803d,color:#0f3d20
-    class CK,RK,VF harden
+    class CK,RK,VF,RUN,BK harden
     class PK,RS human
-    class RUN harden
-    class BK sustain
     class OK ok
 ```
 
-*Figure: the tracker finds and ranks the security updates (design 09), a person approves each package or a pre-approval rule covers it, and Labyrinth takes a restore point, upgrades that one package and checks the result. Orange is Harden work done by Labyrinth, amber is a person's decision and green is the restore point and the recorded finish.*
+*Figure: the tracker finds and ranks the security updates (design 09), a person approves each package or a pre-approval rule covers it, and Labyrinth takes a restore point, upgrades that one package and checks the result. Orange is Harden work done by Labyrinth, including the restore point, amber is a person's decision and green is the recorded finish.*
 
 ## 5. Pinned questions
 

@@ -48,14 +48,14 @@ Each module is a folder `phases/<phase>/modules/<name>/` with `module.yml` and u
 1. Read the module's spec first. If the spec is ambiguous or wrong, raise it and update the spec in the same branch before writing code, saying why in the commit message.
 2. Write tests first, from the spec's acceptance-test list: bats for bash, Pester 5 for PowerShell. Every module needs a negative test showing protected accounts and scored services are untouched.
 3. Implement against `core/`, following `docs/Conventions.md`.
-4. CI (`.github/workflows/ci.yml`) runs `tests/lint/guard.sh`, ShellCheck, PSScriptAnalyzer, bats and Pester under Windows PowerShell 5.1; all must be clean. Run them locally only where the tools are already installed and `CLAUDE.local.md` does not say otherwise; never install test tools on someone's machine without asking. Otherwise push the branch and read the CI results.
+4. CI (`.github/workflows/ci.yml`) runs `tests/lint/guard.sh`, ShellCheck, PSScriptAnalyzer, bats and Pester under Windows PowerShell 5.1, and the manual build; all must be clean. Run them locally only where the tools are already installed and `CLAUDE.local.md` does not say otherwise; never install test tools on someone's machine without asking. Otherwise push the branch and read the CI results.
 5. One issue, one person, one branch, one small pull request (`CONTRIBUTING.md`). Name the branch `phase-<n>/<name>` (for example `phase-2/cli-runner`), or `docs/<name>` for documentation only, and keep follow-up steps on it. Push only to that branch, so CI checks it, and fix failures there. Never push to `main`, force-push, rewrite history, or delete a branch you did not create. A pull request merges once CI is green and someone other than its author approves it.
 
 ## Changing the command line
 
 `labyrinth.sh` and `labyrinth.ps1` share one vocabulary. Before changing a command, option, prompt, exit code or console message:
 
-- Follow `docs/Conventions.md` section 3.1 (commands, options, the order of an apply) and section 3.2 (console output). If the change departs from them, update the spec first.
+- Follow `docs/Conventions.md` section 3.1 (commands, options, the order of an apply), section 3.2 (console output) and section 3.3 (the planned flag-style command line, built in stage 4b). If the change departs from them, update the spec first.
 - **Never edit the compatibility suite to make a change pass** (`tests/runner/compat.bats`, `tests/runner/Compat.Tests.ps1`). Armed revert timers run stored command lines, so every form it holds must keep working. Change the runner instead.
 - **Update the operator manual in the same commit** (`docs/manual/labyrinth.md`). Put platform-only text between `<!-- linux -->` or `<!-- windows -->` and `<!-- end -->`, and write in the plain style of `docs/Overview.md`. `tests/manual/manual.bats` must pass.
 - Make the same change in both runners, with tests in both suites.
