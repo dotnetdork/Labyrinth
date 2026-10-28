@@ -288,10 +288,9 @@ Example: $Self help apply
         'basics' { @"
 Usage: $Self help basics
 
-Labyrinth makes this host harder to break into, in five phases run in
-order: lockout, harden, observe, deceive and sustain. The harden phase
-is not in this version yet. Each phase is a list of modules. A module
-does one small job, such as turning off SMB version 1.
+Labyrinth makes this host harder to break into in five phases, in order:
+lockout, harden (later), observe, deceive, sustain. Each phase is a list of
+modules. A module does one small job, such as turning off SMB version 1.
 '$Self help <module-id>' explains any module.
 
 1. Plan: '$Self plan lockout' shows what each module would change.
