@@ -11,7 +11,7 @@ Say what you found, where (file and line, or the command and its output), and wh
 ## What counts
 
 - Labyrinth itself: the runners, `core/`, the modules, the release and install scripts, and the CI workflows.
-- A way Labyrinth could break a scored service, lock out its operators or officials, leak a secret into a log, manifest or backup, or change something outside its explicit lists, against what `CLAUDE.md` and the specs promise.
+- A way Labyrinth could break a scored service, lock out its operators or officials, leak a secret into a log, manifest or backup, or change something outside its explicit lists, against what `AGENTS.md` and the specs promise.
 
 Not in scope: weaknesses in the software Labyrinth hardens (report those to its vendor), and findings that need an attacker who is already root on the host.
 
