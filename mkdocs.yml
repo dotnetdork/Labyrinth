@@ -51,6 +51,7 @@ exclude_docs: |
 nav:
   - Home: index.md
   - Overview: Overview.md
+  - Commands: Commands.md
   - Blueprint: Blueprint.md
   - Roadmap: Roadmap.md
   - Conventions: Conventions.md
