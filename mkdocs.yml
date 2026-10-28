@@ -1,0 +1,84 @@
+# The documentation website, built from docs/ by .github/workflows/docs.yml
+# and published with GitHub Pages. The Markdown files stay the only copy;
+# the site is rebuilt from them on every push to main that changes them.
+site_name: Labyrinth
+site_description: A cross-platform hardening and deception tool for CCDC-style blue-team defense
+repo_url: https://github.com/dotnetdork/Labyrinth
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  features:
+    - navigation.sections
+    - navigation.top
+    - search.highlight
+    - content.code.copy
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+
+# The manual is built separately (tools/manual/), with its platform text and
+# placeholders filled in per platform, so the raw source is left out here.
+exclude_docs: |
+  manual/
+
+nav:
+  - Home: index.md
+  - Overview: Overview.md
+  - Blueprint: Blueprint.md
+  - Roadmap: Roadmap.md
+  - Conventions: Conventions.md
+  - Design specs:
+      - design/README.md
+      - design/00-Module-Contract-and-Layout.md
+      - design/01-Platform-Facts-and-Adapters.md
+      - design/02-Packages-and-Third-Party-Tools.md
+      - design/03-Lockout-Panic-Button.md
+      - design/04-Credentials-and-SSH-Keys.md
+      - design/05-Network-Appliance-Runbooks.md
+      - design/06-Persistence-Sweep.md
+      - design/07-Backup-and-Recovery.md
+      - design/08-Baseline-and-Integrity.md
+      - design/09-Vulnerability-Tracker-and-Mitigations.md
+      - design/10-Patching-and-Service-Reduction.md
+      - design/11-Service-Packs-and-Config-Library.md
+      - design/12-Windows-and-AD-Hardening.md
+      - design/13-Service-Replacement-and-Containers.md
+      - design/14-Log-Forwarding-and-Detection.md
+      - design/15-Status-Feed-and-MOTD.md
+      - design/16-Event-Seed-and-Deception-Config.md
+      - design/17-Deception-Maze-and-CVE-Decoys.md
+      - design/18-Dynamic-Bans.md
+      - design/19-Health-Monitor-and-Checkpoints.md
+      - design/20-Incident-Reporting-Automation.md
+      - design/21-Cleanup-and-Tool-Integrity.md
+      - design/22-Reference-Mining.md
+  - Test lab: lab/README.md
+
+# Links that leave docs/ (the README, the code, the manual) work on GitHub
+# but not on the site, so they are reported quietly instead of as warnings.
+validation:
+  links:
+    not_found: info
+    unrecognized_links: info
+
+markdown_extensions:
+  - toc:
+      permalink: true
+  - tables
+  - admonition
+  - github-callouts
+  - pymdownx.details
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
