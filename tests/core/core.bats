@@ -115,6 +115,17 @@ stub() {
   [ "$status" -eq 1 ]
 }
 
+@test "config: debian in the hosts file is read as ubuntu" {
+  printf 'web01 ring1 linux-web debian\nutil01 ring0 linux-server ubuntu\n' > "$LAB_CONFIG_DIR/hosts"
+  lab_host_lookup web01
+  [ "$LAB_HOST_PLATFORM" = ubuntu ]
+  for p in Debian debian11 debian-family; do
+    printf 'web01 ring1 linux-web %s\n' "$p" > "$LAB_CONFIG_DIR/hosts"
+    run lab_host_lookup web01
+    [ "$status" -eq 1 ] || { echo "accepted $p"; return 1; }
+  done
+}
+
 @test "json: escaping round-trips through the manifest reader" {
   s=$'quote " back \\ tab \t nl \n bell \a end'
   line="{\"k\":$(lab_json_str "$s")}"

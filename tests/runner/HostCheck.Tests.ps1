@@ -45,6 +45,13 @@ Describe 'labyrinth.ps1 host checks' {
         $toggle | Should -Not -Exist
     }
 
+    It 'a host listed as debian is refused as ubuntu' {
+        Write-TestPlatform $t 'debian'
+        $r = Invoke-TestLabRun $t @('plan', 'observe')
+        $r.Code | Should -Be 20
+        $r.Output | Should -Match ([regex]::Escape("does not serve this host's platform, ubuntu"))
+    }
+
     It 'plan, apply and probe never act on an appliance' {
         Write-TestPlatform $t 'appliance'
         foreach ($words in $commands) {
