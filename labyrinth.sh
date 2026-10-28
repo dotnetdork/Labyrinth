@@ -263,10 +263,11 @@ EOF
     basics) cat <<EOF
 Usage: $SELF help basics
 
-Labyrinth makes this host harder to break into, in four phases run in
-order: lockout, observe, deceive and sustain. Each phase is a list of
-modules. A module does one small job, such as turning off SSH password
-logins. '$SELF help <module-id>' explains any module.
+Labyrinth makes this host harder to break into, in five phases run in
+order: lockout, harden, observe, deceive and sustain. The harden phase
+is not in this version yet. Each phase is a list of modules. A module
+does one small job, such as turning off SSH password logins.
+'$SELF help <module-id>' explains any module.
 
 1. Plan: '$SELF plan lockout' shows what each module would change.
    It changes nothing, so run it as often as you like.
