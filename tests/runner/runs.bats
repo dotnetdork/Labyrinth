@@ -53,9 +53,9 @@ streams() {
   [[ "${lines[0]}" == 'RUN                   PHASE   START (UTC)      STATE' ]]
   # Runs started in the same second sort by their random suffix, so each
   # run's line is found by its ID.
-  [[ "$(grep "^$a " <<< "$output")" == "$a observe "*" armed: rolls back at "??:??" UTC" ]]
+  [[ "$(grep "^$a " <<< "$output")" == "$a observe "*" armed: undo at "??:??" UTC" ]]
   [[ "$(grep "^$b " <<< "$output")" == "$b observe "*" kept" ]]
-  [[ "$(grep "^$c " <<< "$output")" == "$c observe "*" rolled back" ]]
+  [[ "$(grep "^$c " <<< "$output")" == "$c observe "*" undone" ]]
   [[ "$(grep "^$a " <<< "$output")" == *" ${a:0:4}-${a:4:2}-${a:6:2} ${a:9:2}:${a:11:2} "* ]]
   printf '%s\n' "${lines[@]:1:3}" | LC_ALL=C sort -c
   [[ "$output" == *"like '$SELF -k ${a: -4}'"* ]]
@@ -71,7 +71,7 @@ streams() {
   [[ "$output" == *"armed: was due 00:05 UTC"* ]]
   rm "$ROOT/state/runs/$a/timer-due"
   lab --history
-  [[ "$output" == *"armed: rollback time unknown"* ]]
+  [[ "$output" == *"armed: undo time unknown"* ]]
 }
 
 @test "an armed run whose timer systemd lost says so, and can still be kept" {

@@ -115,6 +115,19 @@ $script:LabOptions = @(
     @{ Name = 'approve'; Show = '-Approve'; Long = '-Approve'; Key = 'approve'; Short = ''; Value = $true; Action = $false }
     @{ Name = 'help'; Show = '-h'; Long = '-Help'; Key = 'help'; Short = 'h'; Value = $false; Action = $false }
 )
+# The flags that docs/Conventions.md section 3.3 plans and nothing builds yet:
+# the short letter, the long name's match key ('' when the name is already an
+# option) and how a message shows it. Typing one is a usage error that says
+# so; building one means moving its row up into LabOptions.
+$script:LabPlanned = @(
+    @{ Short = 'q'; Key = 'queue'; Show = '-Queue' }
+    @{ Short = 'a'; Key = ''; Show = '-Approve, with -Queue' }
+    @{ Short = 'd'; Key = 'decline'; Show = '-Decline, with -Queue' }
+    @{ Short = 'v'; Key = 'verbose'; Show = '-Verbose' }
+    @{ Short = 'y'; Key = 'yes'; Show = '-Yes' }
+    @{ Short = ''; Key = 'norevert'; Show = '-NoRevert' }
+    @{ Short = ''; Key = 'manual'; Show = '-Manual' }
+)
 $script:Arguments = @($args)     # the words, before any function runs
 $script:ArgPos = 0               # the next word of Arguments to read
 $script:Given = @{}              # canonical option name -> value given
@@ -168,17 +181,18 @@ $Labels = @('found', 'will do', 'did', 'why', 'risk', 'problem', 'cause', 'fix',
 
 # Show-LabHelp [TOPIC]: the main help, or one topic's, on stdout. A topic is
 # an action, an option, a phase or 'basics', by its canonical name. The text
-# is the same as labyrinth.sh's and writes the program's name as 'laby'. The
-# main page is at most 24 lines and each topic at most 18 (basics 24), of at
-# most 78 columns, with an Exit line, an Example line and a See also line
-# (docs/Conventions.md section 3.2).
+# is the same as labyrinth.sh's. It writes the program's name as @CMD@, and
+# the name as started ($Self) is put in until there is an installed 'laby'.
+# The main page is at most 24 lines and each topic at most 18 (basics 24), of
+# at most 78 columns with the name '.\labyrinth.ps1', with an Exit line, an
+# Example line and a See also line (docs/Conventions.md section 3.2).
 function Show-LabHelp {
     param([string] $Topic = '')
     $text = switch ($Topic) {
         '' { @'
-Usage: laby PHASE                preview a phase: nothing changes
-       laby -r PHASE             run a phase for real
-       laby ACTION [OPTIONS]
+Usage: @CMD@ PHASE                preview a phase: nothing changes
+       @CMD@ -r PHASE             run a phase for real
+       @CMD@ ACTION [OPTIONS]
 
 Actions (one per line):
   -r, --run               run a phase: plan, confirm, change
@@ -191,7 +205,8 @@ Actions (one per line):
 Options:
   -P, --profile NAME      profile to use, if not this host's line in hosts
   --root DIR              data root         --config DIR   configuration
-  --break-glass NAME, --confirm-group GROUP, --approve LIST: see laby -h run
+  --break-glass NAME, --confirm-group GROUP, --approve LIST:
+                          see @CMD@ -h run
   -h, --help [TOPIC]      help; TOPIC: an action, option, phase or basics
 
 Phases: lockout, observe, deceive, sustain. ID: a run ID or its last 4.
@@ -199,7 +214,7 @@ Exit: 0 ok, 10 change needed, 20 blocked, 30 check failed, 40 error.
 Full manual: docs/manual/labyrinth.md in the release
 '@ }
         'run' { @'
-Usage: laby -r PHASE [-P NAME] [--root DIR] [--config DIR]
+Usage: @CMD@ -r PHASE [-P NAME] [--root DIR] [--config DIR]
 
 Plan, then ask you to name the break-glass account (first run only)
 and to type this host's group name. Then change, checking each change;
@@ -214,11 +229,11 @@ Options:
 
 Exit: 0 done, 10 manual steps left, 20 blocked, 30 check failed, 40 error.
 Blocked: not root, another run, host not in hosts, or a safety gate.
-Example: laby -r lockout
-See also: laby -h lockout, laby -h keep, laby -h basics
+Example: @CMD@ -r lockout
+See also: @CMD@ -h lockout, -h keep, -h basics
 '@ }
         'keep' { @'
-Usage: laby -k ID [--root DIR] [--config DIR]
+Usage: @CMD@ -k ID [--root DIR] [--config DIR]
 
 Keep a run's changes: cancel its revert timer, then record the keep.
 ID is always needed: a run ID or its last 4 characters. Without it,
@@ -229,17 +244,17 @@ Options: --root DIR (data root), --config DIR (configuration folder)
 
 Exit: 0 kept, 20 blocked, 40 error.
 Blocked: not root, a file another account can change, or too late
-(the run was already rolled back).
-Example: laby -k 4f2a
-See also: laby --history, laby -h undo
+(the run was already undone).
+Example: @CMD@ -k 4f2a
+See also: @CMD@ --history, @CMD@ -h undo
 '@ }
         'undo' { @'
-Usage: laby -u ID [--all] [--root DIR] [--config DIR]
+Usage: @CMD@ -u ID [--all] [--root DIR] [--config DIR]
 
 Undo what the run changed, newest change first. This is what the
 revert timer runs. Safe to run twice. ID is always needed: a run ID or
-its last 4 characters; 'laby --history' lists them. Needs root or an
-Administrator.
+its last 4 characters; '@CMD@ --history' lists them. Needs root or
+an Administrator.
 
 Options:
   --all                  also undo changes kept once they verified
@@ -247,46 +262,46 @@ Options:
 
 Exit: 0 undone, 20 blocked, 40 error.
 Blocked: not root, or a file another account can change.
-Example: laby -u 4f2a
-See also: laby --history, laby -h keep
+Example: @CMD@ -u 4f2a
+See also: @CMD@ --history, @CMD@ -h keep
 '@ }
         'history' { @'
-Usage: laby --history [--root DIR] [--config DIR]
+Usage: @CMD@ --history [--root DIR] [--config DIR]
 
 List this host's runs, oldest first: run ID, phase, start time (UTC)
-and state: armed (and when it rolls back), kept, rolled back,
-rolled back with errors, or not kept, no timer. 'armed: timer lost'
+and state: armed (and when it is undone), kept, undone,
+undone with errors, or not kept, no timer. 'armed: timer lost'
 means the timer's files are gone and nothing will undo the run by
 itself: keep it or undo it. Changes nothing; needs root or an
 Administrator.
 
 Exit: 0 listed, 20 not root, 40 error.
-Example: laby --history
-See also: laby -h keep, laby -h undo
+Example: @CMD@ --history
+See also: @CMD@ -h keep, @CMD@ -h undo
 '@ }
         'probe' { @'
-Usage: laby --probe [--root DIR] [--config DIR]
+Usage: @CMD@ --probe [--root DIR] [--config DIR]
 
 Test every scored service once, the way the scoring engine would,
 and print one line per service. Changes nothing. Needs root or an
 Administrator to read the configuration.
 
 Exit: 0 all pass, 20 no service list, 30 a service failed, 40 error.
-Example: laby --probe
-See also: laby -h basics, laby --history
+Example: @CMD@ --probe
+See also: @CMD@ -h basics, @CMD@ --history
 '@ }
         'version' { @'
-Usage: laby -V
+Usage: @CMD@ -V
 
 Print the version of Labyrinth, which program printed it, and the
 release hash. --version does the same.
 
 Exit: 0 printed.
-Example: laby -V
-See also: laby -h
+Example: @CMD@ -V
+See also: @CMD@ -h
 '@ }
         'profile' { @'
-Usage: laby [-r] PHASE -P NAME
+Usage: @CMD@ [-r] PHASE -P NAME
 
 Use this profile, not the one in the hosts file. NAME is lower-case
 letters, digits and '-'. For a run it must match this host's line in
@@ -294,11 +309,11 @@ the hosts file. A preview shows what that profile would do.
 Used by: a preview and -r.
 
 Exit: 40 if NAME is not a valid profile name.
-Example: laby observe --profile linux-web
-See also: laby -h run, laby -h basics
+Example: @CMD@ observe --profile linux-web
+See also: @CMD@ -h run, @CMD@ -h basics
 '@ }
         'root' { @'
-Usage: laby ACTION --root DIR
+Usage: @CMD@ ACTION --root DIR
 
 The data root: where Labyrinth keeps its configuration (etc), run
 records (state), logs and backups. DIR must be a full path. The
@@ -306,11 +321,11 @@ default is the platform's own folder; the manual names it.
 Used by: every action.
 
 Exit: 40 if DIR is not a full path.
-Example: laby --history --root /srv/labyrinth
-See also: laby -h config
+Example: @CMD@ --history --root /srv/labyrinth
+See also: @CMD@ -h config
 '@ }
         'config' { @'
-Usage: laby ACTION --config DIR
+Usage: @CMD@ ACTION --config DIR
 
 The configuration folder, if it is not <root>/etc: the hosts file, the
 protected set and the event's other files. DIR must be a full path.
@@ -318,11 +333,11 @@ For a preview, -r and --probe it must exist.
 Used by: every action.
 
 Exit: 40 if DIR is not a full path or does not exist.
-Example: laby observe --config /srv/event-etc
-See also: laby -h root
+Example: @CMD@ observe --config /srv/event-etc
+See also: @CMD@ -h root
 '@ }
         'break-glass' { @'
-Usage: laby -r PHASE --break-glass NAME
+Usage: @CMD@ -r PHASE --break-glass NAME
 
 Answer the break-glass prompt without typing: NAME is the emergency
 account you are logged in with at the console. It must be listed with
@@ -330,11 +345,11 @@ the class breakglass in the protected set.
 Used by: -r only.
 
 Exit: 20 if NAME is not that account.
-Example: laby -r lockout --break-glass admin
-See also: laby -h run, laby -h confirm-group
+Example: @CMD@ -r lockout --break-glass admin
+See also: @CMD@ -h run, @CMD@ -h confirm-group
 '@ }
         'confirm-group' { @'
-Usage: laby -r PHASE --confirm-group GROUP
+Usage: @CMD@ -r PHASE --confirm-group GROUP
 
 Answer the group-name prompt without typing: GROUP is this host's group
 from the hosts file. A different name stops the run before anything
@@ -342,11 +357,11 @@ changes.
 Used by: -r only.
 
 Exit: 20 if GROUP is not this host's group.
-Example: laby -r lockout --confirm-group ring1
-See also: laby -h run, laby -h break-glass
+Example: @CMD@ -r lockout --confirm-group ring1
+See also: @CMD@ -h run, @CMD@ -h break-glass
 '@ }
         'approve' { @'
-Usage: laby -r PHASE --approve LIST
+Usage: @CMD@ -r PHASE --approve LIST
 
 Approve items without the approval prompt. LIST is comma-separated
 entries, module-id:item-id@fingerprint, pasted from a preview. A
@@ -354,11 +369,11 @@ category is not accepted: it could include items you never saw.
 Used by: -r only.
 
 Exit: 40 if an entry is malformed.
-Example: laby -r harden --approve module-id:item-id@2a2c17aaaf66
-See also: laby -h run, laby -h basics
+Example: @CMD@ -r harden --approve module-id:item-id@2a2c17aaaf66
+See also: @CMD@ -h run, @CMD@ -h basics
 '@ }
         'all' { @'
-Usage: laby -u ID --all
+Usage: @CMD@ -u ID --all
 
 Also undo the changes that were kept once they verified, such as a
 new admin password. Undoing those can give an intruder their access
@@ -366,83 +381,83 @@ back: if a password changes back, rotate it again.
 Used by: -u only.
 
 Exit: as for -u.
-Example: laby -u 4f2a --all
-See also: laby -h undo
+Example: @CMD@ -u 4f2a --all
+See also: @CMD@ -h undo
 '@ }
         'lockout' { @'
-Usage: laby lockout [-P NAME]
-       laby -r lockout
+Usage: @CMD@ lockout [-P NAME]
+       @CMD@ -r lockout
 
 The first phase: take control back from the attacker. Its modules
 change the host quickly, behind a revert timer.
-laby lockout only previews: nothing changes and nothing is written.
+@CMD@ lockout only previews: nothing changes and nothing is written.
 
 Exit: 0 nothing to do, 10 change needed, 20 blocked, 40 error.
-Example: laby lockout
-See also: laby -h run, laby -h basics
+Example: @CMD@ lockout
+See also: @CMD@ -h run, @CMD@ -h basics
 '@ }
         'observe' { @'
-Usage: laby observe [-P NAME]
-       laby -r observe
+Usage: @CMD@ observe [-P NAME]
+       @CMD@ -r observe
 
 The phase that shows what is happening on the host. Its modules
 look, and change only what a person approves.
-laby observe only previews: nothing changes and nothing is written.
+@CMD@ observe only previews: nothing changes and nothing is written.
 
 Exit: 0 nothing to do, 10 change needed, 20 blocked, 40 error.
-Example: laby observe
-See also: laby -h run, laby -h basics
+Example: @CMD@ observe
+See also: @CMD@ -h run, @CMD@ -h basics
 '@ }
         'deceive' { @'
-Usage: laby deceive [-P NAME]
-       laby -r deceive
+Usage: @CMD@ deceive [-P NAME]
+       @CMD@ -r deceive
 
 The phase that plants traps to give an attacker away.
-laby deceive only previews: nothing changes and nothing is written.
+@CMD@ deceive only previews: nothing changes and nothing is written.
 
 Exit: 0 nothing to do, 10 change needed, 20 blocked, 40 error.
-Example: laby deceive
-See also: laby -h run, laby -h basics
+Example: @CMD@ deceive
+See also: @CMD@ -h run, @CMD@ -h basics
 '@ }
         'sustain' { @'
-Usage: laby sustain [-P NAME]
-       laby -r sustain
+Usage: @CMD@ sustain [-P NAME]
+       @CMD@ -r sustain
 
 The phase that keeps everything running and lets you undo mistakes.
-laby sustain only previews: nothing changes and nothing is written.
+@CMD@ sustain only previews: nothing changes and nothing is written.
 
 Exit: 0 nothing to do, 10 change needed, 20 blocked, 40 error.
-Example: laby sustain
-See also: laby -h run, laby -h basics
+Example: @CMD@ sustain
+See also: @CMD@ -h run, @CMD@ -h basics
 '@ }
         'basics' { @'
-Usage: laby -h basics
+Usage: @CMD@ -h basics
 
 Labyrinth makes this host harder to break into in five phases, in order:
 lockout, harden (later), observe, deceive, sustain. Each phase is a list of
 modules. A module does one small job, such as turning off password
-logins. 'laby -h MODULE-ID' explains any module.
+logins. '@CMD@ -h MODULE-ID' explains any module.
 
-1. Preview: 'laby lockout' shows what each module would change.
+1. Preview: '@CMD@ lockout' shows what each module would change.
    It changes nothing, so run it as often as you like.
-2. Run: 'laby -r lockout' plans again, has you name the break-glass
+2. Run: '@CMD@ -r lockout' plans again, has you name the break-glass
    account the first time, asks you to type this host's group name,
    then makes the changes and checks each one.
 3. Keep: a run is named by an ID; its last 4 characters are enough.
    A revert timer undoes the run after a few minutes unless you keep
    it, so a change that locks you out undoes itself. Log in from a
-   new session, and if that works, run 'laby -k ID'.
+   new session, and if that works, run '@CMD@ -k ID'.
 
-To undo a run yourself: 'laby -u ID'. To list the runs: 'laby --history'.
+To undo a run: @CMD@ -u ID; to list runs: @CMD@ --history.
 Scored services are the ones the scoring engine tests. Labyrinth tests
 them before and after each change, and undoes a change that breaks one.
-To test them now: 'laby --probe'.
+To test them now: '@CMD@ --probe'.
 
 Exit: 0 printed.
-Example: laby -h basics
+Example: @CMD@ -h basics
 '@ }
     }
-    foreach ($l in ($text -split "`r?`n")) { [Console]::Out.WriteLine($l) }
+    foreach ($l in ($text -split "`r?`n")) { [Console]::Out.WriteLine($l.Replace('@CMD@', $Self)) }
 }
 
 # Get-LabRiskWord RISK: what a module's risk means, in plain words.
@@ -619,11 +634,33 @@ function Get-LabOptionKey {
     return @($script:LabOptions | ForEach-Object { $_.Key })
 }
 
-# Add-LabUnknownOption WORD KEY: note an unknown long option, with a near
-# miss.
+# Find-LabPlanned SHORT KEY: the row of the planned flag with this short
+# letter or this long-name key (pass '' for the one not asked), or $null.
+function Find-LabPlanned {
+    param([string] $Letter, [string] $Key)
+    foreach ($p in $script:LabPlanned) {
+        if ($Letter -ne '' -and $p.Short -ne '' -and $p.Short -ceq $Letter) { return $p }
+        if ($Key -ne '' -and $p.Key -ne '' -and $p.Key -ceq $Key) { return $p }
+    }
+    return $null
+}
+
+# Add-LabPlannedError TYPED ROW: note that a planned flag is not built. A
+# short letter is shown with its long name.
+function Add-LabPlannedError {
+    param([string] $Typed, $Row)
+    $more = ''
+    if ($Typed.Length -eq 2) { $more = " ($($Row.Show))" }
+    Add-LabParseError "'$Typed'$more is planned and not built yet"
+}
+
+# Add-LabUnknownOption WORD KEY: note an unknown long option: a planned one,
+# or with a near miss.
 function Add-LabUnknownOption {
     param([string] $Word, [string] $Key)
     $shown = ($Word -split '[=:]', 2)[0]
+    $planned = Find-LabPlanned '' $Key
+    if ($null -ne $planned) { Add-LabPlannedError $shown $planned; return }
     $hint = Get-LabSuggestion $Key (Get-LabOptionKey)
     if ($hint -ne '') {
         $h = Find-LabOption $hint
@@ -639,8 +676,14 @@ function Add-LabUnknownOption {
 function Add-LabStackError {
     param([string] $Word, [string] $Key, [string] $Bad)
     $shown = ($Word -split '[=:]', 2)[0]
+    if ($Key.Length -gt 1) {
+        $planned = Find-LabPlanned '' $Key.ToLowerInvariant().Replace('-', '')
+        if ($null -ne $planned) { Add-LabPlannedError $shown $planned; return }
+    }
+    $planned = Find-LabPlanned $Bad ''
+    if ($null -ne $planned) { Add-LabPlannedError "-$Bad" $planned; return }
     if ($Key.Length -eq 1) {
-        # A lone letter of the wrong case is the commonest slip: -v for -V.
+        # A lone letter of the wrong case is the commonest slip: -P for -p.
         $other = $Bad.ToUpperInvariant()
         if ($other -ceq $Bad) { $other = $Bad.ToLowerInvariant() }
         if ($null -ne (Find-LabShort $other)) {
@@ -930,7 +973,7 @@ function Exit-LabRelease {
     if (Test-LabUndoAsked) {
         $exe = Join-Path $env:SystemRoot 'System32\msg.exe'
         if (Test-Path -LiteralPath $exe -PathType Leaf) {
-            try { $null = & $exe '*' '/TIME:900' "Labyrinth did not roll back on ${env:COMPUTERNAME}: its files differ from the release, so the changes are still in place." 2>$null } catch { $null = $_ }
+            try { $null = & $exe '*' '/TIME:900' "Labyrinth did not undo the changes on ${env:COMPUTERNAME}: its files differ from the release, so they are still in place." 2>$null } catch { $null = $_ }
         }
     }
     Exit-Lab "$($script:Release.Problem), so Labyrinth will not run" 20 "Copy Labyrinth here again from the team's copy, as manual section 11 says."
@@ -1277,7 +1320,7 @@ function Add-LabProblemMark {
 function Get-LabRunStopped {
     'The run stopped. Earlier changes stay until the revert timer undoes them.'
     $when = Get-LabDueWord $env:LAB_RUN_ID
-    if ($when -ne '') { "The revert timer rolls this run back $when." }
+    if ($when -ne '') { "The revert timer undoes this run $when." }
     $short = Get-LabShortId $env:LAB_RUN_ID
     "To undo them now: $Self -u $short"
     "To keep them now: $Self -k $short"
@@ -1314,8 +1357,8 @@ function Get-LabRecovery {
     if ($script:RunRef -ne '') { $short = Get-LabShortId $script:RunRef }
     switch ($script:Command) {
         'rollback' {
-            if ($short -ne '') { return @('The rollback did not finish, and it is safe to repeat.', "Retry: $Self -u $short") }
-            return 'Nothing was rolled back.'
+            if ($short -ne '') { return @('The undo did not finish, and it is safe to repeat.', "Retry: $Self -u $short") }
+            return 'Nothing was undone.'
         }
         'keep' {
             if ($short -ne '') { return @("The run may not be kept; '$Self -History' shows its state.", "Retry: $Self -k $short") }
@@ -1886,19 +1929,19 @@ function Undo-LabModule {
             Add-LabEntryFor $Id 'rolled_back'
         } catch {
             Write-LabStatus 'ERROR' $name
-            Write-LabDetail 'Problem' 'rolled back, but the manifest cannot be written'
-            Write-LabDetail 'Found' 'the manifest still lists the change; rolling back again is safe'
+            Write-LabDetail 'Problem' 'undone, but the manifest cannot be written'
+            Write-LabDetail 'Found' 'the manifest still lists the change; undoing it again is safe'
             Write-LabDetail 'Fix' "run $Self -u $run again"
             Write-LabLogPath; Write-LabMore $Id
             return 40
         }
         if (-not $Inline) { Write-LabStatus 'OK' $name }
-        Write-LabDetail 'Did' 'rolled back'
+        Write-LabDetail 'Did' 'undone'
         Write-LabLogFor $Id 'warn' 'rolled_back' 'rolled back'
         return 0
     }
     Write-LabStatus 'ERROR' $name
-    Write-LabDetail 'Problem' "its rollback stopped with exit code $rc; the change may still be in place"
+    Write-LabDetail 'Problem' "its undo stopped with exit code $rc; the change may still be in place"
     if (Test-Path -LiteralPath $script_ -PathType Leaf) { Write-LabDetail 'Script' $script_ }
     Write-LabDetail 'Fix' "restore its files by hand from $(Join-Path (Join-Path $env:LAB_BACKUP_DIR $env:LAB_RUN_ID) $Id)"
     Write-LabLogPath; Write-LabMore $Id
@@ -2519,7 +2562,7 @@ function Invoke-LabApplyCommand {
         Write-LabLine 'All changes are applied and verified.'
         Write-LabLine 'From a NEW session, check that you can still log in.'
         $when = Get-LabDueWord $env:LAB_RUN_ID
-        if ($when -ne '') { Write-LabLine "The revert timer rolls this run back $when." }
+        if ($when -ne '') { Write-LabLine "The revert timer undoes this run $when." }
         $ok = Read-LabAnswer 'Type keep to keep the changes, or press Enter to leave them to the timer: '
         if ($ok -and $script:Answer -ceq 'keep') {
             $rc = Invoke-LabKeep
@@ -2543,7 +2586,7 @@ function Invoke-LabKeep {
     if (-not (Enter-LabLock -WaitSeconds 10)) { return 20 }
     try {
         if (Test-LabRunRolledBack) {
-            Write-LabErrorLine "labyrinth: too late: run $env:LAB_RUN_ID was already rolled back"
+            Write-LabErrorLine "labyrinth: too late: run $env:LAB_RUN_ID was already undone"
             Write-LabErrorLine 'Its changes are gone. Preview and run it again if you still want them.'
             return 20
         }
@@ -2554,7 +2597,7 @@ function Invoke-LabKeep {
             $when = Get-LabDueWord $env:LAB_RUN_ID
             if ($when -ne '') { $when = " $when" }
             Write-LabErrorLine "labyrinth: the revert timer for run $env:LAB_RUN_ID could not be cancelled"
-            Write-LabErrorLine "The run is not kept, and the timer still rolls it back$when."
+            Write-LabErrorLine "The run is not kept, and the timer still undoes it$when."
             Write-LabErrorLine "Retry: $Self -k $(Get-LabShortId $env:LAB_RUN_ID)"
             return 40
         }
@@ -2591,16 +2634,16 @@ function Get-LabRunState {
     $entries = @(Get-LabManifestEntry -RunId $RunId)
     $rolled = @($entries | Where-Object { $_.action -ceq 'run_rolled_back' })
     if ($rolled.Count -gt 0) {
-        if ($rolled[-1].note -ceq 'exit 0') { return 'rolled back' }
-        return 'rolled back with errors'
+        if ($rolled[-1].note -ceq 'exit 0') { return 'undone' }
+        return 'undone with errors'
     }
     if (@($entries | Where-Object { $_.action -ceq 'run_kept' }).Count -gt 0) { return 'kept' }
     if (Test-LabRevertTimer -RunId $RunId) {
         $due = Get-LabRevertTimerDue -RunId $RunId
-        if ($due -eq '') { return 'armed: rollback time unknown' }
+        if ($due -eq '') { return 'armed: undo time unknown' }
         # The times are UTC in one fixed format, so they compare as strings.
         $now = [DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ', [Globalization.CultureInfo]::InvariantCulture)
-        if ([string]::CompareOrdinal($due, $now) -gt 0) { return "armed: rolls back at $($due.Substring(11, 5)) UTC" }
+        if ([string]::CompareOrdinal($due, $now) -gt 0) { return "armed: undo at $($due.Substring(11, 5)) UTC" }
         return "armed: was due $($due.Substring(11, 5)) UTC"
     }
     return 'not kept, no timer'
@@ -2707,6 +2750,7 @@ function Invoke-LabRollbackCommand {
         # -u always needs a run (decision D3): list them, change nothing.
         $need = '-u needs a run ID, or its last 4 characters'
         if (-not (Test-LabAdmin)) { Exit-LabUsage $need "As Administrator, '$Self -History' lists them." }
+        Assert-LabTrustedTree
         $runs = @(Get-LabRunList)
         if ($runs.Count -eq 0) { Exit-LabUsage $need 'There are no runs on this host.' }
         foreach ($l in (Get-LabRunTable $runs)) { [Console]::Error.WriteLine($l) }
@@ -2726,7 +2770,7 @@ function Invoke-LabRollbackCommand {
         [void](Close-LabLockHolder -WaitSeconds 30)
         $locked = Enter-LabLock -WaitSeconds 10
     }
-    if (-not $locked) { [Console]::Error.WriteLine('labyrinth: warning: rolling back without the run lock') }
+    if (-not $locked) { [Console]::Error.WriteLine('labyrinth: warning: undoing without the run lock') }
     try {
         $rc = 0
         $ok = 0
@@ -2741,8 +2785,8 @@ function Invoke-LabRollbackCommand {
         }
         # A rollback started by the revert timer is logged too, though no
         # one watches it.
-        Open-LabRunLog "rollback run $env:LAB_RUN_ID"
-        Write-LabLine "labyrinth ${LabVersion}: rollback run $env:LAB_RUN_ID"
+        Open-LabRunLog "undo run $env:LAB_RUN_ID"
+        Write-LabLine "labyrinth ${LabVersion}: undo run $env:LAB_RUN_ID"
         if ($left.Count -gt 0) {
             Write-LabLine 'Kept once verified, so left in place (add -All to undo these too):'
             foreach ($id in $left) {
@@ -2771,19 +2815,19 @@ function Invoke-LabRollbackCommand {
         } catch {
             Write-LabErrorLine $_.Exception.Message
             Write-LabErrorLine "labyrinth: warning: the revert timer for run $env:LAB_RUN_ID could not be removed"
-            Write-LabErrorLine 'When it fires, it repeats this rollback, which is safe.'
+            Write-LabErrorLine 'When it fires, it repeats this undo, which is safe.'
         }
         try {
             Add-LabEntryFor '' 'run_rolled_back' '' "exit $rc"
         } catch {
             Write-LabErrorLine $_.Exception.Message
-            Write-LabErrorLine 'labyrinth: rolled back, but the manifest cannot be written to record it'
+            Write-LabErrorLine 'labyrinth: the changes are undone, but the manifest cannot be written to record it'
             $rc = 40
         }
         Write-LabLogFor '' 'warn' 'run_rolled_back' "run rolled back, exit $rc"
         if ($ok + $bad -gt 0) {
             # Whoever is logged in learns that changes were undone; best effort.
-            [void](Send-LabNotice -Message "Labyrinth rolled back run $env:LAB_RUN_ID on $(Get-LabHostName): its changes are undone. See '$Self -History'.")
+            [void](Send-LabNotice -Message "Labyrinth undid run $env:LAB_RUN_ID on $(Get-LabHostName): its changes are undone. See '$Self -History'.")
         }
         Write-LabLine ''
         $parts = @()
@@ -2794,12 +2838,12 @@ function Invoke-LabRollbackCommand {
         else { Write-LabLine "Summary: $($ok + $bad) modules: $($parts -join ', ')." }
         if ($script:LogFile -ne '') { Write-LabLine "Log: $($script:LogFile)" }
         if ($rc -eq 0) {
-            Write-LabLine 'rollback finished: exit 0 (rolled back)'
+            Write-LabLine 'undo finished: exit 0 (undone)'
         } else {
             Add-LabProblemMark
-            Write-LabLine 'Next: fix what is listed above, then run the rollback again; it is safe:'
+            Write-LabLine 'Next: fix what is listed above, then undo it again; it is safe:'
             Write-LabLine "  $Self -u $(Get-LabShortId $env:LAB_RUN_ID)"
-            Write-LabLine "rollback finished: exit $rc (error)"
+            Write-LabLine "undo finished: exit $rc (error)"
         }
     } finally {
         if ($locked) { Exit-LabLock }

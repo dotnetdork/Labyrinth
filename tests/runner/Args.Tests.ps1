@@ -165,14 +165,15 @@ Describe 'labyrinth.ps1 command line' {
         (@($out) | ForEach-Object { "$_" }) -join "`n" | Should -Match "no run ending in '1234'"
     }
 
-    It '-v and -p give the near-miss hint for -V and -P, not an internal error' {
-        $r = Invoke-TestLabCapture $t @('-v')
-        $r.Code | Should -Be 40
-        $r.Err | Should -Match ([regex]::Escape("unknown option '-v' (did you mean '-V', the version?)"))
-        $r.Err | Should -Not -Match 'At line:|Exception|CategoryInfo'
+    It '-p gets the case-slip hint for -P, and -v says it is planned, not a slip for -V' {
         $r = Invoke-TestLabCapture $t @('-p')
         $r.Code | Should -Be 40
         $r.Err | Should -Match ([regex]::Escape("unknown option '-p' (did you mean '-P', the profile?)"))
         $r.Err | Should -Not -Match 'At line:|Exception|CategoryInfo'
+        $r = Invoke-TestLabCapture $t @('-v')
+        $r.Code | Should -Be 40
+        $r.Err | Should -Match ([regex]::Escape("'-v' (-Verbose) is planned and not built yet"))
+        $r.Err | Should -Match ([regex]::Escape("Try '$($t.Self) -h'."))
+        $r.Err | Should -Not -Match 'did you mean|At line:|Exception|CategoryInfo'
     }
 }

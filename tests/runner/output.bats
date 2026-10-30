@@ -238,7 +238,7 @@ LABELS='Found|Will do|Did|Why|Risk|Problem|Cause|Fix|Undo|Note|Log|Script|It sai
   n="$(line_of 'FAIL     Toggle setting sample (observe.toggle)')"
   [ "${lines[n]}" = '  Problem:   its verify script failed with exit code 30 and gave no reason' ]
   [ "${lines[n+1]}" = "  Script:    $LAB/phases/observe/modules/toggle/verify.sh" ]
-  grep -qx '  Did:       rolled back' <<< "$output"
+  grep -qx '  Did:       undone' <<< "$output"
   grep -qx "  Log:       $ROOT/state/runs/$(run_id)/output.log" <<< "$output"
   grep -qxF "  More:      $SELF -h observe.toggle" <<< "$output"
   [[ "$output" == *'Summary: 1 module: 1 FAIL.'* ]]
@@ -272,14 +272,14 @@ LABELS='Found|Will do|Did|Why|Risk|Problem|Cause|Fix|Undo|Note|Log|Script|It sai
   [[ "$output" == *'Keep a second session open until you have checked you can log in.'* ]]
 }
 
-@test "apply: before the keep prompt, the time the revert timer rolls the run back" {
+@test "apply: before the keep prompt, the time the revert timer undoes the run" {
   profile observe.toggle
   answers root ring1 no
   apply
   [ "$status" -eq 0 ]
   id="$(run_id)"
   due="$(cat "$ROOT/state/runs/$id/timer-due")"
-  a="$(line_of "The revert timer rolls this run back at ${due:11:5} UTC, ")"
+  a="$(line_of "The revert timer undoes this run at ${due:11:5} UTC, ")"
   b="$(line_of 'Type keep to keep')"
   [ -n "$a" ] && (( a <= b ))
   [[ "$output" == *"Next: check you can log in from a NEW session, then '$SELF -k ${id: -4}'."* ]]
@@ -393,9 +393,9 @@ LABELS='Found|Will do|Did|Why|Risk|Problem|Cause|Fix|Undo|Note|Log|Script|It sai
   run "${cmd[@]}"
   [ "$status" -eq 0 ]
   local log="$ROOT/state/runs/$id/output.log"
-  grep -q "labyrinth [^ ]*: rollback run $id" "$log"
-  grep -qx '  Did:       rolled back' "$log"
-  grep -qx 'rollback finished: exit 0 (rolled back)' "$log"
+  grep -q "labyrinth [^ ]*: undo run $id" "$log"
+  grep -qx '  Did:       undone' "$log"
+  grep -qx 'undo finished: exit 0 (undone)' "$log"
 }
 
 @test "probe: a header, a status line per service, Summary, Next and finished" {
@@ -442,9 +442,9 @@ LABELS='Found|Will do|Did|Why|Risk|Problem|Cause|Fix|Undo|Note|Log|Script|It sai
   [ "$status" -eq 0 ]
   # A copy with no release list warns first (design 21, section 5.1).
   mapfile -t lines < <(grep -v -e '^labyrinth: warning: ' -e '^$' <<< "$output")
-  [ "${lines[0]}" = "labyrinth $(sed -n "s/^readonly LAB_VERSION='\(.*\)'$/\1/p" "$LAB/labyrinth.sh"): rollback run $id" ]
+  [ "${lines[0]}" = "labyrinth $(sed -n "s/^readonly LAB_VERSION='\(.*\)'$/\1/p" "$LAB/labyrinth.sh"): undo run $id" ]
   grep -qx 'OK       Toggle setting sample (observe.toggle)' <<< "$output"
   [ "${lines[${#lines[@]}-3]}" = 'Summary: 1 module: 1 OK.' ]
   [ "${lines[${#lines[@]}-2]}" = "Log: $ROOT/state/runs/$id/output.log" ]
-  [ "${lines[${#lines[@]}-1]}" = 'rollback finished: exit 0 (rolled back)' ]
+  [ "${lines[${#lines[@]}-1]}" = 'undo finished: exit 0 (undone)' ]
 }

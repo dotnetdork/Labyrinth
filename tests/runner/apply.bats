@@ -201,7 +201,7 @@ setup() {
   apply
   [ "$status" -eq 30 ]
   [[ "$output" == *"its verify script failed"* ]]
-  grep -qx '  Did:       rolled back' <<< "$output"
+  grep -qx '  Did:       undone' <<< "$output"
   grep -qx 'setting=off' "$LAB/toggle.conf"
   [ "$(stat -c %a "$LAB/toggle.conf")" = 600 ] || [[ "$OSTYPE" == msys* || "$OSTYPE" == cygwin* ]]
   [[ "$(manifest)" == *'"action":"rolled_back"'* ]]
@@ -284,7 +284,7 @@ setup() {
   [ "$status" -eq 30 ]
   [[ "$output" == *"a scored service stopped working after the change: web"* ]]
   grep -qx '  Found:     web: fail (fake probe); it passed before' <<< "$output"
-  grep -qx '  Did:       rolled back' <<< "$output"
+  grep -qx '  Did:       undone' <<< "$output"
   [ ! -e "$LAB/probe-state" ]
 }
 
@@ -295,7 +295,7 @@ setup() {
   [ "$status" -eq 30 ]
   [[ "$output" != *'scoring allowlist is missing'* ]]
   [[ "$output" == *"a scored service stopped working after the change: web"* ]]
-  grep -qx '  Did:       rolled back' <<< "$output"
+  grep -qx '  Did:       undone' <<< "$output"
   [ ! -e "$LAB/probe-state" ]
 }
 

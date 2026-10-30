@@ -14,14 +14,28 @@ OPTIONS='profile root config break-glass confirm-group approve all'
 PHASES='lockout observe deceive sustain'
 TOPICS="$ACTIONS $OPTIONS $PHASES"
 
+# Help writes the name the runner was started by (until there is an installed
+# 'laby'). ask shows that name as 'laby', so the tests read the same as the
+# manual; here starts the runner as ./labyrinth.sh and leaves the output as it
+# is, for the limits on lines and columns, which hold with that name.
+
 # ask ARG...: run labyrinth.sh with ARG..., which must print help
-ask() { run bash "$LAB/labyrinth.sh" "$@" < /dev/null; }
+ask() {
+  run bash "$LAB/labyrinth.sh" "$@" < /dev/null
+  output="${output//"$LAB/labyrinth.sh"/laby}"
+  mapfile -t lines <<< "$output"
+}
+
+# here ARG...: the same, started as ./labyrinth.sh from the runner's folder
+here() { cd "$LAB" && run bash ./labyrinth.sh "$@" < /dev/null; }
 
 @test "the main help is one screen: Usage, Actions and Options, the manual last" {
-  ask -h
+  here -h
   [ "$status" -eq 0 ]
   [ "$(wc -l <<< "$output")" -le 24 ]
   [ "$(awk '{ if (length > w) w = length } END { print w + 0 }' <<< "$output")" -le 78 ]
+  [ "$(head -n 1 <<< "$output")" = 'Usage: ./labyrinth.sh PHASE                preview a phase: nothing changes' ]
+  ask -h
   [ "$(head -n 1 <<< "$output")" = 'Usage: laby PHASE                preview a phase: nothing changes' ]
   grep -q '^Actions' <<< "$output"
   grep -q '^Options:' <<< "$output"
@@ -33,13 +47,13 @@ ask() { run bash "$LAB/labyrinth.sh" "$@" < /dev/null; }
 @test "every topic is short, fits 78 columns, and has one Usage, one Exit, an Example and See also" {
   local t max
   for t in $TOPICS basics; do
-    ask -h "$t"
+    here -h "$t"
     [ "$status" -eq 0 ] || { echo "-h $t: exit $status"; return 1; }
     case "$t" in basics) max=24 ;; *) max=18 ;; esac
     [ "$(wc -l <<< "$output")" -le "$max" ] || { echo "-h $t: over $max lines"; return 1; }
     [ "$(awk '{ if (length > w) w = length } END { print w + 0 }' <<< "$output")" -le 78 ] \
       || { echo "-h $t: a line is over 78 columns"; return 1; }
-    [[ "$(head -n 1 <<< "$output")" == 'Usage: laby '* ]] || { echo "-h $t: no Usage line"; return 1; }
+    [[ "$(head -n 1 <<< "$output")" == 'Usage: ./labyrinth.sh '* ]] || { echo "-h $t: no Usage line"; return 1; }
     [ "$(grep -c '^Exit: ' <<< "$output")" -eq 1 ] || { echo "-h $t: Exit lines"; return 1; }
     [ "$(grep -c '^Example: ' <<< "$output")" -eq 1 ] || { echo "-h $t: Example lines"; return 1; }
     if [[ "$t" != basics ]]; then
@@ -48,13 +62,18 @@ ask() { run bash "$LAB/labyrinth.sh" "$@" < /dev/null; }
   done
 }
 
-@test "the help names the command laby, not the way the runner was started" {
-  ask -h
-  [[ "$output" != *"$SELF"* ]]
-  [[ "$output" != *labyrinth.sh* ]]
-  ask -h run
-  [[ "$output" != *"$SELF"* ]]
-  [[ "$output" == *'Example: laby -r lockout'* ]]
+@test "the help names the command the way the runner was started, as hints do" {
+  here -h
+  [[ "$output" == *'./labyrinth.sh -r PHASE'* ]]
+  ! grep -qw laby <<< "$output"
+  [[ "$output" != *@CMD@* ]]
+  here -h run
+  [[ "$output" == *'Example: ./labyrinth.sh -r lockout'* ]]
+  ! grep -qw laby <<< "$output"
+  run env SUDO_USER=someone bash ./labyrinth.sh -h run < /dev/null
+  [[ "$output" == *'Example: sudo ./labyrinth.sh -r lockout'* ]]
+  run bash "$LAB/labyrinth.sh" -h basics < /dev/null
+  [[ "$output" == *"'$LAB/labyrinth.sh lockout'"* ]]
 }
 
 @test "an action, its long name and its topic word print the same page" {
@@ -180,7 +199,7 @@ ask() { run bash "$LAB/labyrinth.sh" "$@" < /dev/null; }
     grep -qi 'needs root' <<< "$output" || { echo "-h $t: no root note"; return 1; }
   done
   ask -h history
-  for s in armed kept 'rolled back' 'rolled back with errors' 'not kept, no timer' 'armed: timer lost'; do
+  for s in armed kept undone 'undone with errors' 'not kept, no timer' 'armed: timer lost'; do
     [[ "$output" == *"$s"* ]] || { echo "-h history: no '$s'"; return 1; }
   done
 }
@@ -218,8 +237,8 @@ ask() { run bash "$LAB/labyrinth.sh" "$@" < /dev/null; }
   [[ "$output" == *"'laby lockout'"* ]]
   [[ "$output" == *"'laby -r lockout'"* ]]
   [[ "$output" == *"'laby -k ID'"* ]]
-  [[ "$output" == *"'laby -u ID'"* ]]
-  [[ "$output" == *"'laby --history'"* ]]
+  [[ "$output" == *"laby -u ID;"* ]]
+  [[ "$output" == *"laby --history."* ]]
   [[ "$output" == *"'laby --probe'"* ]]
 }
 

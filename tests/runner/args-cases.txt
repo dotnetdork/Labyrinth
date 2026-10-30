@@ -35,9 +35,7 @@
 #
 # Options: near misses, values and stacks of letters.
 40|err|unknown option '-p' (did you mean '-P', the profile?)|-p test observe
-40|err|unknown option '-v' (did you mean '-V', the version?)|-v
 40|err|unknown option '-x'|-x
-40|err|in '-Verbose'|observe -Verbose
 40|err|did you mean|--profle test observe
 40|err|did you mean|observe -Prof test
 40|err|needs a value, but got '--root'|--profile --root @ROOT@ observe
@@ -53,13 +51,29 @@
 40|err|full path|--config etc observe
 40|err|invalid profile name|--profile A;B observe
 #
-# Flags that are planned but not built are ordinary unknown options.
-40|err|unknown option '-a'|-a observe
-40|err|unknown option '-q'|-q observe
-40|err|unknown option '-d'|-d observe
-40|err|unknown option '-y'|-y observe
-40|err|unknown option '--no-revert'|-r observe --no-revert
-40|err|unknown option '--manual'|--manual
+# Flags that are planned (docs/Conventions.md 3.3) but not built say so. A
+# letter is shown with its long name, which each runner spells its own way,
+# so the cases check the two halves of the message apart. -v is not a case
+# slip for -V, and -p still is one for -P (above).
+40|err|'-v' (|-v
+40|err|is planned and not built yet|-v
+40|err|'-q' (|-q observe
+40|err|is planned and not built yet|-q observe
+40|err|'-a' (|-a observe
+40|err|is planned and not built yet|-a observe
+40|err|'-d' (|-d observe
+40|err|is planned and not built yet|-d observe
+40|err|'-y' (|-y observe
+40|err|is planned and not built yet|-y observe
+40|err|'-v' (|-rv observe
+40|err|'--verbose' is planned and not built yet|--verbose observe
+40|err|'-Verbose' is planned and not built yet|observe -Verbose
+40|err|'--queue' is planned and not built yet|--queue
+40|err|'--decline' is planned and not built yet|--decline 1
+40|err|'--yes' is planned and not built yet|-r observe --yes
+40|err|'--no-revert' is planned and not built yet|-r observe --no-revert
+40|err|'--manual' is planned and not built yet|--manual
+40|err|unknown option '-Q'|-Q
 #
 # One action per line.
 40|err|two actions on one line: -r and -k|-r observe -k 4f2a

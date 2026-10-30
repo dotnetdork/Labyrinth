@@ -90,7 +90,7 @@ Entry points load the core library from `LAB_ROOT/core/` and never from a relati
 
 ### 3.1 Commands, options, gates and the order of an apply
 
-Both runners share one vocabulary. In this section `laby` stands for the installed command, or for `labyrinth.sh` / `labyrinth.ps1` run directly (design 00, section 5). Until the installer exists (section 3.3), run the script directly. The planned additions of section 3.3 are not accepted yet: typing one is an ordinary usage error (`unknown option`).
+Both runners share one vocabulary. In this section `laby` stands for the installed command, or for `labyrinth.sh` / `labyrinth.ps1` run directly (design 00, section 5). Until the installer exists (section 3.3), run the script directly. The planned additions of section 3.3 are not accepted yet: typing one is a usage error (`40`) that says the flag is planned and not built yet.
 
 ```
 laby [PHASE] [options]          preview a phase
@@ -108,7 +108,7 @@ A line holds one **action**, or only a phase.
 | `laby -r PHASE` / `--run` | Preview, then run the phase behind the gates below. `-r` may come before or after the phase |
 | `laby -k ID` / `--keep ID` | Keep a run's changes: cancel its revert timer, then record the keep. The ID is always needed: `-k` alone is a usage error (`40`) that lists the armed runs and their IDs |
 | `laby -u ID` / `--undo ID` | Undo what a run applied, newest module first, except the modules kept once they verified (`keep_on_verify`, below); `--all` (only with `-u`) undoes those too. The revert timer runs exactly this form. The ID is always needed: without it, the runs are listed (`40`). When it undid anything, it writes a notice to every terminal or session logged in on the host (`wall` on Linux, `msg` on Windows; best effort), so the team learns of an undo no one was watching |
-| `laby --history` | List this host's runs, oldest first: ID, phase, start time (UTC) and state, which is `armed` (with the time it is undone; on Linux, `armed: timer lost` when systemd no longer has the timer, because its unit files are missing or broken), `kept`, `rolled back`, `rolled back with errors`, or `not kept, no timer`. Changes nothing; needs root or Administrator (`20`) |
+| `laby --history` | List this host's runs, oldest first: ID, phase, start time (UTC) and state, which is `armed` (with the time it is undone; on Linux, `armed: timer lost` when systemd no longer has the timer, because its unit files are missing or broken), `kept`, `undone`, `undone with errors`, or `not kept, no timer`. Changes nothing; needs root or Administrator (`20`) |
 | `laby --probe` | Probe every scored service once; exit `30` if one fails. Changes nothing |
 | `laby -h [TOPIC]` / `--help` / `-?` / `/?` | Help for every action, or for one. The topic `basics` explains the ideas in plain words, and a module ID prints that module's help page (design 00, section 4) |
 | `laby -V` / `--version` | Print the version, the runner, and the release hash (`Release: <sha256>`, or `not checked`) |
@@ -197,16 +197,16 @@ A value option that the action does not use, such as `--profile` with `--probe`,
    - `approval`: items a pre-approval rule covers are approved; the runner shows the rest again, and the operator types the ids or categories to approve, or `--approve` gives them (Approval items, below); none means nothing changes.
    - The revert timer is (re)armed for `REVERT_MINUTES`, unless the module is `read-only`.
    - `apply_start` is recorded. If the manifest cannot be written, the module is not applied and the run stops (`40`).
-   - `apply`: `20` is recorded and the run continues; any other failure rolls the module back and stops the run (`40`).
-   - `verify`: a failure rolls the module back and stops the run (`30`, or `40` for an exit code other than `30`).
-   - Probes again: a scored service that passed before and fails now rolls the module back and stops the run (`30`). An `unknown` result is never a regression.
+   - `apply`: `20` is recorded and the run continues; any other failure undoes the module and stops the run (`40`).
+   - `verify`: a failure undoes the module and stops the run (`30`, or `40` for an exit code other than `30`).
+   - Probes again: a scored service that passed before and fails now undoes the module and stops the run (`30`). An `unknown` result is never a regression.
    - `cleanup`, if present.
    - `keep_on_verify: true` (design 00, section 4, rule 9): when a `services` file was probed, the module is kept, `module_kept` is recorded and a `Did:` line says so; the revert timer and `-u ID` then leave it alone. With no `services` file, or if the manifest cannot be written, it is not kept early, a `Note:` line says why, and the timer still covers it.
 8. The lock is released. If every module the run changed was kept once verified, the run is kept at once, as `-k` would, and no prompt is asked. Otherwise the operator checks that a new login still works, then types `keep`. Anything else leaves the timer armed, and when it fires it runs `-u ID`. Until then, `laby -k ID` keeps the run. Keeping after an undo is refused as too late (`20`).
 
 #### The revert timer
 
-**The revert timer** is a systemd timer and service pair `lab-revert-<run>-<n>` on Linux and a one-time scheduled task `\Labyrinth\lab-revert-<run>-<n>` running as SYSTEM on Windows. Both survive a restart, and fire as soon as they can if their time passed while the host was off. On Linux the two unit files go in `/etc/systemd/system`, and the timer is enabled: `OnCalendar=` holds the due time with `Persistent=true`, for a restart, and `OnActiveSec=` holds the same delay, so a clock change cannot move it. Re-arming creates the new timer first and only then removes the earlier one, so a failed re-arm leaves the run covered. `-k` and `-u`, the timer's own included, stop the timer, disable it and delete its two unit files; these files, which Labyrinth wrote, are the only ones it deletes outside its own paths, as the scheduled task is the only task it unregisters. If the unit files are missing or broken, `--history` shows the run as `armed: timer lost`. `-u` waits ten seconds for the run lock. If a live run still holds it, hung or waiting at a prompt, `-u` stops that run and the entry points it started (TERM, then KILL after 30 seconds) and then rolls back, so the timer never undoes a run that is still changing the host and about to report success. Only if that run cannot be stopped does `-u` go on without the lock, with a warning.
+**The revert timer** is a systemd timer and service pair `lab-revert-<run>-<n>` on Linux and a one-time scheduled task `\Labyrinth\lab-revert-<run>-<n>` running as SYSTEM on Windows. Both survive a restart, and fire as soon as they can if their time passed while the host was off. On Linux the two unit files go in `/etc/systemd/system`, and the timer is enabled: `OnCalendar=` holds the due time with `Persistent=true`, for a restart, and `OnActiveSec=` holds the same delay, so a clock change cannot move it. Re-arming creates the new timer first and only then removes the earlier one, so a failed re-arm leaves the run covered. `-k` and `-u`, the timer's own included, stop the timer, disable it and delete its two unit files; these files, which Labyrinth wrote, are the only ones it deletes outside its own paths, as the scheduled task is the only task it unregisters. If the unit files are missing or broken, `--history` shows the run as `armed: timer lost`. `-u` waits ten seconds for the run lock. If a live run still holds it, hung or waiting at a prompt, `-u` stops that run and the entry points it started (TERM, then KILL after 30 seconds) and then undoes the run, so the timer never undoes a run that is still changing the host and about to report success. Only if that run cannot be stopped does `-u` go on without the lock, with a warning.
 
 The time a timer will fire is kept in `<state>/runs/<run>/timer-due` (UTC, `YYYY-MM-DDTHH:MM:SSZ`), for `--history` and the keep prompt. The file is advisory: if it is missing, the time is shown as unknown.
 
@@ -231,7 +231,7 @@ Cancelling a timer checks that it is really gone. If it is still armed, or on Li
 
 #### Kept once verified
 
-**Why some changes are kept once verified.** The revert timer is there for a change that locks the team out or cuts off scoring. A change that only takes access away from an intruder, such as a rotated admin password or a removed planted key, cannot do either; undoing it would give the intruder their access back and leave the team's offline record wrong. Such a module sets `keep_on_verify: true`, and is kept as soon as it verifies with no scored service worse than before. A person who must undo it anyway runs `rollback <run> --all`. After a rollback that undid a password rotation, the old password is back: rotate it again and correct the offline record.
+**Why some changes are kept once verified.** The revert timer is there for a change that locks the team out or cuts off scoring. A change that only takes access away from an intruder, such as a rotated admin password or a removed planted key, cannot do either; undoing it would give the intruder their access back and leave the team's offline record wrong. Such a module sets `keep_on_verify: true`, and is kept as soon as it verifies with no scored service worse than before. A person who must undo it anyway runs `-u <run> --all`. After an undo that undid a password rotation, the old password is back: rotate it again and correct the offline record.
 
 ### 3.2 Console output
 
@@ -247,12 +247,12 @@ This section is the contract for the full output block, the form the runner prin
     - `ERROR`: `40`, or a module that cannot be loaded;
     - `WARN`: a module skipped on this platform, or a manual-only module that needs steps a person carries out (`10`). A phase with no modules in the profile is one `WARN` line, `WARN     Phase observe`, with its own Found, Fix and More lines.
   - **In apply:**
-    - `OK`: applied and verified, nothing approved, no apply step (a module with only a `check` changes nothing), or rolled back;
-    - `CHANGE`: a module about to apply, or about to be rolled back;
+    - `OK`: applied and verified, nothing approved, no apply step (a module with only a `check` changes nothing), or undone;
+    - `CHANGE`: a module about to apply, or about to be undone;
     - `WARN`: manual only, or a failed cleanup;
     - `BLOCKED`: a gate blocked the module;
     - `FAIL`: verify failed or a scored service regressed;
-    - `ERROR`: apply failed, or a rollback failed.
+    - `ERROR`: apply failed, or an undo failed.
 - **Labelled lines.** Everything under a status line is a labelled line: two spaces, the label and a colon padded to 11 characters, then the text: `  Found:     password logins are on`. The labels are:
   - from modules: `Found` (what it saw), `Will do` (what apply would change), `Did` (what it changed), `Why`, `Risk`, `Problem`, `Cause`, `Fix` and `Undo`;
   - from the runner: `Item` (an approval item, section 3.1), `Approved` (the items approved), `Note` (any other module line), `Script` (the entry point that failed), `It said` (its last lines), `Log` (the run log), `Before` and `More` (`<SELF> -h <module-id>`).
@@ -260,7 +260,7 @@ This section is the contract for the full output block, the form the runner prin
   Text longer than 65 characters wraps at a space onto another line with the same label, so each line makes sense alone; a word longer than that, such as a path, is never split.
 - **Module output.** A module prints `key: text` lines, with a key from the module labels above, in any case: `found: password logins are on`. The runner shows each such line with its label, any other line as a `Note`, and drops blank lines. `check` and `plan` output is shown after the result line, because the result is known only when they end; the output of later entry points is shown as it comes. A `CHANGE` with no `Risk` line gets the module's risk in plain words. On screen and in `output.log`, a tab becomes a space and every other control character becomes `?`, so text from a module or a probed service cannot move the cursor or forge a status line.
 - **The `problem:` line.** An entry point that exits `20`, `30` or `40` prints a `problem:` line last, saying what stopped it. The runner shows it as given. Without one, the runner says the script gave no reason, names the script, and in plan mode shows its last 10 lines as `It said` lines.
-- **Blocks.** Every `WARN`, `BLOCKED`, `FAIL` or `ERROR` block says what failed (`Problem`, or `Found` for a `WARN`), how to recover (`Fix`, or the `Did: rolled back` of an automatic rollback), and ends with `More`. A `FAIL` or `ERROR` in apply also names the run log.
+- **Blocks.** Every `WARN`, `BLOCKED`, `FAIL` or `ERROR` block says what failed (`Problem`, or `Found` for a `WARN`), how to recover (`Fix`, or the `Did: undone` of an automatic undo), and ends with `More`. A `FAIL` or `ERROR` in apply also names the run log.
 - **Header.** Two lines, at most 78 columns:
   - the version, the mode (`plan` or `APPLY`), the phase and the profile;
   - `run <id>`, followed in plan mode by `(plan mode: nothing is recorded)` and in apply by the host and group.
@@ -273,11 +273,11 @@ This section is the contract for the full output block, the form the runner prin
   - `Next:`, the one command to run next, when there is one. A command too long for the line goes on the next line, indented 2 spaces, so it can be copied whole;
   - `<mode> finished: exit N (<meaning>)`.
 - **`--probe`** follows the same contract: a one-line header, then one line per service, `OK` (pass), `FAIL` or `WARN` (could not be checked) with the service name in brackets, then `Summary:`, `Next:` when a service failed, and `probe finished: exit 0 (no service failed)` or `exit 30`.
-- **`-u`** first lists the modules it leaves in place because they were kept once verified (`Kept once verified, so left in place (add --all to undo these too):`, one module per line), says how many modules it undoes, gives each a `CHANGE` line and then `OK` or `ERROR`, and ends with `Summary:`, `Log:` and `rollback finished: exit 0 (rolled back)`, or `exit 40 (error)` with a `Next:` line when a module could not be undone.
-- **Recaps.** Before the group-name prompt: the host, the group, one line per module (`Will change:`, `Blocked:` or `Manual:`), that a revert timer will be armed, that changes which only take access away are kept once they verify (when the run has any), and, when a change may interrupt a service and the operator is connected remotely, to keep a second session open. Before the keep prompt: when the revert timer rolls the run back, in UTC and in minutes from now.
+- **`-u`** first lists the modules it leaves in place because they were kept once verified (`Kept once verified, so left in place (add --all to undo these too):`, one module per line), says how many modules it undoes, gives each a `CHANGE` line and then `OK` or `ERROR`, and ends with `Summary:`, `Log:` and `undo finished: exit 0 (undone)`, or `exit 40 (error)` with a `Next:` line when a module could not be undone.
+- **Recaps.** Before the group-name prompt: the host, the group, one line per module (`Will change:`, `Blocked:` or `Manual:`), that a revert timer will be armed, that changes which only take access away are kept once they verify (when the run has any), and, when a change may interrupt a service and the operator is connected remotely, to keep a second session open. Before the keep prompt: when the revert timer undoes the run, in UTC and in minutes from now.
 - **Messages** say what failed, why, and how to recover, in one sentence each. An error that stops the runner (exit `20` or `40`) is one line on stderr, `labyrinth: <what failed>: <why>`, and, unless the fix is already in that line, a second line saying how to recover. A failure that leaves changes in place always says how to undo them and how to keep them, in that order, and that if in doubt, undo them. A warning is one line on stderr, `labyrinth: warning: <what>`. Core helpers that refuse, such as a held run lock, follow the same form. An apply whose plan has errors still ends with `Summary:` and `apply finished:`.
 - **Text.** Fixed text is at most 78 columns, plain ASCII, with no colour. That includes prompts: what a prompt asks for goes on the lines above it, and the prompt itself is short (`Break-glass account name: `, `Items to approve (Enter for none): `). A line may be longer only by the length of a path it names, and the path comes last, or by the length of the command in a hint.
-- **Hints** name the command the way the operator started it, so it can be copied and run. On Linux that is the path as typed (`./labyrinth.sh`, `/opt/labyrinth/bin/labyrinth.sh`), with `./` added to a bare name that is not on the `PATH`, quoted if it needs it, and `sudo` in front when `SUDO_USER` is set. On Windows it is `.\labyrinth.ps1` when the current folder is Labyrinth's, and its full path otherwise, after `&` and in quotes when the path needs them. Usage errors, `Next:` lines and recovery steps all use it. Help and the manual write the literal `laby` instead, so they read the same on every host.
+- **Hints** name the command the way the operator started it, so it can be copied and run. On Linux that is the path as typed (`./labyrinth.sh`, `/opt/labyrinth/bin/labyrinth.sh`), with `./` added to a bare name that is not on the `PATH`, quoted if it needs it, and `sudo` in front when `SUDO_USER` is set. On Windows it is `.\labyrinth.ps1` when the current folder is Labyrinth's, and its full path otherwise, after `&` and in quotes when the path needs them. Help, usage errors, `Next:` lines and recovery steps all use the name as started, until the installer gives the command its own name. The manual writes `laby`.
 - **Help.** Each help topic is at most 18 lines (`basics` 24), with one `Exit:` line and one `Example:` line. Option lists are headed `Options:`. A topic says when its command must run as root or an Administrator, and `-r`, `-k` and `-u` follow their `Exit:` line with a `Blocked:` line naming the causes of `20`. The general page says where the options are (`laby -h` with an action, or `-h` after one) and where the manual is: the platform's parts of `docs/manual/labyrinth.md` in Labyrinth's folder. `-V` names the runner as well as the version.
 
 For module authors: when an entry point exits `20`, `30` or `40`, its last line of output is a `problem:` line. An entry point never leaves a background process holding standard output, because the runner waits for it to close.
@@ -294,7 +294,7 @@ Every run, keep and undo writes `<state>/runs/<run>/output.log`, readable by roo
 
 ### 3.3 Automatic runs and the rest of the command line (specified, planned)
 
-Section 3.1 describes the command line as built. This section holds only what is still planned (Roadmap): the installer, the status and queue, automatic runs, short output, the Harden phase and the options listed below. None of these is accepted yet; typing one is a usage error until its stage is built. When one is built, its rows move into section 3.1.
+Section 3.1 describes the command line as built. This section holds only what is still planned (Roadmap): the installer, the status and queue, automatic runs, short output, the Harden phase and the options listed below. None of these is accepted yet; typing a flag of the list below is a usage error, `<name>: '-v' (--verbose) is planned and not built yet`, until its stage is built. When one is built, its rows move into section 3.1.
 
 #### The command
 
@@ -392,7 +392,7 @@ Each planned action and option gets a help topic under the rules of section 3.1,
 #### Output and phases
 
 - **Firewall line.** The end of each run gains a `Firewall:` line, after `Summary:`, with the host's firewall in one format whatever the backend: the backend name, whether it is active and the inbound default, for example `ufw active deny-in` or `windows on deny-in`, or `none`, `conflict` or `unknown` (design 01, section 5).
-- **Short output.** Each module gets one line: `OK`, `CHANGED`, `ROLLED BACK`, `QUEUED`, `BLOCKED` or `FAIL`, then its title and ID. The full Found/Fix/More block is printed only for a failure or a block. Every detail is in the run log. `-v` shows the full block for every module.
+- **Short output.** Each module gets one line: `OK`, `CHANGED`, `UNDONE`, `QUEUED`, `BLOCKED` or `FAIL`, then its title and ID. The full Found/Fix/More block is printed only for a failure or a block. Every detail is in the run log. `-v` shows the full block for every module.
 - **The Harden phase.** Five phases in order: Lock out, Harden, Observe, Deceive, Sustain. Lock out is the first-minute bundle (designs 03, 04, 05). Harden holds the install (02), restore points (07), the persistence sweep (06), account clean-up (04: removing unexpected admin accounts' admin rights, `harden.accounts`), the CVE assessment and mitigations (09), patching and service reduction (10), the service packs (11), Windows and AD hardening (12), service replacement and containers (13) and the official-package check (08), and then reopens outbound.
 
 ## 4. Bash style
@@ -452,7 +452,7 @@ The manifest is `<state>/runs/<run>/manifest.jsonl`, one JSON object per line, e
 | `finding_state` | A known flaw changed state in the vulnerability tracker; `target` is the flaw and host, `note` the new state and how. Nothing to undo; the change that closed it has its own entry (design 09, section 4) |
 | `approval_refused` | An approved item was left alone because it changed since the plan; `target` is the item id (section 3.1). Nothing to undo |
 | `module_kept` | The module verified and no scored service got worse, so it is kept: `-u ID` and the revert timer leave it alone until it is applied again; `-u ID --all` undoes it (design 00, section 4, rule 9) |
-| `rolled_back` | The module was rolled back |
+| `rolled_back` | The module was undone |
 
 Restoring a `file` entry writes the backup over the file in place, then restores its owner and permissions (and, on Linux, its SELinux label where `restorecon` exists). A created file is never deleted: rollback moves it into the backup folder as `rolled-back-<seq>-<name>`. Restoring is safe to repeat.
 

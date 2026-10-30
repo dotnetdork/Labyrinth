@@ -63,9 +63,9 @@ Describe 'labyrinth.ps1 -History' {
         # Runs started in the same second sort by their random suffix, so
         # each run's line is found by its ID.
         $lineA = @($lines | Where-Object { $_.StartsWith("$a ") })[0]
-        $lineA | Should -BeLike "$a observe * armed: rolls back at ??:?? UTC"
+        $lineA | Should -BeLike "$a observe * armed: undo at ??:?? UTC"
         @($lines | Where-Object { $_.StartsWith("$b ") })[0] | Should -BeLike "$b observe * kept"
-        @($lines | Where-Object { $_.StartsWith("$c ") })[0] | Should -BeLike "$c observe * rolled back"
+        @($lines | Where-Object { $_.StartsWith("$c ") })[0] | Should -BeLike "$c observe * undone"
         ($lines[1..3] -join ',') | Should -BeExactly ((@($lines[1..3]) | Sort-Object -CaseSensitive) -join ',')
         $lineA | Should -BeLike ('* {0}-{1}-{2} {3}:{4} *' -f $a.Substring(0, 4), $a.Substring(4, 2), $a.Substring(6, 2), $a.Substring(9, 2), $a.Substring(11, 2))
         $r.Out | Should -Match ([regex]::Escape("in quotes, like $($t.Self) -k '$(Get-TestSuffix $a)'."))
@@ -79,7 +79,7 @@ Describe 'labyrinth.ps1 -History' {
         [IO.File]::WriteAllText($due, "2000-01-01T00:05:00Z`n")
         (Invoke-TestLabRun $t @('-History')).Out | Should -Match 'armed: was due 00:05 UTC'
         Remove-Item -LiteralPath $due
-        (Invoke-TestLabRun $t @('-History')).Out | Should -Match 'armed: rollback time unknown'
+        (Invoke-TestLabRun $t @('-History')).Out | Should -Match 'armed: undo time unknown'
     }
 
     It 'a run named by its last 4 characters, in any case, is kept' {

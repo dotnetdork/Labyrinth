@@ -28,7 +28,7 @@ read_only_after_cancel() {
   [ "$status" -eq 40 ]
   [[ "$output" == *"labyrinth: internal error at "* ]]
   [[ "$output" == *"The run stopped. Earlier changes stay until the revert timer undoes them."* ]]
-  [[ "$output" =~ The\ revert\ timer\ rolls\ this\ run\ back\ at\ [0-9]{2}:[0-9]{2}\ UTC ]]
+  [[ "$output" =~ The\ revert\ timer\ undoes\ this\ run\ at\ [0-9]{2}:[0-9]{2}\ UTC ]]
   id="$(run_id)"
   # Undo comes first, and the safe choice is named.
   [[ "$output" == *"To undo them now: $SELF -u ${id: -4}"$'\n'"To keep them now: $SELF -k ${id: -4}"$'\n''If in doubt, undo them.'* ]]
@@ -85,7 +85,7 @@ read_only_after_cancel() {
   stand_in 'lab_timer_cancel() { return 1; }'
   run bash "$LAB/labyrinth.sh" --root "$ROOT" --config "$ETC" -k "$id"
   [ "$status" -eq 40 ]
-  [[ "$output" =~ still\ rolls\ it\ back\ at\ [0-9]{2}:[0-9]{2}\ UTC ]]
+  [[ "$output" =~ still\ undoes\ it\ at\ [0-9]{2}:[0-9]{2}\ UTC ]]
   [[ "$output" == *"Retry: $SELF -k ${id: -4}"* ]]
 }
 
@@ -110,6 +110,6 @@ read_only_after_cancel() {
   read_only_after_cancel
   run bash "$LAB/labyrinth.sh" --root "$ROOT" --config "$ETC" -u "$id"
   [ "$status" -eq 40 ]
-  [[ "$output" == *"rolled back, but the manifest cannot be written to record it"* ]]
+  [[ "$output" == *"the changes are undone, but the manifest cannot be written to record it"* ]]
   [ ! -e "$LAB/toggle.conf" ]
 }

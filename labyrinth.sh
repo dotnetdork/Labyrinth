@@ -69,7 +69,7 @@ if (( LAB_RELEASE == 2 )); then
     if [[ "$a" =~ ^-[rkuVPh]*u[rkuVPh]*$ || "$lower" == --undo || "$lower" == --undo=* \
         || "$lower" == -undo || "$lower" == -undo:* || "$lower" == -undo=* ]] \
         && command -v wall > /dev/null 2>&1; then
-      printf '%s\n' "Labyrinth did not roll back on $(uname -n): its files differ from the release, so the changes are still in place." \
+      printf '%s\n' "Labyrinth did not undo the changes on $(uname -n): its files differ from the release, so they are still in place." \
         | wall > /dev/null 2>&1 || true
       break
     fi
@@ -113,6 +113,13 @@ readonly -a OPT_KEYS=(run keep undo probe history version all profile root confi
 readonly -a OPT_VALUE=(0 1 1 0 0 0 0 1 1 1 1 1 1 0)
 readonly -a OPT_SHORT=(r k u '' '' V '' P '' '' '' '' '' h)
 readonly -a OPT_ACTION=(1 1 1 1 1 1 0 0 0 0 0 0 0 0)
+# The flags that docs/Conventions.md section 3.3 plans and nothing builds yet,
+# one row each: the short letter, the long name's match key ('' when the name
+# is already an option) and how a message shows it. Typing one is a usage
+# error that says so; building one means moving its row up into OPT_*.
+readonly -a PLAN_SHORT=(q a d v y '' '')
+readonly -a PLAN_KEYS=(queue '' decline verbose yes norevert manual)
+readonly -a PLAN_SHOW=(--queue '--approve, with -q' '--decline, with -q' --verbose --yes --no-revert --manual)
 declare -A GIVEN=()        # canonical option name -> value given
 declare -a WORDS=()        # the words that are not options, in order
 declare -a ACTIONS=()      # the actions given, in the order typed
@@ -138,16 +145,32 @@ declare -a RUN_IDS=() RUN_DIR=() RUN_RISK=() RUN_SCORED=() RUN_REQUIRES=() RUN_R
 
 # cmd_help [TOPIC]: the main help, or one topic's, on stdout. A topic is an
 # action, an option, a phase or 'basics', by its canonical name. The text
-# is the same as labyrinth.ps1's and writes the program's name as 'laby'.
-# The main page is at most 24 lines and each topic at most 18 (basics 24),
-# of at most 78 columns, with an Exit line, an Example line and a See also
-# line (docs/Conventions.md section 3.2).
+# is the same as labyrinth.ps1's. It writes the program's name as @CMD@, and
+# cmd_help puts in the name as started ($SELF) until there is an installed
+# 'laby'. The main page is at most 24 lines and each topic at most 18
+# (basics 24), of at most 78 columns with the name './labyrinth.sh', with an
+# Exit line, an Example line and a See also line (docs/Conventions.md
+# section 3.2).
 cmd_help() {
+  local line out
+  while IFS= read -r line; do
+    out=''
+    while [[ "$line" == *@CMD@* ]]; do
+      out+="${line%%@CMD@*}$SELF"
+      line="${line#*@CMD@}"
+    done
+    printf '%s
+' "$out$line"
+  done < <(help_page "${1:-}")
+}
+
+# help_page [TOPIC]: the help text, with @CMD@ for the program's name.
+help_page() {
   case "${1:-}" in
     '') cat <<'EOF'
-Usage: laby PHASE                preview a phase: nothing changes
-       laby -r PHASE             run a phase for real
-       laby ACTION [OPTIONS]
+Usage: @CMD@ PHASE                preview a phase: nothing changes
+       @CMD@ -r PHASE             run a phase for real
+       @CMD@ ACTION [OPTIONS]
 
 Actions (one per line):
   -r, --run               run a phase: plan, confirm, change
@@ -160,7 +183,8 @@ Actions (one per line):
 Options:
   -P, --profile NAME      profile to use, if not this host's line in hosts
   --root DIR              data root         --config DIR   configuration
-  --break-glass NAME, --confirm-group GROUP, --approve LIST: see laby -h run
+  --break-glass NAME, --confirm-group GROUP, --approve LIST:
+                          see @CMD@ -h run
   -h, --help [TOPIC]      help; TOPIC: an action, option, phase or basics
 
 Phases: lockout, observe, deceive, sustain. ID: a run ID or its last 4.
@@ -169,7 +193,7 @@ Full manual: docs/manual/labyrinth.md in the release
 EOF
     ;;
     run) cat <<'EOF'
-Usage: laby -r PHASE [-P NAME] [--root DIR] [--config DIR]
+Usage: @CMD@ -r PHASE [-P NAME] [--root DIR] [--config DIR]
 
 Plan, then ask you to name the break-glass account (first run only)
 and to type this host's group name. Then change, checking each change;
@@ -184,12 +208,12 @@ Options:
 
 Exit: 0 done, 10 manual steps left, 20 blocked, 30 check failed, 40 error.
 Blocked: not root, another run, host not in hosts, or a safety gate.
-Example: laby -r lockout
-See also: laby -h lockout, laby -h keep, laby -h basics
+Example: @CMD@ -r lockout
+See also: @CMD@ -h lockout, -h keep, -h basics
 EOF
     ;;
     keep) cat <<'EOF'
-Usage: laby -k ID [--root DIR] [--config DIR]
+Usage: @CMD@ -k ID [--root DIR] [--config DIR]
 
 Keep a run's changes: cancel its revert timer, then record the keep.
 ID is always needed: a run ID or its last 4 characters. Without it,
@@ -200,18 +224,18 @@ Options: --root DIR (data root), --config DIR (configuration folder)
 
 Exit: 0 kept, 20 blocked, 40 error.
 Blocked: not root, a file another account can change, or too late
-(the run was already rolled back).
-Example: laby -k 4f2a
-See also: laby --history, laby -h undo
+(the run was already undone).
+Example: @CMD@ -k 4f2a
+See also: @CMD@ --history, @CMD@ -h undo
 EOF
     ;;
     undo) cat <<'EOF'
-Usage: laby -u ID [--all] [--root DIR] [--config DIR]
+Usage: @CMD@ -u ID [--all] [--root DIR] [--config DIR]
 
 Undo what the run changed, newest change first. This is what the
 revert timer runs. Safe to run twice. ID is always needed: a run ID or
-its last 4 characters; 'laby --history' lists them. Needs root or an
-Administrator.
+its last 4 characters; '@CMD@ --history' lists them. Needs root or
+an Administrator.
 
 Options:
   --all                  also undo changes kept once they verified
@@ -219,50 +243,50 @@ Options:
 
 Exit: 0 undone, 20 blocked, 40 error.
 Blocked: not root, or a file another account can change.
-Example: laby -u 4f2a
-See also: laby --history, laby -h keep
+Example: @CMD@ -u 4f2a
+See also: @CMD@ --history, @CMD@ -h keep
 EOF
     ;;
     history) cat <<'EOF'
-Usage: laby --history [--root DIR] [--config DIR]
+Usage: @CMD@ --history [--root DIR] [--config DIR]
 
 List this host's runs, oldest first: run ID, phase, start time (UTC)
-and state: armed (and when it rolls back), kept, rolled back,
-rolled back with errors, or not kept, no timer. 'armed: timer lost'
+and state: armed (and when it is undone), kept, undone,
+undone with errors, or not kept, no timer. 'armed: timer lost'
 means the timer's files are gone and nothing will undo the run by
 itself: keep it or undo it. Changes nothing; needs root or an
 Administrator.
 
 Exit: 0 listed, 20 not root, 40 error.
-Example: laby --history
-See also: laby -h keep, laby -h undo
+Example: @CMD@ --history
+See also: @CMD@ -h keep, @CMD@ -h undo
 EOF
     ;;
     probe) cat <<'EOF'
-Usage: laby --probe [--root DIR] [--config DIR]
+Usage: @CMD@ --probe [--root DIR] [--config DIR]
 
 Test every scored service once, the way the scoring engine would,
 and print one line per service. Changes nothing. Needs root or an
 Administrator to read the configuration.
 
 Exit: 0 all pass, 20 no service list, 30 a service failed, 40 error.
-Example: laby --probe
-See also: laby -h basics, laby --history
+Example: @CMD@ --probe
+See also: @CMD@ -h basics, @CMD@ --history
 EOF
     ;;
     version) cat <<'EOF'
-Usage: laby -V
+Usage: @CMD@ -V
 
 Print the version of Labyrinth, which program printed it, and the
 release hash. --version does the same.
 
 Exit: 0 printed.
-Example: laby -V
-See also: laby -h
+Example: @CMD@ -V
+See also: @CMD@ -h
 EOF
     ;;
     profile) cat <<'EOF'
-Usage: laby [-r] PHASE -P NAME
+Usage: @CMD@ [-r] PHASE -P NAME
 
 Use this profile, not the one in the hosts file. NAME is lower-case
 letters, digits and '-'. For a run it must match this host's line in
@@ -270,12 +294,12 @@ the hosts file. A preview shows what that profile would do.
 Used by: a preview and -r.
 
 Exit: 40 if NAME is not a valid profile name.
-Example: laby observe --profile linux-web
-See also: laby -h run, laby -h basics
+Example: @CMD@ observe --profile linux-web
+See also: @CMD@ -h run, @CMD@ -h basics
 EOF
     ;;
     root) cat <<'EOF'
-Usage: laby ACTION --root DIR
+Usage: @CMD@ ACTION --root DIR
 
 The data root: where Labyrinth keeps its configuration (etc), run
 records (state), logs and backups. DIR must be a full path. The
@@ -283,12 +307,12 @@ default is the platform's own folder; the manual names it.
 Used by: every action.
 
 Exit: 40 if DIR is not a full path.
-Example: laby --history --root /srv/labyrinth
-See also: laby -h config
+Example: @CMD@ --history --root /srv/labyrinth
+See also: @CMD@ -h config
 EOF
     ;;
     config) cat <<'EOF'
-Usage: laby ACTION --config DIR
+Usage: @CMD@ ACTION --config DIR
 
 The configuration folder, if it is not <root>/etc: the hosts file, the
 protected set and the event's other files. DIR must be a full path.
@@ -296,12 +320,12 @@ For a preview, -r and --probe it must exist.
 Used by: every action.
 
 Exit: 40 if DIR is not a full path or does not exist.
-Example: laby observe --config /srv/event-etc
-See also: laby -h root
+Example: @CMD@ observe --config /srv/event-etc
+See also: @CMD@ -h root
 EOF
     ;;
     break-glass) cat <<'EOF'
-Usage: laby -r PHASE --break-glass NAME
+Usage: @CMD@ -r PHASE --break-glass NAME
 
 Answer the break-glass prompt without typing: NAME is the emergency
 account you are logged in with at the console. It must be listed with
@@ -309,12 +333,12 @@ the class breakglass in the protected set.
 Used by: -r only.
 
 Exit: 20 if NAME is not that account.
-Example: laby -r lockout --break-glass admin
-See also: laby -h run, laby -h confirm-group
+Example: @CMD@ -r lockout --break-glass admin
+See also: @CMD@ -h run, @CMD@ -h confirm-group
 EOF
     ;;
     confirm-group) cat <<'EOF'
-Usage: laby -r PHASE --confirm-group GROUP
+Usage: @CMD@ -r PHASE --confirm-group GROUP
 
 Answer the group-name prompt without typing: GROUP is this host's group
 from the hosts file. A different name stops the run before anything
@@ -322,12 +346,12 @@ changes.
 Used by: -r only.
 
 Exit: 20 if GROUP is not this host's group.
-Example: laby -r lockout --confirm-group ring1
-See also: laby -h run, laby -h break-glass
+Example: @CMD@ -r lockout --confirm-group ring1
+See also: @CMD@ -h run, @CMD@ -h break-glass
 EOF
     ;;
     approve) cat <<'EOF'
-Usage: laby -r PHASE --approve LIST
+Usage: @CMD@ -r PHASE --approve LIST
 
 Approve items without the approval prompt. LIST is comma-separated
 entries, module-id:item-id@fingerprint, pasted from a preview. A
@@ -335,12 +359,12 @@ category is not accepted: it could include items you never saw.
 Used by: -r only.
 
 Exit: 40 if an entry is malformed.
-Example: laby -r harden --approve module-id:item-id@2a2c17aaaf66
-See also: laby -h run, laby -h basics
+Example: @CMD@ -r harden --approve module-id:item-id@2a2c17aaaf66
+See also: @CMD@ -h run, @CMD@ -h basics
 EOF
     ;;
     all) cat <<'EOF'
-Usage: laby -u ID --all
+Usage: @CMD@ -u ID --all
 
 Also undo the changes that were kept once they verified, such as a
 new admin password. Undoing those can give an intruder their access
@@ -348,85 +372,85 @@ back: if a password changes back, rotate it again.
 Used by: -u only.
 
 Exit: as for -u.
-Example: laby -u 4f2a --all
-See also: laby -h undo
+Example: @CMD@ -u 4f2a --all
+See also: @CMD@ -h undo
 EOF
     ;;
     lockout) cat <<'EOF'
-Usage: laby lockout [-P NAME]
-       laby -r lockout
+Usage: @CMD@ lockout [-P NAME]
+       @CMD@ -r lockout
 
 The first phase: take control back from the attacker. Its modules
 change the host quickly, behind a revert timer.
-laby lockout only previews: nothing changes and nothing is written.
+@CMD@ lockout only previews: nothing changes and nothing is written.
 
 Exit: 0 nothing to do, 10 change needed, 20 blocked, 40 error.
-Example: laby lockout
-See also: laby -h run, laby -h basics
+Example: @CMD@ lockout
+See also: @CMD@ -h run, @CMD@ -h basics
 EOF
     ;;
     observe) cat <<'EOF'
-Usage: laby observe [-P NAME]
-       laby -r observe
+Usage: @CMD@ observe [-P NAME]
+       @CMD@ -r observe
 
 The phase that shows what is happening on the host. Its modules
 look, and change only what a person approves.
-laby observe only previews: nothing changes and nothing is written.
+@CMD@ observe only previews: nothing changes and nothing is written.
 
 Exit: 0 nothing to do, 10 change needed, 20 blocked, 40 error.
-Example: laby observe
-See also: laby -h run, laby -h basics
+Example: @CMD@ observe
+See also: @CMD@ -h run, @CMD@ -h basics
 EOF
     ;;
     deceive) cat <<'EOF'
-Usage: laby deceive [-P NAME]
-       laby -r deceive
+Usage: @CMD@ deceive [-P NAME]
+       @CMD@ -r deceive
 
 The phase that plants traps to give an attacker away.
-laby deceive only previews: nothing changes and nothing is written.
+@CMD@ deceive only previews: nothing changes and nothing is written.
 
 Exit: 0 nothing to do, 10 change needed, 20 blocked, 40 error.
-Example: laby deceive
-See also: laby -h run, laby -h basics
+Example: @CMD@ deceive
+See also: @CMD@ -h run, @CMD@ -h basics
 EOF
     ;;
     sustain) cat <<'EOF'
-Usage: laby sustain [-P NAME]
-       laby -r sustain
+Usage: @CMD@ sustain [-P NAME]
+       @CMD@ -r sustain
 
 The phase that keeps everything running and lets you undo mistakes.
-laby sustain only previews: nothing changes and nothing is written.
+@CMD@ sustain only previews: nothing changes and nothing is written.
 
 Exit: 0 nothing to do, 10 change needed, 20 blocked, 40 error.
-Example: laby sustain
-See also: laby -h run, laby -h basics
+Example: @CMD@ sustain
+See also: @CMD@ -h run, @CMD@ -h basics
 EOF
     ;;
     basics) cat <<'EOF'
-Usage: laby -h basics
+Usage: @CMD@ -h basics
 
 Labyrinth makes this host harder to break into in five phases, in order:
 lockout, harden (later), observe, deceive, sustain. Each phase is a list of
 modules. A module does one small job, such as turning off password
-logins. 'laby -h MODULE-ID' explains any module.
+logins. '@CMD@ -h MODULE-ID' explains any module.
 
-1. Preview: 'laby lockout' shows what each module would change.
+1. Preview: '@CMD@ lockout' shows what each module would change.
    It changes nothing, so run it as often as you like.
-2. Run: 'laby -r lockout' plans again, has you name the break-glass
+2. Run: '@CMD@ -r lockout' plans again, has you name the break-glass
    account the first time, asks you to type this host's group name,
    then makes the changes and checks each one.
 3. Keep: a run is named by an ID; its last 4 characters are enough.
    A revert timer undoes the run after a few minutes unless you keep
    it, so a change that locks you out undoes itself. Log in from a
-   new session, and if that works, run 'laby -k ID'.
+   new session, and if that works, run '@CMD@ -k ID'.
 
-To undo a run yourself: 'laby -u ID'. To list the runs: 'laby --history'.
+To undo a run: @CMD@ -u ID; to list runs: @CMD@ --history.
 Scored services are the ones the scoring engine tests. Labyrinth tests
 them before and after each change, and undoes a change that breaks one.
-To test them now: 'laby --probe'.
+To test them now: '@CMD@ --probe'.
 
 Exit: 0 printed.
-Example: laby -h basics
+Example: @CMD@ -h basics
 EOF
     ;;
   esac
@@ -573,10 +597,10 @@ run_recovery() {
   case "$CMD" in
     rollback)
       if [[ -n "$ref" ]]; then
-        printf 'The rollback did not finish, and it is safe to repeat.\n'
+        printf 'The undo did not finish, and it is safe to repeat.\n'
         printf 'Retry: %s -u %s\n' "$SELF" "${ref: -4}"
       else
-        printf 'Nothing was rolled back.\n'
+        printf 'Nothing was undone.\n'
       fi ;;
     keep)
       if [[ -n "$ref" ]]; then
@@ -594,7 +618,7 @@ run_stopped() {
   local when
   out 'The run stopped. Earlier changes stay until the revert timer undoes them.'
   if when="$(due_words "$LAB_RUN_ID")"; then
-    out "The revert timer rolls this run back $when."
+    out "The revert timer undoes this run $when."
   fi
   out "To undo them now: $SELF -u ${LAB_RUN_ID: -4}"
   out "To keep them now: $SELF -k ${LAB_RUN_ID: -4}"
@@ -985,9 +1009,31 @@ show_opt() {
   esac
 }
 
-# unknown_option WORD KEY: note an unknown long option, with a near miss.
+# plan_lookup short|key VALUE: the row of the planned flag with this short
+# letter or this long-name key, in PLAN_ROW; returns 1 if none.
+plan_lookup() {
+  local i
+  for ((i = 0; i < ${#PLAN_SHOW[@]}; i++)); do
+    if [[ "$1" == short && -n "${PLAN_SHORT[i]}" && "${PLAN_SHORT[i]}" == "$2" ]]       || [[ "$1" == key && -n "${PLAN_KEYS[i]}" && "${PLAN_KEYS[i]}" == "$2" ]]; then
+      PLAN_ROW=$i; return 0
+    fi
+  done
+  return 1
+}
+
+# plan_fail TYPED: note that the planned flag in PLAN_ROW is not built. A
+# short letter is shown with its long name.
+plan_fail() {
+  local more=''
+  if [[ "$1" == -? ]]; then more=" (${PLAN_SHOW[PLAN_ROW]})"; fi
+  parse_fail "'$1'$more is planned and not built yet"
+}
+
+# unknown_option WORD KEY: note an unknown long option: a planned one, or
+# with a near miss.
 unknown_option() {
   local shown="${1%%[=:]*}" hint
+  if plan_lookup key "$2"; then plan_fail "$shown"; return 0; fi
   hint="$(suggest "$2" "${OPT_KEYS[@]}")"
   if [[ -n "$hint" ]] && opt_lookup "$hint"; then
     parse_fail "unknown option '$shown' (did you mean '--${OPT_NAMES[OPT_ROW]}'?)"
@@ -1000,8 +1046,12 @@ unknown_option() {
 # BAD its first letter that is not a short flag.
 stack_error() {
   local shown="${1%%[=:]*}" key="$2" bad="$3" lk other what='' hint
+  if (( ${#key} > 1 )) && lk="${key,,}" && plan_lookup key "${lk//-/}"; then
+    plan_fail "$shown"; return 0
+  fi
+  if plan_lookup short "$bad"; then plan_fail "-$bad"; return 0; fi
   if (( ${#key} == 1 )); then
-    # A lone letter of the wrong case is the commonest slip: -v for -V.
+    # A lone letter of the wrong case is the commonest slip: -P for -p.
     other="${bad^^}"
     if [[ "$other" == "$bad" ]]; then other="${bad,,}"; fi
     if short_lookup "$other"; then
@@ -1730,19 +1780,19 @@ rollback_module() {
     # Checked by hand: this function is called with ||, so errexit is off.
     if ! record_for "$id" rolled_back; then
       say ERROR "$name"
-      detail Problem 'rolled back, but the manifest cannot be written'
-      detail Found 'the manifest still lists the change; rolling back again is safe'
+      detail Problem 'undone, but the manifest cannot be written'
+      detail Found 'the manifest still lists the change; undoing it again is safe'
       detail Fix "run '$SELF -u ${LAB_RUN_ID: -4}' again"
       log_ref; more "$id"
       return 40
     fi
     if [[ "$mode" == own ]]; then say OK "$name"; fi
-    detail Did 'rolled back'
+    detail Did 'undone'
     LAB_MODULE_ID="$id" lab_log_warn rolled_back "rolled back" 2> /dev/null
     return 0
   fi
   say ERROR "$name"
-  detail Problem "its rollback stopped with exit code $rc; the change may still be in place"
+  detail Problem "its undo stopped with exit code $rc; the change may still be in place"
   if [[ -f "$dir/rollback.sh" ]]; then detail Script "$dir/rollback.sh"; fi
   detail Fix "restore its files by hand from $LAB_BACKUP_DIR/$LAB_RUN_ID/$id"
   log_ref; more "$id"
@@ -2296,7 +2346,7 @@ cmd_apply() {
     out 'All changes are applied and verified.'
     out 'From a NEW session, check that you can still log in.'
     if when="$(due_words "$LAB_RUN_ID")"; then
-      out "The revert timer rolls this run back $when."
+      out "The revert timer undoes this run $when."
     fi
     if ask 'Type keep to keep the changes, or press Enter to leave them to the timer: ' \
         && [[ "$ANSWER" == keep ]]; then
@@ -2319,7 +2369,7 @@ keep_run() {
   lab_lock_acquire 10 || return 20
   if run_rolled_back; then
     lab_lock_release
-    err "labyrinth: too late: run $LAB_RUN_ID was already rolled back"
+    err "labyrinth: too late: run $LAB_RUN_ID was already undone"
     err 'Its changes are gone. Preview and run it again if you still want them.'
     return 20
   fi
@@ -2329,7 +2379,7 @@ keep_run() {
     local when=''
     if when="$(due_words "$LAB_RUN_ID")"; then when=" $when"; fi
     err "labyrinth: the revert timer for run $LAB_RUN_ID could not be cancelled"
-    err "The run is not kept, and the timer still rolls it back$when."
+    err "The run is not kept, and the timer still undoes it$when."
     err "Retry: $SELF -k ${LAB_RUN_ID: -4}"
     return 40
   fi
@@ -2362,7 +2412,7 @@ run_state() {
   line="$(grep '"action":"run_rolled_back"' "$f" 2> /dev/null | tail -n 1)" || true
   if [[ -n "$line" ]]; then
     note="$(lab_json_get "$line" note)" || note=''
-    if [[ "$note" == 'exit 0' ]]; then printf 'rolled back\n'; else printf 'rolled back with errors\n'; fi
+    if [[ "$note" == 'exit 0' ]]; then printf 'undone\n'; else printf 'undone with errors\n'; fi
     return 0
   fi
   if grep -q '"action":"run_kept"' "$f" 2> /dev/null; then printf 'kept\n'; return 0; fi
@@ -2373,11 +2423,11 @@ run_state() {
       printf 'armed: timer lost\n'
       return 0
     fi
-    if ! due="$(lab_timer_due "$1")"; then printf 'armed: rollback time unknown\n'; return 0; fi
+    if ! due="$(lab_timer_due "$1")"; then printf 'armed: undo time unknown\n'; return 0; fi
     now="$(lab_now)"
     # The times are UTC in one fixed format, so they compare as strings.
     if [[ "$due" > "$now" ]]; then
-      printf 'armed: rolls back at %s UTC\n' "${due:11:5}"
+      printf 'armed: undo at %s UTC\n' "${due:11:5}"
     else
       printf 'armed: was due %s UTC\n' "${due:11:5}"
     fi
@@ -2507,6 +2557,7 @@ cmd_rollback() {
     if ! lab_is_admin; then
       usage_error '-u needs a run ID, or its last 4 characters' "As root, '$SELF --history' lists them."
     fi
+    gate_trusted
     list="$(list_runs)" || true
     if [[ -z "$list" ]]; then
       usage_error '-u needs a run ID, or its last 4 characters' 'There are no runs on this host.'
@@ -2531,22 +2582,22 @@ cmd_rollback() {
   if (( locked )); then
     trap 'lab_lock_release' EXIT
   else
-    warn 'rolling back without the run lock'
+    warn 'undoing without the run lock'
   fi
   # Captured, not read from a process substitution, so a failure is seen.
-  list="$(lab_manifest_applied "$LAB_RUN_ID")" || die "the manifest of run $LAB_RUN_ID cannot be read" 40 'Nothing was rolled back.'
+  list="$(lab_manifest_applied "$LAB_RUN_ID")" || die "the manifest of run $LAB_RUN_ID cannot be read" 40 'Nothing was undone.'
   if [[ -n "$list" ]]; then mapfile -t mods <<< "$list"; fi
   # Modules kept once verified stay, unless --all (section 3.1).
   if [[ -z "${GIVEN[all]+set}" ]]; then
-    kept="$(lab_manifest_kept "$LAB_RUN_ID")" || die "the manifest of run $LAB_RUN_ID cannot be read" 40 'Nothing was rolled back.'
+    kept="$(lab_manifest_kept "$LAB_RUN_ID")" || die "the manifest of run $LAB_RUN_ID cannot be read" 40 'Nothing was undone.'
     for id in "${mods[@]+"${mods[@]}"}"; do
       if lab_in_list "$id" "${kept//$'\n'/ }"; then left+=("$id"); else rest+=("$id"); fi
     done
     mods=("${rest[@]+"${rest[@]}"}")
   fi
   # A rollback started by the revert timer is logged too, though no one watches it.
-  log_open "rollback run $LAB_RUN_ID"
-  out "labyrinth $LAB_VERSION: rollback run $LAB_RUN_ID"
+  log_open "undo run $LAB_RUN_ID"
+  out "labyrinth $LAB_VERSION: undo run $LAB_RUN_ID"
   if (( ${#left[@]} > 0 )); then
     out 'Kept once verified, so left in place (add --all to undo these too):'
     for id in "${left[@]}"; do
@@ -2574,16 +2625,16 @@ cmd_rollback() {
   # A timer left armed runs this rollback again, which is safe.
   if ! lab_timer_cancel "$LAB_RUN_ID"; then
     err "labyrinth: warning: the revert timer for run $LAB_RUN_ID could not be removed"
-    err 'When it fires, it repeats this rollback, which is safe.'
+    err 'When it fires, it repeats this undo, which is safe.'
   fi
   if ! record_for '' run_rolled_back '' "exit $rc"; then
-    err 'labyrinth: rolled back, but the manifest cannot be written to record it'
+    err 'labyrinth: the changes are undone, but the manifest cannot be written to record it'
     rc=40
   fi
   lab_log_warn run_rolled_back "run rolled back, exit $rc" 2> /dev/null
   if (( ok + bad > 0 )); then
     # Whoever is logged in learns that changes were undone; best effort.
-    lab_notify_all "Labyrinth rolled back run $LAB_RUN_ID on $(lab_host): its changes are undone. See '$SELF --history'." || true
+    lab_notify_all "Labyrinth undid run $LAB_RUN_ID on $(lab_host): its changes are undone. See '$SELF --history'." || true
   fi
   out ''
   parts=''
@@ -2596,12 +2647,12 @@ cmd_rollback() {
   esac
   if [[ -n "$LOG_FILE" ]]; then out "Log: $LOG_FILE"; fi
   if (( rc == 0 )); then
-    out 'rollback finished: exit 0 (rolled back)'
+    out 'undo finished: exit 0 (undone)'
   else
     mark_problems
-    out 'Next: fix what is listed above, then run the rollback again; it is safe:'
+    out 'Next: fix what is listed above, then undo it again; it is safe:'
     out "  $SELF -u ${LAB_RUN_ID: -4}"
-    out "rollback finished: exit $rc (error)"
+    out "undo finished: exit $rc (error)"
   fi
   exit "$rc"
 }
