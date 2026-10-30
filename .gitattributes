@@ -5,3 +5,5 @@
 *.bash  text eol=lf
 *-cases.txt  text eol=lf
 *.pdf   binary
+# The Windows launchers keep CRLF, so cmd.exe reads them the same everywhere.
+*.cmd   text eol=crlf

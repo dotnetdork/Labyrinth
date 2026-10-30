@@ -14,8 +14,9 @@ OPTIONS='profile root config break-glass confirm-group approve all'
 PHASES='lockout observe deceive sustain'
 TOPICS="$ACTIONS $OPTIONS $PHASES"
 
-# Help writes the name the runner was started by (until there is an installed
-# 'laby'). ask shows that name as 'laby', so the tests read the same as the
+# Help writes the name the runner was started by ('laby' or 'labyrinth' when
+# started through the installed command). ask shows that name as 'laby', so the
+# tests read the same as the
 # manual; here starts the runner as ./labyrinth.sh and leaves the output as it
 # is, for the limits on lines and columns, which hold with that name.
 

@@ -61,6 +61,7 @@ Labyrinth/
 ├── SECURITY.md                   ← how to report a weakness in Labyrinth privately
 ├── .claude/                      ← shared Claude Code agents, commands and settings
 ├── labyrinth.sh / labyrinth.ps1  ← main program: preview, run, keep, undo, history, probe, help, version
+├── install.sh / install.ps1      ← guided installers; laby.cmd / labyrinth.cmd are the Windows commands
 ├── core/ phases/ profiles/ platform/   ← code layout from design 00
 ├── report/                       ← incident reporting (planned; empty today)
 ├── config/                       ← *.example templates for run-time values; never real values
@@ -92,13 +93,27 @@ Labyrinth/
 
 Strategy, the team's reading of the rules, topology notes and the vulnerability assessment live in the team's private repository, not here.
 
+## Install
+
+From the unpacked release folder, the installer checks the release, shows what it will do, and asks before it changes anything (the default answer is no). It is safe to run again.
+
+```bash
+sudo ./install.sh          # Linux: as root
+```
+
+```powershell
+.\install.ps1              # Windows: in a PowerShell window opened as Administrator
+```
+
+It installs the code where only root (Administrators) can change it, adds the commands `laby` and `labyrinth`, installs the manual, and copies the `config/*.example` templates into the data root without overwriting anything. Then run `sudo laby` (Linux) or `laby` (Windows). The steps are in [`docs/Conventions.md`](docs/Conventions.md#33-automatic-runs-and-the-rest-of-the-command-line-specified-planned) and the operator manual ([`docs/manual/labyrinth.md`](docs/manual/labyrinth.md)).
+
 ## Contributing
 
 See [`CONTRIBUTING.md`](CONTRIBUTING.md): one issue, one person, one branch, one small pull request, merged after CI passes and a second person approves.
 
 ## Status
 
-Build stages 0 to 3 are done. The design specs are the blueprint the code is built against, and [`docs/Roadmap.md`](docs/Roadmap.md) gives the order they are built in. The core is built for Linux and Windows: logging, the run manifest, the safety gates, the revert timer (which undoes a run unless someone keeps it), scoring-style probes, and the main program's command line: preview, run (-r), keep (-k), undo (-u), --history and --probe (docs/Conventions.md, section 3.1). The groundwork modules need is built too: platform facts, the firewall adapter, quarantine, approval items and the shipped profiles. It is tested on CI, but not yet in a lab. The guard checks every script for outside calls and blanket actions. No hardening module exists yet, and remote mode (driving many hosts from one control node) is not built. Stage 4b is next: one command per host with no questions during the run, an approval queue, short output and the Harden phase. It is specified, not built ([`docs/Roadmap.md`](docs/Roadmap.md)).
+Build stages 0 to 3 are done. The design specs are the blueprint the code is built against, and [`docs/Roadmap.md`](docs/Roadmap.md) gives the order they are built in. The core is built for Linux and Windows: logging, the run manifest, the safety gates, the revert timer (which undoes a run unless someone keeps it), scoring-style probes, and the main program's command line: preview, run (-r), keep (-k), undo (-u), --history and --probe (docs/Conventions.md, section 3.1), and the guided installers, `install.sh` and `install.ps1`, that add the `laby` and `labyrinth` commands (section 3.3). The groundwork modules need is built too: platform facts, the firewall adapter, quarantine, approval items and the shipped profiles. It is tested on CI, but not yet in a lab. The guard checks every script for outside calls and blanket actions. No hardening module exists yet, and remote mode (driving many hosts from one control node) is not built. Stage 4b is next: one command per host with no questions during the run, an approval queue, short output and the Harden phase. It is specified, not built ([`docs/Roadmap.md`](docs/Roadmap.md)).
 
 
 > [!IMPORTANT]
