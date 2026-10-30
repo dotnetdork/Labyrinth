@@ -1,7 +1,8 @@
 # Build the documentation website from docs/ and publish it with GitHub
-# Pages (mkdocs.yml). The build tools are installed on the disposable runner
-# only. A pull request that touches the docs builds the site without
-# publishing it, so a broken page shows up before the merge.
+# Pages (mkdocs.yml), which serves the uploaded site directly. The build
+# tools are installed on the disposable runner only. A pull request that
+# touches the docs builds the site without publishing it, so a broken page
+# shows up before the merge.
 name: Docs
 
 on:
@@ -11,9 +12,11 @@ on:
   pull_request:
     paths: ['docs/**', 'mkdocs.yml', '.github/workflows/docs.yml']
 
+# A newer push cancels a pull request's build, but on main it waits, so a
+# publish under way is never cut off.
 concurrency:
   group: docs-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -30,25 +33,26 @@ jobs:
           "$RUNNER_TEMP/venv/bin/pip" install --quiet mkdocs-material==9.8.0 markdown-callouts==0.4.0
       - name: Build
         run: '"$RUNNER_TEMP/venv/bin/mkdocs" build'
+      # Only a push to main hands the built site to GitHub Pages.
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9  # v5.0.0
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        with:
+          path: site/
 
   publish:
     name: Publish the docs site
     needs: build
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
-    # Only this job may write: it pushes the built site to the gh-pages branch.
+    # Only this job may publish. GitHub Pages serves the uploaded site
+    # directly, so nothing is committed to the repository.
     permissions:
-      contents: write
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
-        with:
-          fetch-depth: 0
-      - name: Install the site tools
-        run: |
-          python3 -m venv "$RUNNER_TEMP/venv"
-          "$RUNNER_TEMP/venv/bin/pip" install --quiet mkdocs-material==9.8.0 markdown-callouts==0.4.0
       - name: Publish
-        run: |
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          "$RUNNER_TEMP/venv/bin/mkdocs" gh-deploy --force
+        id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346  # v5.0.1
