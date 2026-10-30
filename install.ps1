@@ -112,22 +112,40 @@ function Get-LabFullPath {
 function Test-LabSameFile {
     param([string] $A, [string] $B)
     if (-not ((Test-Path -LiteralPath $A -PathType Leaf) -and (Test-Path -LiteralPath $B -PathType Leaf))) { return $false }
-    return (Get-FileHash -LiteralPath $A -Algorithm SHA256).Hash -ceq (Get-FileHash -LiteralPath $B -Algorithm SHA256).Hash
+    return (Get-LabReleaseSha -Path $A) -ceq (Get-LabReleaseSha -Path $B)
 }
 
-# Test-LabDataRootLocked PATH: can only Administrators and SYSTEM use PATH,
-# with nothing inherited from its parent?
+# Test-LabDataRootLocked PATH: is PATH private, with nothing inherited from
+# its parent, Administrators and SYSTEM given full control, and nobody but an
+# administrator given anything? The runner adds the account that runs it
+# (Protect-LabDataRoot), which is an administrator, so a data root it has
+# used still counts as private.
 function Test-LabDataRootLocked {
     param([string] $Path)
     $acl = Get-Acl -LiteralPath $Path
     if (-not $acl.AreAccessRulesProtected) { return $false }
+    $admins = @(Get-LabAdminSid)
     $seen = @()
     foreach ($r in $acl.GetAccessRules($true, $true, [Security.Principal.SecurityIdentifier])) {
-        if ($r.AccessControlType -ne 'Allow' -or $r.FileSystemRights -ne [Security.AccessControl.FileSystemRights]::FullControl) { return $false }
-        if (@($AdminSid, $SystemSid) -cnotcontains $r.IdentityReference.Value) { return $false }
-        $seen += $r.IdentityReference.Value
+        if ($r.AccessControlType -ne 'Allow') { continue }
+        if ($admins -cnotcontains $r.IdentityReference.Value) { return $false }
+        if ($r.FileSystemRights -eq [Security.AccessControl.FileSystemRights]::FullControl) { $seen += $r.IdentityReference.Value }
     }
     return (($seen -ccontains $AdminSid) -and ($seen -ccontains $SystemSid))
+}
+
+# Find-LabForeignOwner PATH: the first item in PATH, PATH included, owned by
+# an account other than Administrators, SYSTEM or the one running this, or
+# $null. Such an item was planted: its owner can still change it after the
+# folder is made private, so a person must check it.
+function Find-LabForeignOwner {
+    param([string] $Path)
+    $trusted = @(Get-LabTrustedSid)
+    foreach ($i in @(Get-Item -LiteralPath $Path -Force) + @(Get-ChildItem -LiteralPath $Path -Recurse -Force)) {
+        $owner = $i.GetAccessControl('Owner').GetOwner([Security.Principal.SecurityIdentifier]).Value
+        if ($trusted -cnotcontains $owner) { return $i.FullName }
+    }
+    return $null
 }
 
 # Lock-LabDataRoot PATH: make PATH usable by Administrators and SYSTEM only,
@@ -146,11 +164,13 @@ function Lock-LabDataRoot {
     }
     if (Test-Path -LiteralPath $Path) {
         Set-Acl -LiteralPath $Path -AclObject $acl
-    } elseif ($PSVersionTable.PSVersion.Major -le 5) {
-        [void][IO.Directory]::CreateDirectory($Path, $acl)
+    } elseif ($PSVersionTable.PSEdition -eq 'Core') {
+        # PowerShell 7 has no CreateDirectory(path, security); this creates the
+        # folder with its access list in one step all the same (Microsoft Learn,
+        # FileSystemAclExtensions.Create).
+        [IO.FileSystemAclExtensions]::Create((New-Object IO.DirectoryInfo $Path), $acl)
     } else {
-        [void][IO.Directory]::CreateDirectory($Path)
-        Set-Acl -LiteralPath $Path -AclObject $acl
+        [void][IO.Directory]::CreateDirectory($Path, $acl)
     }
 }
 
@@ -228,7 +248,8 @@ try {
     }
 
     $files = New-Object System.Collections.Generic.List[string]
-    foreach ($f in @(Get-LabReleaseFile -Root $Here)) {
+    # Get-LabReleaseFile returns its list as one object: @() would wrap it again.
+    foreach ($f in (Get-LabReleaseFile -Root $Here)) {
         if ($f -cnotmatch '^[A-Za-z0-9._/-]+$' -or -not (Test-LabReleasePlain -Path (Join-Path $Here $f))) {
             Exit-LabInstall 20 "$f is not a plain file with a plain name, so the release cannot be installed"
         }
@@ -277,25 +298,46 @@ try {
 
     # Only Administrators, SYSTEM and TrustedInstaller may change the code, the
     # data root, the help module or any folder above them: SYSTEM runs this
-    # code, and so does the revert timer.
-    $untrusted = Find-LabUntrustedItem -Path @($Root, $CodeDir, $HelpModule)
+    # code, and so does the revert timer. A data root that is already there
+    # but still open (C:\ProgramData lets every user create files) is made
+    # private first and checked after that, unless something in it belongs
+    # to another account.
+    $rootNew = -not (Test-Path -LiteralPath $Root)
+    $rootLocked = (-not $rootNew) -and (Test-LabDataRootLocked -Path $Root)
+    if (-not $rootNew) {
+        $foreign = Find-LabForeignOwner -Path $Root
+        if ($foreign) {
+            Exit-LabInstall 20 "$foreign belongs to an account that is not an administrator, so nothing was installed" `
+                'Check it and remove it by hand, then run the installer again.'
+        }
+    }
+    $checkNow = @($CodeDir, $HelpModule)
+    if ($rootNew -or $rootLocked) { $checkNow += $Root }
+    $untrusted = Find-LabUntrustedItem -Path $checkNow
     if ($untrusted) {
         Exit-LabInstall 20 "$untrusted can be changed by an account other than an administrator, so nothing was installed" `
             'Fix its permissions so only Administrators and SYSTEM can write there, then run the installer again.'
     }
 
-    # Another command with the same name, found on the PATH before ours.
-    $shadow = @()
+    # Another program with one of the names. The code folder goes at the end
+    # of the PATH, so the other program would win. A taken labyrinth is
+    # refused, as on Linux. laby.cmd is part of the release and stays, but a
+    # taken laby is named in the plan and the command to type is labyrinth.
+    $taken = @{}
     foreach ($n in @('laby', 'labyrinth')) {
         foreach ($c in @(Get-Command $n -All -ErrorAction SilentlyContinue)) {
             if ($c.CommandType -notin 'Application', 'ExternalScript') { continue }
-            if ($c.Source -and -not $c.Source.StartsWith($CodeDir + '\', [StringComparison]::OrdinalIgnoreCase)) { $shadow += "$n is also at $($c.Source)" }
+            if ($c.Source -and -not $c.Source.StartsWith($CodeDir + '\', [StringComparison]::OrdinalIgnoreCase)) {
+                if (-not $taken.ContainsKey($n)) { $taken[$n] = $c.Source }
+            }
         }
     }
-    if ($shadow.Count -gt 0) {
-        [Console]::Error.WriteLine("${Me}: warning: another command has the same name: $($shadow -join '; ')")
-        [Console]::Error.WriteLine('The one earlier on the PATH is the one that runs. Remove it, or use the other name.')
+    if ($taken.ContainsKey('labyrinth')) {
+        Exit-LabInstall 20 "the command name labyrinth is taken: a command named labyrinth is already at $($taken['labyrinth'])" `
+            'Nothing was installed. Remove or rename that command, then run the installer again.'
     }
+    $cmd = 'laby'
+    if ($taken.ContainsKey('laby')) { $cmd = 'labyrinth' }
 
     # 3. What is already there, and so what the install will do.
     $codeState = 'new'
@@ -306,8 +348,6 @@ try {
             if ($have.Status -eq 'ok' -and $have.Hash -ceq $release.Hash) { $codeState = 'same' }
         }
     }
-    $rootNew = -not (Test-Path -LiteralPath $Root)
-    $rootLocked = (-not $rootNew) -and (Test-LabDataRootLocked -Path $Root)
     $subsMissing = $false
     foreach ($sub in @('etc', 'state', 'logs', 'backup')) {
         if (-not (Test-Path -LiteralPath (Join-Path $Root $sub))) { $subsMissing = $true }
@@ -347,6 +387,7 @@ try {
     elseif ($rootLocked) { Write-LabRow 'Data root:' "$Root (already there and private; its files are never touched)" }
     else { Write-LabRow 'Data root:' "$Root (already there; made private to Administrators and SYSTEM)" }
     Write-LabRow 'Commands:' "laby.cmd and labyrinth.cmd, in $CodeDir"
+    if ($taken.ContainsKey('laby')) { Write-LabRow '' "laby is taken by $($taken['laby']): type labyrinth instead" }
     if ($pathState -eq 'skip') { Write-LabRow 'PATH:' 'not changed (-NoPath)' }
     elseif ($pathState -eq 'same') { Write-LabRow 'PATH:' "$CodeDir is already on the machine PATH" }
     else { Write-LabRow 'PATH:' "$CodeDir is added to the machine PATH (new windows only)" }
@@ -381,6 +422,13 @@ try {
     # The data root: private to Administrators and SYSTEM. What is inside an
     # existing one is not touched.
     if ($rootNew -or -not $rootLocked) { Lock-LabDataRoot -Path $Root }
+    if (-not $rootNew -and -not $rootLocked) {
+        $untrusted = Find-LabUntrustedItem -Path @($Root)
+        if ($untrusted) {
+            Exit-LabInstall 20 "the data root was made private, but $untrusted can still be changed by an account other than an administrator" `
+                'Nothing else was installed. Fix its permissions so only Administrators and SYSTEM can write there, then run the installer again.'
+        }
+    }
     foreach ($sub in @('etc', 'state', 'logs', 'backup')) {
         $dir = Join-Path $Root $sub
         if (-not (Test-Path -LiteralPath $dir)) { [void][IO.Directory]::CreateDirectory($dir) }
@@ -449,9 +497,10 @@ try {
     [Console]::Out.WriteLine("The templates are in $Root\etc without the .example ending. They hold")
     [Console]::Out.WriteLine('placeholders: replace the names in hosts and protected-accounts with the')
     [Console]::Out.WriteLine("event's, and see the manual (section 10) for the other files.")
-    if ($pathState -eq 'new') { [Console]::Out.WriteLine('Open a new PowerShell window so that it finds the laby command.') }
-    if ($Root -ne $DefaultRoot) { [Console]::Out.WriteLine("Next: laby -Root `"$Root`"") }
-    else { [Console]::Out.WriteLine('Next: laby') }
+    if ($pathState -eq 'new') { [Console]::Out.WriteLine("Open a new PowerShell window so that it finds the $cmd command.") }
+    if ($taken.ContainsKey('laby')) { [Console]::Out.WriteLine('The name laby belongs to another program here; the command is labyrinth.') }
+    if ($Root -ne $DefaultRoot) { [Console]::Out.WriteLine("Next: $cmd -Root `"$Root`"") }
+    else { [Console]::Out.WriteLine("Next: $cmd") }
 } catch {
     [Console]::Error.WriteLine("${Me}: stopped: $($_.Exception.Message), exit 40")
     [Console]::Error.WriteLine('Some steps may be done. It is safe to run the installer again.')

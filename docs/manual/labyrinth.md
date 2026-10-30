@@ -75,10 +75,10 @@ It checks the release against `release.sha256` and refuses if a file differs. It
 - creates the data root, `/opt/labyrinth`, with `etc`, `state`, `logs` and `backup` open to root only (`--root DIR` picks another);
 - copies the program to `/opt/labyrinth/bin`, owned by root;
 - adds the commands `laby` and `labyrinth` in `/usr/bin`. If something else already has the name `laby`, it leaves `laby` out and says so; if something else has the name `labyrinth`, it installs nothing;
-- installs the manual, so `man laby` works (when this copy has the built manual; otherwise it skips it with one line);
+- installs the manual, so `man laby` works (when this copy has the built manual; otherwise it skips it with one line). It never replaces another program's manual page: if `laby` is left out, or another program already has a `laby` page, only `man labyrinth` is added;
 - copies the configuration templates into `/opt/labyrinth/etc` without the `.example` ending, never replacing a file that is already there.
 
-It first checks that only root can change the program's folder, the commands' folder and every folder above them, and refuses if not. It warns if root's `PATH` has a folder that others can write to. It ends by telling you what to fill in (the templates hold placeholder names) and the next command, `sudo laby`.
+It first checks that only root can change the program's folder, the commands' folder, the manual's folder, every folder above them, and an existing data root and everything in it, and refuses if not. It warns if root's `PATH` has a folder that others can write to. It ends by telling you what to fill in (the templates hold placeholder names) and the next command, `sudo laby`.
 
 The installer is safe to run again, for example to install a new release: it replaces the program completely and never touches the configuration, the run records, the backups or the logs. It refuses while any revert timer is armed, because the timer would run the code being replaced; it names the run and when its timer fires. Keep the run (`sudo laby -k ID`) or undo it (`sudo laby -u ID`) first.
 <!-- end -->
@@ -91,11 +91,11 @@ It checks the release against `release.sha256` and refuses if a file differs. It
 
 - creates the data root, `C:\ProgramData\Labyrinth`, with `etc`, `state`, `logs` and `backup`, and makes it usable by Administrators and SYSTEM only (`-Root DIR` picks another);
 - copies the program to `C:\Program Files\Labyrinth`, where only Administrators can write;
-- adds that folder to the machine's `PATH`, so that `laby` and `labyrinth` work in a new PowerShell or command window;
+- adds that folder to the machine's `PATH`, so that `laby` and `labyrinth` work in a new PowerShell or command window. If another program on the `PATH` already has the name `labyrinth`, it installs nothing; if one has the name `laby`, it says so, and you type `labyrinth` instead;
 - installs the help topic, so `Get-Help about_Labyrinth` shows the manual (if PowerShell does not find it, run `Import-Module Labyrinth` first). When this copy has no built manual, it skips this with one line;
 - copies the configuration templates into `C:\ProgramData\Labyrinth\etc` without the `.example` ending, never replacing a file that is already there.
 
-It first checks that only Administrators, SYSTEM and TrustedInstaller can change the program's folder and every folder above it, and refuses if not. It ends by telling you what to fill in (the templates hold placeholder names) and the next command, `laby`.
+It first checks that only Administrators, SYSTEM and TrustedInstaller can change the program's folder and every folder above it, and refuses if not. If the data root is already there but still open to other accounts, it makes it private, then checks it the same way; if something in it belongs to an account that is not an administrator, it installs nothing, so a person can check that file first. It ends by telling you what to fill in (the templates hold placeholder names) and the next command, `laby`.
 
 The installer is safe to run again, for example to install a new release: it replaces the program completely and never touches the configuration, the run records, the backups or the logs. It refuses while any revert timer is armed, because the timer would run the code being replaced; it names the run and when its timer fires. Keep the run (`laby -k ID`) or undo it (`laby -u ID`) first.
 <!-- end -->
