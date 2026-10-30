@@ -3,7 +3,9 @@
 # They replace the host-specific parts of the core, so runner tests need no
 # root, no systemd and no network:
 #   - the administrator check passes unless $LAB_ROOT/NOT_ADMIN exists;
-#   - the ownership check passes unless $LAB_ROOT/UNTRUSTED exists;
+#   - the ownership checks (lab_tree_trusted, and lab_path_trusted for the
+#     installer) pass unless $LAB_ROOT/UNTRUSTED exists; lab_tree_trusted
+#     alone also fails when $LAB_ROOT/UNTRUSTED_TREE exists;
 #   - every account has console session 1 unless $LAB_ROOT/NO_CONSOLE exists;
 #   - the revert timer is recorded in $LAB_ROOT/timer.log instead of armed;
 #   - a probe fails if its host is listed as "<host> fail" in
@@ -14,6 +16,12 @@
 lab_is_admin() { [[ ! -e "$LAB_ROOT/NOT_ADMIN" ]]; }
 
 lab_tree_trusted() {
+  [[ -e "$LAB_ROOT/UNTRUSTED" || -e "$LAB_ROOT/UNTRUSTED_TREE" ]] || return 0
+  printf '%s\n' "$LAB_ROOT"
+  return 1
+}
+
+lab_path_trusted() {
   [[ -e "$LAB_ROOT/UNTRUSTED" ]] || return 0
   printf '%s\n' "$LAB_ROOT"
   return 1

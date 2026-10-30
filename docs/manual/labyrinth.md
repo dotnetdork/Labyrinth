@@ -51,17 +51,54 @@ You need:
 
 <!-- linux -->
 - **A root shell.** Labyrinth changes the system, so it runs as root. Use `sudo` in front of each command, as the examples do.
-- **Labyrinth's folder on the host,** normally `/opt/labyrinth`. The program is `labyrinth.sh` in its `bin` folder, so run the commands from there: `cd /opt/labyrinth/bin`.
+- **Labyrinth's folder on the host,** normally `/opt/labyrinth`. The program is `labyrinth.sh` in its `bin` folder. The installer below puts the commands `laby` and `labyrinth` in `/usr/bin`, so you can type them anywhere; without it, run the commands from the program's folder: `cd /opt/labyrinth/bin`.
 <!-- end -->
 <!-- windows -->
 - **An elevated PowerShell window.** Labyrinth changes the system, so it runs as an Administrator. Right-click Windows PowerShell and choose **Run as administrator**.
-- **Labyrinth's folder on the host,** normally `C:\ProgramData\Labyrinth`. The program is `labyrinth.ps1` in its `bin` folder, so run the commands from there: `cd C:\ProgramData\Labyrinth\bin`.
-- **Permission to run the script.** If Windows refuses to run it because of the execution policy, start it like this instead, for this window only: `powershell -ExecutionPolicy Bypass -File .\labyrinth.ps1 lockout`.
+- **Labyrinth's folders on the host.** The data root is normally `C:\ProgramData\Labyrinth`. The program, `labyrinth.ps1`, is in `C:\Program Files\Labyrinth`, where only Administrators can change it. The installer below adds that folder to the machine's `PATH`, so you can type `laby` anywhere in a new window; without it, run the commands from the program's folder.
+- **Permission to run the script.** The installer's `laby` command (a file named `laby.cmd`) starts Windows PowerShell with the execution policy set aside for that one run, and never changes the policy of the host. Without the installer, if Windows refuses to run the script because of the execution policy, start it like this instead, for this window only: `powershell -ExecutionPolicy Bypass -File .\labyrinth.ps1 lockout`.
 <!-- end -->
 - **The release hash,** in the team's notes kept off the hosts. When the team makes a release, the captain records the SHA-256 of its release list, `release.sha256`. Before it runs, Labyrinth checks each of its own files against that list, and it prints the list's hash on the `Release:` line of `-V` and of every run. Compare the two by eye. If they differ, stop: this copy is not the release the team checked. A copy taken straight from the repository has no list, and its `Release:` line says `not checked`.
 - **The event's configuration,** in the `etc` folder under the data root (section 10). The team prepares these files before the event. The two that matter most:
   - `hosts` lists every host Labyrinth may act on, with its **group** (which wave of hosts it belongs to), its profile and its platform: `ubuntu` (any Debian-family system; `debian` means the same), `rhel-family`, `windows` or `appliance`.
   - `protected-accounts` is the **protected set**: accounts Labyrinth must never touch, such as the officials' accounts and the accounts the scoring engine logs in with. If this file is missing or empty, Labyrinth refuses to run.
+
+**Installing it.** The installer sets Labyrinth up on a host in one guided step. Unpack the release and compare its hash with the team's notes, as above. Then, in the unpacked folder:
+
+<!-- linux -->
+```
+sudo ./install.sh
+```
+
+It checks the release against `release.sha256` and refuses if a file differs. It then prints its plan, which says where the program, the data root, the commands and the manual will go, and asks `Install? [y/N]`. Anything but `y` changes nothing; `-y` answers yes for you, and without a terminal it refuses unless you give `-y`. It then:
+
+- creates the data root, `/opt/labyrinth`, with `etc`, `state`, `logs` and `backup` open to root only (`--root DIR` picks another);
+- copies the program to `/opt/labyrinth/bin`, owned by root;
+- adds the commands `laby` and `labyrinth` in `/usr/bin`. If something else already has the name `laby`, it leaves `laby` out and says so; if something else has the name `labyrinth`, it installs nothing;
+- installs the manual, so `man laby` works (when this copy has the built manual; otherwise it skips it with one line). It never replaces another program's manual page: if `laby` is left out, or another program already has a `laby` page, only `man labyrinth` is added;
+- copies the configuration templates into `/opt/labyrinth/etc` without the `.example` ending, never replacing a file that is already there.
+
+It first checks that only root can change the program's folder, the commands' folder, the manual's folder, every folder above them, and an existing data root and everything in it, and refuses if not. It warns if root's `PATH` has a folder that others can write to. It ends by telling you what to fill in (the templates hold placeholder names) and the next command, `sudo laby`.
+
+The installer is safe to run again, for example to install a new release: it replaces the program completely and never touches the configuration, the run records, the backups or the logs. It refuses while any revert timer is armed, because the timer would run the code being replaced; it names the run and when its timer fires. Keep the run (`sudo laby -k ID`) or undo it (`sudo laby -u ID`) first.
+<!-- end -->
+<!-- windows -->
+```
+.\install.ps1
+```
+
+It checks the release against `release.sha256` and refuses if a file differs. It then prints its plan, which says where the program, the data root, the commands and the help topic will go, and asks `Install? [y/N]`. Anything but `y` changes nothing; `-y` answers yes for you, and without a terminal it refuses unless you give `-y`. It then:
+
+- creates the data root, `C:\ProgramData\Labyrinth`, with `etc`, `state`, `logs` and `backup`, and makes it usable by Administrators and SYSTEM only (`-Root DIR` picks another);
+- copies the program to `C:\Program Files\Labyrinth`, where only Administrators can write;
+- adds that folder to the machine's `PATH`, so that `laby` and `labyrinth` work in a new PowerShell or command window. If another program on the `PATH` already has the name `labyrinth`, it installs nothing; if one has the name `laby`, it says so, and you type `labyrinth` instead;
+- installs the help topic, so `Get-Help about_Labyrinth` shows the manual (if PowerShell does not find it, run `Import-Module Labyrinth` first). When this copy has no built manual, it skips this with one line;
+- copies the configuration templates into `C:\ProgramData\Labyrinth\etc` without the `.example` ending, never replacing a file that is already there.
+
+It first checks that only Administrators, SYSTEM and TrustedInstaller can change the program's folder and every folder above it, and refuses if not. If the data root is already there but still open to other accounts, it makes it private, then checks it the same way; if something in it belongs to an account that is not an administrator, it installs nothing, so a person can check that file first. It ends by telling you what to fill in (the templates hold placeholder names) and the next command, `laby`.
+
+The installer is safe to run again, for example to install a new release: it replaces the program completely and never touches the configuration, the run records, the backups or the logs. It refuses while any revert timer is armed, because the timer would run the code being replaced; it names the run and when its timer fires. Keep the run (`laby -k ID`) or undo it (`laby -u ID`) first.
+<!-- end -->
 
 # 3. Words you will see
 
@@ -145,7 +182,7 @@ Labyrinth does **one action per line**. A phase on its own is a preview. Every o
 
 `PHASE` is `lockout`, `observe`, `deceive` or `sustain`. `ID` is a run ID or its last four characters; `-k` and `-u` always need one. `-r` may come before or after the phase. Two actions on one line are an error (exit 40), and so is a word that is not a phase.
 
-This manual writes the program's name as `laby`. Until an installer puts `laby` on the path (planned), type `@CMD@` instead: the program's own help and hints already write the name you started it with.
+This manual writes the program's name as `laby`. The installer (section 2) puts `laby`, and the longer name `labyrinth`, on the path, and the program's own help and hints then write the name you typed. Without the installer, type `@CMD@` instead; the help and hints write the name you started it with.
 
 Phases, long option names and run IDs can be typed in any mix of upper and lower case. The short letters are the exception: `-P` and `-V` are capitals, and `-r`, `-k`, `-u` and `-h` are lower case. `-p` and `-v` are errors, and Labyrinth says which letter you meant.
 
@@ -334,7 +371,7 @@ A run ID that PowerShell can read as a number must be put in quotes, or PowerShe
 
 An option given twice, an option with no value, or a word Labyrinth does not know is an error (exit 40). Labyrinth says which word is wrong and, for a near miss, suggests the right one. An option that the action does not use, such as a break-glass answer on a preview, only earns a warning.
 
-**Planned, not built yet.** These are not accepted: a status page when `@CMD@` is typed alone; `-q`, `-a` and `-d` (queue the run, no questions in the middle of it, and the login check); `-v` (short output); `init` and `harden`; `-y`; `--no-revert`; `--manual`; and the installer. Typing one of the flags is a usage error (exit 40) that says it is planned and not built yet; the rest is an ordinary mistake.
+**Planned, not built yet.** These are not accepted: a status page when `@CMD@` is typed alone; `-q`, `-a` and `-d` (queue the run, no questions in the middle of it, and the login check); `-v` (short output); `init` and `harden`; `-y`; `--no-revert`; and `--manual`. Typing one of the flags is a usage error (exit 40) that says it is planned and not built yet; the rest is an ordinary mistake.
 
 # 7. What happens during a run
 
@@ -492,7 +529,7 @@ Everything Labyrinth keeps is under one folder, the **data root**: `@ROOT@` unle
 <!-- linux -->
 | Folder | Holds |
 |---|---|
-| `<root>/bin` | The program, and `release.sha256`, the hash of each of its files. |
+| `<root>/bin` | The program, and `release.sha256`, the hash of each of its files. The commands `laby` and `labyrinth` are links to it in `/usr/bin`. |
 | `<root>/etc` | The event's configuration: `hosts`, `protected-accounts`, `event.conf`, `services`, `scoring-allowlist`, `never-ban`, `outbound-allow`, `pre-approved`. |
 | `<root>/state` | Run records: one folder per run under `state/runs`, with the run's change record (`manifest.jsonl`), its timer, and its log (`output.log`). |
 | `<root>/logs` | Logs, one folder per kind. |
@@ -503,7 +540,7 @@ Only root can read `etc`, `state` and `backup`. Only root may be able to change 
 <!-- windows -->
 | Folder | Holds |
 |---|---|
-| `<root>\bin` | The program, and `release.sha256`, the hash of each of its files. |
+| `C:\Program Files\Labyrinth` | The program, its `laby.cmd` and `labyrinth.cmd` commands, and `release.sha256`, the hash of each of its files. It is not under the data root. |
 | `<root>\etc` | The event's configuration: `hosts`, `protected-accounts`, `event.conf`, `services`, `scoring-allowlist`, `never-ban`, `outbound-allow`, `pre-approved`. |
 | `<root>\state` | Run records: one folder per run under `state\runs`, with the run's change record (`manifest.jsonl`), its timer, and its log (`output.log`). |
 | `<root>\logs` | Logs, one folder per kind. |
@@ -559,10 +596,10 @@ The run that is `armed` is the one to undo; its ID is also on the second line of
 <!-- end -->
 
 <!-- linux -->
-**"... can be changed by an account other than root".** Labyrinth runs its program, its configuration and its run records as root, and the revert timer runs them again later. So `-r`, `-k` and `-u` refuse if any other account could change them: the program folder, the configuration folder, the data root, anything in them, or any folder above them. The line names the first one found. Keep Labyrinth in `/opt/labyrinth`, owned by root and not writable by group or others: `sudo chown -R root: /opt/labyrinth` and `sudo chmod -R go-w /opt/labyrinth`. A copy unpacked in a home folder or under `/tmp` is refused.
+**"... can be changed by an account other than root".** Labyrinth runs its program, its configuration and its run records as root, and the revert timer runs them again later. So `-r`, `-k` and `-u` refuse if any other account could change them: the program folder, the configuration folder, the data root, anything in them, or any folder above them. The line names the first one found. Install Labyrinth with the installer (section 2), which refuses a folder that others can change; or keep it in `/opt/labyrinth`, owned by root and not writable by group or others: `sudo chown -R root: /opt/labyrinth` and `sudo chmod -R go-w /opt/labyrinth`. A copy unpacked in a home folder or under `/tmp` is refused.
 <!-- end -->
 <!-- windows -->
-**"... can be changed by an account that is not an administrator".** Labyrinth runs its program, its configuration and its run records as an administrator, and the revert timer runs them again later as SYSTEM. So `-r`, `-k` and `-u` refuse if any other account could change them: the program folder, the configuration folder, the data root, anything in them, or any folder above them. The line names the first one found. Keep Labyrinth in `C:\ProgramData\Labyrinth`, where the first run makes the data root private to administrators. A copy unpacked in a user's own folder, or one that gives Users or Authenticated Users the right to change it, is refused.
+**"... can be changed by an account that is not an administrator".** Labyrinth runs its program, its configuration and its run records as an administrator, and the revert timer runs them again later as SYSTEM. So `-r`, `-k` and `-u` refuse if any other account could change them: the program folder, the configuration folder, the data root, anything in them, or any folder above them. The line names the first one found. Install Labyrinth with the installer (section 2): it puts the program in `C:\Program Files\Labyrinth` and makes the data root, `C:\ProgramData\Labyrinth`, private to administrators. A copy unpacked in a user's own folder, or one that gives Users or Authenticated Users the right to change it, is refused.
 <!-- end -->
 
 **"... differs from the release", "is not in the release" or "is missing".** Before it runs anything, Labyrinth checks each of its own files against `release.sha256`, and one was changed, added or removed. Every action refuses, help and the revert timer's undo too, which also shows a notice on every terminal: the changes of an armed run stay in place until this is mended. Until you know otherwise, treat it as a sign of an intruder. Note the line, copy Labyrinth here again from the team's copy, and check the copy with the host's own tools, which do not depend on Labyrinth's code. In Labyrinth's folder:
