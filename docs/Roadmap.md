@@ -8,9 +8,9 @@ Work goes top to bottom. Each milestone is a GitHub milestone of the same name, 
 
 | # | Milestone | What it holds | Why it comes here |
 |---|---|---|---|
-| 1 | **First usable release** (section 3) | The installer, automatic runs with the queue, the first-minute lockout, the Harden phase, the read-only checks and probes, the operator helpers, and the manual and help | With it, each host's operator can install Labyrinth, lock the host down in the first minutes, close known weaknesses, and check that scored services still pass, on Linux and Windows. |
+| 1 | **First usable release** (section 3) | The installer, automatic runs with the queue, the first-minute lockout, the Harden phase, checkpoints, the read-only checks and probes, the operator helpers, and the manual and help | With it, each host's operator can install Labyrinth, lock the host down in the first minutes, close known weaknesses, and check that scored services still pass, on Linux and Windows. |
 | 2 | **Remote mode** (section 4.1) | Read-only `remote plan`, then `remote apply` | Local mode already works on every host. Remote mode lets one hardened control node check every host, read-only first. |
-| 3 | **Observe and checkpoints** (section 4.2) | Seal and integrity findings, checkpoints, the outside probe, the health monitor, audit logging and log forwarding | Without logging, the later traps and checks cannot be seen. Checkpoints guard the scored services from here on. |
+| 3 | **Observe and checkpoints** (section 4.2) | Seal and integrity findings, the outside probe, the health monitor, audit logging and log forwarding | Without logging, the later traps and checks cannot be seen. The sealed baseline gives checkpoints their integrity section. |
 | 4 | **Sustain and hardening** (section 4.3) | SIEM hardening, service reduction, the flaw tracker, service replacement | Keeps scored services up and closes the remaining known holes. |
 | 5 | **Reporting and cleanup** (section 4.4) | The incident report builder, cleanup, JSON output | Incident reports earn points, and cleanup must work before the tool is used at an event. |
 | 6 | **Deceive and extras** (section 4.5) | Canaries, the maze, dynamic bans, the status feed, the DNS sinkhole | Traps need the logging from milestone 3 to be worth anything. |
@@ -109,12 +109,13 @@ Each module ships its read-only `check` and `plan` first. The modules are built 
 
 | Issue | Branch | Spec | Delivers |
 |---|---|---|---|
-| #68 | `phase-4/harden-phase` | 03, 10, 02, 09, 13 | The `harden` phase between `lockout` and `observe`, and `init` (Lock out then Harden as one run): the install, with outbound opened only to its exact sources for the install (02 §4), restore points, the persistence sweep, the CVE assessment, patching, service packs, Windows and AD hardening, then reopening outbound; the shipped profiles and the first-minute run updated to match. Service replacement takes its place in the phase after this release (section 4.3) |
+| #68 | `phase-4/harden-phase` | 03, 10, 02, 09, 13 | The `harden` phase between `lockout` and `observe`, and `init` (Lock out then Harden as one run): the install, with outbound opened only to its exact sources for the install (02 §4), restore points, the persistence sweep, the CVE assessment, patching, service packs, Windows and AD hardening, then reopening outbound (`harden.reopen_outbound`); the shipped profiles and the first-minute run updated to match. Service replacement takes its place in the phase after this release (section 4.3) |
 | #80 | `phase-4/restore-points` | 07 | `backup <service>` and `restore <service>`, so a restore point exists before the sweep and before any patch |
 | #81 | `phase-4/persistence-sweep` | 06 | Classification, automatic quarantine of high-confidence items, and limits on who can schedule jobs |
 | #79 | `phase-4/packages` | 02 | Installing the profile's packages behind the lockdown: source order, lock wait, simulation check, services kept stopped, `package_install` entries; vendored tools and pinned downloads with the core download helper |
 | #100 | `phase-7/patching` | 10 §4, 02 §5 | Applying an approved security update, one package at a time, after a restore point; the `security-update` category, which pre-approval rules may cover, so a first-minute run applies a named scored package's update; Windows patching checklist |
 | #103 | `phase-7/win-tier3` | 14 §5, 12 | LDAP signing, lockout settings, the per-host abused-tool block, the KRBTGT reset (two resets with a replication check between, §5.1), and the remaining approval items |
+| #89 | `phase-6/checkpoint` | 19 | The read-only `checkpoint` summary, which the service packs and the deletion of admin accounts (#82) wait for; the sweep re-runs in report mode; the known-flaw section reads the tracker once section 4.3 builds it |
 | #95 | `phase-7/service-packs-web` | 11 | nginx, Apache and IIS; ModSecurity with the Core Rule Set in detection-only mode, and approved blocking rules for one flaw (§6.1) |
 | #96 | `phase-7/service-packs-mail-dns` | 11 | Postfix, Dovecot (POP3 and IMAP), webmail, BIND, and Windows DNS on servers that are not domain controllers |
 | #97 | `phase-7/service-packs-data` | 11 | MySQL or MariaDB, SQL Server, SMB shares, WinRM, vsftpd, and the host settings library, including the `pkexec` setting |
@@ -130,8 +131,7 @@ Each module ships its read-only `check` and `plan` first. The modules are built 
 | #116 | — | Conventions §3, §7 | `laby --show ID`, to list what one run changed |
 | #117 | — | Conventions §3 | `--only` and `--skip`, to preview or run chosen modules |
 | #119 | — | Conventions §3 | Tab completion for `laby` in bash and PowerShell |
-| #121 | — | 00 §4, Conventions §3, §7 | `laby -h MODULE`, which prints the module's help page (`about.txt`) |
-| #125 | — | 00 §4, Conventions §9 | The manual and help checked as a whole: every action's `-h` page and every module's help page |
+| #125 | — | 00 §4, Conventions §3, §9 | The manual and help checked as a whole: every action's `-h` page, every module's help page, and `laby -h MODULE` checked against the spec (it took over #121) |
 
 ## 4. After the first usable release
 
@@ -149,7 +149,6 @@ Local mode is the standard, so the lockout already works on every host without t
 | Issue | Branch | Spec | Delivers |
 |---|---|---|---|
 | #88 | `phase-6/seal` | 08 §6 | `seal`, `reseal --reason`, and integrity findings against the sealed baseline |
-| #89 | `phase-6/checkpoint` | 19 | The read-only `checkpoint` summary; the sweep re-runs in report mode; the known-flaw section reads the tracker once section 4.3 builds it |
 | #90 | `phase-6/outside-probe` | 19 §3 | `--probe` from a machine outside the team's network, limited to the `own-ranges` list |
 | #91 | `phase-6/health-monitor` | 19 §3–§5 | The scheduled job on the control node: probes of every scored service with state-change alerts and rollback candidates, alerts on firewall drift (a person re-applies the sealed rules with one command, design 19), and scheduled checkpoints that alert once on each new finding |
 | #92 | `phase-6/linux-audit` | 14 | auditd, installed by `packages`, with the vendored rule set |
