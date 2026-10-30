@@ -3,7 +3,7 @@
 Phase: 🟩 Sustain · Priority: P1
 
 > [!NOTE]
-> **Planned.** The health monitor, `checkpoint` and `restore` are not built yet (Roadmap, stage 6); the names and letters of the planned commands are decided when each is built (Conventions, section 3.3). Today `laby --probe` probes every scored service once, and the `http`, `dns` and banner probes exist. The firewall-drift check, the login probes and the scheduled checkpoint arrive with the monitor.
+> **Planned.** The health monitor, `checkpoint` and `restore` are not built yet (Roadmap: `restore` in the first usable release, the health monitor and `checkpoint` in the milestone "Observe and checkpoints"); the names and letters of the planned commands are decided when each is built (Conventions, section 3.3). Today `laby --probe` probes every scored service once, and the `http`, `dns` and banner probes exist. The firewall-drift check, the login probes and the scheduled checkpoint arrive with the monitor.
 
 ## 1. Goal
 
