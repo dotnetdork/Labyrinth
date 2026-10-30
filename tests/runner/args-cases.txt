@@ -1,95 +1,153 @@
 # Command-line cases shared by args.bats and Args.Tests.ps1
-# (docs/Conventions.md section 3.1). One case per line:
+# (docs/Conventions.md section 3.3). One case per line:
 #   exit|stream|text|arguments
 # stream is out or err: the stream that must contain text. Arguments are
 # split at spaces. @ROOT@, @ETC@ and @SELF@ are replaced by the test's data
-# root, configuration folder and the runner's file name. Option spellings in
-# expected text differ between runners, so text here never names an option.
+# root, configuration folder and the name the runner is started by. Only -r,
+# -k, -u, -V, -h and -P are spelled the same by both runners, so text here
+# never names another option at the start of a match.
 #
-# Usage errors: one line naming the word at fault, then a pointer to help.
-40|err|Usage: @SELF@ <command>|
-40|err|unknown command 'obsrve' (did you mean 'observe'?)|obsrve
-40|err|Try '@SELF@ help' for more information.|obsrve
-40|err|unknown command 'rolback' (did you mean 'rollback'?)|rolback 4f2a
-40|err|unknown command 'undo' (did you mean 'rollback'?)|undo 4f2a
-40|err|unknown command 'status' (did you mean 'runs'?)|status
-40|err|unknown command 'check' (did you mean 'probe'?)|check
-40|err|no help for 'revert' (did you mean 'rollback'?)|help revert
-40|err|(did you mean the command 'plan'?)|apply observe --dry-run
-40|err|needs a phase|plan
-40|err|needs a phase|apply --root @ROOT@
-40|err|unknown phase 'lockot' (did you mean 'lockout'?)|plan lockot
-40|err|probe is a command, not a phase|plan probe
-40|err|probe is a command, not a phase|apply probe
-40|err|conflict|plan --apply observe
-40|err|cannot be used with probe|--apply probe
-40|err|cannot be used with keep|keep 20261002T140301Z-4f2a --apply
-40|err|needs a value, but got '--root'|--profile --root @ROOT@ observe
-40|err|needs a value|observe --profile
+# Usage errors: the name, then one line naming what is wrong, an optional fix
+# line, then a pointer to help.
+40|err|: 'obsrve' is not a phase. Did you mean 'observe'?|obsrve
+40|err|The phases are lockout, observe, deceive and sustain.|obsrve
+40|err|Try '@SELF@ -h'.|obsrve
+40|err|'rolback' is not a phase.|rolback 4f2a
+40|err|'status' is not a phase.|status
+40|err|'apply' is not a phase.|apply observe
+40|err|'plan' is not a phase.|plan observe
+40|err|'runs' is not a phase.|runs
+40|err|'help' is not a phase.|help
+40|err|'undo' is not a phase. Did you mean '@SELF@ -u ID'?|undo 4f2a
+40|err|'keep' is not a phase. Did you mean '@SELF@ -k ID'?|keep 4f2a
+40|err|'run' is not a phase. Did you mean '@SELF@ -r PHASE'?|run observe
+40|err|'version' is not a phase. Did you mean '@SELF@ -V'?|version
+40|err|'history' is not a phase. Did you mean '|history
+40|err|'probe' is not a phase. Did you mean '|probe
+40|err|no phase or action given|-P test
+40|err|-r needs a phase|-r --root @ROOT@
+40|err|unexpected word 'extra' after 'observe'|observe extra
+40|err|unexpected word 'extra' after '-r observe'|-r observe extra
+40|err|unexpected word 'extra' after '-V'|-V extra
+40|err|unexpected word 'extra'|--probe extra
+40|err|unexpected word 'extra'|--history extra
+40|err|unexpected word 'observe' after '-k'|observe -k
+#
+# Options: near misses, values and stacks of letters.
+40|err|unknown option '-p' (did you mean '-P', the profile?)|-p test observe
+40|err|unknown option '-v' (did you mean '-V', the version?)|-v
+40|err|unknown option '-x'|-x
+40|err|in '-Verbose'|observe -Verbose
 40|err|did you mean|--profle test observe
 40|err|did you mean|observe -Prof test
-40|err|unknown option '-v'|-v
-40|err|unknown option '-Verbose'|observe -Verbose
+40|err|needs a value, but got '--root'|--profile --root @ROOT@ observe
+40|err|needs a value|observe --profile
+40|err|needs a value|-rP
 40|err|given twice|--root @ROOT@ --root @ROOT@ observe
-40|err|given twice|--confirm x --confirm-group y observe
-40|err|takes no value|--apply=yes observe
-40|err|unexpected word 'extra' after 'plan observe'|observe extra
-40|err|unexpected word 'extra'|probe extra
-40|err|unexpected word 'extra'|version extra
-40|err|no help for 'bogus'|help bogus
-40|err|not a run ID|keep ../x
-40|err|needs a run ID|rollback --root @ROOT@ --config @ETC@
+40|err|given twice|--break-glass x --break-glass y observe
+40|err|takes no value|--run=yes observe
+40|err|takes a value, so it must come last in '-Pr'|-Pr test observe
+40|err|unknown option '-x' in '-rx'|-rx observe
+40|err|unknown option '--confirm'|--confirm x observe
 40|err|full path|--root relative observe
 40|err|full path|--config etc observe
 40|err|invalid profile name|--profile A;B observe
-40|err|not <module-id>:<item-id>@<fingerprint>|apply observe --approve observe.ask:item-a
-40|err|not <module-id>:<item-id>@<fingerprint>|apply observe --approve observe.ask:item-a@2a2c17aaaf66,
-40|err|takes no categories|apply observe --approve observe.ask:category:sample
-40|err|is only for rollback, not keep|keep 4f2a --all
-40|err|is only for rollback, not plan|observe --all
 #
-# Accepted spellings: each plans the observe phase (10).
+# Flags that are planned but not built are ordinary unknown options.
+40|err|unknown option '-a'|-a observe
+40|err|unknown option '-q'|-q observe
+40|err|unknown option '-d'|-d observe
+40|err|unknown option '-y'|-y observe
+40|err|unknown option '--no-revert'|-r observe --no-revert
+40|err|unknown option '--manual'|--manual
+#
+# One action per line.
+40|err|two actions on one line: -r and -k|-r observe -k 4f2a
+40|err|two actions on one line: -k and -u|-k 4f2a -u 4f2a
+40|err|two actions on one line: -r and -V|-r observe -V
+40|err|two actions on one line: -k and -V|-k ../x -V
+40|err|is only for -u, not -k|-k 4f2a --all
+40|err|is only for -u, not a preview|observe --all
+#
+# An option error points to the help of the action the line names.
+40|err|Try '@SELF@ -k -h'.|-k 4f2a --bogus
+40|err|Try '@SELF@ observe -h'.|observe --root
+40|err|Try '@SELF@ -r -h'.|-r observe --bogus
+40|err|Try '@SELF@ -h'.|--bogus
+40|err|Try '@SELF@ -u -h'.|-u 4f2a extra
+#
+# The approve list is checked before anything runs.
+40|err|not <module-id>:<item-id>@<fingerprint>|-r observe --approve observe.ask:item-a
+40|err|not <module-id>:<item-id>@<fingerprint>|-r observe --approve observe.ask:item-a@2a2c17aaaf66,
+40|err|takes no categories|-r observe --approve observe.ask:category:sample
+#
+# -k and -u always need an ID; without one they list runs and change nothing.
+40|err|-k needs a run ID, or its last 4 characters|-k --root @ROOT@ --config @ETC@
+40|err|-u needs a run ID, or its last 4 characters|-u --root @ROOT@ --config @ETC@
+40|err|not a run ID|-k ../x
+40|err|not a run ID|-u 12
+#
+# Accepted spellings: each previews the observe phase (10).
 10|out|run |--profile test --root @ROOT@ --config @ETC@ observe
-10|out|run |PLAN OBSERVE --PROFILE test --Root @ROOT@ --CONFIG @ETC@
-10|out|run |plan observe --profile=test --root=@ROOT@ --config=@ETC@
-10|out|run |plan observe -Profile test -Root @ROOT@ -Config @ETC@
-10|out|run |plan observe -Profile:test -Root:@ROOT@ -Config:@ETC@
-10|out|run |plan observe -Root: @ROOT@ -Profile test -Config @ETC@
-10|out|run |plan observe --profile-name test --root @ROOT@ --config @ETC@
+10|out|run |OBSERVE --PROFILE test --Root @ROOT@ --CONFIG @ETC@
+10|out|run |observe --profile=test --root=@ROOT@ --config=@ETC@
+10|out|run |observe -Profile test -Root @ROOT@ -Config @ETC@
+10|out|run |observe -Profile:test -Root:@ROOT@ -Config:@ETC@
+10|out|run |observe -Root: @ROOT@ -Profile test -Config @ETC@
+10|out|run |observe -P test --root @ROOT@ --config @ETC@
+10|out|run |-P test --root @ROOT@ --config @ETC@ observe
 10|out|run |--profile test --root @ROOT@ --config @ETC@ -- observe
 #
-# An option the command does not use is a warning, not an error.
-10|err|is not used by plan|plan observe --profile test --root @ROOT@ --config @ETC@ --break-glass root
-10|err|is not used by plan|plan observe --profile test --root @ROOT@ --config @ETC@ --approve observe.ask:item-a@2a2c17aaaf66
+# An option the action does not use is a warning, not an error.
+10|err|is not used by a preview|observe --profile test --root @ROOT@ --config @ETC@ --break-glass root
+10|err|is not used by a preview|observe --profile test --root @ROOT@ --config @ETC@ --approve observe.ask:item-a@2a2c17aaaf66
 #
-# Help and version: stdout, exit 0.
-0|out|Usage: @SELF@ <command>|help
-0|out|Usage: @SELF@ <command>|--help
-0|out|Usage: @SELF@ <command>|-h
-0|out|Usage: @SELF@ plan <phase>|plan --help
-0|out|Usage: @SELF@ plan <phase>|PLAN -h
-0|out|Usage: @SELF@ apply <phase>|help apply
-0|out|Usage: @SELF@ keep|keep --help
-0|out|Usage: @SELF@ rollback <run>|HELP Rollback
+# Help and version: stdout, exit 0. Typing nothing is the main help.
+0|out|Usage: laby PHASE|
+0|out|Usage: laby PHASE|-h
+0|out|Usage: laby PHASE|--help
+0|out|Usage: laby PHASE|/?
+0|out|Full manual: docs/manual/labyrinth.md in the release|-h
+0|out|Usage: laby -r PHASE|-r -h
+0|out|Usage: laby -r PHASE|-h -r
+0|out|Usage: laby -r PHASE|--run --help
+0|out|Usage: laby -r PHASE|-h run
+0|out|Usage: laby -k ID|-k --help
+0|out|Usage: laby -u ID [--all]|-u -h
+0|out|Usage: laby -u ID [--all]|-h -u
+0|out|Usage: laby -u ID [--all]|--undo --help
+0|out|Usage: laby -u ID [--all]|-h undo
+0|out|Usage: laby -u ID [--all]|-h Undo
+0|out|Usage: laby -V|-V -h
+0|out|Usage: laby observe|observe -h
+0|out|Usage: laby observe|-h observe
+0|out|Usage: laby -h basics|-h basics
+0|out|Usage: laby [-r] PHASE -P NAME|-P test -h
+0|out|Usage: laby ACTION --root DIR|--root @ROOT@ -h
 0|out|labyrinth |-V
-0|out|labyrinth |version
 0|out|labyrinth |--version
-40|err|folder does not exist|plan observe --profile test --root @ROOT@ --config @ROOT@/missing
-40|err|folder does not exist|probe --root @ROOT@ --config @ROOT@/missing
+0|out|labyrinth |-Version
 #
-# Every word is checked before help or the version is shown.
-40|err|unknown phase 'bogus'|plan bogus --help
-40|err|unexpected word 'extra'|probe extra --help
-40|err|not a run ID|keep ../x -V
-0|out|Usage: @SELF@ plan <phase>|plan observe --help
+# Help never runs anything: it wins over every other part of the line.
+0|out|Usage: laby observe|observe bogus -h
+0|out|Usage: laby -u ID [--all]|-u 4f2a -k 4f2a --bogus -h
+0|out|Usage: laby -k ID|-k ../x -h
+0|out|Usage: laby PHASE|--bogus -h
+0|out|Usage: laby PHASE|--profile -h
+#
+# An unknown topic is one line and the main help, still exit 0.
+0|out|No help for 'bogus'. Here is the main help.|-h bogus
+0|out|No help for 'obsrve' (did you mean 'observe'?). Here is the main help.|-h obsrve
+0|out|Usage: laby PHASE|-h bogus
+#
+# After '--', -h is a word.
+40|err|'-h' is not a phase.|-- -h
+#
+# A missing configuration folder.
+40|err|folder does not exist|observe --profile test --root @ROOT@ --config @ROOT@/missing
+40|err|folder does not exist|--probe --root @ROOT@ --config @ROOT@/missing
 #
 # A full run ID ignores case, like its last 4 characters. An unknown one
 # points to the list of runs.
-40|err|no run 20261002T140301Z-4f2a on this host|keep 20261002t140301z-4F2A --root @ROOT@ --config @ETC@
-40|err|runs' lists them|rollback 20261002T140301Z-4f2a --root @ROOT@ --config @ETC@
-# An option error points to the help of the command the line names.
-40|err|Try '@SELF@ help keep' for more information.|keep 4f2a --bogus
-40|err|Try '@SELF@ help plan' for more information.|observe --root
-40|err|Try '@SELF@ help apply' for more information.|--apply observe --bogus
-40|err|Try '@SELF@ help keep' for more information.|help keep extra
-40|err|labyrinth: no command given|
+40|err|no run 20261002T140301Z-4f2a on this host|-k 20261002t140301z-4F2A --root @ROOT@ --config @ETC@
+40|err|' lists them.|-u 20261002T140301Z-4f2a --root @ROOT@ --config @ETC@

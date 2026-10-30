@@ -1,7 +1,7 @@
 #Requires -Version 5.1
 # Pester 5 tests for keep_on_verify in labyrinth.ps1: a module that only
 # takes access away is kept once it verifies and no scored service got
-# worse, so the revert timer, and rollback without -All, leave it alone
+# worse, so the revert timer, and -u without -All, leave it alone
 # (docs\Conventions.md section 3.1). The host-specific parts are test
 # doubles (tests\fixtures\Doubles.ps1).
 
@@ -61,7 +61,7 @@ Describe 'labyrinth.ps1 keep_on_verify' {
         [IO.File]::ReadAllText($notice) | Should -Match "rolled back run $id"
     }
 
-    It 'rollback -All undoes kept modules too' {
+    It '-u -All undoes kept modules too' {
         $r = Invoke-TestApply $t @('labadmin', 'ring1')
         $id = Get-TestRunId $r.Output
         $r = Invoke-TestRunCommand $t 'rollback' $id
@@ -69,7 +69,7 @@ Describe 'labyrinth.ps1 keep_on_verify' {
         $r.Output | Should -Match ([regex]::Escape('Nothing else needs undoing.'))
         (Get-Content -LiteralPath $keeper) | Should -Be 'setting=on'
         $notice | Should -Not -Exist
-        $r = Invoke-TestLab $t @('rollback', $id, '-All', '-Root', $t.Root, '-Config', $t.Etc)
+        $r = Invoke-TestLab $t @('-u', $id, '-All', '-Root', $t.Root, '-Config', $t.Etc)
         $r.Code | Should -Be 0
         $keeper | Should -Not -Exist
         [IO.File]::ReadAllText($notice) | Should -Match "rolled back run $id"
@@ -120,8 +120,8 @@ Describe 'labyrinth.ps1 keep_on_verify' {
         $r.Output | Should -Match 'keep_on_verify must be true or false'
     }
 
-    It 'help explains rollback -All and a kept module' {
-        (Invoke-TestLabCapture $t @('help', 'rollback')).Out | Should -Match ([regex]::Escape('-All                   also undo changes kept once they verified'))
-        (Invoke-TestLabCapture $t @('help', 'observe.keeper')).Out | Should -Match 'Kept once it verifies and no scored service got worse'
+    It 'help explains -u --all and a kept module' {
+        (Invoke-TestLabCapture $t @('-h', 'undo')).Out | Should -Match ([regex]::Escape('--all                  also undo changes kept once they verified'))
+        (Invoke-TestLabCapture $t @('-h', 'observe.keeper')).Out | Should -Match 'Kept once it verifies and no scored service got worse'
     }
 }

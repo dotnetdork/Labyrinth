@@ -71,7 +71,7 @@ teardown() {
     printf "setting=off\n" > "$LAB/toggle.conf"
     chown -R root:root "$LAB" "$ETC"
     chmod -R go-w "$LAB" "$ETC"'
-  run sudo -n bash -c 'printf "root\nring0\nno\n" | bash "$1" --root "$2" --config "$3" --apply observe' _ "$LAB/labyrinth.sh" "$ROOT" "$ETC"
+  run sudo -n bash -c 'printf "root\nring0\nno\n" | bash "$1" --root "$2" --config "$3" -r observe' _ "$LAB/labyrinth.sh" "$ROOT" "$ETC"
   [ "$status" -eq 0 ] || { printf '%s\n' "$output"; return 1; }
   sudo -n grep -qx 'setting=on' "$LAB/toggle.conf"
   # The run's state is root-only, so the manifest is read through sudo. The
@@ -100,7 +100,7 @@ teardown() {
   printf 'root breakglass\n' > "$ETC/protected-accounts"
   printf '%s ring0 test ubuntu\n' "${HOSTNAME%%.*}" > "$ETC/hosts"
   printf 'setting=off\n' > "$LAB/toggle.conf"
-  run sudo -n bash -c 'printf "root\nring0\nno\n" | bash "$1" --root "$2" --config "$3" --apply observe' _ "$LAB/labyrinth.sh" "$ROOT" "$ETC"
+  run sudo -n bash -c 'printf "root\nring0\nno\n" | bash "$1" --root "$2" --config "$3" -r observe' _ "$LAB/labyrinth.sh" "$ROOT" "$ETC"
   [ "$status" -eq 20 ]
   [[ "$output" == *"can be changed by an account other than root"* ]]
   grep -qx 'setting=off' "$LAB/toggle.conf"

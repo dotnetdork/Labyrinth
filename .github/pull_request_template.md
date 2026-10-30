@@ -13,7 +13,7 @@ Closes #
 - [ ] One issue, one small change; nothing unrelated
 - [ ] The spec was read; any spec change is on this branch, with its reason in the commit message
 - [ ] Tests from the spec's acceptance-test list, in bats and Pester where both platforms are covered, including the negative test (protected accounts and scored services untouched)
-- [ ] A command-line change is in both runners and in `docs/manual/labyrinth.md`; the compatibility suite was not edited to make it pass
+- [ ] A command-line change is in both runners and in `docs/manual/labyrinth.md`
 - [ ] Lines that install or download carry the guard's allow comment
 - [ ] No secrets, event values, real hostnames or addresses, strategy or team details
 - [ ] CI is green

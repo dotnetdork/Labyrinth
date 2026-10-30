@@ -1,6 +1,7 @@
 #Requires -Version 5.1
-# Pester 5 tests for labyrinth.ps1 help: the shape of every topic, the ways
-# to ask for it, and the comment-based help (docs\Conventions.md 3.1, 3.2).
+# Pester 5 tests for labyrinth.ps1 -h: the shape of the main help and of every
+# topic, the ways to ask for one, that help never runs anything, and the
+# comment-based help (docs\Conventions.md 3.2, 3.3). Mirrors help.bats.
 
 [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseDeclaredVarsMoreThanAssignments', '',
     Justification = 'Variables set in BeforeAll are used in the It blocks, which the analyzer cannot see.')]
@@ -9,175 +10,219 @@ param()
 BeforeAll {
     . (Join-Path $PSScriptRoot 'LabTestHelper.ps1')
     $t = Initialize-TestLab
-    $topics = @('plan', 'apply', 'keep', 'rollback', 'runs', 'probe', 'help', 'version')
+    # Every topic with a page of its own; the basics page is longer.
+    $topics = @('run', 'keep', 'undo', 'history', 'probe', 'version',
+        'profile', 'root', 'config', 'break-glass', 'confirm-group', 'approve', 'all',
+        'lockout', 'observe', 'deceive', 'sustain')
+    $mainFirst = 'Usage: laby PHASE                preview a phase: nothing changes'
 }
 
 Describe 'labyrinth.ps1 help' {
-    It 'every topic is short, fits 78 columns, and has one Exit and one Example line' {
-        foreach ($topic in @('') + $topics + @('basics')) {
-            $argv = @('help')
-            if ($topic -ne '') { $argv += $topic }
-            $r = Invoke-TestLabCapture $t $argv
-            $lines = @($r.Out -split "`r?`n")
-            $r.Code | Should -Be 0 -Because "help $topic"
-            # Basics is one screen. The command in hints and the manual's path
-            # do not count toward the width (docs\Conventions.md section 3.2).
-            $max = 18
-            if ($topic -eq 'basics') { $max = 24 }
-            $lines.Count | Should -BeLessOrEqual $max -Because "help $topic"
-            $plain = @($lines | ForEach-Object { $_.Replace($t.Self, 'labyrinth.ps1').Replace($t.Lab, 'C:\ProgramData\Labyrinth') })
-            ($plain | Measure-Object -Property Length -Maximum).Maximum | Should -BeLessOrEqual 78 -Because "help $topic"
-            @($lines | Where-Object { $_ -like 'Exit: *' }).Count | Should -Be 1 -Because "help $topic"
-            @($lines | Where-Object { $_ -like 'Example: *' }).Count | Should -Be 1 -Because "help $topic"
-            $lines[0].StartsWith("Usage: $($t.Self) ") | Should -BeTrue -Because "help $topic"
-        }
+    It 'the main help is one screen: Usage, Actions and Options, the manual last' {
+        $r = Invoke-TestLabCapture $t @('-h')
+        $r.Code | Should -Be 0
+        $lines = @($r.Out.TrimEnd() -split "`r?`n")
+        $lines.Count | Should -BeLessOrEqual 24
+        ($lines | Measure-Object -Property Length -Maximum).Maximum | Should -BeLessOrEqual 78
+        $lines[0] | Should -BeExactly $mainFirst
+        @($lines | Where-Object { $_ -like 'Actions*' }).Count | Should -Be 1
+        $lines -ccontains 'Options:' | Should -BeTrue
+        @($lines | Where-Object { $_ -like 'Exit: *' }).Count | Should -Be 1
+        $r.Out | Should -Match 'an action, option, phase or basics'
+        $lines[-1] | Should -BeExactly 'Full manual: docs/manual/labyrinth.md in the release'
     }
 
-    It 'help X, X -Help and X -h print the same' {
-        foreach ($topic in $topics) {
-            $want = (Invoke-TestLabCapture $t @('help', $topic)).Out
-            foreach ($form in @('-Help', '-h', '--help')) {
-                $r = Invoke-TestLabCapture $t @($topic, $form)
-                $r.Code | Should -Be 0 -Because "$topic $form"
-                $r.Out | Should -BeExactly $want -Because "$topic $form"
+    It 'every topic is short, fits 78 columns, and has one Usage, one Exit, an Example and See also' {
+        foreach ($topic in $topics + @('basics')) {
+            $r = Invoke-TestLabCapture $t @('-h', $topic)
+            $r.Code | Should -Be 0 -Because "-h $topic"
+            $lines = @($r.Out.TrimEnd() -split "`r?`n")
+            $max = 18
+            if ($topic -eq 'basics') { $max = 24 }
+            $lines.Count | Should -BeLessOrEqual $max -Because "-h $topic"
+            ($lines | Measure-Object -Property Length -Maximum).Maximum | Should -BeLessOrEqual 78 -Because "-h $topic"
+            $lines[0].StartsWith('Usage: laby ') | Should -BeTrue -Because "-h $topic"
+            @($lines | Where-Object { $_ -like 'Exit: *' }).Count | Should -Be 1 -Because "-h $topic"
+            @($lines | Where-Object { $_ -like 'Example: *' }).Count | Should -Be 1 -Because "-h $topic"
+            if ($topic -ne 'basics') {
+                @($lines | Where-Object { $_ -like 'See also: *' }).Count | Should -Be 1 -Because "-h $topic"
             }
         }
     }
 
-    It 'the general help lists every command' {
-        $r = Invoke-TestLabCapture $t @('help')
-        $listed = @($r.Out -split "`r?`n" | Where-Object { $_ -match '^  [a-z]+ ' } | ForEach-Object { ($_.Trim() -split ' ')[0] })
-        ($listed -join ' ') | Should -BeExactly ($topics -join ' ')
+    It 'the help names the command laby, not the way the runner was started' {
+        $out = (Invoke-TestLabCapture $t @('-h')).Out
+        $out.Contains($t.Self) | Should -BeFalse
+        $out.Contains('labyrinth.ps1') | Should -BeFalse
+        $out = (Invoke-TestLabCapture $t @('-h', 'run')).Out
+        $out.Contains($t.Self) | Should -BeFalse
+        $out | Should -Match 'Example: laby -r lockout'
     }
 
-    It 'hints print .\labyrinth.ps1 from its own folder, and the full path from elsewhere' {
-        $r = Invoke-TestLabCapture $t @('help')
-        @($r.Out -split "`r?`n")[0] | Should -BeExactly ("Usage: {0} <command> [<phase> | <run>] [options]" -f $t.Self)
+    It 'an action, its long name and its topic word print the same page' {
+        $forms = @{
+            'run'     = @(@('-r', '-h'), @('-Run', '-Help'), @('--run', '--help'), @('-h', 'run'), @('-Help', 'RUN'), @('-h', 'Run'))
+            'undo'    = @(@('-u', '-h'), @('-Undo', '-Help'), @('-u', '4f2a', '-h'), @('-h', '-u'))
+            'keep'    = @(@('-k', '-h'), @('-Keep', '-Help'), @('-k=4f2a', '-h'))
+            'history' = @(@('-History', '-h'), @('--history', '--help'))
+            'observe' = @(@('observe', '-h'), @('observe', '-Help'), @('OBSERVE', '-h'))
+        }
+        foreach ($topic in $forms.Keys) {
+            $want = (Invoke-TestLabCapture $t @('-h', $topic)).Out
+            foreach ($argv in $forms[$topic]) {
+                $r = Invoke-TestLabCapture $t $argv
+                $r.Code | Should -Be 0 -Because ($argv -join ' ')
+                $r.Out | Should -BeExactly $want -Because ($argv -join ' ')
+            }
+        }
+    }
+
+    It '-h, -Help, --help and /? print the main help, and so does typing nothing' {
+        $want = (Invoke-TestLabCapture $t @('-h')).Out
+        foreach ($a in @('-Help', '--help', '/?')) {
+            $r = Invoke-TestLabCapture $t @($a)
+            $r.Code | Should -Be 0 -Because $a
+            $r.Out | Should -BeExactly $want -Because $a
+        }
+        $r = Invoke-TestLabCapture $t @()
+        $r.Code | Should -Be 0
+        $r.Out | Should -BeExactly $want
+    }
+
+    It 'help wins over everything else on the line, even a mistake' {
+        $want = (Invoke-TestLabCapture $t @('-h', 'observe')).Out
+        $r = Invoke-TestLabCapture $t @('observe', 'bogus', '-h')
+        $r.Code | Should -Be 0
+        $r.Out | Should -BeExactly $want
+        $r = Invoke-TestLabCapture $t @('-u', '4f2a', '-k', '4f2a', '--bogus', '-h')
+        $r.Code | Should -Be 0
+        $r.Out | Should -Match '^Usage: laby -u ID'
+        $r = Invoke-TestLabCapture $t @('-Root', 'relative', '-Profile', 'a;b', '-h')
+        $r.Code | Should -Be 0
+        @($r.Out -split "`r?`n")[0] | Should -BeExactly 'Usage: laby [-r] PHASE -P NAME'
+    }
+
+    It 'help runs nothing: no data root, no configuration read, no Administrator needed' {
+        Remove-Item -LiteralPath $t.Etc -Recurse -Force -ErrorAction SilentlyContinue
+        New-Item -ItemType File -Path (Join-Path $t.Lab 'NOT_ADMIN') -Force | Out-Null
+        try {
+            foreach ($f in @(@('-h'), @('-h', 'run'), @('-r', '-h'), @('-u', '-h'), @('-History', '-Help'),
+                    @('-h', 'basics'), @('-h', 'bogus'), @('-h', 'observe.sample'))) {
+                $r = Invoke-TestLabCapture $t (@('-Root', $t.Root, '-Config', $t.Etc) + $f)
+                $r.Code | Should -Be 0 -Because ($f -join ' ')
+                $t.Root | Should -Not -Exist -Because ($f -join ' ')
+            }
+        } finally {
+            Remove-Item -LiteralPath (Join-Path $t.Lab 'NOT_ADMIN') -Force -ErrorAction SilentlyContinue
+        }
+    }
+
+    It 'an unknown topic is one line, the main help, and exit 0' {
+        $r = Invoke-TestLabCapture $t @('-h', 'bogus')
+        $r.Code | Should -Be 0
+        $lines = @($r.Out -split "`r?`n")
+        $lines[0] | Should -BeExactly "No help for 'bogus'. Here is the main help."
+        $lines[1] | Should -BeExactly $mainFirst
+        $r = Invoke-TestLabCapture $t @('-h', 'obsrve')
+        $r.Code | Should -Be 0
+        @($r.Out -split "`r?`n")[0] | Should -BeExactly "No help for 'obsrve' (did you mean 'observe'?). Here is the main help."
+        (Invoke-TestLabCapture $t @('-h', 'basic')).Out | Should -Match "did you mean 'basics'"
+    }
+
+    It 'the old command words are no help topics' {
+        foreach ($w in @('plan', 'apply', 'rollback')) {
+            $r = Invoke-TestLabCapture $t @('-h', $w)
+            $r.Code | Should -Be 0
+            $first = @($r.Out -split "`r?`n")[0]
+            $first | Should -BeLike "No help for '$w'*" -Because $w
+            $first | Should -Not -Match 'did you mean' -Because $w
+        }
+    }
+
+    It 'a usage error points to the help of what was typed, the way the runner was started' {
+        $r = Invoke-TestLabCapture $t @('obsrve')
+        $r.Code | Should -Be 40
+        $r.Err | Should -Match ([regex]::Escape("Try '$($t.Self) -h'."))
         $saved = [Environment]::CurrentDirectory
         try {
             [Environment]::CurrentDirectory = $t.Lab
-            $r = Invoke-TestLabCapture $t @('help')
-            @($r.Out -split "`r?`n")[0] | Should -BeExactly 'Usage: .\labyrinth.ps1 <command> [<phase> | <run>] [options]'
             $r = Invoke-TestLabCapture $t @('bogus')
-            $r.Err | Should -Match ([regex]::Escape("Try '.\labyrinth.ps1 help' for more information."))
+            $r.Err | Should -Match ([regex]::Escape("Try '.\labyrinth.ps1 -h'."))
+            $r = Invoke-TestLabCapture $t @('-u', '4f2a', '--bogus')
+            $r.Err | Should -Match ([regex]::Escape("Try '.\labyrinth.ps1 -u -h'."))
         } finally {
             [Environment]::CurrentDirectory = $saved
         }
     }
 
-    It 'the general help says where the options are and names a manual that exists' {
-        $lines = @((Invoke-TestLabCapture $t @('help')).Out -split "`r?`n")
-        $lines -ccontains "Options: '$($t.Self) help <command>' lists them; so does <command> -h." | Should -BeTrue
-        @($lines | Where-Object { $_ -like 'Manual: *' }) | Should -BeExactly ('Manual: the Windows parts of ' + (Join-Path $t.Lab 'docs\manual\labyrinth.md'))
-        ($lines -join ' ') | Should -Not -Match 'once installed'
-    }
-
-    It 'help runs names every state, and the commands say who must run them' {
-        $out = (Invoke-TestLabCapture $t @('help', 'runs')).Out
-        foreach ($s in @('armed', 'kept', 'rolled back', 'rolled back with errors', 'not kept, no timer')) {
-            $out.Contains($s) | Should -BeTrue -Because "help runs: $s"
+    It 'the actions that need an Administrator say so, and -h history names every state' {
+        foreach ($topic in @('run', 'keep', 'undo', 'history', 'probe')) {
+            (Invoke-TestLabCapture $t @('-h', $topic)).Out | Should -Match 'Administrator' -Because "-h $topic"
         }
-        foreach ($topic in @('plan', 'apply', 'keep', 'rollback', 'runs', 'probe')) {
-            (Invoke-TestLabCapture $t @('help', $topic)).Out | Should -Match 'Administrator' -Because "help $topic"
+        $out = (Invoke-TestLabCapture $t @('-h', 'history')).Out
+        foreach ($s in @('armed', 'kept', 'rolled back', 'rolled back with errors', 'not kept, no timer', 'armed: timer lost')) {
+            $out.Contains($s) | Should -BeTrue -Because "-h history: $s"
         }
     }
 
-    It 'help apply and help basics mention the break-glass prompt; exits name the 20 causes' {
-        $out = (Invoke-TestLabCapture $t @('help', 'apply')).Out
+    It '-h run and -h basics mention the break-glass prompt; exits name the 20 causes' {
+        $out = (Invoke-TestLabCapture $t @('-h', 'run')).Out
         $out | Should -Match 'break-glass'
-        $out | Should -Match '(?m)^Blocked: not an Administrator, another run, host not in hosts, or a gate\.\r?$'
-        (Invoke-TestLabCapture $t @('help', 'basics')).Out | Should -Match 'break-glass'
-        (Invoke-TestLabCapture $t @('help', 'keep')).Out | Should -Match '(?m)^Blocked: not an Administrator, a file another account can change, or too\r?$'
-        (Invoke-TestLabCapture $t @('help', 'rollback')).Out | Should -Match '(?m)^Blocked: not an Administrator, or a file another account can change\.\r?$'
+        $out | Should -Match '(?m)^Blocked: not an Administrator, another run, host not in hosts, or a safety gate\.\r?$'
+        (Invoke-TestLabCapture $t @('-h', 'basics')).Out | Should -Match 'break-glass'
+        (Invoke-TestLabCapture $t @('-h', 'keep')).Out | Should -Match '(?m)^Blocked: not an Administrator, a file another account can change, or too late\r?$'
+        (Invoke-TestLabCapture $t @('-h', 'undo')).Out | Should -Match '(?m)^Blocked: not an Administrator, or a file another account can change\.\r?$'
     }
 
-    It 'the option heading says Options, and the version names the runner' {
-        foreach ($topic in @('plan', 'apply', 'keep', 'rollback', 'runs', 'probe')) {
-            $lines = @((Invoke-TestLabCapture $t @('help', $topic)).Out -split "`r?`n")
-            $lines -ccontains 'Options:' | Should -BeTrue -Because "help $topic"
-            ($lines -join ' ') | Should -Not -Match 'Where:' -Because "help $topic"
-        }
-        $v = @((Invoke-TestLabCapture $t @('version')).Out -split "`r?`n")
+    It '-h undo explains --all, and -h keep says an ID is always needed' {
+        (Invoke-TestLabCapture $t @('-h', 'undo')).Out | Should -Match ([regex]::Escape('--all                  also undo changes kept once they verified'))
+        (Invoke-TestLabCapture $t @('-h', 'keep')).Out | Should -Match 'ID is always needed'
+    }
+
+    It '-V names the runner, and -V -h is its help' {
+        $v = @((Invoke-TestLabCapture $t @('-V')).Out -split "`r?`n")
         $v[0] | Should -Match '^labyrinth \S+ \(labyrinth\.ps1, for Windows\)$'
         $v[1] | Should -BeLike 'Release: *'
+        @((Invoke-TestLabCapture $t @('-V', '-h')).Out -split "`r?`n")[0] | Should -BeExactly 'Usage: laby -V'
     }
 
-    It 'everyday words and flags point to the command or option meant' {
-        foreach ($pair in @('undo:rollback', 'revert:rollback', 'status:runs', 'list:runs', 'check:probe', 'test:probe')) {
-            $word, $want = $pair -split ':'
-            $r = Invoke-TestLabCapture $t @($word)
-            $r.Code | Should -Be 40
-            $r.Err | Should -Match ([regex]::Escape("unknown command '$word' (did you mean '$want'?)"))
+    It 'the basics tell the first run with the real forms' {
+        $out = (Invoke-TestLabCapture $t @('-h', 'basics')).Out
+        foreach ($f in @("'laby lockout'", "'laby -r lockout'", "'laby -k ID'", "'laby -u ID'", "'laby --history'", "'laby --probe'")) {
+            $out.Contains($f) | Should -BeTrue -Because $f
         }
-        (Invoke-TestLabCapture $t @('help', 'undo')).Err | Should -Match ([regex]::Escape("no help for 'undo' (did you mean 'rollback'?)"))
-        $r = Invoke-TestLabCapture $t @('apply', 'observe', '-DryRun')
-        $r.Code | Should -Be 40
-        $r.Err | Should -Match ([regex]::Escape("unknown option '-DryRun' (did you mean the command 'plan'?)"))
-        foreach ($w in @('-Yes', '-Force')) {
-            (Invoke-TestLabCapture $t @('apply', 'observe', $w)).Err | Should -Match ([regex]::Escape("unknown option '$w' (did you mean '-ConfirmGroup'?)"))
-        }
-    }
-
-    It 'a short word gets a suggestion only when it is one letter off' {
-        $r = Invoke-TestLabCapture $t @('plan', 'observe', '-Foo')
-        $r.Code | Should -Be 40
-        $r.Err | Should -Match ([regex]::Escape("unknown option '-Foo'"))
-        $r.Err | Should -Not -Match 'did you mean'
-        (Invoke-TestLabCapture $t @('plan', 'observe', '-Rot')).Err | Should -Match ([regex]::Escape("did you mean '-Root'"))
-    }
-
-    It 'help for an unknown command is a usage error with a suggestion' {
-        $r = Invoke-TestLabCapture $t @('help', 'aply')
-        $r.Code | Should -Be 40
-        $r.Err | Should -Match "did you mean 'apply'"
-        $r = Invoke-TestLabCapture $t @('help', 'basic')
-        $r.Code | Should -Be 40
-        $r.Err | Should -Match "did you mean 'basics'"
-    }
-
-    It 'the general help points a beginner to help basics and names the manual' {
-        $lines = @((Invoke-TestLabCapture $t @('help')).Out -split "`r?`n")
-        $lines[1] | Should -Match ([regex]::Escape("$($t.Self) help basics"))
-        @($lines | Where-Object { $_ -like 'Manual: *' }).Count | Should -Be 1
     }
 
     It 'help on a module ID prints its title, its risk in words, then its about.txt' {
-        $r = Invoke-TestLabCapture $t @('help', 'observe.sample')
+        $r = Invoke-TestLabCapture $t @('-h', 'observe.sample')
         $r.Code | Should -Be 0
         $lines = @($r.Out -split "`r?`n")
         $lines[0] | Should -BeExactly 'No-op sample (observe.sample)'
         $lines -ccontains 'Risk: only looks; it never changes anything.' | Should -BeTrue
         $lines -ccontains 'Runs on: ubuntu, rhel-family, windows.' | Should -BeTrue
         $lines -ccontains 'What it changes: nothing. Its plan describes a change it never makes.' | Should -BeTrue
-        $r = Invoke-TestLabCapture $t @('help', 'OBSERVE.SAMPLE', '-Help')
-        $r.Code | Should -Be 0
-        @($r.Out -split "`r?`n")[0] | Should -BeExactly 'No-op sample (observe.sample)'
+        foreach ($argv in @(@('-h', 'OBSERVE.SAMPLE'), @('observe.sample', '-Help'))) {
+            $r = Invoke-TestLabCapture $t $argv
+            $r.Code | Should -Be 0
+            @($r.Out -split "`r?`n")[0] | Should -BeExactly 'No-op sample (observe.sample)'
+        }
     }
 
     It 'help on a module without about.txt says so; any module ID works, in a profile or not' {
-        $r = Invoke-TestLabCapture $t @('help', 'observe.toggle')
+        $r = Invoke-TestLabCapture $t @('-h', 'observe.toggle')
         $r.Code | Should -Be 0
         $lines = @($r.Out -split "`r?`n")
         $lines -ccontains 'Risk: changes this host; each change is saved first and can be undone.' | Should -BeTrue
         $r.Out | Should -Match '(?m)^This module has no about\.txt yet'
     }
 
-    It 'help on an unknown or invalid module is an error that says why' {
-        $r = Invoke-TestLabCapture $t @('help', 'observe.sampel')
-        $r.Code | Should -Be 40
-        $r.Err | Should -Match ([regex]::Escape("no module 'observe.sampel' (did you mean 'observe.sample'?)"))
-        $r = Invoke-TestLabCapture $t @('help', 'observe.badyml')
+    It 'help on an unknown module is a near-miss line and the main help; an invalid one is an error' {
+        $r = Invoke-TestLabCapture $t @('-h', 'observe.sampel')
+        $r.Code | Should -Be 0
+        @($r.Out -split "`r?`n")[0] | Should -BeExactly "No help for 'observe.sampel' (did you mean 'observe.sample'?). Here is the main help."
+        $r = Invoke-TestLabCapture $t @('-h', 'observe.badyml')
         $r.Code | Should -Be 40
         $r.Err | Should -Match 'the module\.yml of observe\.badyml is not valid: unknown key color'
-    }
-
-    It 'no command prints three steps to start with, and exits 40' {
-        $r = Invoke-TestLabCapture $t @()
-        $r.Code | Should -Be 40
-        $lines = @($r.Err -split "`r?`n")
-        $lines -ccontains 'Start here:' | Should -BeTrue
-        @($lines | Where-Object { $_.StartsWith("  1. $($t.Self) help basics ") }).Count | Should -Be 1
-        @($lines | Where-Object { $_.StartsWith("  2. $($t.Self) plan lockout ") }).Count | Should -Be 1
     }
 
     It 'Get-Help shows the synopsis, not the Requires line' {
@@ -186,30 +231,32 @@ Describe 'labyrinth.ps1 help' {
         $synopsis | Should -Not -Match 'Requires'
     }
 
-    It 'Get-Help is written for operators: no design notes, examples for runs and keep' {
+    It 'Get-Help is written for operators: no design notes, examples for preview, run, history and keep' {
         $h = Get-Help (Join-Path $script:Repo 'labyrinth.ps1') -Full
         $text = ($h.Synopsis + ' ' + (($h.Description | ForEach-Object { $_.Text }) -join ' '))
         $text | Should -Not -Match 'design \d|Conventions|\$args|param block'
         $text | Should -Not -Match ([regex]::Escape('-?'))
         $examples = ($h.Examples.Example | ForEach-Object { $_.Code }) -join ' '
-        $examples | Should -Match 'labyrinth\.ps1 runs'
-        $examples | Should -Match 'labyrinth\.ps1 keep'
+        $examples | Should -Match 'labyrinth\.ps1 lockout'
+        $examples | Should -Match 'labyrinth\.ps1 -r lockout'
+        $examples | Should -Match 'labyrinth\.ps1 -History'
+        $examples | Should -Match 'labyrinth\.ps1 -k 4f2a'
         (($h.alertSet.alert | ForEach-Object { $_.Text }) -join ' ') | Should -Match 'common parameters'
     }
 
     It 'Get-Help lists every option the runner accepts' {
         $h = Get-Help (Join-Path $script:Repo 'labyrinth.ps1') -Full
         $text = (($h.Description | ForEach-Object { $_.Text }) -join ' ')
-        foreach ($o in @('-Profile', '-Root', '-Config', '-BreakGlass', '-ConfirmGroup', '-Approve', '-All', '-Apply', '-Help', '-Version')) {
+        foreach ($o in @('-Profile', '-Root', '-Config', '-BreakGlass', '-ConfirmGroup', '-Approve', '-All', '-History', '-Probe', '-Help', '-Version')) {
             $text | Should -Match ('(^|\s){0}\b' -f [regex]::Escape($o)) -Because "Get-Help: $o"
         }
     }
 
     It 'the help never offers -?, which PowerShell takes for itself' {
-        foreach ($topic in @('') + $topics) {
-            $argv = @('help')
+        foreach ($topic in @('') + $topics + @('basics')) {
+            $argv = @('-h')
             if ($topic -ne '') { $argv += $topic }
-            (Invoke-TestLabCapture $t $argv).Out | Should -Not -Match ([regex]::Escape('-?')) -Because "help $topic"
+            (Invoke-TestLabCapture $t $argv).Out | Should -Not -Match ([regex]::Escape('-?')) -Because "-h $topic"
         }
     }
 }

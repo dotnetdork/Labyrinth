@@ -284,15 +284,15 @@ esac'
   mkdir -p "$LAB_SYSTEMD_DIR" "$LAB_STATE_DIR"
   # A stopped timer is no longer active.
   stub systemctl 'printf "systemctl %s\n" "$*" >> "$LAB_STATE_DIR/calls"; [[ "$1" != is-active ]]'
-  lab_timer_arm 300 "$LAB_RUN_ID" /bin/bash '/x/lab folder/labyrinth.sh' rollback "$LAB_RUN_ID"
+  lab_timer_arm 300 "$LAB_RUN_ID" /bin/bash '/x/lab folder/labyrinth.sh' -u "$LAB_RUN_ID"
   lab_timer_armed "$LAB_RUN_ID"
   u="$LAB_SYSTEMD_DIR/lab-revert-$LAB_RUN_ID-1"
-  grep -qxF "ExecStart=\"/bin/bash\" \"/x/lab folder/labyrinth.sh\" \"rollback\" \"$LAB_RUN_ID\"" "$u.service"
+  grep -qxF "ExecStart=\"/bin/bash\" \"/x/lab folder/labyrinth.sh\" \"-u\" \"$LAB_RUN_ID\"" "$u.service"
   grep -qxF 'Persistent=true' "$u.timer"
   grep -qxF 'OnActiveSec=300s' "$u.timer"
   grep -qxF 'WantedBy=timers.target' "$u.timer"
   grep -qE '^OnCalendar=[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}$' "$u.timer"
-  lab_timer_arm 300 "$LAB_RUN_ID" /bin/bash '/x/lab folder/labyrinth.sh' rollback "$LAB_RUN_ID"
+  lab_timer_arm 300 "$LAB_RUN_ID" /bin/bash '/x/lab folder/labyrinth.sh' -u "$LAB_RUN_ID"
   [ ! -e "$u.timer" ]
   [ ! -e "$u.service" ]
   [ -e "$LAB_SYSTEMD_DIR/lab-revert-$LAB_RUN_ID-2.timer" ]
@@ -329,8 +329,8 @@ esac'
   mkdir -p "$LAB_SYSTEMD_DIR" "$LAB_STATE_DIR"
   # The second unit, lab-revert-<run>-2, cannot be started.
   stub systemctl 'printf "systemctl %s\n" "$*" >> "$LAB_STATE_DIR/calls"; [[ "$*" != "start lab-revert-$LAB_RUN_ID-2.timer" && "$1" != is-active ]]'
-  lab_timer_arm 300 "$LAB_RUN_ID" /bin/bash /x/labyrinth.sh rollback "$LAB_RUN_ID"
-  run lab_timer_arm 300 "$LAB_RUN_ID" /bin/bash /x/labyrinth.sh rollback "$LAB_RUN_ID"
+  lab_timer_arm 300 "$LAB_RUN_ID" /bin/bash /x/labyrinth.sh -u "$LAB_RUN_ID"
+  run lab_timer_arm 300 "$LAB_RUN_ID" /bin/bash /x/labyrinth.sh -u "$LAB_RUN_ID"
   [ "$status" -eq 1 ]
   [ "$(cat "$LAB_STATE_DIR/runs/$LAB_RUN_ID/timer")" = "lab-revert-$LAB_RUN_ID-1" ]
   [ -e "$LAB_SYSTEMD_DIR/lab-revert-$LAB_RUN_ID-1.timer" ]

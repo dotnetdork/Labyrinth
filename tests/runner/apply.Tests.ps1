@@ -1,5 +1,5 @@
 #Requires -Version 5.1
-# Pester 5 tests for labyrinth.ps1 apply, keep, rollback and probe (design 00,
+# Pester 5 tests for labyrinth.ps1 -r, -k, -u and -Probe (design 00,
 # section 5; design 03, sections 7 to 9; docs/Conventions.md section 3.1).
 # The host-specific parts (administrator check, revert timer, probes) are
 # test doubles (tests\fixtures\Doubles.ps1); real-system tests are separate.
@@ -12,7 +12,7 @@ BeforeAll {
     . (Join-Path $PSScriptRoot 'LabTestHelper.ps1')
 }
 
-Describe 'labyrinth.ps1 apply' {
+Describe 'labyrinth.ps1 -r' {
     BeforeEach {
         $t = Initialize-TestLab
         $lab = $t.Lab
@@ -149,7 +149,7 @@ Describe 'labyrinth.ps1 apply' {
         $r.Code | Should -Be 20
         $toggle | Should -Not -Exist
         $r.Output | Should -Match ([regex]::Escape("labyrinth: the plan was not confirmed: 'ring2' was typed, not ring1; nothing was changed"))
-        $r.Output | Should -Match ([regex]::Escape('Run apply again and type ring1 at the prompt, or give it with -ConfirmGroup ring1.'))
+        $r.Output | Should -Match ([regex]::Escape('Run the same command again and type ring1 at the prompt, or give it with -ConfirmGroup ring1.'))
     }
 
     It 'a break-glass answer that is not a break-glass account says which class it needs' {
@@ -209,10 +209,10 @@ Describe 'labyrinth.ps1 apply' {
         $r.Code | Should -Be 0
         $r.Output | Should -Match 'Not kept'
         $id = Get-TestRunId $r.Output
-        $r.Output | Should -Match ([regex]::Escape("To keep later: $($t.Self) keep $($id.Substring($id.Length - 4))"))
+        $r.Output | Should -Match ([regex]::Escape("To keep later: $($t.Self) -k '$($id.Substring($id.Length - 4))'"))
         $runDir = Join-Path $t.Root "state\runs\$id"
         $timerCmd = [IO.File]::ReadAllText((Join-Path $runDir 'timer'))
-        $timerCmd | Should -Match ([regex]::Escape(('labyrinth.ps1" rollback {0} -Root "{1}" -Config "{2}"' -f $id, $t.Root, $t.Etc)))
+        $timerCmd | Should -Match ([regex]::Escape(('labyrinth.ps1" -u {0} -Root "{1}" -Config "{2}"' -f $id, $t.Root, $t.Etc)))
         # The timer firing runs exactly this command.
         (Invoke-TestRunCommand $t 'rollback' $id).Code | Should -Be 0
         $toggle | Should -Not -Exist
@@ -378,7 +378,7 @@ Describe 'labyrinth.ps1 apply' {
         Get-TestManifest $t $id | Should -Match '"action":"approval_refused","target":"item-b"'
         # Approvals are never stored in the revert timer's command line.
         $timer = [IO.File]::ReadAllText((Join-Path $t.Root "state\runs\$id\timer"))
-        $timer | Should -Match " rollback $id "
+        $timer | Should -Match " -u $id "
         $timer | Should -Not -Match 'approve'
     }
 
@@ -527,13 +527,13 @@ Describe 'labyrinth.ps1 apply' {
         $lock | Should -Not -Exist
     }
 
-    It 'probe reports every service and exits 30 when one fails' {
+    It '-Probe reports every service and exits 30 when one fails' {
         Write-TestConfig $t 'services' @('web http web.test 80 -', 'mail smtp mail.test 25 -')
-        $r = Invoke-TestLab $t @('probe', '-Root', $t.Root, '-Config', $t.Etc)
+        $r = Invoke-TestLab $t @('-Probe', '-Root', $t.Root, '-Config', $t.Etc)
         $r.Code | Should -Be 0
         $r.Output | Should -Match '\[web\] pass'
         [IO.File]::WriteAllText((Join-Path $lab 'probe-state'), "mail.test fail`n")
-        $r = Invoke-TestLab $t @('probe', '-Root', $t.Root, '-Config', $t.Etc)
+        $r = Invoke-TestLab $t @('-Probe', '-Root', $t.Root, '-Config', $t.Etc)
         $r.Code | Should -Be 30
         $r.Output | Should -Match '\[mail\] fail'
         $t.Root | Should -Not -Exist
@@ -544,7 +544,7 @@ Describe 'labyrinth.ps1 apply' {
         $r.Code | Should -Be 0
         $r.Output | Should -Match ([regex]::Escape("labyrinth: warning: no release.sha256, so Labyrinth's files were not checked"))
         @($r.Output -split "`n") -ccontains 'Release: not checked (no release.sha256)' | Should -BeTrue
-        $v = @((Invoke-TestLabCapture $t @('version')).Out -split "`r?`n")
+        $v = @((Invoke-TestLabCapture $t @('-V')).Out -split "`r?`n")
         $v[1] | Should -BeExactly 'Release: not checked (no release.sha256)'
     }
 
@@ -559,7 +559,7 @@ Describe 'labyrinth.ps1 apply' {
         $a | Should -BeGreaterOrEqual 0
         $b = @(0..($lines.Count - 1) | Where-Object { $lines[$_] -match 'Type the group name' })[0]
         $a | Should -BeLessThan $b
-        $v = @((Invoke-TestLabCapture $t @('version')).Out -split "`r?`n")
+        $v = @((Invoke-TestLabCapture $t @('-V')).Out -split "`r?`n")
         $v[1] | Should -BeExactly "Release: $sum"
     }
 
@@ -571,7 +571,7 @@ Describe 'labyrinth.ps1 apply' {
         # The change would leave a mark if any of the core ran.
         $mark = Join-Path $TestDrive 'ran'
         [IO.File]::AppendAllText((Join-Path $lab 'core\Lab.ps1'), "`n[IO.File]::WriteAllText('$mark', 'x')`n")
-        foreach ($args2 in @(@('plan', 'observe'), @('apply', 'observe'), @('keep', $id), @('rollback', $id), @('runs'), @('probe'), @('version'), @('help'))) {
+        foreach ($args2 in @(@('observe'), @('-r', 'observe'), @('-k', $id), @('-u', $id), @('-History'), @('-Probe'), @('-V'), @('-h'))) {
             $c = Invoke-TestLabCapture $t ($args2 + @('-Profile', 'test', '-Root', $t.Root, '-Config', $t.Etc))
             $c.Code | Should -Be 20 -Because ($args2 -join ' ')
             $e = @($c.Err -split "`r?`n")
@@ -585,7 +585,7 @@ Describe 'labyrinth.ps1 apply' {
     It 'release: a file planted in a module folder is refused' {
         $null = & (Join-Path $script:Repo 'tools\release\manifest.ps1') $lab
         [IO.File]::WriteAllText((Join-Path $lab 'phases\observe\modules\toggle\extra.ps1'), "x`n")
-        $c = Invoke-TestLabCapture $t @('plan', 'observe', '-Profile', 'test', '-Root', $t.Root, '-Config', $t.Etc)
+        $c = Invoke-TestLabCapture $t @('observe', '-Profile', 'test', '-Root', $t.Root, '-Config', $t.Etc)
         $c.Code | Should -Be 20
         @($c.Err -split "`r?`n")[0] | Should -BeExactly 'labyrinth: phases/observe/modules/toggle/extra.ps1 is not in the release, so Labyrinth will not run'
     }

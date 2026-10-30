@@ -21,9 +21,9 @@ Work goes top to bottom. A stage starts when the one above it is merged, except 
 
 **Built:**
 - the core library in bash and PowerShell: logging, the run manifest with backup and restore, safety gates, the protected set, break-glass, the run lock, revert timers, the release check, and the http, dns and banner probes;
-- both runners, with `plan`, `apply`, `keep`, `rollback`, `runs`, `probe`, `help` and `version`;
+- both runners, with the flag-style command line: preview (`laby PHASE`), run (`-r`), keep (`-k`), undo (`-u`), `--history`, `--probe`, `-h`, `-V` and `-P` (Conventions section 3.1);
 - from stage 3: platform facts, the firewall adapter, the quarantine helper, approval items with `--approve` / `-Approve` and pre-approval rules (`pre-approved`), the six shipped profiles (empty until their modules are built), and new passwords shown once for the offline record;
-- the operator manual, the compatibility suite and CI.
+- the operator manual and CI.
 
 **Merged since stage 3:** the framework hardening (pull request 38), which keeps changes that only take access away once they verify, checks Labyrinth's own files against the release before running them, and makes configuration errors and recovery hints say exactly what to do; and the Linux revert timer that survives a restart (pull request 40).
 
@@ -33,7 +33,7 @@ Work goes top to bottom. A stage starts when the one above it is merged, except 
 - real modules (`phases/*/modules` holds only placeholders);
 - `report/`, `core/seed/` and `vendor/`;
 - the planned commands: `seal`, `reseal`, `checkpoint`, `backup`, `restore` and `remote`, which take the flag style, with names decided when each is built (Conventions section 3.3);
-- the Harden phase, the new command line (`laby`, flags, the queue, the login check, help and the installed manual), automatic runs and the short output (Conventions section 3.3).
+- the Harden phase, the rest of the command line (bare `laby` status, the installer and the `laby` name on the `PATH`, `--manual`, `-y`, `--no-revert`, the queue, the login check), automatic runs and the short output (Conventions section 3.3).
 
 ## 2. Rules for every branch
 
@@ -42,11 +42,11 @@ Work goes top to bottom. A stage starts when the one above it is merged, except 
 - Write tests first, from the spec's acceptance-test list. Every module gets the negative test: protected accounts and scored services are untouched.
 - Make the change in bash and PowerShell together wherever the spec covers both platforms.
 - `tests/lint/guard.sh` and CI must be clean. A real-host acceptance test names where it runs: a CI runner or the lab (`docs/lab/README.md`).
-- A new command or option goes into both runners, the manual and both test suites in one branch. The compatibility suite is never edited to make a change pass.
+- A new command or option goes into both runners, the manual and both test suites in one branch.
 
 ## 3. Build stages
 
-The build stages are numbered on from the stages already done: 0 (foundations), 1 (the core) and 2 (the command line). Branches are named `phase-<stage>/<name>`. A build stage is not a run phase: the run phases are lockout, harden, observe, deceive and sustain (Harden is specified and planned, stage 4b), the word in `labyrinth plan <phase>` (`laby <phase>` once stage 4b is built), and modules of one run phase are built across several stages.
+The build stages are numbered on from the stages already done: 0 (foundations), 1 (the core) and 2 (the command line). Branches are named `phase-<stage>/<name>`. A build stage is not a run phase: the run phases are lockout, harden, observe, deceive and sustain (Harden is specified and planned, stage 4b), the word in `laby <phase>`, and modules of one run phase are built across several stages.
 
 ### Stage 3: groundwork that modules need (done)
 
@@ -84,11 +84,11 @@ Each module ships its read-only `check` and `plan` first. The branches are liste
 
 ### Stage 4b: automation and baseline verification (next)
 
-Specified now and built next, ahead of the rest of the stage 4 modules that it changes. The runner gains the five-phase order (Lock out, Harden, Observe, Deceive, Sustain) and the new command line, and every existing command form keeps working.
+Specified now and built next, ahead of the rest of the stage 4 modules that it changes. The runner gains the five-phase order (Lock out, Harden, Observe, Deceive, Sustain) and the rest of the command line (status, the queue, the installer), and the command forms already built keep working.
 
 | Branch | Spec | Delivers |
 |---|---|---|
-| `phase-4/command-line` | Conventions §3.3, 00 §5.1 | The flag-style command line in both runners: `laby` and `labyrinth`, status, preview, `-r`, `-k`, `-u` with `--all`, `--probe`, `--history`, `-P`, `-v`, `-y`, `--no-revert`, short-letter stacking, and every old form still accepted. Help: the one-screen `-h`, help for each action, help that never runs anything (with a test for every action), and `--manual`. The guided install (`install.sh`, `install.ps1`) shows its plan, asks, then puts `labyrinth`, `laby` and the manual (`man laby`, `Get-Help about_Labyrinth`) where the system finds them and sets up the data root. The manual and both test suites in the same branch |
+| `phase-4/command-line` | Conventions §3.1, §3.3, 00 §5.1 | The flag-style command line in both runners. Built: preview, `-r`, `-k`, `-u` with `--all`, `--probe`, `--history`, `-P`, `-h`, `-V`, short-letter stacking, and help that never runs anything (with a test for every action), replacing the command words. Still to build: bare `laby` (the host's status), `--manual`, `-y` and `--no-revert`, and the guided install (`install.sh`, `install.ps1`), which shows its plan, asks, then puts `labyrinth`, `laby` and the manual (`man laby`, `Get-Help about_Labyrinth`) where the system finds them and sets up the data root. The manual and both test suites in the same branch |
 | `phase-4/auto-apply` | Conventions §3.3, 00, 03 | Automatic runs, with no switch: the host's group from the `hosts` file, the break-glass account taken from the protected set with a console check instead of a prompt, no mid-run prompts, pre-approval only for categories a module allows (never account deletion, an unprobed scored service or a replacement), the queue with stable numbers and `-q`, `-q -a`, `-q -d`. A module whose change only takes access away (`keep_on_verify`) is kept once it verifies; firewall and SSH changes, a stopped service and anything else that can lock the team out wait for the login check |
 | `phase-4/short-output` | Conventions §3.3 | One line per module, full blocks only for failures and blocks, `-v`, in both runners with the manual and both test suites |
 | `phase-4/harden-phase` | 03, 10, 02, 09, 13 | The `harden` phase between `lockout` and `observe`, and `init` (Lock out then Harden as one run): the install, with outbound opened only to its exact sources for the install (02 §4), restore points, the persistence sweep, the CVE assessment, patching, service packs, Windows and AD hardening, service replacement and containers, then reopening outbound; the shipped profiles and the first-minute run updated to match |
@@ -111,7 +111,7 @@ Local mode is the standard, so the lockout already works on every host without t
 | `phase-6/seal` | 08 §6 | `seal`, `reseal --reason`, and integrity findings against the sealed baseline |
 | `phase-6/checkpoint` | 19 | The read-only `checkpoint` summary; the sweep re-runs in report mode; the known-flaw section reads the tracker once stage 7 builds it |
 | `phase-6/probes` | 19 §3.1 | The `http` path and the probes that log in (`imap`, `ssh`, `smb`, `sql`, `winrm`, `siem`), with a probe account given in the event configuration file or a flag at the start of the run, never typed mid-run and never stored in the repository |
-| `phase-6/outside-probe` | 19 §3 | `probe` from a machine outside the team's network, limited to the `own-ranges` list |
+| `phase-6/outside-probe` | 19 §3 | `--probe` from a machine outside the team's network, limited to the `own-ranges` list |
 | `phase-6/health-monitor` | 19 §3–§5 | The scheduled job on the control node: probes of every scored service with state-change alerts and rollback candidates, alerts on firewall drift (a person re-applies the sealed rules with one command, design 19), and scheduled checkpoints that alert once on each new finding |
 | `phase-6/linux-audit` | 14 | auditd, installed by `packages`, with the vendored rule set |
 | `phase-6/win-audit` | 14 | Audit policy, script block logging, log sizes, and Sysmon from its pinned download |
@@ -173,7 +173,7 @@ Local mode is the standard, so the lockout already works on every host without t
 | What does Labyrinth need from the network? | Only its own public release. Packages, pinned downloads such as Sysmon, EPEL and refreshed lists of known flaws are optional extras: each runs after the lockdown when its source answers, and is reported as skipped otherwise. | Blueprint §6.1, design 02 |
 | What runs in the first minute? | Lock out with what the host has (rotate, keys, sessions, lock unexpected admin accounts, default-deny inbound and outbound), installing nothing, for speed and to lock down before outbound opens. Then the Harden phase: install, sweep, assess, patch, then reopen outbound to the normal allowlist. | Design 03 §6, §6.1 |
 | How does a first-minute run avoid prompts? | Today the existing options answer them (`--confirm-group`, `--break-glass`, `--approve`), and pre-approval rules cover the items the team approved before the event. Planned (stage 4b): automatic is the only mode, with no switch. No run prompts during the run; items without a rule go to a queue, listed by `laby -q` and approved with `laby -q -a`; the one question is the login check at the end. Revert timers, probes, the scoring allowlist and the protected set stay. | Design 03 §6.3, Conventions §3.3 |
-| What does the command line look like? | Flags with short and long forms, as in nmap and pacman, under the short name `laby`: `laby init` previews, `laby -r init` runs, `-q`, `-k`, `-u`, `--probe`, `--history`. Help never runs anything, `-h` added to an action gives its help, and `laby --manual` or `man laby` opens the manual. Every old form stays accepted. | Conventions §3.3, design 00 §5.1 |
+| What does the command line look like? | Flags with short and long forms, as in nmap and pacman, under the short name `laby`: `laby init` previews, `laby -r init` runs, `-q`, `-k`, `-u`, `--probe`, `--history`. Help never runs anything, `-h` added to an action gives its help, and `laby --manual` or `man laby` opens the manual. The flag forms for preview, run, keep, undo, history, probe, help and version are built; the status, queue and manual are planned. | Conventions §3.1, §3.3, design 00 §5.1 |
 | How do installs get out through the lockdown with no proxy? | The install opens outbound to the exact resolved addresses of the host's repositories and the pinned download hosts, for the install only, then closes them. Never all web traffic. | Design 02 §4 |
 | Where are unexpected admin accounts handled? | Locked in Lock out, because locking only takes access away; their admin rights are removed in Harden; deletion always waits for a person. | Design 04 §6.3, design 03 §6.1 |
 | Can a ban block outbound traffic? | Yes. Every ban drops the address in both directions; an address from the unusual-outbound search is banned outbound only after approval. | Design 18 §6.1 |
