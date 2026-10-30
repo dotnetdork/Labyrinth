@@ -12,6 +12,19 @@ Jay Sausa is the sole owner of Labyrinth. Contributing to Labyrinth, by pull req
 
 A contributor whose contributions are substantial may ask the owner to discuss co-ownership. The owner decides whether to discuss it and whether to agree, at the owner's sole discretion. Co-ownership exists only under a written agreement signed by the owner; neither contributing nor asking creates any right to it.
 
+## Contributions
+
+A contribution is anything you submit for inclusion in Labyrinth, such as a pull request, a patch, or code, text or designs in an issue or comment. By submitting a contribution, you:
+
+1. assign to Jay Sausa all copyright and other rights you hold in it, as far as the law allows;
+2. where that assignment does not take effect, grant Jay Sausa a perpetual, worldwide, irrevocable, royalty-free license to use, copy, change, distribute, sublicense and relicense it, on any terms and for any purpose, including commercial use;
+3. waive, or agree not to assert, any moral rights in it, as far as the law allows; and
+4. confirm that it is your own work, or that you have the right to submit it on these terms, and that it holds no material whose license conflicts with them.
+
+## Attribution
+
+You may not present the software, or a changed version of it, as your own work, and you may not remove or alter its copyright notice or this LICENSE file.
+
 ## Changed Versions
 
 The Distribution License below is narrowed as follows. You may make changes and new works based on the software for any permitted purpose, but you may not publish or distribute a changed version, or a new work based on the software, without the licensor's written permission. Two things are always allowed: a fork on GitHub, as GitHub's terms of service provide, with changes pushed to it only to prepare a pull request to this repository; and that pull request.
