@@ -5,8 +5,8 @@ Labyrinth is public, and every line of it is shared with every competing team. R
 ## The workflow: one issue, one person, one branch, one small pull request
 
 1. **Pick an issue.** Work starts from a GitHub issue. Assign it to yourself before you start, so two people never build the same thing. If there is no issue for what you want to do, open one first.
-2. **Branch from the latest `main`.** Name the branch after the build stage in [`docs/Roadmap.md`](docs/Roadmap.md): `phase-<n>/<name>` for code (for example `phase-4/ssh`), or `docs/<name>` for documentation only.
-3. **Read the spec first.** The specs in [`docs/design/`](docs/design/README.md) are the source of truth. If the spec is wrong or vague, fix it on the same branch before writing code, and say why in the commit message.
+2. **Branch from the latest `main`.** Use the branch name the issue and [`docs/Roadmap.md`](docs/Roadmap.md) give, such as `phase-4/ssh` for code, or `docs/<name>` for documentation only.
+3. **Read first.** Open every link in the issue's **Read first** section, then the spec. The specs in [`docs/design/`](docs/design/README.md) are the source of truth. If the spec is wrong or vague, fix it on the same branch before writing code, and say why in the commit message.
 4. **Tests first.** Write them from the spec's acceptance-test list, in bats for bash and Pester 5 for PowerShell, including the negative test that protected accounts and scored services are untouched. Make the change in both runners where the spec covers both platforms.
 5. **Keep it small.** One component per pull request. A follow-up step stays on the same branch; an unrelated problem you find becomes a new issue, not part of this change.
 6. **Open the pull request** with the template filled in and `Closes #<issue>` in its description.
@@ -16,7 +16,19 @@ Never push to `main`, force-push, rewrite published history, or delete a branch 
 
 ## Issues, labels and milestones
 
-Open an issue from a template; each asks for the same three parts: **Location & Context**, **Current Behavior** and **Remediation Plan**. Write it so someone new, or their assistant, can pick it up without asking you anything. The title is a short action with no prefix, such as `Add the imap probe`; the labels carry the type.
+Open an issue from a template. Write it so someone new, or their AI assistant, can pick it up without asking you anything. Each issue has these parts, in this order:
+
+1. **Read first:** links to the exact spec sections, the Roadmap row, the Conventions sections and the `AGENTS.md` rules the work needs, then the line "Read these before starting. If this issue and the spec disagree, the spec wins; say so in the pull request."
+2. **Summary:** two to four plain sentences: what it is and why it matters.
+3. **Depends on:** the issues it is blocked by and the ones it blocks, matching GitHub's links.
+4. **Location & Context:** the branch, the module ID, and the real files and functions.
+5. **Current Behavior:** what Labyrinth does today, and why that falls short.
+6. **Plan:** short numbered steps.
+7. **Acceptance tests:** a checklist, written first, including the negative test that protected accounts and scored services are untouched.
+8. **Done when:** a checklist, such as both platforms passing CI, the manual and help pages written, and the lab tests passing.
+9. **Out of scope:** nearby work that belongs to another issue, with its number.
+
+A bug or a cleanup can leave out the parts that do not apply. The title is a short action with no prefix, such as `Add the imap probe`; the labels carry the type.
 
 | Label group | Use |
 |---|---|
@@ -35,7 +47,7 @@ The **milestone** says when an issue is built: the first usable release, then th
 
 Copilot, another assistant or plain hands all work. The rules in [`AGENTS.md`](AGENTS.md) apply either way; most assistants read that file on their own, `CLAUDE.md` pulls it in for Claude Code, and `.github/copilot-instructions.md` points Copilot to it. The shared commands in `.claude/commands/` are checklists you can follow yourself:
 
-1. **Claim the issue** (`/start-issue`): check nobody is assigned and no pull request covers it, assign yourself, update `main`, create the branch, and read the spec sections the issue names.
+1. **Claim the issue** (`/start-issue`): check nobody is assigned and no pull request covers it, assign yourself, update `main`, create the branch, and read every link in the issue's **Read first** section.
 2. **Build a module** (`/new-module`): create the folder and `module.yml` from the module contract (design 00), and write the tests from the spec's acceptance-test list first.
 3. **Before the pull request** (`/pre-pr`): read your own diff against the public boundary and the hard rules in `AGENTS.md`, tick every box in the pull request template, and push the branch so CI runs.
 

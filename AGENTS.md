@@ -43,11 +43,11 @@ Each module is a folder `phases/<phase>/modules/<name>/` with `module.yml` and u
 
 ## How work is done
 
-1. Read the module's spec first. If the spec is ambiguous or wrong, raise it and update the spec in the same branch before writing code, saying why in the commit message.
+1. Start from the issue. Read every link in its **Read first** section, then the module's spec. If the issue and the spec disagree, the spec wins; say so in the pull request. If the spec is ambiguous or wrong, raise it and update the spec in the same branch before writing code, saying why in the commit message.
 2. Write tests first, from the spec's acceptance-test list: bats for bash, Pester 5 for PowerShell. Every module needs a negative test showing protected accounts and scored services are untouched.
 3. Implement against `core/`, following `docs/Conventions.md`.
 4. CI (`.github/workflows/ci.yml`) runs `tests/lint/guard.sh`, ShellCheck, PSScriptAnalyzer, bats and Pester under Windows PowerShell 5.1, and the manual build; all must be clean. Run them locally only where the tools are already installed and `CLAUDE.local.md` does not say otherwise; never install test tools on someone's machine without asking. Otherwise push the branch and read the CI results.
-5. One issue, one person, one branch, one small pull request (`CONTRIBUTING.md`). Name the branch `phase-<n>/<name>` (for example `phase-2/cli-runner`), or `docs/<name>` for documentation only, and keep follow-up steps on it. Push only to that branch, so CI checks it, and fix failures there. Never push to `main`, force-push, rewrite history, or delete a branch you did not create. A pull request merges once CI is green and someone other than its author approves it.
+5. One issue, one person, one branch, one small pull request (`CONTRIBUTING.md`). Name the branch as the issue and `docs/Roadmap.md` give it (for example `phase-4/ssh`), or `docs/<name>` for documentation only, and keep follow-up steps on it. Push only to that branch, so CI checks it, and fix failures there. Never push to `main`, force-push, rewrite history, or delete a branch you did not create. A pull request merges once CI is green and someone other than its author approves it.
 
 ## Changing the command line
 

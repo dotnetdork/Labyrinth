@@ -8,10 +8,28 @@ body:
         A weakness someone could exploit goes through [private reporting](https://github.com/dotnetdork/Labyrinth/security/advisories/new) instead (SECURITY.md).
         This repository is public: no event values, real hostnames, addresses or credentials. Use placeholders.
   - type: textarea
+    id: read
+    attributes:
+      label: Read first
+      description: "Links to the exact spec sections, the Roadmap row, the Conventions sections and the AGENTS.md rules the work needs. Keep the last line."
+      value: |
+        - [Design NN, section N.N: title](https://github.com/dotnetdork/Labyrinth/blob/main/docs/design/...)
+
+        Read these before starting. If this issue and the spec disagree, the spec wins; say so in the pull request.
+    validations:
+      required: false
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: "Two to four plain sentences: what goes wrong and why it matters."
+    validations:
+      required: true
+  - type: textarea
     id: location
     attributes:
       label: Location & Context
-      description: The file and lines or function, the commit, and the spec section that covers it.
+      description: "The file and lines or function, the commit, and the spec section that covers it."
       placeholder: "core/config/config.sh:15, lab_protected_load; commit abc1234; design 04, section 2.4"
     validations:
       required: true
@@ -19,14 +37,23 @@ body:
     id: current
     attributes:
       label: Current Behavior
-      description: What happens, what should happen, and the risk. Include the command and its output.
+      description: "What happens, what should happen, and the risk. Include the command and its output."
     validations:
       required: true
   - type: textarea
     id: plan
     attributes:
-      label: Remediation Plan
-      description: Short technical steps to fix it, and the tests that prove the fix (bats and Pester where both platforms are covered).
+      label: Plan
+      description: "Short technical steps to fix it."
+    validations:
+      required: true
+  - type: textarea
+    id: tests
+    attributes:
+      label: Acceptance tests
+      description: "The tests that prove the fix (bats and Pester where both platforms are covered)."
+      value: |
+        - [ ] 
     validations:
       required: true
   - type: dropdown
