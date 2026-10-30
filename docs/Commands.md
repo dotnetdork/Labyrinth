@@ -17,7 +17,7 @@ The five phases, in the order they run: **Lock out** (take control back), **Hard
 laby
 ```
 
-Planned (stage 4b). Today, typing nothing prints the short help. The status will show this host's status: its group and profile, which phases have been run or kept, any revert timer still counting down, how many items wait in the queue, and a `Next:` line with the one command to run next. It changes nothing. When in doubt, start here.
+Planned (first usable release). Today, typing nothing prints the short help. The status will show this host's status: its group and profile, which phases have been run or kept, any revert timer still counting down, how many items wait in the queue, and a `Next:` line with the one command to run next. It changes nothing. When in doubt, start here.
 
 ## The first minutes
 
@@ -56,7 +56,7 @@ Each works like `lockout`: the phase word alone previews, `-r` runs. Run the pha
 
 ## The queue: changes waiting for a person (Planned)
 
-Planned (stage 4b). Some changes are too risky to make on their own, such as deleting an account or changing a scored service that has no test. A run puts those in this host's queue and carries on.
+Planned (first usable release). Some changes are too risky to make on their own, such as deleting an account or changing a scored service that has no test. A run puts those in this host's queue and carries on.
 
 ```
 laby -q                 short form
@@ -131,10 +131,10 @@ Adding `-h` to any command shows that command's help instead of running it: `lab
 | Type | Long form | What it does |
 |---|---|---|
 | `-P NAME` | `--profile NAME` | Use this profile; it must match the host's line in the `hosts` file |
-| `-v` | `--verbose` | **Planned** (stage 4b). Show the full detail for every module, not one line each |
-| `-y` | `--yes` | **Planned** (stage 4b). Answer yes to "are you sure?" questions. It never answers the login check |
-| | `--no-revert` | **Planned** (stage 4b). No revert timer and no login check. For test machines only |
-| | `--manual` | **Planned** (stage 4b). The full manual, scrollable (Linux also: `man laby`) |
+| `-v` | `--verbose` | **Planned** (first usable release). Show the full detail for every module, not one line each |
+| `-y` | `--yes` | **Planned** (first usable release). Answer yes to "are you sure?" questions. It never answers the login check |
+| | `--no-revert` | **Planned** (first usable release). No revert timer and no login check. For test machines only |
+| | `--manual` | **Planned** (first usable release). The full manual, scrollable (Linux also: `man laby`) |
 
 ## A typical host, start to finish
 

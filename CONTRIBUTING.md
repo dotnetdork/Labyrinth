@@ -25,10 +25,11 @@ Open an issue from a template; each asks for the same three parts: **Location & 
 | `area:` | The part of the code it touches, such as `firewall`, `accounts` or `command-line` |
 | `platform:` | `linux`, `windows`, both, or `appliance` |
 | `cve` | It concerns a published CVE. The CVE ID goes in the title, for example `Mitigate CVE-2024-6387 in sshd` |
-| `priority:` | Set by the maintainers: `must` (needed for a usable release), `should` (wanted soon after), `nice` (when time allows) |
 | `good first issue` | Small and self-contained, a good place to start |
 
-The **milestone** is the build stage in [`docs/Roadmap.md`](docs/Roadmap.md), section 3. When one issue cannot start until another is done, mark it with GitHub's **blocked by** relationship; a Roadmap row split into steps becomes a parent issue with **sub-issues**.
+Each label group has its own color: the phase labels use the phase colors of the docs site, and the `type:` labels are pale except `bug` and `security`.
+
+The **milestone** says when an issue is built: the first usable release, then the later milestones in the order of [`docs/Roadmap.md`](docs/Roadmap.md). There are no priority labels; the milestone and the Roadmap's order are the priority. When one issue cannot start until another is done, mark it with GitHub's **blocked by** relationship; a Roadmap row split into steps becomes a parent issue with **sub-issues**.
 
 ## Without Claude Code
 

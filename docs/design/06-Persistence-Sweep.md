@@ -130,7 +130,7 @@ Watching tools often abused for persistence, and blocking one on a single Window
 ## 7. When it runs
 
 - **Early:** the high-confidence class runs first in the Harden phase, right after the first-minute bundle has closed the network (design 03, section 6).
-- **Right after the bundle:** the full list of unexplained items goes to the host's approval queue, where a person approves chosen items in a later run (planned, Roadmap stage 4b). Today the list is shown in the plan and approved at the prompt or with `--approve`.
+- **Right after the bundle:** the full list of unexplained items goes to the host's approval queue, where a person approves chosen items in a later run (planned, Roadmap, first usable release). Today the list is shown in the plan and approved at the prompt or with `--approve`.
 - **At every checkpoint** (design 19): the sweep runs again in report mode. After the baseline is sealed (design 08, section 6), any new persistence item is a high-ranked integrity finding.
 
 ## 8. What it will never do
