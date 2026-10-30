@@ -46,6 +46,9 @@ Harden is specified here ahead of the code. Until the runner builds the phase, t
 Labyrinth/
 ├── labyrinth.sh                 # main program for Linux hosts and control nodes (bash)
 ├── labyrinth.ps1                # main program for Windows hosts and control nodes (PowerShell)
+├── install.sh                   # guided installer for Linux (Conventions, section 3.3)
+├── install.ps1                  # guided installer for Windows
+├── laby.cmd, labyrinth.cmd      # the Windows commands: launchers that run labyrinth.ps1
 ├── core/                        # shared library used by every module
 │   ├── lib.sh                   # loads the bash core (entry points source it)
 │   ├── Lab.ps1                  # loads the PowerShell core (entry points dot-source it)
@@ -74,6 +77,7 @@ Labyrinth/
 ├── profiles/                    # host profile → ordered module list
 ├── platform/                    # adapters (design 01): linux/firewall, ubuntu, rhel-family, windows, appliance runbooks
 ├── config/                      # templates only: *.example, never values
+├── manual/                      # the built manual (man page, Get-Help topic): in a release, not in git
 ├── vendor/                      # pinned third-party code, each with LICENSE and NOTICE
 ├── tests/                       # lab tests and negative tests
 └── docs/                        # design specs and the implementation blueprint
@@ -248,6 +252,7 @@ The commands below `-V` are planned and do not exist yet. When built, they take 
 
 The flag forms for preview, run, keep, undo, history, probe, help and the version are built (Conventions, section 3.1). The runner does not do the rest yet (planned, stage 4b, `docs/Roadmap.md`); the notes above say where today's runner differs. Conventions, section 3.3 holds the full contract and wins where the two differ. It exists so that one short command per host carries out a whole phase without a person answering prompts, while keeping every gate.
 
+- **The commands** `laby` and `labyrinth` are installed by `install.sh` and `install.ps1` (built; Conventions, section 3.3): on Linux as links in `/usr/bin` to `<root>/bin/labyrinth.sh`, on Windows as the launchers `laby.cmd` and `labyrinth.cmd` in `C:\Program Files\Labyrinth`, which goes on the machine `PATH`.
 - **Flags, with short and long forms,** under the name `laby` as well as `labyrinth`: `laby` shows the host's status and the next step, `laby PHASE` previews a phase, and `laby -r PHASE` runs it. `init` is Lock out then Harden as one run. The queue is `-q`, approving and declining are `-q -a LIST` and `-q -d LIST`, keeping is `-k ID`, undoing is `-u ID`, and `--probe` and `--history` stay long.
 - **Automatic is the only mode.** There is no switch. The group comes from the hosts file, matched on the host's name and address, and the break-glass account is the `breakglass`-class account from the protected set that exists on the host; a mismatch, or no single match, blocks the run (`20`). Labyrinth looks for a console session of that account itself and warns if it finds none (design 03, section 7).
 - **No prompts during a run.** An approval item runs when a pre-approval rule covers it in a category its module allows (`pre_approvable`, section 4). Every other item goes to the host's queue, where items keep stable numbers, and a person approves chosen ones in a new run with the same backups, manifest, revert timer and probes.
@@ -270,14 +275,15 @@ Every host uses the same tree, and everything Labyrinth keeps is under one root.
 
 | Purpose | Linux | Windows |
 |---|---|---|
-| Code (read-only) | `<root>/bin` | `<root>\bin` |
+| Code (read-only) | `<root>/bin` | `C:\Program Files\Labyrinth` |
+| Commands | links `/usr/bin/laby` and `/usr/bin/labyrinth` | `laby.cmd` and `labyrinth.cmd` in the code folder, which is on the machine `PATH` |
 | Run-time configuration | `<root>/etc` | `<root>\etc\` |
 | State: baselines, manifests, key registry | `<root>/state` | `<root>\state\` |
 | Logs, one folder per category | `<root>/logs/<category>` | `<root>\logs\<category>\` |
 | Backups, timestamped | `<root>/backup` | `<root>\backup\` |
 
-- **Default root:** `/opt/labyrinth` on Linux, `C:\ProgramData\Labyrinth` on Windows.
-- **Ownership.** The whole tree is owned by root (SYSTEM and Administrators on Windows). `etc`, `state` and `backup` are readable by them only, because backups can hold copies of configuration files that contain secrets and the state shows where the traps are.
+- **Default root:** `/opt/labyrinth` on Linux, `C:\ProgramData\Labyrinth` on Windows. On Windows the code is not under the root: it is in Program Files, where only Administrators can write, so the root holds data only. The installer (Conventions, section 3.3) puts the code and the commands there.
+- **Ownership.** The whole tree is owned by root (SYSTEM and Administrators on Windows), and so is every folder above the code and the commands: the installer refuses to install when another account can change any of them, and the runner refuses to run code that another account can change. `etc`, `state` and `backup` are readable by them only, because backups can hold copies of configuration files that contain secrets and the state shows where the traps are.
 - **Log categories:** `run`, `auth`, `integrity`, `network`, `deception`, `report`, `health` (design 19).
 
 ## 8. Adding a capability

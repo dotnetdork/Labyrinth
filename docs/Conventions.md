@@ -73,7 +73,7 @@ The runner (`labyrinth.sh` / `labyrinth.ps1`) calls each entry point as a separa
 
 | Variable | Meaning |
 |---|---|
-| `LAB_ROOT` | The code directory, the one holding `labyrinth.sh` and `labyrinth.ps1`: `<root>/bin` on hosts, the repository root in development. The data root (`<root>`, design 00, section 7) is set with `--root` / `-Root` |
+| `LAB_ROOT` | The code directory, the one holding `labyrinth.sh` and `labyrinth.ps1`: `<root>/bin` on Linux hosts, `C:\Program Files\Labyrinth` on Windows hosts, the repository root in development; on Linux it is the real folder, with the installed link resolved. The data root (`<root>`, design 00, section 7) is set with `--root` / `-Root` |
 | `LAB_CONFIG_DIR` | Run-time configuration directory |
 | `LAB_STATE_DIR` | State: baselines, manifests, key registry |
 | `LAB_LOG_DIR` | Log root; categories below it |
@@ -90,7 +90,7 @@ Entry points load the core library from `LAB_ROOT/core/` and never from a relati
 
 ### 3.1 Commands, options, gates and the order of an apply
 
-Both runners share one vocabulary. In this section `laby` stands for the installed command, or for `labyrinth.sh` / `labyrinth.ps1` run directly (design 00, section 5). Until the installer exists (section 3.3), run the script directly. The planned additions of section 3.3 are not accepted yet: typing one is a usage error (`40`) that says the flag is planned and not built yet.
+Both runners share one vocabulary. In this section `laby` stands for the installed command, or for `labyrinth.sh` / `labyrinth.ps1` run directly (design 00, section 5). The installer (section 3.3) adds the commands; without it, run the script directly. The planned additions of section 3.3 are not accepted yet: typing one is a usage error (`40`) that says the flag is planned and not built yet.
 
 ```
 laby [PHASE] [options]          preview a phase
@@ -142,6 +142,7 @@ A line holds one **action**, or only a phase.
 - **Case.** Short letters are case-sensitive: `-P` is the profile and `-V` the version, and `-p` and `-v` are errors with a near-miss suggestion. Long names ignore case and dashes, so PowerShell's `-Run`, `-Undo`, `-Profile`, `-BreakGlass` and `-Root` work, and each option has one name in both runners.
 - **Stacking.** Short letters may be joined, such as `-rv` once `-v` is built (section 3.3); today only `-r` and `-P` can share a stack (`-rP NAME`). A letter that takes a value comes last. A single dash before a word is read as a long name when the word is a long name (`-Undo`), and otherwise as a stack of letters, where a letter that is not a short flag is a usage error.
 - **Values** are given as `-k 7f3a`, `--keep 7f3a`, `--keep=7f3a` or `-Name:value`, and `--` ends the options. A run is never kept or undone by guess. PowerShell may hand `-k 0123` over as a number; the runner takes the raw text, never a number.
+- **A list option on Windows.** PowerShell hands a native command, here the launcher `laby.cmd`, an unquoted `a,b` as the two words `a` and `b`. The Windows runner therefore joins the words that follow `-Approve` back into one comma list while each looks like a list item (`<module-id>:<item-id>@<fingerprint>`). A phase word or a run ID never looks like one. Queue numbers and ranges will join the same way.
 - **PowerShell** takes an unquoted `-?` for itself before the script runs and shows the script's comment-based help, so that help is one short page that points to `laby -h`. `/?` reaches the runner and works like `-h`.
 
 #### Usage errors
@@ -277,7 +278,7 @@ This section is the contract for the full output block, the form the runner prin
 - **Recaps.** Before the group-name prompt: the host, the group, one line per module (`Will change:`, `Blocked:` or `Manual:`), that a revert timer will be armed, that changes which only take access away are kept once they verify (when the run has any), and, when a change may interrupt a service and the operator is connected remotely, to keep a second session open. Before the keep prompt: when the revert timer undoes the run, in UTC and in minutes from now.
 - **Messages** say what failed, why, and how to recover, in one sentence each. An error that stops the runner (exit `20` or `40`) is one line on stderr, `labyrinth: <what failed>: <why>`, and, unless the fix is already in that line, a second line saying how to recover. A failure that leaves changes in place always says how to undo them and how to keep them, in that order, and that if in doubt, undo them. A warning is one line on stderr, `labyrinth: warning: <what>`. Core helpers that refuse, such as a held run lock, follow the same form. An apply whose plan has errors still ends with `Summary:` and `apply finished:`.
 - **Text.** Fixed text is at most 78 columns, plain ASCII, with no colour. That includes prompts: what a prompt asks for goes on the lines above it, and the prompt itself is short (`Break-glass account name: `, `Items to approve (Enter for none): `). A line may be longer only by the length of a path it names, and the path comes last, or by the length of the command in a hint.
-- **Hints** name the command the way the operator started it, so it can be copied and run. On Linux that is the path as typed (`./labyrinth.sh`, `/opt/labyrinth/bin/labyrinth.sh`), with `./` added to a bare name that is not on the `PATH`, quoted if it needs it, and `sudo` in front when `SUDO_USER` is set. On Windows it is `.\labyrinth.ps1` when the current folder is Labyrinth's, and its full path otherwise, after `&` and in quotes when the path needs them. Help, usage errors, `Next:` lines and recovery steps all use the name as started, until the installer gives the command its own name. The manual writes `laby`.
+- **Hints** name the command the way the operator started it, so it can be copied and run. On Linux that is the path as typed (`./labyrinth.sh`, `/opt/labyrinth/bin/labyrinth.sh`), with `./` added to a bare name that is not on the `PATH`, quoted if it needs it, and `sudo` in front when `SUDO_USER` is set. On Windows it is `.\labyrinth.ps1` when the current folder is Labyrinth's, and its full path otherwise, after `&` and in quotes when the path needs them. Help, usage errors, `Next:` lines and recovery steps all use the name as started. Started through an installed command they say `laby` or `labyrinth` instead: on Linux when the link of that name on the `PATH` is the one that ran, and on Windows when the launcher has set `LAB_SELF` to its own name. The command a revert timer stores always names the installed code path, never the link. The manual writes `laby`.
 - **Help.** Each help topic is at most 18 lines (`basics` 24), with one `Exit:` line and one `Example:` line. Option lists are headed `Options:`. A topic says when its command must run as root or an Administrator, and `-r`, `-k` and `-u` follow their `Exit:` line with a `Blocked:` line naming the causes of `20`. The general page says where the options are (`laby -h` with an action, or `-h` after one) and where the manual is: the platform's parts of `docs/manual/labyrinth.md` in Labyrinth's folder. `-V` names the runner as well as the version.
 
 For module authors: when an entry point exits `20`, `30` or `40`, its last line of output is a `problem:` line. An entry point never leaves a background process holding standard output, because the runner waits for it to close.
@@ -294,13 +295,34 @@ Every run, keep and undo writes `<state>/runs/<run>/output.log`, readable by roo
 
 ### 3.3 Automatic runs and the rest of the command line (specified, planned)
 
-Section 3.1 describes the command line as built. This section holds only what is still planned (Roadmap): the installer, the status and queue, automatic runs, short output, the Harden phase and the options listed below. None of these is accepted yet; typing a flag of the list below is a usage error, `<name>: '-v' (--verbose) is planned and not built yet`, until its stage is built. When one is built, its rows move into section 3.1.
+Section 3.1 describes the command line as built. This section holds the installer, which is built, and what is still planned (Roadmap): the status and queue, automatic runs, short output, the Harden phase and the options listed below. None of these is accepted yet; typing a flag of the list below is a usage error, `<name>: '-v' (--verbose) is planned and not built yet`, until its stage is built. When one is built, its rows move into section 3.1.
 
 #### The command
 
-Labyrinth installs as `labyrinth`, with the short name `laby`. The install leaves `laby` out, and says so, when a command of that name already exists on the host. Until the installer exists, `laby` means `./labyrinth.sh` or `.\labyrinth.ps1` run directly.
+Labyrinth installs as `labyrinth`, with the short name `laby`. If a command named `laby` already exists on the host, the install leaves `laby` out and says so; if `labyrinth` exists, it refuses. Without the installer, `laby` means `./labyrinth.sh` or `.\labyrinth.ps1` run directly.
 
-**The install walks through setup.** From the release folder, `./install.sh` (or `.\install.ps1` as Administrator) checks the release against `release.sha256`, then shows its plan and asks before it changes anything: where the code and the data root go, the commands it adds to the `PATH`, and the manual it installs. It then creates the data root with its permissions, copies the `config/*.example` templates into `<root>/etc` without overwriting a file already there, and ends with what to fill in and the next command (`laby`). It is safe to run again. The exact steps are decided when it is built. Everything here works with either name, and with `labyrinth.sh` / `labyrinth.ps1` run directly.
+**Where things go.** Only root (Administrators on Windows) can change the code and its commands.
+
+| | Linux | Windows |
+|---|---|---|
+| Code | `<root>/bin` (default `/opt/labyrinth/bin`) | `C:\Program Files\Labyrinth` |
+| Data root (`etc`, `state`, `logs`, `backup`) | `<root>` (default `/opt/labyrinth`) | `C:\ProgramData\Labyrinth`: Administrators and SYSTEM only, inherited rights removed |
+| Commands | links `/usr/bin/laby` and `/usr/bin/labyrinth` to `<root>/bin/labyrinth.sh` | `laby.cmd` and `labyrinth.cmd` in the code folder, which is added to the machine `PATH` |
+| Manual | `labyrinth.1.gz` in `/usr/local/share/man/man1/`, with `laby.1.gz` pointing to it, then `mandb` if the host has it | a `Labyrinth` module folder in `C:\Program Files\WindowsPowerShell\Modules`, so that `Get-Help about_Labyrinth` finds the topic |
+
+The links are in `/usr/bin` so that `sudo laby` works: sudo searches only its own list of folders. On Windows the launcher runs `powershell.exe -NoProfile -ExecutionPolicy Bypass -File "<folder>\labyrinth.ps1" %*` and passes the exit code back. The bypass covers that one process; the host's execution policy is never changed.
+
+**The install walks through setup.** From the release folder, `sudo ./install.sh` (or `.\install.ps1` in a PowerShell window opened as Administrator):
+
+1. Checks the release against `release.sha256`; a mismatch is refused. A copy with no list, such as a plain git checkout, installs with a note that it was not checked.
+2. Checks, before anything changes, that every folder from the filesystem root down to the code folder, the command folder and the manual folder can be changed only by root (Administrators, SYSTEM or TrustedInstaller on Windows), and so can an existing data root and everything in it; it refuses if not. On Windows, a data root that is there but still open is made private first and checked after that, and anything in it owned by another account is refused before anything changes. On Linux it warns when root's `PATH` holds a folder that others can write to. A command name another program has is never replaced: a taken `labyrinth` is refused; a taken `laby` is left out on Linux (with its man page) and named in the plan on Windows, and the commands to type become `labyrinth`. Another program's man page is never replaced.
+3. Refuses, changing nothing, while any revert timer is armed. It names the run and when the timer fires, and says to keep the run (`laby -k ID`) or undo it (`laby -u ID`) first.
+4. Prints its plan (the code folder, the data root, the commands and where they go, the manual, any `PATH` change) and asks `Install? [y/N]`. The default is no. `-y` answers yes. With no terminal and no `-y` it refuses.
+5. Creates the data root with its permissions, then installs the code (built beside its place, checked, and swapped in whole, so a reinstall replaces the code completely and never touches configuration, state, backups or logs), the manual and the commands.
+6. Copies the `config/*.example` templates into `<root>/etc` without the `.example` ending, never overwriting a file already there.
+7. Ends with what to fill in and the next command: `sudo laby` (`laby` on Windows).
+
+It is safe to run again: when nothing differs, it says so and changes nothing. If the built manual is absent, as in a plain git checkout, it skips the manual with one line. Everything here works with either name, and with `labyrinth.sh` / `labyrinth.ps1` run directly. The options `--code-dir`, `--link-dir` and `--man-dir` (Linux) and `-CodeDir`, `-ModuleDir` and `-NoPath` (Windows) exist for the tests only: they point the installer at throwaway folders.
 
 ```
 laby                    this host's status and the next step

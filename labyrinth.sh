@@ -47,8 +47,11 @@ readonly RE_ITEM=$'^item\t([a-z0-9-]+)\t([a-z0-9-]+)\t([0-9a-f]{12})\t(.*)$'
 readonly RE_APPROVE='^(lockout|observe|deceive|sustain)\.[a-z0-9_-]+:[a-z0-9-]+@[0-9a-f]{12}$'
 
 # The real path, links resolved: the revert timer runs labyrinth.sh from it
-# as root, so it must name the folder lab_tree_trusted checks.
-LAB_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+# as root, so it must name the folder lab_tree_trusted checks. Started
+# through the installed link (/usr/bin/laby), BASH_SOURCE is the link, so
+# the script's own path is resolved first and its folder is the code folder.
+LAB_SCRIPT="$(readlink -f -- "${BASH_SOURCE[0]}" 2> /dev/null)" || LAB_SCRIPT="${BASH_SOURCE[0]}"
+LAB_ROOT="$(cd "$(dirname "$LAB_SCRIPT")" && pwd -P)"
 export LAB_ROOT
 # The release check (design 21, section 5) comes before the rest of the
 # core is loaded, so a changed core file never runs. A file that differs
@@ -100,6 +103,13 @@ RUN_OPEN=0                 # 1 once an apply has recorded run_start
 # front when sudo started it.
 SELF="$0"
 if [[ "$SELF" != */* ]] && ! command -v -- "$SELF" > /dev/null 2>&1; then SELF="./$SELF"; fi
+# Started through the installed command (the link /usr/bin/laby or
+# /usr/bin/labyrinth), $0 is the link's full path, and the bare name finds
+# that same link on the PATH: show the bare name, as the operator would type it.
+if [[ "$SELF" == */* && ( "${SELF##*/}" == laby || "${SELF##*/}" == labyrinth ) ]] \
+    && [[ "$(type -P -- "${SELF##*/}" 2> /dev/null || true)" == "$SELF" ]]; then
+  SELF="${SELF##*/}"
+fi
 if [[ ! "$SELF" =~ ^[A-Za-z0-9_./+-]+$ ]]; then SELF="$(printf '%q' "$SELF")"; fi
 if [[ -n "${SUDO_USER:-}" ]]; then SELF="sudo $SELF"; fi
 NAME="${SELF#sudo }"   # the name as typed, for the start of a usage error
@@ -146,8 +156,9 @@ declare -a RUN_IDS=() RUN_DIR=() RUN_RISK=() RUN_SCORED=() RUN_REQUIRES=() RUN_R
 # cmd_help [TOPIC]: the main help, or one topic's, on stdout. A topic is an
 # action, an option, a phase or 'basics', by its canonical name. The text
 # is the same as labyrinth.ps1's. It writes the program's name as @CMD@, and
-# cmd_help puts in the name as started ($SELF) until there is an installed
-# 'laby'. The main page is at most 24 lines and each topic at most 18
+# cmd_help puts in the name as started ($SELF), which is 'laby' or
+# 'labyrinth' when started through the installed link. The main page is at
+# most 24 lines and each topic at most 18
 # (basics 24), of at most 78 columns with the name './labyrinth.sh', with an
 # Exit line, an Example line and a See also line (docs/Conventions.md
 # section 3.2).
