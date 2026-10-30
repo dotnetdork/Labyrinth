@@ -1,20 +1,19 @@
-name: Enhancement
-description: A new feature, or a Roadmap item to build
-title: "[Enhancement] "
-labels: ["type: enhancement"]
+name: Feature
+description: A new capability beyond the Roadmap
+labels: ["type: feature"]
 body:
   - type: markdown
     attributes:
       value: |
-        Most work starts from a row in `docs/Roadmap.md`. Name its branch (for example `phase-4/ssh`) and the spec it builds.
+        For an idea that is not in `docs/Roadmap.md`. Say who it helps and when they would use it.
         If it is about a published CVE, put the CVE ID in the title and the maintainers will add the `cve` label.
         This repository is public: no event values, real hostnames, addresses or credentials.
   - type: textarea
     id: location
     attributes:
       label: Location & Context
-      description: The Roadmap row and spec sections, and the files it will touch.
-      placeholder: "Roadmap phase-4/ssh; design 04, section 4; platform/linux/..., labyrinth.ps1"
+      description: The specs and files it touches.
+      placeholder: "Conventions 3.3; labyrinth.sh, labyrinth.ps1"
     validations:
       required: true
   - type: textarea
