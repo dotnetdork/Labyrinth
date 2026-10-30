@@ -58,7 +58,7 @@ Describe 'labyrinth.ps1 keep_on_verify' {
         $r.Output | Should -Match ([regex]::Escape('  Keeper setting sample (observe.keeper)'))
         $toggle | Should -Not -Exist
         (Get-Content -LiteralPath $keeper) | Should -Be 'setting=on'
-        [IO.File]::ReadAllText($notice) | Should -Match "rolled back run $id"
+        [IO.File]::ReadAllText($notice) | Should -Match "undid run $id"
     }
 
     It '-u -All undoes kept modules too' {
@@ -72,7 +72,7 @@ Describe 'labyrinth.ps1 keep_on_verify' {
         $r = Invoke-TestLab $t @('-u', $id, '-All', '-Root', $t.Root, '-Config', $t.Etc)
         $r.Code | Should -Be 0
         $keeper | Should -Not -Exist
-        [IO.File]::ReadAllText($notice) | Should -Match "rolled back run $id"
+        [IO.File]::ReadAllText($notice) | Should -Match "undid run $id"
     }
 
     It 'with no service list, nothing is kept early and the timer still covers it' {

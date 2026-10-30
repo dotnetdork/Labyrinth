@@ -145,7 +145,7 @@ Labyrinth does **one action per line**. A phase on its own is a preview. Every o
 
 `PHASE` is `lockout`, `observe`, `deceive` or `sustain`. `ID` is a run ID or its last four characters; `-k` and `-u` always need one. `-r` may come before or after the phase. Two actions on one line are an error (exit 40), and so is a word that is not a phase.
 
-The help and the hints write the program's name as `laby`. Until an installer puts `laby` on the path (planned), type `@CMD@` instead.
+This manual writes the program's name as `laby`. Until an installer puts `laby` on the path (planned), type `@CMD@` instead: the program's own help and hints already write the name you started it with.
 
 Phases, long option names and run IDs can be typed in any mix of upper and lower case. The short letters are the exception: `-P` and `-V` are capitals, and `-r`, `-k`, `-u` and `-h` are lower case. `-p` and `-v` are errors, and Labyrinth says which letter you meant.
 
@@ -182,7 +182,7 @@ Ends with 0 when every change was made and checked, 10 when only steps for a per
 
 Keeps a run's changes: cancels its revert timer, then records that the run was kept. The run is always needed. Without one, `-k` changes nothing and ends with 40; run as @ADMIN@, it also lists the runs whose timer is armed, to choose from.
 
-Ends with 0 when the run is kept, 20 when it is not run as @ADMIN@, when Labyrinth's files could be changed by another account (section 11), or when it is too late because the run was already rolled back, and 40 when the timer could not be cancelled or the keep could not be recorded. If the timer could not be cancelled, the run is **not** kept and the timer will still undo it: Labyrinth says when, and gives the command to try again.
+Ends with 0 when the run is kept, 20 when it is not run as @ADMIN@, when Labyrinth's files could be changed by another account (section 11), or when it is too late because the run was already undone, and 40 when the timer could not be cancelled or the keep could not be recorded. If the timer could not be cancelled, the run is **not** kept and the timer will still undo it: Labyrinth says when, and gives the command to try again.
 
 ## undo (-u) *run*
 
@@ -216,8 +216,8 @@ this host's runs, oldest first, with the run ID, phase, start time (UTC) and sta
 - `armed: timer lost`: the run is still armed, but systemd no longer has its revert timer, because its unit files were removed or damaged. Nothing will undo the run by itself. Keep it or undo it now;
 <!-- end -->
 - `kept`: someone kept the run;
-- `rolled back`: the run was undone;
-- `rolled back with errors`: the run was undone, but some of it could not be; section 11 explains what to do;
+- `undone`: the run was undone;
+- `undone with errors`: the run was undone, but some of it could not be; section 11 explains what to do;
 - `not kept, no timer`: the run changed nothing that needed a timer.
 
 Below the list, it shows how to name a run by its last four characters. Then it lists the logs of the runs that had problems (section 11). It changes nothing, but it must be run as @ADMIN@. Ends with 0, 20 when not run as @ADMIN@, and 40 on an error.
@@ -334,7 +334,7 @@ A run ID that PowerShell can read as a number must be put in quotes, or PowerShe
 
 An option given twice, an option with no value, or a word Labyrinth does not know is an error (exit 40). Labyrinth says which word is wrong and, for a near miss, suggests the right one. An option that the action does not use, such as a break-glass answer on a preview, only earns a warning.
 
-**Planned, not built yet.** These are not accepted, and typing one is an ordinary unknown-option error: a status page when `@CMD@` is typed alone; `-q`, `-a` and `-d` (queue the run, no questions in the middle of it, and the login check); `-v` (short output); `init` and `harden`; `-y`; `--no-revert`; `--manual`; and the installer.
+**Planned, not built yet.** These are not accepted: a status page when `@CMD@` is typed alone; `-q`, `-a` and `-d` (queue the run, no questions in the middle of it, and the login check); `-v` (short output); `init` and `harden`; `-y`; `--no-revert`; `--manual`; and the installer. Typing one of the flags is a usage error (exit 40) that says it is planned and not built yet; the rest is an ordinary mistake.
 
 # 7. What happens during a run
 
@@ -431,7 +431,7 @@ Under the result, each line starts with a label that says what kind of line it i
 |---|---|
 | `Found:` | What the module saw on the host. |
 | `Will do:` | What a run would change. |
-| `Did:` | What the module changed, or `rolled back` when Labyrinth undid it. |
+| `Did:` | What the module changed, or `undone` when Labyrinth undid it. |
 | `Why:`, `Risk:` | Why the change matters, and what it could break. |
 | `Problem:`, `Cause:` | What went wrong, and why. |
 | `Fix:` | What to do about it. |
@@ -469,7 +469,7 @@ Next: bring the failed service back, then run '@CMD@ -Probe' again.
 probe finished: exit 30 (a service failed)
 ```
 
-`WARN` means a service could not be checked, for example because a tool is missing. An undo first lists the modules it leaves in place because they were kept once verified, then says how many modules it undoes, shows each as `CHANGE` and then `OK` or `ERROR`, and ends with `rollback finished: exit 0 (rolled back)`, or `exit 40 (error)` if a module could not be undone.
+`WARN` means a service could not be checked, for example because a tool is missing. An undo first lists the modules it leaves in place because they were kept once verified, then says how many modules it undoes, shows each as `CHANGE` and then `OK` or `ERROR`, and ends with `undo finished: exit 0 (undone)`, or `exit 40 (error)` if a module could not be undone.
 
 A run also recaps twice. Before it asks for the group name, it lists what each module will do and says that a revert timer will be armed. If you are connected over the network, it also reminds you to keep a second session open. Before it asks whether to keep the changes, it gives the time, in UTC and in minutes from now, at which the revert timer will undo them.
 
@@ -538,7 +538,7 @@ The run that is `armed` is the one to undo; its ID is also on the second line of
 
 **"The run stopped".** A module failed partway through a run. The changes made before it are still in place, and the revert timer is still armed; Labyrinth says when it fires and prints the commands to undo or keep the changes, undo first. If in doubt, undo them: the timer would do the same, only later.
 
-**An `ERROR` line during an undo ("its rollback stopped").** Labyrinth could not undo one module of the run. The `Problem:` line says that its rollback stopped and the change may still be in place, and the `Fix:` line names the backup folder that holds the module's files as they were before the run. The other modules are still undone, the undo ends with exit code 40, and the history shows the run as `rolled back with errors`. Restore that module's files by hand from the backup folder and check the service it affects, then run the same undo again: it is safe to repeat.
+**An `ERROR` line during an undo ("its undo stopped").** Labyrinth could not undo one module of the run. The `Problem:` line says that its undo stopped and the change may still be in place, and the `Fix:` line names the backup folder that holds the module's files as they were before the run. The other modules are still undone, the undo ends with exit code 40, and the history shows the run as `undone with errors`. Restore that module's files by hand from the backup folder and check the service it affects, then run the same undo again: it is safe to repeat.
 
 **"another Labyrinth run (pid N) holds ... lock".** A run is already in progress on this host. Wait for it to finish. If that process has ended, run the command again: a lock left by a process that is gone is taken over. Rarely, after a crash, another program gets the same process number and the lock stays held. If no Labyrinth run is going, delete the `lock` folder in the data root's `state` folder, then run the command again.
 
@@ -594,7 +594,7 @@ Then run the command again. Labyrinth's own check finds a changed, added or miss
 
 **"is an appliance".** This host's line in `hosts` says it is an appliance, such as a firewall. Labyrinth never changes an appliance; configure it by hand, from its runbook.
 
-**"too late".** You tried to keep a run that was already rolled back, by the timer or by hand. Its changes are gone. Preview and run it again if you still want them.
+**"too late".** You tried to keep a run that was already undone, by the timer or by hand. Its changes are gone. Preview and run it again if you still want them.
 
 **"could not be cancelled".** `-k` could not stop the revert timer, so the run was not kept and the timer will still undo it at the time shown. Run the `Retry:` command it prints.
 

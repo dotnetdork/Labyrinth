@@ -268,7 +268,7 @@ Describe 'labyrinth.ps1 console output' {
         $n = Get-TestLineOf $r 'FAIL     Toggle setting sample (observe.toggle)'
         $lines[$n + 1] | Should -BeExactly '  Problem:   its verify script failed with exit code 30 and gave no reason'
         $lines[$n + 2] | Should -BeExactly "  Script:    $(Join-Path $t.Lab 'phases\observe\modules\toggle\verify.ps1')"
-        ($lines -ccontains '  Did:       rolled back') | Should -BeTrue
+        ($lines -ccontains '  Did:       undone') | Should -BeTrue
         ($lines -ccontains "  Log:       $(Join-Path $t.Root "state\runs\$id\output.log")") | Should -BeTrue
         ($lines -ccontains "  More:      $($t.Self) -h observe.toggle") | Should -BeTrue
         $r.Output | Should -Match ([regex]::Escape('Summary: 1 module: 1 FAIL.'))
@@ -336,13 +336,13 @@ Describe 'labyrinth.ps1 console output' {
         $r.Output | Should -Match 'Keep a second session open until you have checked you can log in\.'
     }
 
-    It 'apply: before the keep prompt, the time the revert timer rolls the run back' {
+    It 'apply: before the keep prompt, the time the revert timer undoes the run' {
         Write-TestProfile $t @('observe.toggle')
         $r = Invoke-TestApply $t @('labadmin', 'ring1', 'no')
         $r.Code | Should -Be 0
         $id = Get-TestRunId $r.Output
         $due = [IO.File]::ReadAllText((Join-Path $t.Root "state\runs\$id\timer-due")).Trim()
-        $a = Get-TestLineOf $r "The revert timer rolls this run back at $($due.Substring(11, 5)) UTC, "
+        $a = Get-TestLineOf $r "The revert timer undoes this run at $($due.Substring(11, 5)) UTC, "
         $b = Get-TestLineOf $r 'Type keep to keep'
         $a | Should -BeGreaterThan -1
         ($b -ge $a) | Should -BeTrue
@@ -431,9 +431,9 @@ Describe 'labyrinth.ps1 console output' {
         $p.WaitForExit()
         $p.ExitCode | Should -Be 0
         $text = @([IO.File]::ReadAllLines((Join-Path $t.Root "state\runs\$id\output.log")))
-        @($text | Where-Object { $_ -match "labyrinth \S+: rollback run $id" }).Count | Should -BeGreaterThan 0
-        ($text -ccontains '  Did:       rolled back') | Should -BeTrue
-        ($text -ccontains 'rollback finished: exit 0 (rolled back)') | Should -BeTrue
+        @($text | Where-Object { $_ -match "labyrinth \S+: undo run $id" }).Count | Should -BeGreaterThan 0
+        ($text -ccontains '  Did:       undone') | Should -BeTrue
+        ($text -ccontains 'undo finished: exit 0 (undone)') | Should -BeTrue
     }
 
     It 'probe: a header, a status line per service, Summary, Next and finished' {
@@ -482,10 +482,10 @@ Describe 'labyrinth.ps1 console output' {
         $k.Code | Should -Be 0
         # A copy with no release list warns first (design 21, section 5.1).
         $lines = @(Get-TestLine $k | Where-Object { $_ -notlike 'labyrinth: warning: *' })
-        $lines[0] | Should -Match "^labyrinth \S+: rollback run $id$"
+        $lines[0] | Should -Match "^labyrinth \S+: undo run $id$"
         ($lines -ccontains 'OK       Toggle setting sample (observe.toggle)') | Should -BeTrue
         $lines[-3] | Should -BeExactly 'Summary: 1 module: 1 OK.'
         $lines[-2] | Should -BeExactly "Log: $(Join-Path $t.Root "state\runs\$id\output.log")"
-        $lines[-1] | Should -BeExactly 'rollback finished: exit 0 (rolled back)'
+        $lines[-1] | Should -BeExactly 'undo finished: exit 0 (undone)'
     }
 }

@@ -52,6 +52,23 @@ streams() {
   [[ "$ERR" == "$SELF: unknown option '-x'"$'\n'"Try '$SELF -h'." ]]
 }
 
+@test "-v and the other planned flags say they are planned; -p is still a slip for -P" {
+  streams -v
+  [ "$CODE" -eq 40 ]
+  [[ "$ERR" == "$SELF: '-v' (--verbose) is planned and not built yet"$'
+'"Try '$SELF -h'." ]]
+  streams -p test observe
+  [[ "$ERR" == *"unknown option '-p' (did you mean '-P', the profile?)"* ]]
+  streams -a observe
+  [[ "$ERR" == *"'-a' (--approve, with -q) is planned and not built yet"* ]]
+  streams -rq observe
+  [[ "$ERR" == *"'-q' (--queue) is planned and not built yet"* ]]
+  streams --no-revert -r observe
+  [[ "$ERR" == *"'--no-revert' is planned and not built yet"* ]]
+  streams --Verbose observe
+  [[ "$ERR" == *"'--Verbose' is planned and not built yet"* ]]
+}
+
 @test "the old command words are plain mistakes, with no hint that maps them" {
   for w in plan apply rollback runs status; do
     streams "$w" observe
@@ -81,7 +98,7 @@ streams() {
 @test "-? is help, like -h" {
   streams '-?'
   [ "$CODE" -eq 0 ]
-  [[ "$OUT" == *"Usage: laby PHASE"* ]]
+  [[ "$OUT" == *"Usage: $SELF PHASE"* ]]
 }
 
 @test "a warning about an unused option never comes before an error" {

@@ -50,7 +50,7 @@ rollback() { run bash "$LAB/labyrinth.sh" --root "$ROOT" --config "$ETC" -u "$@"
   [[ "$output" == *"  Keeper setting sample (observe.keeper)"* ]]
   [ ! -e "$LAB/toggle.conf" ]
   grep -qx 'setting=on' "$LAB/keeper.conf"
-  grep -q "rolled back run $id" "$LAB/notice.log"
+  grep -q "undid run $id" "$LAB/notice.log"
 }
 
 @test "-u --all undoes kept modules too" {
@@ -65,7 +65,7 @@ rollback() { run bash "$LAB/labyrinth.sh" --root "$ROOT" --config "$ETC" -u "$@"
   rollback "$id" --all
   [ "$status" -eq 0 ]
   [ ! -e "$LAB/keeper.conf" ]
-  grep -q "rolled back run $id" "$LAB/notice.log"
+  grep -q "undid run $id" "$LAB/notice.log"
 }
 
 @test "with no service list, nothing is kept early and the timer still covers it" {

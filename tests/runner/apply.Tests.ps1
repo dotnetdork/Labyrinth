@@ -184,7 +184,7 @@ Describe 'labyrinth.ps1 -r' {
         $r = Invoke-TestApply $t $answers
         $r.Code | Should -Be 30
         $r.Output | Should -Match 'its verify script failed'
-        (@($r.Output -split "`r?`n") -ccontains '  Did:       rolled back') | Should -BeTrue
+        (@($r.Output -split "`r?`n") -ccontains '  Did:       undone') | Should -BeTrue
         (Get-Content -LiteralPath $toggle) | Should -Be 'setting=off'
         Get-TestManifest $t (Get-TestRunId $r.Output) | Should -Match '"action":"rolled_back"'
     }
@@ -280,7 +280,7 @@ Describe 'labyrinth.ps1 -r' {
         $r.Output | Should -Match 'a scored service stopped working after the change: web'
         $lines = @($r.Output -split "`r?`n")
         ($lines -ccontains '  Found:     web: fail (fake probe); it passed before') | Should -BeTrue
-        ($lines -ccontains '  Did:       rolled back') | Should -BeTrue
+        ($lines -ccontains '  Did:       undone') | Should -BeTrue
         Join-Path $lab 'probe-state' | Should -Not -Exist
     }
 
@@ -291,7 +291,7 @@ Describe 'labyrinth.ps1 -r' {
         $r.Code | Should -Be 30
         $r.Output | Should -Not -Match 'scoring allowlist is missing'
         $r.Output | Should -Match 'a scored service stopped working after the change: web'
-        (@($r.Output -split "`r?`n") -ccontains '  Did:       rolled back') | Should -BeTrue
+        (@($r.Output -split "`r?`n") -ccontains '  Did:       undone') | Should -BeTrue
         Join-Path $lab 'probe-state' | Should -Not -Exist
     }
 
