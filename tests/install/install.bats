@@ -199,6 +199,37 @@ snapshot() {
   [ "$(cat "$LINKS/laby")" = 'not ours' ]
   [ ! -L "$LINKS/laby" ]
   [ "$(readlink "$LINKS/labyrinth")" = "$ROOT/bin/labyrinth.sh" ]
+  # Its man page name is left out too, so man laby never shows Labyrinth.
+  [[ "$output" == *'laby.1.gz left out: the command laby is left out'* ]]
+  [ -f "$MAN/labyrinth.1.gz" ]
+  [ ! -e "$MAN/laby.1.gz" ]
+}
+
+@test "another program's laby man page is never replaced" {
+  inst_setup
+  mkdir -p "$MAN"
+  printf 'not ours
+' > "$MAN/laby.1.gz"
+  install_sh -y
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"laby.1.gz left out: $MAN/laby.1.gz belongs to another program"* ]]
+  [ "$(cat "$MAN/laby.1.gz")" = 'not ours' ]
+  [ -f "$MAN/labyrinth.1.gz" ]
+}
+
+@test "another program's labyrinth man page is never replaced, and the manual is skipped" {
+  inst_setup
+  mkdir -p "$MAN"
+  printf '.TH OTHER 1
+something else
+' | gzip -c > "$MAN/labyrinth.1.gz"
+  before="$(sha256sum "$MAN/labyrinth.1.gz")"
+  install_sh -y
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"skipped: $MAN/labyrinth.1.gz belongs to another program"* ]]
+  [ "$(sha256sum "$MAN/labyrinth.1.gz")" = "$before" ]
+  [ ! -e "$MAN/laby.1.gz" ]
+  [ -f "$ROOT/bin/labyrinth.sh" ]
 }
 
 @test "a laby found elsewhere on the PATH counts as taken" {
@@ -299,6 +330,7 @@ snapshot() {
 }
 
 @test "the real folder check: a folder owned by root and closed to others passes, one that is not fails" {
+  REPO="$BATS_TEST_DIRNAME/../.."
   # shellcheck source=/dev/null
   source "$REPO/core/safety/system.sh"
   # /usr/bin is root's and closed to others on any Linux host; the folder it
@@ -310,6 +342,38 @@ snapshot() {
   run lab_path_trusted "$T/mine"
   [ "$status" -eq 1 ]
   [ -n "$output" ]
+}
+
+@test "an existing data root with something in it that others can change is refused" {
+  inst_setup
+  mkdir -p "$ROOT/etc"
+  : > "$REL/UNTRUSTED_TREE"
+  install_sh -y
+  [ "$status" -eq 20 ]
+  [[ "$output" == *'can be changed by an account other than root, so nothing was installed'* ]]
+  [ ! -e "$ROOT/bin" ]
+  [ ! -e "$LINKS/laby" ]
+}
+
+@test "a code folder that is a link is refused, and what it points to is untouched" {
+  inst_setup
+  mkdir -p "$ROOT" "$T/elsewhere"
+  printf 'keep
+' > "$T/elsewhere/labyrinth.sh"
+  ln -s "$T/elsewhere" "$ROOT/bin"
+  install_sh -y
+  [ "$status" -eq 20 ]
+  [[ "$output" == *"$ROOT/bin is a link, not a folder"* ]]
+  [ "$(cat "$T/elsewhere/labyrinth.sh")" = keep ]
+}
+
+@test "the runner and the installer are made executable even when the release lost its modes" {
+  inst_setup
+  chmod 644 "$REL/labyrinth.sh" "$REL/install.sh"
+  install_sh -y
+  [ "$status" -eq 0 ]
+  [ -x "$ROOT/bin/labyrinth.sh" ]
+  [ -x "$ROOT/bin/install.sh" ]
 }
 
 @test "without root it refuses" {

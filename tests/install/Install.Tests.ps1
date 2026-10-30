@@ -214,6 +214,39 @@ Describe 'install.ps1 refuses, or asks, before it changes anything' {
         (Get-Content -LiteralPath (Join-Path $r.Code 'notes.txt')) | Should -Be 'someone else'
     }
 
+    It 'another command named labyrinth on the PATH is refused, and nothing is installed' {
+        $other = Join-Path $r.Base 'other'
+        New-Item -ItemType Directory -Path $other | Out-Null
+        Set-Content -LiteralPath (Join-Path $other 'labyrinth.cmd') -Value '@echo off' -Encoding Ascii
+        $savedPath = $env:PATH
+        $env:PATH = "$other;$savedPath"
+        try {
+            $x = Invoke-TestInstall $r @('-Yes')
+        } finally {
+            $env:PATH = $savedPath
+        }
+        $x.Code | Should -Be 20
+        $x.Output | Should -Match ([regex]::Escape("the command name labyrinth is taken: a command named labyrinth is already at $other\labyrinth.cmd"))
+        Get-TestSnapshot $r.Sys | Should -Be $before
+    }
+
+    It 'another command named laby on the PATH is named in the plan, and the command to type is labyrinth' {
+        $other = Join-Path $r.Base 'other'
+        New-Item -ItemType Directory -Path $other | Out-Null
+        Set-Content -LiteralPath (Join-Path $other 'laby.cmd') -Value '@echo off' -Encoding Ascii
+        Write-TestAnswer $r @('n')
+        $savedPath = $env:PATH
+        $env:PATH = "$other;$savedPath"
+        try {
+            $x = Invoke-TestInstall $r
+        } finally {
+            $env:PATH = $savedPath
+        }
+        $x.Code | Should -Be 0
+        (ConvertTo-TestFlat $x.Output) | Should -Match ([regex]::Escape("laby is taken by $other\laby.cmd: type labyrinth instead"))
+        Get-TestSnapshot $r.Sys | Should -Be $before
+    }
+
     It 'usage errors exit 40 and name the fix; -Help prints the usage' {
         $saved = $ErrorActionPreference
         $ErrorActionPreference = 'Continue'
@@ -320,6 +353,21 @@ Describe 'install.ps1 installs' -Skip:(-not $elevated) {
         [IO.File]::ReadAllText((Join-Path $r.Root 'logs\run.txt')) | Should -Be "log`n"
         # Nothing is left beside the code folder.
         @(Get-ChildItem -LiteralPath (Split-Path -Parent $r.Code) -Force | ForEach-Object { $_.Name }) | Should -Be @('Labyrinth')
+    }
+
+    It 'a data root the runner has used, with its own administrator account added, still counts as private' {
+        (Invoke-TestInstall $r @('-Yes')).Code | Should -Be 0
+        # What Protect-LabDataRoot adds on the first run: the account that runs Labyrinth.
+        $acl = Get-Acl -LiteralPath $r.Root
+        $me = [Security.Principal.WindowsIdentity]::GetCurrent().User
+        $acl.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule($me, 'FullControl',
+                    'ContainerInherit, ObjectInherit', 'None', 'Allow')))
+        Set-Acl -LiteralPath $r.Root -AclObject $acl
+        $before = Get-TestSnapshot $r.Sys
+        $x = Invoke-TestInstall $r @('-Yes')
+        $x.Code | Should -Be 0
+        $x.Output | Should -Match 'Nothing to change\.'
+        Get-TestSnapshot $r.Sys | Should -Be $before
     }
 
     It 'a run with no timer armed does not stop the install' {

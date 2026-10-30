@@ -114,7 +114,8 @@ for v in ROOT LINKDIR MANDIR; do
 done
 [[ -z "$CODE" || "$CODE" == /* ]] || usage_error "the folder must be a full path, not '$CODE'"
 ROOT="$(readlink -m -- "$ROOT")"
-CODE="$(readlink -m -- "${CODE:-$ROOT/bin}")"
+CODE_GIVEN="${CODE:-$ROOT/bin}"   # as given, so a link there can be refused below
+CODE="$(readlink -m -- "$CODE_GIVEN")"
 LINKDIR="$(readlink -m -- "$LINKDIR")"
 MANDIR="$(readlink -m -- "$MANDIR")"
 
@@ -155,7 +156,7 @@ esac
 case "$CODE/" in
   "$real_here"/* ) refuse "the code folder $CODE is inside the release folder" 'Choose a code folder outside it.' ;;
 esac
-if [[ -L "$CODE" ]]; then refuse "$CODE is a link, not a folder"; fi
+if [[ -L "${CODE_GIVEN%/}" ]]; then refuse "${CODE_GIVEN%/} is a link, not a folder"; fi
 if [[ -e "$CODE" ]]; then
   [[ -d "$CODE" ]] || refuse "$CODE exists and is not a folder"
   if [[ ! -f "$CODE/labyrinth.sh" && -n "$(ls -A -- "$CODE")" ]]; then
@@ -192,6 +193,14 @@ if bad="$(lab_path_trusted "$ROOT" "$CODE" "$LINKDIR")"; then :; else
   refuse "$bad can be changed by an account other than root, so nothing was installed" \
     'Make it owned by root and not writable by group or others, then run the installer again.'
 fi
+# An existing data root, and everything in it, too: the runner checks it the
+# same way and would refuse every run.
+if [[ -e "$ROOT" ]]; then
+  if bad="$(lab_tree_trusted "$ROOT")"; then :; else
+    refuse "$bad can be changed by an account other than root, so nothing was installed" \
+      'Check it, make it owned by root and not writable by group or others, then run the installer again.'
+  fi
+fi
 
 # Root's PATH: a folder others can write to lets them run their own code as root.
 IFS=: read -r -a path_dirs <<< "$PATH"
@@ -199,9 +208,7 @@ unsafe=()
 for d in "${path_dirs[@]+"${path_dirs[@]}"}"; do
   if [[ -z "$d" || "$d" != /* ]]; then unsafe+=("'${d:-(empty)}'"); continue; fi
   [[ -d "$d" ]] || continue
-  if ! st="$(stat -L -c '%u %a' -- "$d" 2> /dev/null)"; then continue; fi
-  read -r uid mode <<< "$st"
-  if [[ "$uid" != 0 ]] || { (( (8#$mode & 8#022) != 0 )) && (( (8#$mode & 8#1000) == 0 )); }; then unsafe+=("$d"); fi
+  lab_dir_trusted "$d" || unsafe+=("$d")
 done
 if (( ${#unsafe[@]} > 0 )); then
   warn "root's PATH holds folders that others can change: ${unsafe[*]}"
@@ -262,16 +269,40 @@ shopt -u nullglob
 
 # The manual is installed only when the release holds the built man page, and
 # gzip is there to pack it; a plain git checkout has no built manual.
-MAN_STATE=skip MAN_WHY=''
+# Another program's man page is never replaced: labyrinth.1.gz must be
+# Labyrinth's own (its title line names LABYRINTH), and laby.1.gz must be
+# missing or already the link to it. laby.1.gz is also left out when the
+# command laby is.
+MAN_STATE=skip MAN_WHY='' MAN_LABY=1 MAN_LABY_WHY='' man_top=''
+if [[ -f "$MANDIR/labyrinth.1.gz" ]] && command -v gzip > /dev/null 2>&1; then
+  man_top="$(gzip -dc -- "$MANDIR/labyrinth.1.gz" 2> /dev/null | head -n 20 || true)"
+fi
 if [[ ! -f "$HERE/manual/labyrinth.1" ]]; then
   MAN_WHY='this copy has no built manual (manual/labyrinth.1)'
 elif ! command -v gzip > /dev/null 2>&1; then
   MAN_WHY='gzip is not on this host'
+elif [[ -L "$MANDIR/labyrinth.1.gz" ]] || { [[ -e "$MANDIR/labyrinth.1.gz" ]] \
+    && ! grep -qE '^\.TH "?LABYRINTH"? ' <<< "$man_top"; }; then
+  MAN_WHY="$MANDIR/labyrinth.1.gz belongs to another program"
 else
   MAN_STATE=new
-  if [[ -f "$MANDIR/labyrinth.1.gz" && "$(readlink -- "$MANDIR/laby.1.gz" 2> /dev/null || true)" == labyrinth.1.gz ]] \
+  if [[ "${LINK_STATE[laby]}" == taken ]]; then
+    MAN_LABY=0 MAN_LABY_WHY='the command laby is left out'
+  elif [[ -e "$MANDIR/laby.1.gz" || -L "$MANDIR/laby.1.gz" ]] \
+      && [[ "$(readlink -- "$MANDIR/laby.1.gz" 2> /dev/null || true)" != labyrinth.1.gz ]]; then
+    MAN_LABY=0 MAN_LABY_WHY="$MANDIR/laby.1.gz belongs to another program"
+  fi
+  if [[ -f "$MANDIR/labyrinth.1.gz" ]] \
+      && { (( ! MAN_LABY )) || [[ "$(readlink -- "$MANDIR/laby.1.gz" 2> /dev/null || true)" == labyrinth.1.gz ]]; } \
       && gzip -dc -- "$MANDIR/labyrinth.1.gz" 2> /dev/null | cmp -s - "$HERE/manual/labyrinth.1"; then
     MAN_STATE=same
+  fi
+fi
+# The man folder is written to as root, so only root may change it either.
+if [[ "$MAN_STATE" == new ]]; then
+  if bad="$(lab_path_trusted "$MANDIR")"; then :; else
+    refuse "$bad can be changed by an account other than root, so nothing was installed" \
+      'Make it owned by root and not writable by group or others, then run the installer again.'
   fi
 fi
 
@@ -311,7 +342,12 @@ fi
 case "$MAN_STATE" in
   skip) row 'Manual:' "skipped: $MAN_WHY" ;;
   same) row 'Manual:' "$MANDIR/labyrinth.1.gz (unchanged)" ;;
-  new) row 'Manual:' "$MANDIR/labyrinth.1.gz, and laby.1.gz pointing to it" ;;
+  new)
+    if (( MAN_LABY )); then
+      row 'Manual:' "$MANDIR/labyrinth.1.gz, and laby.1.gz pointing to it"
+    else
+      row 'Manual:' "$MANDIR/labyrinth.1.gz (laby.1.gz left out: $MAN_LABY_WHY)"
+    fi ;;
 esac
 row 'Settings:' "${#TEMPLATES[@]} template(s) copied into $ROOT/etc; $KEPT file(s) already there kept"
 
@@ -357,6 +393,12 @@ if [[ "$CODE_STATE" != same ]]; then
   done
   chmod 755 -- "$STAGE"
   chmod -R u+rwX,go+rX,go-w -- "$STAGE"
+  # A release unpacked without Unix modes (copied from Windows, say) has lost
+  # the execute bit, and the release list does not cover modes: set it on
+  # the files that are run by name.
+  for f in labyrinth.sh install.sh; do
+    if [[ -f "$STAGE/$f" ]]; then chmod 755 -- "$STAGE/$f"; fi
+  done
   if (( RELEASE == 0 )); then
     lab_release_check "$STAGE" || refuse "the copy made in $STAGE does not match the release: $LAB_RELEASE_PROBLEM"
   fi
@@ -386,7 +428,7 @@ if [[ "$MAN_STATE" == new ]]; then
   gzip -9n -c -- "$HERE/manual/labyrinth.1" > "$tmp"
   chmod 644 -- "$tmp"
   mv -f -- "$tmp" "$MANDIR/labyrinth.1.gz"
-  ln -sfn labyrinth.1.gz "$MANDIR/laby.1.gz"
+  if (( MAN_LABY )); then ln -sfn labyrinth.1.gz "$MANDIR/laby.1.gz"; fi
   if command -v mandb > /dev/null 2>&1; then
     mandb -q "$(dirname -- "$MANDIR")" > /dev/null 2>&1 || warn 'mandb failed, so man may not find the manual yet'
   fi

@@ -13,6 +13,17 @@
 
 lab_is_admin() { [[ "$(id -u)" == 0 ]]; }
 
+# lab_dir_trusted DIR: is the folder DIR itself owned by root and not
+# writable by group or others, unless it is sticky, like /tmp? Returns 1
+# when it is not, or cannot be read. It looks at DIR only, not inside it.
+lab_dir_trusted() {
+  local st uid mode
+  st="$(stat -L -c '%u %a' -- "$1" 2> /dev/null)" || return 1
+  read -r uid mode <<< "$st"
+  [[ "$uid" == 0 ]] || return 1
+  (( (8#$mode & 8#022) == 0 || (8#$mode & 8#1000) != 0 ))
+}
+
 # lab_tree_trusted PATH...: can only root change each PATH? Root runs the
 # code, configuration and manifest under them, the revert timer's rollback
 # included, so an account that could write there could run its own code as
@@ -23,7 +34,7 @@ lab_is_admin() { [[ "$(id -u)" == 0 ]]; }
 # /tmp. A PATH not made yet is checked from its nearest folder. Prints the
 # first path that fails and returns 1; returns 0 if none does.
 lab_tree_trusted() {
-  local p d bad st uid mode
+  local p d bad
   for p in "$@"; do
     [[ -n "$p" ]] || continue
     d="$(readlink -m -- "$p")" || { printf '%s\n' "$p"; return 1; }
@@ -35,11 +46,7 @@ lab_tree_trusted() {
     while [[ "$d" != / ]]; do
       d="$(dirname -- "$d")"
       [[ -e "$d" ]] || continue
-      st="$(stat -L -c '%u %a' -- "$d" 2> /dev/null)" || { printf '%s\n' "$d"; return 1; }
-      read -r uid mode <<< "$st"
-      if [[ "$uid" != 0 ]] || { (( (8#$mode & 8#022) != 0 )) && (( (8#$mode & 8#1000) == 0 )); }; then
-        printf '%s\n' "$d"; return 1
-      fi
+      lab_dir_trusted "$d" || { printf '%s\n' "$d"; return 1; }
     done
   done
   return 0
@@ -54,17 +61,13 @@ lab_tree_trusted() {
 # yet is checked from its nearest folder. Prints the first path that fails
 # and returns 1; returns 0 if none does.
 lab_path_trusted() {
-  local p d st uid mode
+  local p d
   for p in "$@"; do
     [[ -n "$p" ]] || continue
     d="$(readlink -m -- "$p")" || { printf '%s\n' "$p"; return 1; }
     while :; do
-      if [[ -e "$d" ]]; then
-        st="$(stat -L -c '%u %a' -- "$d" 2> /dev/null)" || { printf '%s\n' "$d"; return 1; }
-        read -r uid mode <<< "$st"
-        if [[ "$uid" != 0 ]] || { (( (8#$mode & 8#022) != 0 )) && (( (8#$mode & 8#1000) == 0 )); }; then
-          printf '%s\n' "$d"; return 1
-        fi
+      if [[ -e "$d" ]] && ! lab_dir_trusted "$d"; then
+        printf '%s\n' "$d"; return 1
       fi
       [[ "$d" != / ]] || break
       d="$(dirname -- "$d")"
