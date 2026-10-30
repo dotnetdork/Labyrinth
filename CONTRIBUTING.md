@@ -81,4 +81,16 @@ Generic, reusable defense logic only. Never add team strategy, schedules, deadli
 
 ## Ownership
 
-By contributing you agree to the terms in [`LICENSE`](LICENSE). Ownership is recorded in [`CONTRIBUTORS.md`](CONTRIBUTORS.md).
+By contributing you agree to the terms in [`LICENSE`](LICENSE). This section records project ownership as the license defines it.
+
+### Project owner
+
+- **Jay Sausa** (@dotnetdork)
+
+### PUG Cyber Games Club co-owners
+
+- *Club members are listed here once they make a contribution.*
+
+### Outside contributors
+
+- *None yet.*
