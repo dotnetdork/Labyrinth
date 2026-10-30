@@ -26,7 +26,7 @@ Labyrinth is that strategy plus that tool.
 | **Deceive** (`deceive`) | Tax the attacker | Traps, canaries, honey-accounts, tarpits — every non-service touch is a tripwire. |
 | **Sustain** (`sustain`) | Keep services scoring | Keep the scored services healthy; check them on a schedule, roll back cleanly, report incidents and hold the line. |
 
-Harden is specified and arrives in Roadmap stage 4b. Today the runner's phases are `lockout`, `observe`, `deceive` and `sustain`, and the first-minute bundle runs without the Harden phase behind it.
+Harden is specified and arrives in the first usable release (Roadmap). Today the runner's phases are `lockout`, `observe`, `deceive` and `sustain`, and the first-minute bundle runs without the Harden phase behind it.
 
 **New to this?** Start with [`docs/Overview.md`](docs/Overview.md), a plain-language tour of how each part of Labyrinth works, written for readers who are not security or networking experts.
 
@@ -113,7 +113,7 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md): one issue, one person, one branch, one
 
 ## Status
 
-Build stages 0 to 3 are done. The design specs are the blueprint the code is built against, and [`docs/Roadmap.md`](docs/Roadmap.md) gives the order they are built in. The core is built for Linux and Windows: logging, the run manifest, the safety gates, the revert timer (which undoes a run unless someone keeps it), scoring-style probes, and the main program's command line: preview, run (-r), keep (-k), undo (-u), --history and --probe (docs/Conventions.md, section 3.1), and the guided installers, `install.sh` and `install.ps1`, that add the `laby` and `labyrinth` commands (section 3.3). The groundwork modules need is built too: platform facts, the firewall adapter, quarantine, approval items and the shipped profiles. It is tested on CI, but not yet in a lab. The guard checks every script for outside calls and blanket actions. No hardening module exists yet, and remote mode (driving many hosts from one control node) is not built. Stage 4b is next: one command per host with no questions during the run, an approval queue, short output and the Harden phase. It is specified, not built ([`docs/Roadmap.md`](docs/Roadmap.md)).
+The foundations, the core, the command line and the groundwork are done. The design specs are the blueprint the code is built against, and [`docs/Roadmap.md`](docs/Roadmap.md) gives the order they are built in. The core is built for Linux and Windows: logging, the run manifest, the safety gates, the revert timer (which undoes a run unless someone keeps it), scoring-style probes, and the main program's command line: preview, run (-r), keep (-k), undo (-u), --history and --probe (docs/Conventions.md, section 3.1), and the guided installers, `install.sh` and `install.ps1`, that add the `laby` and `labyrinth` commands (section 3.3). The groundwork modules need is built too: platform facts, the firewall adapter, quarantine, approval items and the shipped profiles. It is tested on CI, but not yet in a lab. The guard checks every script for outside calls and blanket actions. No hardening module exists yet, and remote mode (driving many hosts from one control node) is not built. Next is the first usable release: one command per host with no questions during the run, an approval queue, the first-minute lockout, the Harden phase and short output. It is specified, not built ([`docs/Roadmap.md`](docs/Roadmap.md)).
 
 
 > [!IMPORTANT]

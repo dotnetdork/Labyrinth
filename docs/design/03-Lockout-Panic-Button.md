@@ -26,7 +26,7 @@ The original idea ran against every reachable host in one pass, resetting creden
 ## 3. Design principles
 
 1. **Protect first.** Load the protected set before doing anything else. If it is missing or empty, stop.
-2. **Plan before apply.** Plan mode is the default. Apply needs the target group, which comes from the hosts file once stage 4b is built and from `--confirm-group` today (section 6.3); nothing asks for it mid-run.
+2. **Plan before apply.** Plan mode is the default. Apply needs the target group, which comes from the hosts file once automatic runs are built and from `--confirm-group` today (section 6.3); nothing asks for it mid-run.
 3. **Small blast radius.** Apply in rings, one test host first, except in a first-minute run, where speed matters more and each host's revert timer is the safety net (section 6.3).
 4. **Reversible.** Every change is backed up and recorded in the run manifest.
 5. **Verify like the scoring engine.** After each module, run probes and compare with the probes taken before.
@@ -168,7 +168,7 @@ The opening seconds decide whether the Red Team keeps its foothold, and a person
 laby -r lockout -P <name> --confirm-group <group> --break-glass <account> [--approve <list>]
 ```
 
-Once stage 4b is built it is one short command per host, with nothing to answer during the run (Conventions, section 3.3):
+Once automatic runs are built it is one short command per host, with nothing to answer during the run (Conventions, section 3.3):
 
 ```
 laby init        # preview: what Lock out and Harden would change
@@ -179,12 +179,12 @@ The group and the break-glass account come from the configuration, and items no 
 
 | Left out of a first-minute run | Kept in every run |
 |---|---|
-| Typing the confirmation and the break-glass answer: the options answer them today, and the configuration once stage 4b is built; the manifest records where each came from | The scoring allowlist, where one is given, goes in before any deny rule |
+| Typing the confirmation and the break-glass answer: the options answer them today, and the configuration once automatic runs are built; the manifest records where each came from | The scoring allowlist, where one is given, goes in before any deny rule |
 | A separate preview step: `-r` prints the plan and carries it out | A revert timer on every host, re-armed before each module |
 | Per-item approval for the items a pre-approval rule covers | Probes before and after each module, with automatic rollback on a regression |
 | Rings: every host starts at once, each under its own revert timer | The protected set and the break-glass account are never changed |
 
-**Automatic runs (specified now, built later).** Automatic is the only mode once stage 4b is built; there is no switch. The group comes from the hosts file, matched on the host's name and address (a mismatch or ambiguity blocks with exit `20`). The break-glass account is the `breakglass`-class account from the protected set that exists on the host (with none, or more than one, the run blocks with exit `20`), checked for a console session instead of asked. An approval item runs when a pre-approval rule covers it in a category its module allows, and otherwise goes to the queue. Deleting an account, changing a scored service that has no probe, and replacing or containerizing a service are never pre-approvable and always queue. A module is kept as soon as its verify and probes pass, except firewall and SSH changes: the run ends by asking the operator to open a new login and confirm it works, and with no answer the revert timer undoes them. The full text is in Conventions, section 3.3.
+**Automatic runs (specified now, built later).** Once built, automatic is the only mode; there is no switch. The group comes from the hosts file, matched on the host's name and address (a mismatch or ambiguity blocks with exit `20`). The break-glass account is the `breakglass`-class account from the protected set that exists on the host (with none, or more than one, the run blocks with exit `20`), checked for a console session instead of asked. An approval item runs when a pre-approval rule covers it in a category its module allows, and otherwise goes to the queue. Deleting an account, changing a scored service that has no probe, and replacing or containerizing a service are never pre-approvable and always queue. A module is kept as soon as its verify and probes pass, except firewall and SSH changes: the run ends by asking the operator to open a new login and confirm it works, and with no answer the revert timer undoes them. The full text is in Conventions, section 3.3.
 
 The break-glass account is still the team's choice for each host (section 7): it is named in the protected set before the event, from the team's offline record, and checked at the console before the login check at the end of the run. If the operator cannot log in there, they answer no at the login check, or let the timer roll that host back.
 
@@ -194,15 +194,15 @@ The break-glass account is still the team's choice for each host (section 7): it
 |---|---|
 | Protected set loaded | Non-empty and parsed |
 | Scored services reachable | In the firewall plan for every host that filters traffic, every scored service on the host has an allow from any source (section 6.1). The firewall adapter checks this and refuses a plan without it (design 01, section 5; planned: today the adapter still needs the `scoring-allowlist`). The runner's part is narrower: it blocks (`20`) a module with `touches_scored: true` when there is no `services` file. The run-time `scoring-allowlist` is optional: it is applied first where present, and it feeds the never-ban list (design 18) |
-| Break-glass confirmed | Today, the operator has confirmed, by typing, that the break-glass credential worked at this host's console. This is the operator's word, not proof: a script cannot reach the console, so it is asked once per host. The account must be in the protected set with class `breakglass`, the answer is kept in Labyrinth's state for later runs on that host, and every run records it in its manifest. When the answer is given, Labyrinth looks for a session of that account at the console (`loginctl` or `who` on Linux, `query user` on Windows) and records the session it found. If it finds none, or cannot look, it warns and goes on: the gate stays a confirmation, and the manifest says what backed it. Once stage 4b is built, the account is taken from the protected set instead of typed (section 6.3), and the console check and the record stay. |
+| Break-glass confirmed | Today, the operator has confirmed, by typing, that the break-glass credential worked at this host's console. This is the operator's word, not proof: a script cannot reach the console, so it is asked once per host. The account must be in the protected set with class `breakglass`, the answer is kept in Labyrinth's state for later runs on that host, and every run records it in its manifest. When the answer is given, Labyrinth looks for a session of that account at the console (`loginctl` or `who` on Linux, `query user` on Windows) and records the session it found. If it finds none, or cannot look, it warns and goes on: the gate stays a confirmation, and the manifest says what backed it. Once automatic runs are built, the account is taken from the protected set instead of typed (section 6.3), and the console check and the record stay. |
 | Backup taken | Every file is copied before it changes, and the copy is recorded in the run manifest (`docs/Conventions.md`, section 7) |
-| Plan reviewed | Today, the operator confirms the plan by typing the group name, or gives it with `--confirm-group` in a first-minute run. Once stage 4b is built, the team reviews the profile before the event, `laby PHASE` previews it on the host, and the group comes from the hosts file (section 6.3) |
-| Revert timer armed | Before every change that is not `read-only`, re-armed before each module (section 8). The one exception, once stage 4b is built, is `--no-revert`, for test machines and remote runs whose risk the team accepts; the manifest and the summary record it (Conventions, section 3.3) |
+| Plan reviewed | Today, the operator confirms the plan by typing the group name, or gives it with `--confirm-group` in a first-minute run. Once automatic runs are built, the team reviews the profile before the event, `laby PHASE` previews it on the host, and the group comes from the hosts file (section 6.3) |
+| Revert timer armed | Before every change that is not `read-only`, re-armed before each module (section 8). The one exception, once it is built, is `--no-revert`, for test machines and remote runs whose risk the team accepts; the manifest and the summary record it (Conventions, section 3.3) |
 
 ## 8. Preventing self-lockout
 
 - **Two-session rule.** Keep one session open while testing from a fresh one.
-- **Dead-man revert.** Before any change that is not `read-only`, such as a firewall or SSH change, arm a timer that rolls the run back unless the operator keeps it after verify. It runs `laby -u ID` (`docs/Conventions.md`, section 3.1). Today the operator keeps the run with `laby -k ID` or by typing `keep` at the end of the run; once stage 4b is built, by answering the login check (Conventions, section 3.3). A module that only takes access away from an intruder is kept once it verifies with no scored service worse, so the timer never hands an intruder their access back (design 00, section 4, rule 9). When the timer rolls a run back, every logged-in terminal or session on the host gets a notice.
+- **Dead-man revert.** Before any change that is not `read-only`, such as a firewall or SSH change, arm a timer that rolls the run back unless the operator keeps it after verify. It runs `laby -u ID` (`docs/Conventions.md`, section 3.1). Today the operator keeps the run with `laby -k ID` or by typing `keep` at the end of the run; once automatic runs are built, by answering the login check (Conventions, section 3.3). A module that only takes access away from an intruder is kept once it verifies with no scored service worse, so the timer never hands an intruder their access back (design 00, section 4, rule 9). When the timer rolls a run back, every logged-in terminal or session on the host gets a notice.
   - Linux: an enabled systemd timer and service, `lab-revert-<run>-<n>`, written to `/etc/systemd/system` with `OnCalendar=<due time>`, `Persistent=true` and `OnActiveSec=<minutes>m`. It survives a restart and fires at once if its time passed while the host was off. Keeping or rolling back the run stops and disables it and deletes its two unit files (`docs/Conventions.md`, section 3.1).
   - Windows: a one-time scheduled task, `\Labyrinth\lab-revert-<run>-<n>`, running as SYSTEM, unregistered when the run is kept. It also survives a restart.
   - `laby --history` shows which runs still have a timer armed, and when each one fires.
@@ -219,12 +219,12 @@ After each module, probe as the scoring engine would:
 
 | Service | Probe | Pass condition |
 |---|---|---|
-| HTTP and HTTPS | Fetch the scored page by its path (planned, Roadmap stage 6; today the probe only connects) | Expected status and expected content string |
+| HTTP and HTTPS | Fetch the scored page by its path (planned, Roadmap, first usable release; today the probe only connects) | Expected status and expected content string |
 | DNS | Query a known record | Expected answer |
 | SMTP (Simple Mail Transfer Protocol) | Connect and read the banner; optionally send a test message | Expected response |
 | POP3 (Post Office Protocol 3) and IMAP | Connect and read the banner (no scoring-account logins) | Expected response |
 | FTP (File Transfer Protocol) | Connect and read the banner | Expected response |
-| A check that logs in (SSH, a file share, SQL, remote management, a SIEM search, mail or FTP with a login) | Log in with a probe account the operator supplies at run time and do what the check does (design 19, section 3; planned, Roadmap stage 6) | The login works and the action returns what is expected |
+| A check that logs in (SSH, a file share, SQL, remote management, a SIEM search, mail or FTP with a login) | Log in with a probe account the operator supplies at run time and do what the check does (design 19, section 3; planned, Roadmap, first usable release) | The login works and the action returns what is expected |
 
 Without a probe account, a check that logs in is probed by connecting only, and the plan says so: a broken login, which is what a credential change can cause, then goes unseen. Take probes before and after. A regression triggers automatic rollback of that module and stops the run. Between runs, the health monitor repeats these probes on a schedule (design 19).
 
@@ -248,13 +248,13 @@ Without a probe account, a check that logs in is probed by connecting only, and 
 - Protected accounts are unchanged before and after.
 - A mailbox user can still authenticate after the run.
 - An admin-class account that a service or scheduled task logs on with is not rotated automatically and is listed for approval in Tier 3.
-- A run on a host with no break-glass confirmation refuses to change it; once stage 4b is built, so does a run on a host with no `breakglass`-class account, or more than one.
+- A run on a host with no break-glass confirmation refuses to change it; once automatic runs are built, so does a run on a host with no `breakglass`-class account, or more than one.
 - An official source named in the event packet can still connect after default-deny.
 - Every scored-service probe passes after the run, on every ring.
 - In a first-minute run on every lab host at once, each host finishes the bundle within 30 seconds of its command starting, with no prompt, and every probe still passes.
 - After the bundle, a reverse shell planted before the run cannot connect out, while the scoring engine's checks and the package mirror still work.
 - A scored service whose outbound dependency is missing from the allowlist fails its probe, and the module is rolled back.
-- A first-minute run without `--confirm-group` stops at the confirmation prompt, as a normal run does. Once stage 4b is built: `laby -r init` asks nothing before the login check, and a host whose name and address match no line of the hosts file, or more than one, is blocked (`20`).
+- A first-minute run without `--confirm-group` stops at the confirmation prompt, as a normal run does. Once automatic runs are built: `laby -r init` asks nothing before the login check, and a host whose name and address match no line of the hosts file, or more than one, is blocked (`20`).
 - The revert timer restores the firewall when verify is deliberately failed.
 - A run with an empty protected set refuses to start.
 - A `scored-admin` account is rotated in the bundle, its new password appears once in the change list on the terminal, and it appears nowhere under the data root.
@@ -267,7 +267,7 @@ Without a probe account, a check that logs in is probed by connecting only, and 
 - A planted reverse-shell cron job is quarantined by the Harden phase sweep, and its connection does not return after the firewall closes.
 - A Tier 3 item a person approves is carried out by Labyrinth and recorded in the run manifest; an item not approved is left unchanged.
 - An unexpected local admin account is locked in the bundle and stays locked when the revert timer undoes the firewall changes; it is not deleted.
-- Once stage 4b is built: a pre-approved item in a pre-approvable category is applied without a prompt, an item no rule covers is queued, and a pre-approval rule for deleting an account is ignored and the item queued.
+- Once automatic runs are built: a pre-approved item in a pre-approvable category is applied without a prompt, an item no rule covers is queued, and a pre-approval rule for deleting an account is ignored and the item queued.
 
 ## References
 
