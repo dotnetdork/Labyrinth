@@ -1,7 +1,7 @@
 #Requires -Version 5.1
-# The host checks of labyrinth.ps1 (docs\Conventions.md section 3.1): plan,
-# apply and probe refuse a host listed for another platform or as an
-# appliance; keep and rollback skip the checks, so a stored revert-timer
+# The host checks of labyrinth.ps1 (docs\Conventions.md section 3.1): a
+# preview, -r and -Probe refuse a host listed for another platform or as an
+# appliance; -k and -u skip the checks, so a stored revert-timer
 # command still works after the configuration changes. Mirrors
 # hostcheck.bats.
 
@@ -31,10 +31,10 @@ Describe 'labyrinth.ps1 host checks' {
         $toggle = Join-Path $t.Lab 'toggle.conf'
         Write-TestProfile $t 'observe.toggle'
         Write-TestConfig $t 'services' @('web http web.test 80 -')
-        $commands = @(@('plan', 'observe'), @('apply', 'observe'), @('probe'))
+        $commands = @(@('observe'), @('-r', 'observe'), @('-Probe'))
     }
 
-    It 'plan, apply and probe refuse a host listed for Linux' {
+    It 'a preview, -r and -Probe refuse a host listed for Linux' {
         Write-TestPlatform $t 'ubuntu'
         foreach ($words in $commands) {
             $r = Invoke-TestLabRun $t $words
@@ -47,12 +47,12 @@ Describe 'labyrinth.ps1 host checks' {
 
     It 'a host listed as debian is refused as ubuntu' {
         Write-TestPlatform $t 'debian'
-        $r = Invoke-TestLabRun $t @('plan', 'observe')
+        $r = Invoke-TestLabRun $t @('observe')
         $r.Code | Should -Be 20
         $r.Output | Should -Match ([regex]::Escape("does not serve this host's platform, ubuntu"))
     }
 
-    It 'plan, apply and probe never act on an appliance' {
+    It 'a preview, -r and -Probe never act on an appliance' {
         Write-TestPlatform $t 'appliance'
         foreach ($words in $commands) {
             $r = Invoke-TestLabRun $t $words
@@ -63,14 +63,14 @@ Describe 'labyrinth.ps1 host checks' {
         $t.Root | Should -Not -Exist
     }
 
-    It 'windows is served, and an unlisted host may still plan' {
+    It 'windows is served, and an unlisted host may still preview' {
         Write-TestPlatform $t 'windows'
-        (Invoke-TestLabRun $t @('plan', 'observe')).Code | Should -Be 10
+        (Invoke-TestLabRun $t @('observe')).Code | Should -Be 10
         Remove-Item -LiteralPath (Join-Path $t.Etc 'hosts')
-        (Invoke-TestLabRun $t @('plan', 'observe', '-Profile', 'test')).Code | Should -Be 10
+        (Invoke-TestLabRun $t @('observe', '-Profile', 'test')).Code | Should -Be 10
     }
 
-    It 'keep still works after this host''s line changes platform' {
+    It '-k still works after this host''s line changes platform' {
         Write-TestPlatform $t 'windows'
         $r = Invoke-TestApply $t @('labadmin', 'ring1', 'no')
         $r.Code | Should -Be 0

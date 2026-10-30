@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
 # labyrinth.sh command-line parsing, from the cases shared with
-# Args.Tests.ps1 (tests/runner/args-cases.txt; docs/Conventions.md 3.1).
+# Args.Tests.ps1 (tests/runner/args-cases.txt; docs/Conventions.md 3.3).
 
 load lab_helper
 
@@ -40,16 +40,65 @@ streams() {
   [ "$failed" -eq 0 ]
 }
 
-@test "a usage error prints two lines, both on stderr" {
+@test "a usage error prints the message, a fix if there is one, and the pointer, all on stderr" {
   streams obsrve
   [ "$CODE" -eq 40 ]
   [ -z "$OUT" ]
+  [ "$(wc -l <<< "$ERR")" -eq 3 ]
+  streams -x
+  [ "$CODE" -eq 40 ]
+  [ -z "$OUT" ]
   [ "$(wc -l <<< "$ERR")" -eq 2 ]
+  [[ "$ERR" == "$SELF: unknown option '-x'"$'\n'"Try '$SELF -h'." ]]
+}
+
+@test "-v and the other planned flags say they are planned; -p is still a slip for -P" {
+  streams -v
+  [ "$CODE" -eq 40 ]
+  [[ "$ERR" == "$SELF: '-v' (--verbose) is planned and not built yet"$'
+'"Try '$SELF -h'." ]]
+  streams -p test observe
+  [[ "$ERR" == *"unknown option '-p' (did you mean '-P', the profile?)"* ]]
+  streams -a observe
+  [[ "$ERR" == *"'-a' (--approve, with -q) is planned and not built yet"* ]]
+  streams -rq observe
+  [[ "$ERR" == *"'-q' (--queue) is planned and not built yet"* ]]
+  streams --no-revert -r observe
+  [[ "$ERR" == *"'--no-revert' is planned and not built yet"* ]]
+  streams --Verbose observe
+  [[ "$ERR" == *"'--Verbose' is planned and not built yet"* ]]
+}
+
+@test "the old command words are plain mistakes, with no hint that maps them" {
+  for w in plan apply rollback runs status; do
+    streams "$w" observe
+    [ "$CODE" -eq 40 ]
+    [[ "$ERR" == *"'$w' is not a phase."* ]]
+    [[ "$ERR" != *"Did you mean"* ]]
+  done
+}
+
+@test "the old options are plain mistakes" {
+  for o in --apply --profile-name --confirm; do
+    streams "$o" x observe
+    [ "$CODE" -eq 40 ]
+    [[ "$ERR" == *"unknown option '$o'"* ]]
+  done
+  streams -ProfileName test observe
+  [ "$CODE" -eq 40 ]
 }
 
 @test "nothing is created by a usage error, help or the version" {
-  for a in obsrve help -V; do streams --root "$ROOT" "$a"; done
+  for a in obsrve -h -V '-?' '/?'; do streams --root "$ROOT" "$a"; done
+  streams -h bogus --root "$ROOT"
+  streams -u 4f2a --root "$ROOT" --bogus
   [ ! -e "$ROOT" ]
+}
+
+@test "-? is help, like -h" {
+  streams '-?'
+  [ "$CODE" -eq 0 ]
+  [[ "$OUT" == *"Usage: $SELF PHASE"* ]]
 }
 
 @test "a warning about an unused option never comes before an error" {
@@ -60,25 +109,57 @@ streams() {
 }
 
 @test "a warning about an unused option never comes before a run-time error" {
-  streams plan observe --break-glass root --root "$ROOT" --config "$ETC/missing"
+  streams observe --break-glass root --root "$ROOT" --config "$ETC/missing"
   [ "$CODE" -eq 40 ]
   [[ "$ERR" == *'does not exist'* ]]
   [[ "$ERR" != *warning* ]]
-  streams keep 4f2a --profile test --root "$ROOT" --config "$ETC"
+  streams -k 4f2a --profile test --root "$ROOT" --config "$ETC"
   [ "$CODE" -eq 40 ]
   [[ "$ERR" == *"no run ending in '4f2a'"* ]]
   [[ "$ERR" != *warning* ]]
 }
 
-@test "rollback with no run, not as root, says who can list the runs" {
+@test "-u with no run, not as root, says who can list the runs" {
   touch "$LAB/NOT_ADMIN"
-  streams rollback --root "$ROOT" --config "$ETC"
+  streams -u --root "$ROOT" --config "$ETC"
   [ "$CODE" -eq 40 ]
-  [[ "$ERR" == *"As root, '$SELF runs' lists them."* ]]
+  [[ "$ERR" == *"As root, '$SELF --history' lists them."* ]]
 }
 
-@test "/? is pointed to help" {
-  streams '/?'
+@test "-k with no run, not as root, says who can list the runs" {
+  touch "$LAB/NOT_ADMIN"
+  streams -k --root "$ROOT" --config "$ETC"
   [ "$CODE" -eq 40 ]
-  [[ "$ERR" == *"unknown command '/?' (did you mean 'help'?)"* ]]
+  [[ "$ERR" == *"As root, '$SELF --history' lists them."* ]]
+}
+
+@test "the short letters are case-sensitive and the long names are not" {
+  streams -P test --root "$ROOT" --config "$ETC" observe
+  [ "$CODE" -eq 10 ]
+  streams -p test observe
+  [ "$CODE" -eq 40 ]
+  streams --PROFILE test --Root "$ROOT" --CONFIG "$ETC" observe
+  [ "$CODE" -eq 10 ]
+  streams -Profile test -root "$ROOT" -config "$ETC" observe
+  [ "$CODE" -eq 10 ]
+}
+
+@test "-r may come before or after the phase" {
+  streams observe -r --root "$ROOT" --config "$ETC"
+  [[ "$ERR" != *"unknown"* ]]
+  [[ "$ERR" != *"is not a phase"* ]]
+  streams -r observe --root "$ROOT" --config "$ETC"
+  [[ "$ERR" != *"unknown"* ]]
+  [[ "$ERR" != *"is not a phase"* ]]
+}
+
+@test "a value may follow an equals sign, a colon or a space" {
+  streams -k=4f2a --root "$ROOT" --config "$ETC"
+  [[ "$ERR" == *"no run ending in '4f2a'"* ]]
+  streams --keep=4f2a --root "$ROOT" --config "$ETC"
+  [[ "$ERR" == *"no run ending in '4f2a'"* ]]
+  streams -Keep:4f2a --root "$ROOT" --config "$ETC"
+  [[ "$ERR" == *"no run ending in '4f2a'"* ]]
+  streams --keep 4f2A --root "$ROOT" --config "$ETC"
+  [[ "$ERR" == *"no run ending in '4f2A'"* ]]
 }

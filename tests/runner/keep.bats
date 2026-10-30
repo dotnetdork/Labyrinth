@@ -14,7 +14,7 @@ setup() {
   printf 'web http web.test 80 -\n' > "$ETC/services"
 }
 
-rollback() { run bash "$LAB/labyrinth.sh" --root "$ROOT" --config "$ETC" rollback "$@"; }
+rollback() { run bash "$LAB/labyrinth.sh" --root "$ROOT" --config "$ETC" -u "$@"; }
 
 @test "a module kept once verified is recorded, and a run with only such changes is kept without asking" {
   answers root ring1
@@ -50,10 +50,10 @@ rollback() { run bash "$LAB/labyrinth.sh" --root "$ROOT" --config "$ETC" rollbac
   [[ "$output" == *"  Keeper setting sample (observe.keeper)"* ]]
   [ ! -e "$LAB/toggle.conf" ]
   grep -qx 'setting=on' "$LAB/keeper.conf"
-  grep -q "rolled back run $id" "$LAB/notice.log"
+  grep -q "undid run $id" "$LAB/notice.log"
 }
 
-@test "rollback --all undoes kept modules too" {
+@test "-u --all undoes kept modules too" {
   answers root ring1
   apply
   id="$(run_id)"
@@ -65,7 +65,7 @@ rollback() { run bash "$LAB/labyrinth.sh" --root "$ROOT" --config "$ETC" rollbac
   rollback "$id" --all
   [ "$status" -eq 0 ]
   [ ! -e "$LAB/keeper.conf" ]
-  grep -q "rolled back run $id" "$LAB/notice.log"
+  grep -q "undid run $id" "$LAB/notice.log"
 }
 
 @test "with no service list, nothing is kept early and the timer still covers it" {
@@ -112,9 +112,9 @@ rollback() { run bash "$LAB/labyrinth.sh" --root "$ROOT" --config "$ETC" rollbac
   [[ "$output" == *"keep_on_verify must be true or false"* ]]
 }
 
-@test "help explains rollback --all and a kept module" {
-  run bash "$LAB/labyrinth.sh" help rollback
+@test "help explains -u --all and a kept module" {
+  run bash "$LAB/labyrinth.sh" -h undo
   [[ "$output" == *"--all                  also undo changes kept once they verified"* ]]
-  run bash "$LAB/labyrinth.sh" help observe.keeper
+  run bash "$LAB/labyrinth.sh" -h observe.keeper
   [[ "$output" == *"Kept once it verifies and no scored service got worse"* ]]
 }

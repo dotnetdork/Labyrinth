@@ -29,7 +29,7 @@ plan() { run bash "$LAB/labyrinth.sh" --profile test --root "$ROOT" --config "$E
 
 # apply [OPTION...]: apply the observe phase, with stdin from $ANSWERS
 apply() {
-  run bash "$LAB/labyrinth.sh" --root "$ROOT" --config "$ETC" --apply "$@" observe < "${ANSWERS:-/dev/null}"
+  run bash "$LAB/labyrinth.sh" --root "$ROOT" --config "$ETC" -r "$@" observe < "${ANSWERS:-/dev/null}"
 }
 
 # answers LINE...: the lines the operator types, in order

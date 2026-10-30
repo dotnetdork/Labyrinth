@@ -1,5 +1,5 @@
 #Requires -Version 5.1
-# Pester 5 tests for labyrinth.ps1 runs, and naming a run by its last 4
+# Pester 5 tests for labyrinth.ps1 -History, and naming a run by its last 4
 # characters (docs\Conventions.md section 3.1). Mirrors runs.bats.
 
 [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseDeclaredVarsMoreThanAssignments', '',
@@ -30,45 +30,45 @@ BeforeAll {
     function Get-TestSuffix { param([string] $Id) return $Id.Substring($Id.Length - 4) }
 }
 
-Describe 'labyrinth.ps1 runs' {
+Describe 'labyrinth.ps1 -History' {
     BeforeEach {
         $t = Initialize-TestLab
         Write-TestHost $t 'ring1'
         Write-TestProfile $t 'observe.toggle'
     }
 
-    It 'runs with no runs says so, exits 0 and creates nothing' {
-        $r = Invoke-TestLabRun $t @('runs')
+    It '-History with no runs says so, exits 0 and creates nothing' {
+        $r = Invoke-TestLabRun $t @('-History')
         $r.Code | Should -Be 0
         $r.Out | Should -Match '^no runs on this host\r?\n'
         $r.Out | Should -Match ([regex]::Escape("Runs are recorded in $(Join-Path $t.Root 'state\runs')"))
         $t.Root | Should -Not -Exist
     }
 
-    It 'runs needs an Administrator' {
+    It '-History needs an Administrator' {
         New-Item -ItemType File -Path (Join-Path $t.Lab 'NOT_ADMIN') | Out-Null
-        (Invoke-TestLabRun $t @('runs')).Code | Should -Be 20
+        (Invoke-TestLabRun $t @('-History')).Code | Should -Be 20
     }
 
-    It 'runs shows each state, in run ID order, within 78 columns' {
+    It '-History shows each state, in run ID order, within 78 columns' {
         $a = Get-TestArmedRun $t
         $b = Get-TestArmedRun $t
-        (Invoke-TestLabRun $t @('keep', $b)).Code | Should -Be 0
+        (Invoke-TestLabRun $t @('-k', $b)).Code | Should -Be 0
         $c = Get-TestArmedRun $t
-        (Invoke-TestLabRun $t @('rollback', $c)).Code | Should -Be 0
-        $r = Invoke-TestLabRun $t @('runs')
+        (Invoke-TestLabRun $t @('-u', $c)).Code | Should -Be 0
+        $r = Invoke-TestLabRun $t @('-History')
         $r.Code | Should -Be 0
         $lines = @($r.Out -split "`r?`n")
         $lines[0] | Should -BeExactly 'RUN                   PHASE   START (UTC)      STATE'
         # Runs started in the same second sort by their random suffix, so
         # each run's line is found by its ID.
         $lineA = @($lines | Where-Object { $_.StartsWith("$a ") })[0]
-        $lineA | Should -BeLike "$a observe * armed: rolls back at ??:?? UTC"
+        $lineA | Should -BeLike "$a observe * armed: undo at ??:?? UTC"
         @($lines | Where-Object { $_.StartsWith("$b ") })[0] | Should -BeLike "$b observe * kept"
-        @($lines | Where-Object { $_.StartsWith("$c ") })[0] | Should -BeLike "$c observe * rolled back"
+        @($lines | Where-Object { $_.StartsWith("$c ") })[0] | Should -BeLike "$c observe * undone"
         ($lines[1..3] -join ',') | Should -BeExactly ((@($lines[1..3]) | Sort-Object -CaseSensitive) -join ',')
         $lineA | Should -BeLike ('* {0}-{1}-{2} {3}:{4} *' -f $a.Substring(0, 4), $a.Substring(4, 2), $a.Substring(6, 2), $a.Substring(9, 2), $a.Substring(11, 2))
-        $r.Out | Should -Match ([regex]::Escape("like '$($t.Self) keep $(Get-TestSuffix $a)'"))
+        $r.Out | Should -Match ([regex]::Escape("in quotes, like $($t.Self) -k '$(Get-TestSuffix $a)'."))
         # A hint may be longer by the length of the command in it.
         ($lines | ForEach-Object { $_.Replace($t.Self, 'labyrinth.ps1') } | Measure-Object -Property Length -Maximum).Maximum | Should -BeLessOrEqual 78
     }
@@ -77,14 +77,14 @@ Describe 'labyrinth.ps1 runs' {
         $a = Get-TestArmedRun $t
         $due = Join-Path $t.Root "state\runs\$a\timer-due"
         [IO.File]::WriteAllText($due, "2000-01-01T00:05:00Z`n")
-        (Invoke-TestLabRun $t @('runs')).Out | Should -Match 'armed: was due 00:05 UTC'
+        (Invoke-TestLabRun $t @('-History')).Out | Should -Match 'armed: was due 00:05 UTC'
         Remove-Item -LiteralPath $due
-        (Invoke-TestLabRun $t @('runs')).Out | Should -Match 'armed: rollback time unknown'
+        (Invoke-TestLabRun $t @('-History')).Out | Should -Match 'armed: undo time unknown'
     }
 
     It 'a run named by its last 4 characters, in any case, is kept' {
         $a = Get-TestArmedRun $t
-        $r = Invoke-TestLabRun $t @('keep', (Get-TestSuffix $a).ToUpperInvariant())
+        $r = Invoke-TestLabRun $t @('-k', (Get-TestSuffix $a).ToUpperInvariant())
         $r.Code | Should -Be 0
         $r.Out | Should -Match "using run $a"
         $r.Out | Should -Match "kept: the revert timer for run $a is cancelled"
@@ -92,51 +92,67 @@ Describe 'labyrinth.ps1 runs' {
 
     It 'a suffix that matches no run, or more than one, is refused' {
         $a = Get-TestArmedRun $t
-        $r = Invoke-TestLabRun $t @('rollback', 'beef')
+        $r = Invoke-TestLabRun $t @('-u', 'beef')
         $r.Code | Should -Be 40
         $r.Err | Should -Match "no run ending in 'beef'"
         $twin = Join-Path $t.Root "state\runs\20000101T000000Z-$(Get-TestSuffix $a)"
         Copy-Item -LiteralPath (Join-Path $t.Root "state\runs\$a") -Destination $twin -Recurse
-        $r = Invoke-TestLabRun $t @('rollback', (Get-TestSuffix $a))
+        $r = Invoke-TestLabRun $t @('-u', (Get-TestSuffix $a))
         $r.Code | Should -Be 40
         $r.Err | Should -Match 'ends more than one run'
         [IO.File]::ReadAllText((Join-Path $t.Lab 'toggle.conf')) | Should -Match 'setting=on'
     }
 
-    It 'keep without a run keeps the only armed run' {
+    It 'a run ID in a hint is quoted, so PowerShell cannot read it as a number' {
         $a = Get-TestArmedRun $t
-        $r = Invoke-TestLabRun $t @('keep')
-        $r.Code | Should -Be 0
-        $r.Out | Should -Match "kept: the revert timer for run $a is cancelled"
+        $r = Invoke-TestLabRun $t @('-History')
+        $r.Out | Should -Match "-k '$(Get-TestSuffix $a)'\."
+        $r.Out | Should -Not -Match "-k $(Get-TestSuffix $a)"
     }
 
-    It 'keep without a run: nothing to keep is not an error; more than one armed is refused' {
-        $r = Invoke-TestLabRun $t @('keep')
-        $r.Code | Should -Be 0
-        $r.Out | Should -Match ([regex]::Escape('There is nothing to keep: no run on this host has an armed revert timer.'))
+    It '-k without a run lists the armed runs and keeps none' {
+        $a = Get-TestArmedRun $t
+        $r = Invoke-TestLabRun $t @('-k')
+        $r.Code | Should -Be 40
+        $r.Err | Should -Match "(?s)$a.*-k needs a run ID, or its last 4 characters"
+        $r.Err | Should -Match 'pick one from the list above'
+        Join-Path $t.Root "state\runs\$a\timer" | Should -Exist
+    }
+
+    It '-k without a run: with none armed it is still a usage error; with several, all are listed' {
+        $r = Invoke-TestLabRun $t @('-k')
+        $r.Code | Should -Be 40
+        $r.Err | Should -Match ([regex]::Escape('-k needs a run ID, or its last 4 characters'))
+        $r.Err | Should -Match ([regex]::Escape('No run on this host has an armed revert timer.'))
         $a = Get-TestArmedRun $t
         $b = Get-TestArmedRun $t
-        $r = Invoke-TestLabRun $t @('keep')
+        $r = Invoke-TestLabRun $t @('-k')
         $r.Code | Should -Be 40
         $r.Err | Should -Match $a
         $r.Err | Should -Match $b
-        $r.Err | Should -Match 'more than one run has an armed revert timer'
         Join-Path $t.Root "state\runs\$a\timer" | Should -Exist
         Join-Path $t.Root "state\runs\$b\timer" | Should -Exist
     }
 
-    It 'rollback without a run lists the runs and changes nothing' {
+    It '-u without a run lists the runs and changes nothing' {
         $a = Get-TestArmedRun $t
-        $r = Invoke-TestLabRun $t @('rollback')
+        $r = Invoke-TestLabRun $t @('-u')
         $r.Code | Should -Be 40
-        $r.Err | Should -Match "(?s)$a.*needs a run ID"
+        $r.Err | Should -Match "(?s)$a.*-u needs a run ID"
         [IO.File]::ReadAllText((Join-Path $t.Lab 'toggle.conf')) | Should -Match 'setting=on'
         Join-Path $t.Root "state\runs\$a\timer" | Should -Exist
     }
 
+    It 'a full run ID is accepted in any case' {
+        $a = Get-TestArmedRun $t
+        $r = Invoke-TestLabRun $t @('-k', $a.ToUpperInvariant())
+        $r.Code | Should -Be 0
+        $r.Out | Should -Match "kept: the revert timer for run $a is cancelled"
+    }
+
     It 'a reference that is neither an ID nor 4 hex characters is a usage error' {
-        (Invoke-TestLabRun $t @('keep', '4f2')).Code | Should -Be 40
-        (Invoke-TestLabRun $t @('rollback', 'zzzz')).Code | Should -Be 40
+        (Invoke-TestLabRun $t @('-k', '4f2')).Code | Should -Be 40
+        (Invoke-TestLabRun $t @('-u', 'zzzz')).Code | Should -Be 40
         $t.Root | Should -Not -Exist
     }
 }

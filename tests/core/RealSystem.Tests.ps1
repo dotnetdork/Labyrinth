@@ -61,7 +61,7 @@ Describe 'real system (Windows)' {
         $ErrorActionPreference = 'Continue'
         try {
             $out = @('labadmin', 'ring0', 'no') | & $script:HostExe -NoProfile -NonInteractive -ExecutionPolicy Bypass `
-                -File (Join-Path $lab 'labyrinth.ps1') observe -Apply -Root $root -Config $etc 2>&1
+                -File (Join-Path $lab 'labyrinth.ps1') -r observe -Root $root -Config $etc 2>&1
             $code = $LASTEXITCODE
         } finally {
             $ErrorActionPreference = $saved
