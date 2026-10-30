@@ -230,7 +230,7 @@ yml() {
 
 @test "argument errors exit 40" {
   profile observe.sample
-  run bash "$LAB/labyrinth.sh" observe
+  run bash "$LAB/labyrinth.sh" obsrve
   [ "$status" -eq 40 ]
   run bash "$LAB/labyrinth.sh" --profile test nope
   [ "$status" -eq 40 ]
@@ -242,9 +242,9 @@ yml() {
   [ "$status" -eq 40 ]
 }
 
-@test "--version and --help exit 0" {
-  run bash "$LAB/labyrinth.sh" --version
+@test "-V and -h exit 0" {
+  run bash "$LAB/labyrinth.sh" -V
   [ "$status" -eq 0 ]
-  run bash "$LAB/labyrinth.sh" --help
+  run bash "$LAB/labyrinth.sh" -h
   [ "$status" -eq 0 ]
 }

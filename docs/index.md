@@ -9,7 +9,7 @@ This site is built from the Markdown files in the repository's `docs/` folder, s
 | If you want to | Read |
 |---|---|
 | Understand what Labyrinth does and why, in plain language | [Overview](Overview.md) |
-| Learn the `laby` commands a person types, with examples (planned) | [Commands](Commands.md) |
+| Learn the `laby` commands a person types, with examples | [Commands](Commands.md) |
 | See the whole system and its rules in detail | [Blueprint](Blueprint.md) |
 | Know what is built, what is next, and what is decided | [Roadmap](Roadmap.md) |
 | Write code or a module the way the rest is written | [Conventions](Conventions.md) |

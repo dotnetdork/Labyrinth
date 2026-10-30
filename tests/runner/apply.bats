@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
-# Tests for labyrinth.sh apply, keep, rollback and probe (design 00,
-# section 5; design 03, sections 7 to 9; docs/Conventions.md section 3.1).
+# Tests for labyrinth.sh -r, -k, -u and --probe (design 00,
+# section 5; design 03, sections 7 to 9; docs/Conventions.md section 3.3).
 # The host-specific parts (root check, revert timer, probes) are test
 # doubles (tests/fixtures/doubles.sh); real-system tests are separate.
 
@@ -54,7 +54,7 @@ setup() {
   [ ! -e "$LAB/toggle.conf" ]
 }
 
-@test "apply, keep and rollback refuse code or data another account can change" {
+@test "run, keep and undo refuse code or data another account can change" {
   answers root ring1 no
   apply
   [ "$status" -eq 0 ]
@@ -66,7 +66,7 @@ setup() {
   [[ "$output" == *"$LAB can be changed by an account other than root"* ]]
   [ ! -e "$LAB/toggle.conf" ]
   printf 'setting=on\n' > "$LAB/toggle.conf"
-  for cmd in keep rollback; do
+  for cmd in -k -u; do
     run bash "$LAB/labyrinth.sh" --root "$ROOT" --config "$ETC" "$cmd" "$id"
     [ "$status" -eq 20 ] || { echo "$cmd: $status"; return 1; }
   done
@@ -160,7 +160,7 @@ setup() {
   [ "$status" -eq 20 ]
   [ ! -e "$LAB/toggle.conf" ]
   [[ "$output" == *"labyrinth: the plan was not confirmed: 'ring2' was typed, not ring1; nothing was changed"* ]]
-  [[ "$output" == *'Run apply again and type ring1 at the prompt, or give it with --confirm-group ring1.'* ]]
+  [[ "$output" == *'Run the same command again and type ring1 at the prompt, or give it with --confirm-group ring1.'* ]]
 }
 
 @test "a break-glass answer that is not a break-glass account says which class it needs" {
@@ -171,9 +171,9 @@ setup() {
   [ ! -e "$LAB/toggle.conf" ]
 }
 
-@test "--breakglass and --confirm answer the gates without typing" {
+@test "--break-glass and --confirm-group answer the gates without typing" {
   answers keep
-  apply --breakglass root --confirm ring1
+  apply --break-glass root --confirm-group ring1
   [ "$status" -eq 0 ]
   grep -qx 'setting=on' "$LAB/toggle.conf"
 }
@@ -201,7 +201,7 @@ setup() {
   apply
   [ "$status" -eq 30 ]
   [[ "$output" == *"its verify script failed"* ]]
-  grep -qx '  Did:       rolled back' <<< "$output"
+  grep -qx '  Did:       undone' <<< "$output"
   grep -qx 'setting=off' "$LAB/toggle.conf"
   [ "$(stat -c %a "$LAB/toggle.conf")" = 600 ] || [[ "$OSTYPE" == msys* || "$OSTYPE" == cygwin* ]]
   [[ "$(manifest)" == *'"action":"rolled_back"'* ]]
@@ -229,20 +229,20 @@ setup() {
   apply
   [ "$status" -eq 0 ]
   [[ "$output" == *"Not kept"* ]]
-  [[ "$output" == *"To keep later: $SELF keep $(run_id | tail -c 5)"* ]]
+  [[ "$output" == *"To keep later: $SELF -k $(run_id | tail -c 5)"* ]]
   run_dir="$ROOT/state/runs/$(run_id)"
   [ -f "$run_dir/timer" ]
   timer_cmd="$(cat "$run_dir/timer")"
-  [[ "$timer_cmd" == *"labyrinth.sh --root $ROOT --config $ETC rollback $(run_id)"* ]]
+  [[ "$timer_cmd" == *"labyrinth.sh --root $ROOT --config $ETC -u $(run_id)"* ]]
   id="$(run_id)"
   # The timer firing runs exactly this command.
-  run bash "$LAB/labyrinth.sh" --root "$ROOT" --config "$ETC" rollback "$id"
+  run bash "$LAB/labyrinth.sh" --root "$ROOT" --config "$ETC" -u "$id"
   [ "$status" -eq 0 ]
   [ ! -e "$LAB/toggle.conf" ]
   [ ! -f "$run_dir/timer" ]
   grep -q '"action":"run_rolled_back"' "$run_dir/manifest.jsonl"
   # Keeping after the timer fired is too late.
-  run bash "$LAB/labyrinth.sh" --root "$ROOT" --config "$ETC" keep "$id"
+  run bash "$LAB/labyrinth.sh" --root "$ROOT" --config "$ETC" -k "$id"
   [ "$status" -eq 20 ]
   [[ "$output" == *"too late"* ]]
 }
@@ -252,9 +252,9 @@ setup() {
   answers root ring1 no
   apply
   id="$(run_id)"
-  run bash "$LAB/labyrinth.sh" --root "$ROOT" --config "$ETC" rollback "$id"
+  run bash "$LAB/labyrinth.sh" --root "$ROOT" --config "$ETC" -u "$id"
   [ "$status" -eq 0 ]
-  run bash "$LAB/labyrinth.sh" --root "$ROOT" --config "$ETC" rollback "$id"
+  run bash "$LAB/labyrinth.sh" --root "$ROOT" --config "$ETC" -u "$id"
   [ "$status" -eq 0 ]
   grep -qx 'setting=off' "$LAB/toggle.conf"
 }
@@ -263,16 +263,16 @@ setup() {
   answers root ring1 no
   apply
   id="$(run_id)"
-  run bash "$LAB/labyrinth.sh" --root "$ROOT" --config "$ETC" keep "$id"
+  run bash "$LAB/labyrinth.sh" --root "$ROOT" --config "$ETC" -k "$id"
   [ "$status" -eq 0 ]
   [ ! -f "$ROOT/state/runs/$id/timer" ]
   grep -qx 'setting=on' "$LAB/toggle.conf"
 }
 
 @test "keep and rollback reject bad run ids and unknown runs" {
-  run bash "$LAB/labyrinth.sh" --root "$ROOT" --config "$ETC" keep ../x
+  run bash "$LAB/labyrinth.sh" --root "$ROOT" --config "$ETC" -k ../x
   [ "$status" -eq 40 ]
-  run bash "$LAB/labyrinth.sh" --root "$ROOT" --config "$ETC" rollback 20260101T000000Z-abcd
+  run bash "$LAB/labyrinth.sh" --root "$ROOT" --config "$ETC" -u 20260101T000000Z-abcd
   [ "$status" -eq 40 ]
 }
 
@@ -284,7 +284,7 @@ setup() {
   [ "$status" -eq 30 ]
   [[ "$output" == *"a scored service stopped working after the change: web"* ]]
   grep -qx '  Found:     web: fail (fake probe); it passed before' <<< "$output"
-  grep -qx '  Did:       rolled back' <<< "$output"
+  grep -qx '  Did:       undone' <<< "$output"
   [ ! -e "$LAB/probe-state" ]
 }
 
@@ -295,7 +295,7 @@ setup() {
   [ "$status" -eq 30 ]
   [[ "$output" != *'scoring allowlist is missing'* ]]
   [[ "$output" == *"a scored service stopped working after the change: web"* ]]
-  grep -qx '  Did:       rolled back' <<< "$output"
+  grep -qx '  Did:       undone' <<< "$output"
   [ ! -e "$LAB/probe-state" ]
 }
 
@@ -383,7 +383,7 @@ fp() { printf '%s' "$1" | sha256sum | cut -c1-12; }
   # Approvals are never stored in the revert timer's command line.
   local timer
   timer="$(cat "$ROOT/state/runs/$(run_id)/timer")"
-  [[ "$timer" == *" rollback $(run_id)"* ]]
+  [[ "$timer" == *" -u $(run_id)"* ]]
   [[ "$timer" != *approve* ]]
 }
 
@@ -515,7 +515,7 @@ fp() { printf '%s' "$1" | sha256sum | cut -c1-12; }
   local holder=$!
   mkdir -p "$ROOT/state/lock"
   printf '%s\n' "$holder" > "$ROOT/state/lock/pid"
-  run bash "$LAB/labyrinth.sh" --root "$ROOT" --config "$ETC" rollback "$id"
+  run bash "$LAB/labyrinth.sh" --root "$ROOT" --config "$ETC" -u "$id"
   wait "$holder" 2> /dev/null || true
   [ "$status" -eq 0 ]
   [[ "$output" == *"stopping the Labyrinth run (pid $holder)"* ]]
@@ -534,11 +534,11 @@ fp() { printf '%s' "$1" | sha256sum | cut -c1-12; }
 
 @test "probe reports every service and exits 30 when one fails" {
   printf 'web http web.test 80 -\nmail smtp mail.test 25 -\n' > "$ETC/services"
-  run bash "$LAB/labyrinth.sh" --root "$ROOT" --config "$ETC" probe
+  run bash "$LAB/labyrinth.sh" --root "$ROOT" --config "$ETC" --probe
   [ "$status" -eq 0 ]
   [[ "$output" == *"[web] pass"* ]]
   printf 'mail.test fail\n' > "$LAB/probe-state"
-  run bash "$LAB/labyrinth.sh" --root "$ROOT" --config "$ETC" probe
+  run bash "$LAB/labyrinth.sh" --root "$ROOT" --config "$ETC" --probe
   [ "$status" -eq 30 ]
   [[ "$output" == *"[mail] fail"* ]]
   [ ! -e "$ROOT" ]
@@ -556,7 +556,7 @@ fp() { printf '%s' "$1" | sha256sum | cut -c1-12; }
   apply
   id="$(run_id)"
   printf '%s\n' 'lab_timer_cancel() { return 1; }' >> "$LAB/core/lib.sh"
-  run bash "$LAB/labyrinth.sh" --root "$ROOT" --config "$ETC" keep "$id"
+  run bash "$LAB/labyrinth.sh" --root "$ROOT" --config "$ETC" -k "$id"
   [ "$status" -eq 40 ]
   [[ "$output" == *"could not be cancelled"* ]]
   [[ "$output" != *"kept: the revert timer"* ]]
@@ -570,7 +570,7 @@ fp() { printf '%s' "$1" | sha256sum | cut -c1-12; }
   apply
   id="$(run_id)"
   printf '%s\n' 'lab_timer_cancel() { return 1; }' >> "$LAB/core/lib.sh"
-  run bash "$LAB/labyrinth.sh" --root "$ROOT" --config "$ETC" rollback "$id"
+  run bash "$LAB/labyrinth.sh" --root "$ROOT" --config "$ETC" -u "$id"
   [ "$status" -eq 0 ]
   [[ "$output" == *"could not be removed"* ]]
   [ ! -e "$LAB/toggle.conf" ]
@@ -586,7 +586,7 @@ release_hash() { sha256sum < "$LAB/release.sha256" | cut -d' ' -f1; }
   [ "$status" -eq 0 ]
   [[ "$output" == *"labyrinth: warning: no release.sha256, so Labyrinth's files were not checked"* ]]
   grep -qx 'Release: not checked (no release.sha256)' <<< "$output"
-  run bash "$LAB/labyrinth.sh" version
+  run bash "$LAB/labyrinth.sh" -V
   [ "${lines[1]}" = 'Release: not checked (no release.sha256)' ]
 }
 
@@ -602,7 +602,7 @@ release_hash() { sha256sum < "$LAB/release.sha256" | cut -d' ' -f1; }
   a="$(grep -n "^Release: $sum\$" <<< "$output" | head -n 1 | cut -d: -f1)"
   b="$(grep -n 'Type the group name' <<< "$output" | head -n 1 | cut -d: -f1)"
   [ "$a" -lt "$b" ]
-  run bash "$LAB/labyrinth.sh" version
+  run bash "$LAB/labyrinth.sh" -V
   [ "$status" -eq 0 ]
   [ "${lines[1]}" = "Release: $sum" ]
 }
@@ -614,7 +614,7 @@ release_hash() { sha256sum < "$LAB/release.sha256" | cut -d' ' -f1; }
   release
   # The change would leave a mark if any of the core ran.
   printf 'touch "%s/ran"\n' "$BATS_TEST_TMPDIR" >> "$LAB/core/lib.sh"
-  for args in 'plan observe' 'apply observe' "keep $id" "rollback $id" 'runs' 'probe' 'version' 'help'; do
+  for args in 'observe' '-r observe' "-k $id" "-u $id" '--history' '--probe' '-V' '-h'; do
     # shellcheck disable=SC2086
     run bash "$LAB/labyrinth.sh" --profile test --root "$ROOT" --config "$ETC" $args < /dev/null
     [ "$status" -eq 20 ] || { echo "$args: exit $status"; return 1; }

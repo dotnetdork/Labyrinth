@@ -1,18 +1,17 @@
 #!/usr/bin/env bash
 # labyrinth.sh: main program for Linux hosts (design 00, section 5;
-# docs/Conventions.md sections 3.1 and 3.2).
+# docs/Conventions.md sections 3.1 to 3.3). 'laby' below is this program.
 #
-#   labyrinth.sh plan <phase>        show what would change; changes nothing
-#   labyrinth.sh apply <phase>       plan, confirm, then make the changes
-#   labyrinth.sh keep [<run>]        keep a run: cancel its revert timer
-#   labyrinth.sh rollback <run>      undo a run, newest change first
-#   labyrinth.sh runs                list this host's runs and their state
-#   labyrinth.sh probe               test every scored service once
-#   labyrinth.sh help [<topic>]      help on a command, 'basics' or a module;
-#                                    also -h and --help
-#   labyrinth.sh version             the version; also -V and --version
+#   laby PHASE               preview a phase: nothing changes, nothing written
+#   laby -r PHASE            run a phase: plan, confirm, then make the changes
+#   laby -k ID               keep a run: cancel its revert timer
+#   laby -u ID [--all]       undo a run, newest change first
+#   laby --history           list this host's runs and their state
+#   laby --probe             test every scored service once
+#   laby -V                  the version; also --version
+#   laby -h [TOPIC]          help; also --help, -? and /?
 #
-# Options may come anywhere; 'labyrinth.sh help <command>' lists them.
+# One action per line; options may come anywhere. 'laby -h' lists them.
 # Exit codes (design 00, section 4); the highest code from any module wins:
 #   0 nothing to do or success, 10 change needed, 20 blocked,
 #   30 verify failed or a scored service regressed, 40 error
@@ -53,8 +52,8 @@ LAB_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 export LAB_ROOT
 # The release check (design 21, section 5) comes before the rest of the
 # core is loaded, so a changed core file never runs. A file that differs
-# from release.sha256 stops every command, the revert timer's rollback
-# included; with no release.sha256, apply, keep and rollback warn.
+# from release.sha256 stops every action, the revert timer's undo
+# included; with no release.sha256, -r, -k and -u warn.
 # shellcheck source=core/safety/release.sh
 source "$LAB_ROOT/core/safety/release.sh"
 LAB_RELEASE=0              # 0 checked, 1 no release list, 2 a file differs
@@ -63,10 +62,14 @@ if (( LAB_RELEASE == 2 )); then
   printf 'labyrinth: %s, so Labyrinth will not run\n' "$LAB_RELEASE_PROBLEM" >&2
   printf '%s\n' "Copy Labyrinth here again from the team's copy, as manual section 11 says." >&2
   for a in "$@"; do
-    # A refused rollback leaves the changes in place: whoever is logged
-    # in must learn that, as from the revert timer. Best effort.
-    if [[ "$a" == rollback ]] && command -v wall > /dev/null 2>&1; then
-      printf '%s\n' "Labyrinth did not roll back on $(uname -n): its files differ from the release, so the changes are still in place." \
+    # A refused undo (-u or --undo, also in a stack such as -ru) leaves
+    # the changes in place: whoever is logged in must learn that, as from
+    # the revert timer. Best effort.
+    lower="${a,,}"
+    if [[ "$a" =~ ^-[rkuVPh]*u[rkuVPh]*$ || "$lower" == --undo || "$lower" == --undo=* \
+        || "$lower" == -undo || "$lower" == -undo:* || "$lower" == -undo=* ]] \
+        && command -v wall > /dev/null 2>&1; then
+      printf '%s\n' "Labyrinth did not undo the changes on $(uname -n): its files differ from the release, so they are still in place." \
         | wall > /dev/null 2>&1 || true
       break
     fi
@@ -99,16 +102,29 @@ SELF="$0"
 if [[ "$SELF" != */* ]] && ! command -v -- "$SELF" > /dev/null 2>&1; then SELF="./$SELF"; fi
 if [[ ! "$SELF" =~ ^[A-Za-z0-9_./+-]+$ ]]; then SELF="$(printf '%q' "$SELF")"; fi
 if [[ -n "${SUDO_USER:-}" ]]; then SELF="sudo $SELF"; fi
-readonly COMMANDS='plan apply keep rollback runs probe help version'
+NAME="${SELF#sudo }"   # the name as typed, for the start of a usage error
 
-# The options, one row each (docs/Conventions.md section 3.1): the canonical
-# name, the keys it is matched by (lower case, no dashes), and whether it
-# takes a value.
-readonly -a OPT_NAMES=(profile root config break-glass confirm-group approve apply all help version)
-readonly -a OPT_KEYS=('profile profilename' root config breakglass 'confirmgroup confirm' approve apply all help version)
-readonly -a OPT_VALUE=(1 1 1 1 1 1 0 0 0 0)
+# The options, one row each (docs/Conventions.md section 3.3): the canonical
+# name, the key its long name is matched by (lower case, no dashes), whether
+# it takes a value, its short letter, if it has one, and whether it is an
+# action. Short letters are case-sensitive; long names are not.
+readonly -a OPT_NAMES=(run keep undo probe history version all profile root config break-glass confirm-group approve help)
+readonly -a OPT_KEYS=(run keep undo probe history version all profile root config breakglass confirmgroup approve help)
+readonly -a OPT_VALUE=(0 1 1 0 0 0 0 1 1 1 1 1 1 0)
+readonly -a OPT_SHORT=(r k u '' '' V '' P '' '' '' '' '' h)
+readonly -a OPT_ACTION=(1 1 1 1 1 1 0 0 0 0 0 0 0 0)
+# The flags that docs/Conventions.md section 3.3 plans and nothing builds yet,
+# one row each: the short letter, the long name's match key ('' when the name
+# is already an option) and how a message shows it. Typing one is a usage
+# error that says so; building one means moving its row up into OPT_*.
+readonly -a PLAN_SHORT=(q a d v y '' '')
+readonly -a PLAN_KEYS=(queue '' decline verbose yes norevert manual)
+readonly -a PLAN_SHOW=(--queue '--approve, with -q' '--decline, with -q' --verbose --yes --no-revert --manual)
 declare -A GIVEN=()        # canonical option name -> value given
 declare -a WORDS=()        # the words that are not options, in order
+declare -a ACTIONS=()      # the actions given, in the order typed
+HELP_ASKED=0               # 1 when -h, --help, -? or /? came before '--'
+TRY_TOPIC=''               # what the Try line puts before -h
 PARSE_ERR=""                # the first option error, reported by main
 ERROR_COUNT=0              # ERROR lines in the Summary, for the Next line
 BEFORE=''                  # probe results before the first change
@@ -127,174 +143,314 @@ readonly LOG_CAP=500       # most lines logged from one entry point
 # its keep_on_verify (true or false).
 declare -a RUN_IDS=() RUN_DIR=() RUN_RISK=() RUN_SCORED=() RUN_REQUIRES=() RUN_RC=() RUN_STATE=() RUN_ITEMS=() RUN_PREOK=() RUN_KEEP=()
 
-# cmd_help [COMMAND]: the help for every command, or for one, on stdout.
-# Each topic is at most 18 lines (basics 24) of at most 78 columns, not
-# counting the command in hints, with one Exit line and one Example line
-# (docs/Conventions.md section 3.2).
+# cmd_help [TOPIC]: the main help, or one topic's, on stdout. A topic is an
+# action, an option, a phase or 'basics', by its canonical name. The text
+# is the same as labyrinth.ps1's. It writes the program's name as @CMD@, and
+# cmd_help puts in the name as started ($SELF) until there is an installed
+# 'laby'. The main page is at most 24 lines and each topic at most 18
+# (basics 24), of at most 78 columns with the name './labyrinth.sh', with an
+# Exit line, an Example line and a See also line (docs/Conventions.md
+# section 3.2).
 cmd_help() {
-  local where="Options:
-  --root DIR             data root (default /opt/labyrinth)
-  --config DIR           configuration folder (default <root>/etc)"
+  local line out
+  while IFS= read -r line; do
+    out=''
+    while [[ "$line" == *@CMD@* ]]; do
+      out+="${line%%@CMD@*}$SELF"
+      line="${line#*@CMD@}"
+    done
+    printf '%s
+' "$out$line"
+  done < <(help_page "${1:-}")
+}
+
+# help_page [TOPIC]: the help text, with @CMD@ for the program's name.
+help_page() {
   case "${1:-}" in
-    '') cat <<EOF
-Usage: $SELF <command> [<phase> | <run>] [options]
-New to Labyrinth? Start with '$SELF help basics'.
+    '') cat <<'EOF'
+Usage: @CMD@ PHASE                preview a phase: nothing changes
+       @CMD@ -r PHASE             run a phase for real
+       @CMD@ ACTION [OPTIONS]
 
-  plan <phase>      show what would change; changes nothing
-  apply <phase>     plan, confirm, then make the changes
-  keep [<run>]      keep a run: cancel its revert timer
-  rollback <run>    undo a run, newest change first
-  runs              list this host's runs and their state
-  probe             test every scored service once
-  help [<topic>]    help on a command, 'basics', or a module ID
-  version           print the version
+Actions (one per line):
+  -r, --run               run a phase: plan, confirm, change
+  -k, --keep ID           keep a run: cancel its revert timer
+  -u, --undo ID [--all]   undo a run, newest change first
+      --history           list this host's runs and their IDs
+      --probe             test every scored service once
+  -V, --version           print the version
 
-Phases: lockout, observe, deceive, sustain. <run>: an ID or its last 4.
-Options: '$SELF help <command>' lists them; so does <command> -h.
+Options:
+  -P, --profile NAME      profile to use, if not this host's line in hosts
+  --root DIR              data root         --config DIR   configuration
+  --break-glass NAME, --confirm-group GROUP, --approve LIST:
+                          see @CMD@ -h run
+  -h, --help [TOPIC]      help; TOPIC: an action, option, phase or basics
+
+Phases: lockout, observe, deceive, sustain. ID: a run ID or its last 4.
 Exit: 0 ok, 10 change needed, 20 blocked, 30 check failed, 40 error.
-Example: $SELF plan lockout
-Manual: the Linux parts of $LAB_ROOT/docs/manual/labyrinth.md
+Full manual: docs/manual/labyrinth.md in the release
 EOF
     ;;
-    plan) cat <<EOF
-Usage: $SELF plan <phase> [options]
+    run) cat <<'EOF'
+Usage: @CMD@ -r PHASE [-P NAME] [--root DIR] [--config DIR]
 
-Show what every module of the phase would change on this host.
-Nothing is changed and nothing is written. <phase> is lockout,
-observe, deceive or sustain. Needs root to read the configuration.
-
-$where
-  --profile NAME         use this profile, not the one in the hosts file
-
-Exit: 0 nothing to do, 10 change needed, 20 blocked, 40 error.
-Example: $SELF plan lockout
-Compatibility: '$SELF <phase>' also plans.
-EOF
-    ;;
-    apply) cat <<EOF
-Usage: $SELF apply <phase> [options]
-
-Plan, then ask you to name the break-glass account (first apply only)
+Plan, then ask you to name the break-glass account (first run only)
 and to type this host's group name. Then change, checking each change;
-a revert timer undoes the run unless you keep it. Needs root.
+a revert timer undoes the run unless you keep it. Needs root or an
+Administrator. -r may come before or after PHASE.
 
-$where
-  --profile NAME         must match this host's line in the hosts file
+Options:
+  -P, --profile NAME     must match this host's line in the hosts file
   --break-glass NAME     answer the break-glass prompt
   --confirm-group GROUP  answer the group-name prompt
   --approve LIST         approve without asking: module:item@fingerprint,...
 
 Exit: 0 done, 10 manual steps left, 20 blocked, 30 check failed, 40 error.
 Blocked: not root, another run, host not in hosts, or a safety gate.
-Example: $SELF apply lockout
-Compatibility: '$SELF <phase> --apply' also applies.
+Example: @CMD@ -r lockout
+See also: @CMD@ -h lockout, -h keep, -h basics
 EOF
     ;;
-    keep) cat <<EOF
-Usage: $SELF keep [<run>] [options]
+    keep) cat <<'EOF'
+Usage: @CMD@ -k ID [--root DIR] [--config DIR]
 
 Keep a run's changes: cancel its revert timer, then record the keep.
-Without <run>, keep the one run whose timer is armed. <run> is a run
-ID or its last 4 characters; '$SELF runs' lists them. Needs root.
+ID is always needed: a run ID or its last 4 characters. Without it,
+the armed runs are listed and nothing is kept. Needs root or an
+Administrator.
 
-$where
+Options: --root DIR (data root), --config DIR (configuration folder)
 
-Exit: 0 kept or none armed, 20 blocked, 40 error.
+Exit: 0 kept, 20 blocked, 40 error.
 Blocked: not root, a file another account can change, or too late
-(the run was already rolled back).
-Example: $SELF keep 4f2a
+(the run was already undone).
+Example: @CMD@ -k 4f2a
+See also: @CMD@ --history, @CMD@ -h undo
 EOF
     ;;
-    rollback) cat <<EOF
-Usage: $SELF rollback <run> [options]
+    undo) cat <<'EOF'
+Usage: @CMD@ -u ID [--all] [--root DIR] [--config DIR]
 
 Undo what the run changed, newest change first. This is what the
-revert timer runs. Safe to run twice. <run> is a run ID or its last
-4 characters; '$SELF runs' lists them. Needs root.
+revert timer runs. Safe to run twice. ID is always needed: a run ID or
+its last 4 characters; '@CMD@ --history' lists them. Needs root or
+an Administrator.
 
-$where
+Options:
   --all                  also undo changes kept once they verified
+  --root DIR, --config DIR   data root, configuration folder
 
-Exit: 0 rolled back, 20 blocked, 40 error.
+Exit: 0 undone, 20 blocked, 40 error.
 Blocked: not root, or a file another account can change.
-Example: $SELF rollback 4f2a
+Example: @CMD@ -u 4f2a
+See also: @CMD@ --history, @CMD@ -h keep
 EOF
     ;;
-    runs) cat <<EOF
-Usage: $SELF runs [options]
+    history) cat <<'EOF'
+Usage: @CMD@ --history [--root DIR] [--config DIR]
 
 List this host's runs, oldest first: run ID, phase, start time (UTC)
-and state: armed (and when it rolls back), kept, rolled back,
-rolled back with errors, or not kept, no timer. 'armed: timer lost'
-means the timer's unit files are gone and nothing will undo the run by
-itself: keep it or roll it back. Changes nothing; needs root.
-
-$where
+and state: armed (and when it is undone), kept, undone,
+undone with errors, or not kept, no timer. 'armed: timer lost'
+means the timer's files are gone and nothing will undo the run by
+itself: keep it or undo it. Changes nothing; needs root or an
+Administrator.
 
 Exit: 0 listed, 20 not root, 40 error.
-Example: $SELF runs
+Example: @CMD@ --history
+See also: @CMD@ -h keep, @CMD@ -h undo
 EOF
     ;;
-    probe) cat <<EOF
-Usage: $SELF probe [options]
+    probe) cat <<'EOF'
+Usage: @CMD@ --probe [--root DIR] [--config DIR]
 
 Test every scored service once, the way the scoring engine would,
-and print one line per service. Changes nothing. Needs root to read
-the configuration.
-
-$where
+and print one line per service. Changes nothing. Needs root or an
+Administrator to read the configuration.
 
 Exit: 0 all pass, 20 no service list, 30 a service failed, 40 error.
-Example: $SELF probe
+Example: @CMD@ --probe
+See also: @CMD@ -h basics, @CMD@ --history
 EOF
     ;;
-    help) cat <<EOF
-Usage: $SELF help [<command> | basics | <module-id>]
+    version) cat <<'EOF'
+Usage: @CMD@ -V
 
-Print help for every command, or for one. '$SELF <command> --help'
-and '$SELF <command> -h' print the same. 'basics' explains the ideas
-in plain words. A module ID, such as the ones a plan prints, explains
-that module: what it checks and changes, and how to undo it.
+Print the version of Labyrinth, which program printed it, and the
+release hash. --version does the same.
 
-Exit: 0 printed, 40 unknown topic.
-Example: $SELF help apply
+Exit: 0 printed.
+Example: @CMD@ -V
+See also: @CMD@ -h
 EOF
     ;;
-    basics) cat <<EOF
-Usage: $SELF help basics
+    profile) cat <<'EOF'
+Usage: @CMD@ [-r] PHASE -P NAME
+
+Use this profile, not the one in the hosts file. NAME is lower-case
+letters, digits and '-'. For a run it must match this host's line in
+the hosts file. A preview shows what that profile would do.
+Used by: a preview and -r.
+
+Exit: 40 if NAME is not a valid profile name.
+Example: @CMD@ observe --profile linux-web
+See also: @CMD@ -h run, @CMD@ -h basics
+EOF
+    ;;
+    root) cat <<'EOF'
+Usage: @CMD@ ACTION --root DIR
+
+The data root: where Labyrinth keeps its configuration (etc), run
+records (state), logs and backups. DIR must be a full path. The
+default is the platform's own folder; the manual names it.
+Used by: every action.
+
+Exit: 40 if DIR is not a full path.
+Example: @CMD@ --history --root /srv/labyrinth
+See also: @CMD@ -h config
+EOF
+    ;;
+    config) cat <<'EOF'
+Usage: @CMD@ ACTION --config DIR
+
+The configuration folder, if it is not <root>/etc: the hosts file, the
+protected set and the event's other files. DIR must be a full path.
+For a preview, -r and --probe it must exist.
+Used by: every action.
+
+Exit: 40 if DIR is not a full path or does not exist.
+Example: @CMD@ observe --config /srv/event-etc
+See also: @CMD@ -h root
+EOF
+    ;;
+    break-glass) cat <<'EOF'
+Usage: @CMD@ -r PHASE --break-glass NAME
+
+Answer the break-glass prompt without typing: NAME is the emergency
+account you are logged in with at the console. It must be listed with
+the class breakglass in the protected set.
+Used by: -r only.
+
+Exit: 20 if NAME is not that account.
+Example: @CMD@ -r lockout --break-glass admin
+See also: @CMD@ -h run, @CMD@ -h confirm-group
+EOF
+    ;;
+    confirm-group) cat <<'EOF'
+Usage: @CMD@ -r PHASE --confirm-group GROUP
+
+Answer the group-name prompt without typing: GROUP is this host's group
+from the hosts file. A different name stops the run before anything
+changes.
+Used by: -r only.
+
+Exit: 20 if GROUP is not this host's group.
+Example: @CMD@ -r lockout --confirm-group ring1
+See also: @CMD@ -h run, @CMD@ -h break-glass
+EOF
+    ;;
+    approve) cat <<'EOF'
+Usage: @CMD@ -r PHASE --approve LIST
+
+Approve items without the approval prompt. LIST is comma-separated
+entries, module-id:item-id@fingerprint, pasted from a preview. A
+category is not accepted: it could include items you never saw.
+Used by: -r only.
+
+Exit: 40 if an entry is malformed.
+Example: @CMD@ -r harden --approve module-id:item-id@2a2c17aaaf66
+See also: @CMD@ -h run, @CMD@ -h basics
+EOF
+    ;;
+    all) cat <<'EOF'
+Usage: @CMD@ -u ID --all
+
+Also undo the changes that were kept once they verified, such as a
+new admin password. Undoing those can give an intruder their access
+back: if a password changes back, rotate it again.
+Used by: -u only.
+
+Exit: as for -u.
+Example: @CMD@ -u 4f2a --all
+See also: @CMD@ -h undo
+EOF
+    ;;
+    lockout) cat <<'EOF'
+Usage: @CMD@ lockout [-P NAME]
+       @CMD@ -r lockout
+
+The first phase: take control back from the attacker. Its modules
+change the host quickly, behind a revert timer.
+@CMD@ lockout only previews: nothing changes and nothing is written.
+
+Exit: 0 nothing to do, 10 change needed, 20 blocked, 40 error.
+Example: @CMD@ lockout
+See also: @CMD@ -h run, @CMD@ -h basics
+EOF
+    ;;
+    observe) cat <<'EOF'
+Usage: @CMD@ observe [-P NAME]
+       @CMD@ -r observe
+
+The phase that shows what is happening on the host. Its modules
+look, and change only what a person approves.
+@CMD@ observe only previews: nothing changes and nothing is written.
+
+Exit: 0 nothing to do, 10 change needed, 20 blocked, 40 error.
+Example: @CMD@ observe
+See also: @CMD@ -h run, @CMD@ -h basics
+EOF
+    ;;
+    deceive) cat <<'EOF'
+Usage: @CMD@ deceive [-P NAME]
+       @CMD@ -r deceive
+
+The phase that plants traps to give an attacker away.
+@CMD@ deceive only previews: nothing changes and nothing is written.
+
+Exit: 0 nothing to do, 10 change needed, 20 blocked, 40 error.
+Example: @CMD@ deceive
+See also: @CMD@ -h run, @CMD@ -h basics
+EOF
+    ;;
+    sustain) cat <<'EOF'
+Usage: @CMD@ sustain [-P NAME]
+       @CMD@ -r sustain
+
+The phase that keeps everything running and lets you undo mistakes.
+@CMD@ sustain only previews: nothing changes and nothing is written.
+
+Exit: 0 nothing to do, 10 change needed, 20 blocked, 40 error.
+Example: @CMD@ sustain
+See also: @CMD@ -h run, @CMD@ -h basics
+EOF
+    ;;
+    basics) cat <<'EOF'
+Usage: @CMD@ -h basics
 
 Labyrinth makes this host harder to break into in five phases, in order:
 lockout, harden (later), observe, deceive, sustain. Each phase is a list of
-modules. A module does one small job, such as turning off SSH password
-logins. '$SELF help <module-id>' explains any module.
+modules. A module does one small job, such as turning off password
+logins. '@CMD@ -h MODULE-ID' explains any module.
 
-1. Plan: '$SELF plan lockout' shows what each module would change.
+1. Preview: '@CMD@ lockout' shows what each module would change.
    It changes nothing, so run it as often as you like.
-2. Apply: '$SELF apply lockout' plans again, has you name the
-   break-glass account the first time, asks you to type this host's
-   group name, then makes the changes and checks each one.
-3. Keep: an apply is a run, named by an ID; its last 4 characters are
-   enough. A revert timer undoes the run after a few minutes unless you
-   keep it, so a change that locks you out undoes itself. Log in from
-   a new session, and if that works, run '$SELF keep'.
+2. Run: '@CMD@ -r lockout' plans again, has you name the break-glass
+   account the first time, asks you to type this host's group name,
+   then makes the changes and checks each one.
+3. Keep: a run is named by an ID; its last 4 characters are enough.
+   A revert timer undoes the run after a few minutes unless you keep
+   it, so a change that locks you out undoes itself. Log in from a
+   new session, and if that works, run '@CMD@ -k ID'.
 
-To undo a run yourself: '$SELF rollback <run>'. To list the runs:
-'$SELF runs'. Scored services are the ones the scoring engine tests.
-Labyrinth tests them before and after each change, and undoes a change
-that breaks one. To test them now: '$SELF probe'.
-
-Exit: 0 printed.
-Example: $SELF help basics
-EOF
-    ;;
-    version) cat <<EOF
-Usage: $SELF version
-
-Print the version of Labyrinth and which program printed it.
-'-V' and '--version' do the same.
+To undo a run: @CMD@ -u ID; to list runs: @CMD@ --history.
+Scored services are the ones the scoring engine tests. Labyrinth tests
+them before and after each change, and undoes a change that breaks one.
+To test them now: '@CMD@ --probe'.
 
 Exit: 0 printed.
-Example: $SELF version
+Example: @CMD@ -h basics
 EOF
     ;;
   esac
@@ -337,8 +493,9 @@ cmd_help_module() {
   dir="$LAB_ROOT/phases/$phase/modules/${id#*.}"
   if [[ ! "$id" =~ $RE_MODULE_ID || ! -d "$dir" ]]; then
     # shellcheck disable=SC2046 # one word per module ID
-    hint="$(suggest "$id" basics $COMMANDS $(module_ids))"
-    usage_error "no module '$id'${hint:+ (did you mean '$hint'?)}" help
+    hint="$(suggest "$id" $(module_ids))"
+    help_unknown "$id" "$hint"
+    return 0
   fi
   YML_ERR=''
   if ! read_module_yml "$dir/module.yml" || ! validate_module "$dir/module.yml" "$id" "$phase"; then
@@ -433,22 +590,22 @@ run_recovery() {
       run_stopped
     else
       printf 'The run stopped. Its manifest lists what it did.\n'
-      printf 'To undo it: %s rollback %s\n' "$SELF" "${LAB_RUN_ID: -4}"
+      printf 'To undo it: %s -u %s\n' "$SELF" "${LAB_RUN_ID: -4}"
     fi
     return 0
   fi
   case "$CMD" in
     rollback)
       if [[ -n "$ref" ]]; then
-        printf 'The rollback did not finish, and it is safe to repeat.\n'
-        printf 'Retry: %s rollback %s\n' "$SELF" "${ref: -4}"
+        printf 'The undo did not finish, and it is safe to repeat.\n'
+        printf 'Retry: %s -u %s\n' "$SELF" "${ref: -4}"
       else
-        printf 'Nothing was rolled back.\n'
+        printf 'Nothing was undone.\n'
       fi ;;
     keep)
       if [[ -n "$ref" ]]; then
-        printf "The run may not be kept; '%s runs' shows its state.\n" "$SELF"
-        printf 'Retry: %s keep %s\n' "$SELF" "${ref: -4}"
+        printf "The run may not be kept; '%s --history' shows its state.\n" "$SELF"
+        printf 'Retry: %s -k %s\n' "$SELF" "${ref: -4}"
       else
         printf 'Nothing was kept.\n'
       fi ;;
@@ -461,10 +618,10 @@ run_stopped() {
   local when
   out 'The run stopped. Earlier changes stay until the revert timer undoes them.'
   if when="$(due_words "$LAB_RUN_ID")"; then
-    out "The revert timer rolls this run back $when."
+    out "The revert timer undoes this run $when."
   fi
-  out "To undo them now: $SELF rollback ${LAB_RUN_ID: -4}"
-  out "To keep them now: $SELF keep ${LAB_RUN_ID: -4}"
+  out "To undo them now: $SELF -u ${LAB_RUN_ID: -4}"
+  out "To keep them now: $SELF -k ${LAB_RUN_ID: -4}"
   out 'If in doubt, undo them.'
 }
 
@@ -486,17 +643,19 @@ due_words() {
   fi
 }
 
-# usage_error MESSAGE [COMMAND] [FIX]: a usage error: one line, the fix if
-# there is one, a pointer to help, exit 40 (docs/Conventions.md section 3.1).
+# usage_error MESSAGE [FIX]: a usage error: one line that starts with the
+# program's name as typed, the fix if there is one, a pointer to the help of
+# the action the line gives (TRY_TOPIC), exit 40 (docs/Conventions.md
+# section 3.3).
 usage_error() {
-  printf 'labyrinth: %s\n' "$1" >&2
-  if [[ -n "${3:-}" ]]; then printf '%s\n' "$3" >&2; fi
-  printf "Try '%s help%s' for more information.\n" "$SELF" "${2:+ $2}" >&2
+  printf '%s: %s\n' "$NAME" "$1" >&2
+  if [[ -n "${2:-}" ]]; then printf '%s\n' "$2" >&2; fi
+  printf "Try '%s%s -h'.\n" "$SELF" "${TRY_TOPIC:+ $TRY_TOPIC}" >&2
   exit 40
 }
 
-# parse_fail MESSAGE: note the first option error; main reports it once
-# the command is known, so the pointer to help names that command.
+# parse_fail MESSAGE: note the first line error; main reports it once the
+# whole line is read, so the pointer to help names the action it gives.
 parse_fail() { if [[ -z "$PARSE_ERR" ]]; then PARSE_ERR="$1"; fi; }
 
 # warn MESSAGE: a warning on stderr.
@@ -553,7 +712,7 @@ detail() {
 # runner (docs/Conventions.md section 3.2).
 more() {
   local l
-  printf -v l '  %-11s%s' More: "$SELF help $1"
+  printf -v l '  %-11s%s' More: "$SELF -h $1"
   out "$l"
 }
 
@@ -703,7 +862,7 @@ next_step() {
   if [[ "$mode" == apply ]] && (( STOPPED )); then
     out 'Next: undo the earlier changes, or keep them, with the commands above.'
   elif [[ "$mode" == apply ]] && lab_timer_armed "$LAB_RUN_ID"; then
-    out "Next: check you can log in from a NEW session, then '$SELF keep ${LAB_RUN_ID: -4}'."
+    out "Next: check you can log in from a NEW session, then '$SELF -k ${LAB_RUN_ID: -4}'."
   elif (( code == 40 )); then
     if (( ERROR_COUNT > 1 )); then
       out 'Next: fix the errors above, then run the same command again.'
@@ -718,23 +877,23 @@ next_step() {
       if [[ "${RUN_RISK[i]}" == manual-only ]]; then manual=$((manual + 1)); else other=$((other + 1)); fi
     done
     if (( other == 0 )); then
-      out 'Next: a person carries out the manual steps above; apply changes nothing.'
+      out 'Next: a person carries out the manual steps above; -r changes nothing.'
     elif [[ -z "${LAB_HOST_GROUP:-}" ]]; then
       out 'Next: list this host in the hosts file, with its group and profile;'
-      out "  apply needs it there: $LAB_CONFIG_DIR/hosts"
+      out "  -r needs it there: $LAB_CONFIG_DIR/hosts"
     elif [[ -n "${GIVEN[profile]:-}" && "${GIVEN[profile]}" != "$LAB_HOST_PROFILE" ]]; then
-      out "Next: apply uses this host's profile in the hosts file, $LAB_HOST_PROFILE."
-      out "  To apply ${GIVEN[profile]}, change that line first: $LAB_CONFIG_DIR/hosts"
+      out "Next: -r uses this host's profile in the hosts file, $LAB_HOST_PROFILE."
+      out "  To run ${GIVEN[profile]}, change that line first: $LAB_CONFIG_DIR/hosts"
     else
       if [[ -n "${GIVEN[profile]:-}" ]]; then opts+=" --profile ${GIVEN[profile]}"; fi
       if [[ -n "${GIVEN[root]:-}" ]]; then opts+=" --root $(shell_word "${GIVEN[root]}")"; fi
       if [[ -n "${GIVEN[config]:-}" ]]; then opts+=" --config $(shell_word "${GIVEN[config]}")"; fi
       # A command too long for one line goes on a line of its own.
-      if (( ${#SELF} + ${#phase} + ${#opts} + 13 > 78 )); then
+      if (( ${#SELF} + ${#phase} + ${#opts} + 10 > 78 )); then
         out 'Next:'
-        out "  $SELF apply $phase$opts"
+        out "  $SELF -r $phase$opts"
       else
-        out "Next: $SELF apply $phase$opts"
+        out "Next: $SELF -r $phase$opts"
       fi
     fi
   fi
@@ -772,7 +931,7 @@ finish() {
 }
 
 # mark_problems: note in the run folder that the run had problems, so
-# that 'runs' points to its log.
+# that --history points to its log.
 mark_problems() {
   : > "$LAB_STATE_DIR/runs/$LAB_RUN_ID/problems" 2> /dev/null || true
 }
@@ -817,84 +976,189 @@ suggest() {
   if [[ -n "$best" ]]; then printf '%s\n' "$best"; fi
 }
 
-# synonym WORD: the command an everyday word for it means, or nothing.
-synonym() {
-  case "$1" in
-    undo | revert) printf 'rollback\n' ;;
-    status | list) printf 'runs\n' ;;
-    check | test) printf 'probe\n' ;;
-    dry-run | dryrun) printf 'plan\n' ;;
-  esac
-}
-
-# opt_lookup KEY: the row of the option matched by KEY (lower case, no
-# dashes), in OPT_ROW; returns 1 if none.
+# opt_lookup KEY: the row of the option whose long name is KEY (lower case,
+# no dashes), in OPT_ROW; returns 1 if none.
 opt_lookup() {
-  local i k
+  local i
   for ((i = 0; i < ${#OPT_NAMES[@]}; i++)); do
-    for k in ${OPT_KEYS[i]}; do
-      if [[ "$k" == "$1" ]]; then OPT_ROW=$i; return 0; fi
-    done
+    if [[ "${OPT_KEYS[i]}" == "$1" ]]; then OPT_ROW=$i; return 0; fi
   done
   return 1
 }
 
-# parse_args WORD...: sort the words into options (GIVEN) and the rest
-# (WORDS). Options may come anywhere; '--' ends them.
+# short_lookup LETTER: the row of the option with this short letter (case
+# matters), in OPT_ROW; returns 1 if none.
+short_lookup() {
+  local i
+  for ((i = 0; i < ${#OPT_NAMES[@]}; i++)); do
+    if [[ -n "${OPT_SHORT[i]}" && "${OPT_SHORT[i]}" == "$1" ]]; then OPT_ROW=$i; return 0; fi
+  done
+  return 1
+}
+
+# show_opt NAME: how a message writes an option: the short letter of the
+# actions and of help, and --name for the rest.
+show_opt() {
+  case "$1" in
+    run) printf '%s' '-r' ;;
+    keep) printf '%s' '-k' ;;
+    undo) printf '%s' '-u' ;;
+    version) printf '%s' '-V' ;;
+    help) printf '%s' '-h' ;;
+    *) printf '%s' "--$1" ;;
+  esac
+}
+
+# plan_lookup short|key VALUE: the row of the planned flag with this short
+# letter or this long-name key, in PLAN_ROW; returns 1 if none.
+plan_lookup() {
+  local i
+  for ((i = 0; i < ${#PLAN_SHOW[@]}; i++)); do
+    if [[ "$1" == short && -n "${PLAN_SHORT[i]}" && "${PLAN_SHORT[i]}" == "$2" ]]       || [[ "$1" == key && -n "${PLAN_KEYS[i]}" && "${PLAN_KEYS[i]}" == "$2" ]]; then
+      PLAN_ROW=$i; return 0
+    fi
+  done
+  return 1
+}
+
+# plan_fail TYPED: note that the planned flag in PLAN_ROW is not built. A
+# short letter is shown with its long name.
+plan_fail() {
+  local more=''
+  if [[ "$1" == -? ]]; then more=" (${PLAN_SHOW[PLAN_ROW]})"; fi
+  parse_fail "'$1'$more is planned and not built yet"
+}
+
+# unknown_option WORD KEY: note an unknown long option: a planned one, or
+# with a near miss.
+unknown_option() {
+  local shown="${1%%[=:]*}" hint
+  if plan_lookup key "$2"; then plan_fail "$shown"; return 0; fi
+  hint="$(suggest "$2" "${OPT_KEYS[@]}")"
+  if [[ -n "$hint" ]] && opt_lookup "$hint"; then
+    parse_fail "unknown option '$shown' (did you mean '--${OPT_NAMES[OPT_ROW]}'?)"
+  fi
+  parse_fail "unknown option '$shown'"
+}
+
+# stack_error WORD KEY BAD: note why a single-dash word is neither a long
+# name nor a stack of short letters. KEY is the word without its dash, and
+# BAD its first letter that is not a short flag.
+stack_error() {
+  local shown="${1%%[=:]*}" key="$2" bad="$3" lk other what='' hint
+  if (( ${#key} > 1 )) && lk="${key,,}" && plan_lookup key "${lk//-/}"; then
+    plan_fail "$shown"; return 0
+  fi
+  if plan_lookup short "$bad"; then plan_fail "-$bad"; return 0; fi
+  if (( ${#key} == 1 )); then
+    # A lone letter of the wrong case is the commonest slip: -P for -p.
+    other="${bad^^}"
+    if [[ "$other" == "$bad" ]]; then other="${bad,,}"; fi
+    if short_lookup "$other"; then
+      case "$other" in V) what=', the version' ;; P) what=', the profile' ;; esac
+      parse_fail "unknown option '$shown' (did you mean '-$other'$what?)"
+    fi
+    parse_fail "unknown option '$shown'"
+    return 0
+  fi
+  lk="${key,,}"; lk="${lk//-/}"
+  hint="$(suggest "$lk" "${OPT_KEYS[@]}")"
+  if [[ -n "$hint" ]] && opt_lookup "$hint"; then
+    parse_fail "unknown option '$shown' (did you mean '--${OPT_NAMES[OPT_ROW]}'?)"
+  fi
+  parse_fail "unknown option '-$bad' in '$shown'"
+}
+
+# record_option ROW SEP VAL: record the option in row ROW. SEP is the
+# separator typed before VAL ('' when none); an option that takes a value
+# and has none there takes the next word, unless that word looks like an
+# option. -k and -u go without a value, and main lists the runs.
+record_option() {
+  local row="$1" sep="$2" val="$3" name show next=''
+  name="${OPT_NAMES[row]}"; show="$(show_opt "$name")"
+  if [[ "$name" == help ]]; then
+    if [[ -n "$sep" ]]; then parse_fail "$show takes no value"; fi
+    HELP_ASKED=1
+    return 0
+  fi
+  if (( OPT_VALUE[row] )); then
+    # '--name value', or PowerShell's '-Name:' with the value as the next word.
+    if [[ -z "$sep" || ( "$sep" == : && -z "$val" ) ]]; then
+      if (( P_I < ${#P_ARGS[@]} )); then next="${P_ARGS[P_I]}"; fi
+      if (( P_I >= ${#P_ARGS[@]} )) || [[ "$next" == -?* ]]; then
+        if [[ "$name" != keep && "$name" != undo ]]; then
+          if (( P_I >= ${#P_ARGS[@]} )); then
+            parse_fail "$show needs a value"
+          else
+            parse_fail "$show needs a value, but got '$next'"
+          fi
+          return 0
+        fi
+      else
+        val="$next"; P_I=$((P_I + 1))
+      fi
+    fi
+    if [[ -z "$val" && "$name" != keep && "$name" != undo ]]; then parse_fail "$show needs a value"; return 0; fi
+  elif [[ -n "$sep" ]]; then
+    parse_fail "$show takes no value"; return 0
+  fi
+  if [[ -n "${GIVEN[$name]+set}" ]]; then parse_fail "$show is given twice"; return 0; fi
+  GIVEN[$name]="$val"
+  if (( OPT_ACTION[row] )); then ACTIONS+=("$name"); fi
+}
+
+# parse_args WORD...: sort the words into options (GIVEN, ACTIONS), requests
+# for help (HELP_ASKED) and the rest (WORDS). Options may come anywhere; '--'
+# ends them. A single dash before a long name (-Undo) is that name, and
+# before anything else it is a stack of short letters, where a letter that
+# takes a value comes last (docs/Conventions.md section 3.3).
 parse_args() {
-  local w key val sep name hint ended=0
-  local -a keys=() parts=()
-  while (( $# > 0 )); do
-    w="$1"; shift
-    if (( ended )) || [[ "$w" != -?* ]]; then WORDS+=("$w"); continue; fi
+  local w key val sep lk long ended=0 n c ch bad
+  P_ARGS=("$@"); P_I=0
+  while (( P_I < ${#P_ARGS[@]} )); do
+    w="${P_ARGS[P_I]}"; P_I=$((P_I + 1))
+    if (( ended )); then WORDS+=("$w"); continue; fi
     case "$w" in
       --) ended=1; continue ;;
-      -h | '-?') w='--help' ;;
-      -V) w='--version' ;;
-      -v) parse_fail "unknown option '-v' (did you mean '-V', the version?)"; continue ;;
+      '-?' | '/?') HELP_ASKED=1; continue ;;
+      -?*) ;;
+      *) WORDS+=("$w"); continue ;;
     esac
-    key="${w#-}"; key="${key#-}"
-    val='' sep=''
+    key="${w#-}"; long=0; sep='' val=''
+    if [[ "$key" == -* ]]; then long=1; key="${key#-}"; fi
     if [[ "$key" =~ ^([^=:]*)([=:])(.*)$ ]]; then
       key="${BASH_REMATCH[1]}" sep="${BASH_REMATCH[2]}" val="${BASH_REMATCH[3]}"
     fi
-    key="${key,,}"; key="${key//-/}"
-    if ! opt_lookup "$key"; then
-      case "$key" in
-        dryrun) parse_fail "unknown option '${w%%[=:]*}' (did you mean the command 'plan'?)"; continue ;;
-        yes | force) parse_fail "unknown option '${w%%[=:]*}' (did you mean '--confirm-group'?)"; continue ;;
-      esac
-      keys=()
-      # One candidate per option, its first key, so a prefix of two keys
-      # of the same option still counts as one.
-      for name in "${OPT_KEYS[@]}"; do read -ra parts <<< "$name"; keys+=("${parts[0]}"); done
-      hint="$(suggest "$key" "${keys[@]}")"
-      if [[ -n "$hint" ]] && opt_lookup "$hint"; then
-        parse_fail "unknown option '${w%%[=:]*}' (did you mean '--${OPT_NAMES[OPT_ROW]}'?)"
-      fi
-      parse_fail "unknown option '${w%%[=:]*}'"
+    lk="${key,,}"; lk="${lk//-/}"
+    if (( long )) || opt_lookup "$lk"; then
+      if opt_lookup "$lk"; then record_option "$OPT_ROW" "$sep" "$val"; else unknown_option "$w" "$lk"; fi
       continue
     fi
-    name="${OPT_NAMES[OPT_ROW]}"
-    if (( OPT_VALUE[OPT_ROW] )); then
-      # '--name value', or PowerShell's '-Name:' with the value as the next word.
-      if [[ -z "$sep" || ( "$sep" == : && -z "$val" ) ]]; then
-        if (( $# == 0 )); then parse_fail "--$name needs a value"; continue; fi
-        if [[ "$1" == -?* ]]; then parse_fail "--$name needs a value, but got '$1'"; continue; fi
-        val="$1"; shift
+    # A stack of short letters. Check every letter before using any.
+    n=${#key} bad=''
+    for ((c = 0; c < n; c++)); do
+      ch="${key:c:1}"
+      if ! short_lookup "$ch"; then bad="$ch"; break; fi
+    done
+    if [[ -z "$key" ]]; then bad='-'; fi
+    if [[ -n "$bad" ]]; then stack_error "$w" "$key" "$bad"; continue; fi
+    for ((c = 0; c < n - 1; c++)); do
+      short_lookup "${key:c:1}"
+      if (( OPT_VALUE[OPT_ROW] )); then
+        parse_fail "$(show_opt "${OPT_NAMES[OPT_ROW]}") takes a value, so it must come last in '-$key'"
+        continue 2
       fi
-      if [[ -z "$val" ]]; then parse_fail "--$name needs a value"; continue; fi
-    elif [[ -n "$sep" ]]; then
-      parse_fail "--$name takes no value"; continue
-    fi
-    if [[ -n "${GIVEN[$name]+set}" ]]; then parse_fail "--$name is given twice"; continue; fi
-    GIVEN[$name]="$val"
+    done
+    for ((c = 0; c < n - 1; c++)); do
+      short_lookup "${key:c:1}"; record_option "$OPT_ROW" '' ''
+    done
+    short_lookup "${key:n-1:1}"; record_option "$OPT_ROW" "$sep" "$val"
   done
 }
 
-# check_used COMMAND OPTION...: note a warning for each value option given
-# that COMMAND does not use. flush_warnings prints them once the command has
-# passed its own checks, so a warning never comes before an error.
+# check_used LABEL OPTION...: note a warning for each value option given
+# that the action LABEL does not use. flush_warnings prints them once the
+# action has passed its own checks, so a warning never comes before an error.
 check_used() {
   local cmd="$1" name used u
   shift
@@ -1334,8 +1598,8 @@ plan_all() {
   if (( PHASE_COUNT == 0 )); then
     say WARN "Phase $1"
     detail Found "profile $OPT_PROFILE lists no $1 modules: nothing to check"
-    detail Fix "add $1 modules to the profile, or plan another phase"
-    detail More "$SELF help basics"
+    detail Fix "add $1 modules to the profile, or preview another phase"
+    detail More "$SELF -h basics"
   fi
   return "$worst"
 }
@@ -1400,7 +1664,7 @@ gate_breakglass() {
       out 'account, then type its name here.'
       ask 'Break-glass account name: ' \
         || die 'no answer: break-glass not confirmed; nothing was changed' 20 \
-          'Run apply again and answer the prompt, or name the account with --break-glass NAME.'
+          'Run the same command again and answer the prompt, or name the account with --break-glass NAME.'
       account="$ANSWER"
     fi
     if [[ "$(lab_protected_class "$account" || true)" != breakglass ]]; then
@@ -1442,7 +1706,7 @@ gate_confirm() {
   if [[ "$typed" != "$group" ]]; then
     if [[ -z "$typed" ]]; then typed='no group name was typed'; else typed="'$(safe_text "$typed")' was typed, not $group"; fi
     die "the plan was not confirmed: $typed; nothing was changed" 20 \
-      "Run apply again and type $group at the prompt, or give it with --confirm-group $group."
+      "Run the same command again and type $group at the prompt, or give it with --confirm-group $group."
   fi
   if (( BREAKGLASS_NEW )); then
     lab_breakglass_record "$BREAKGLASS" \
@@ -1516,19 +1780,19 @@ rollback_module() {
     # Checked by hand: this function is called with ||, so errexit is off.
     if ! record_for "$id" rolled_back; then
       say ERROR "$name"
-      detail Problem 'rolled back, but the manifest cannot be written'
-      detail Found 'the manifest still lists the change; rolling back again is safe'
-      detail Fix "run '$SELF rollback ${LAB_RUN_ID: -4}' again"
+      detail Problem 'undone, but the manifest cannot be written'
+      detail Found 'the manifest still lists the change; undoing it again is safe'
+      detail Fix "run '$SELF -u ${LAB_RUN_ID: -4}' again"
       log_ref; more "$id"
       return 40
     fi
     if [[ "$mode" == own ]]; then say OK "$name"; fi
-    detail Did 'rolled back'
+    detail Did 'undone'
     LAB_MODULE_ID="$id" lab_log_warn rolled_back "rolled back" 2> /dev/null
     return 0
   fi
   say ERROR "$name"
-  detail Problem "its rollback stopped with exit code $rc; the change may still be in place"
+  detail Problem "its undo stopped with exit code $rc; the change may still be in place"
   if [[ -f "$dir/rollback.sh" ]]; then detail Script "$dir/rollback.sh"; fi
   detail Fix "restore its files by hand from $LAB_BACKUP_DIR/$LAB_RUN_ID/$id"
   log_ref; more "$id"
@@ -1672,14 +1936,14 @@ approve_unmatched() {
 
 # check_approve: each --approve entry must be <module-id>:<item-id>@<fingerprint>.
 check_approve() {
-  local tok fix='Copy each item from a plan: the module ID, a colon, then the item as its Item line shows it.'
+  local tok fix='Copy each item from a preview: the module ID, a colon, then the item as its Item line shows it.'
   local -a words=()
   IFS=',' read -ra words <<< "${GIVEN[approve]},"
   for tok in "${words[@]}"; do
     if [[ "$tok" == *:category:* ]]; then
-      usage_error "--approve takes no categories, only items: '$tok'" apply "$fix"
+      usage_error "--approve takes no categories, only items: '$tok'" "$fix"
     fi
-    [[ "$tok" =~ $RE_APPROVE ]] || usage_error "--approve: not <module-id>:<item-id>@<fingerprint>: '$tok'" apply "$fix"
+    [[ "$tok" =~ $RE_APPROVE ]] || usage_error "--approve: not <module-id>:<item-id>@<fingerprint>: '$tok'" "$fix"
   done
 }
 
@@ -1735,7 +1999,7 @@ apply_one() {
   if [[ "$risk" != read-only ]]; then
     if ! lab_timer_arm "$((LAB_EVENT[REVERT_MINUTES] * 60))" "$LAB_RUN_ID" \
         "$BASH" "$LAB_ROOT/labyrinth.sh" --root "$(readlink -m -- "$DATA_ROOT")" \
-        --config "$(readlink -m -- "$LAB_CONFIG_DIR")" rollback "$LAB_RUN_ID"; then
+        --config "$(readlink -m -- "$LAB_CONFIG_DIR")" -u "$LAB_RUN_ID"; then
       say BLOCKED "$name"
       detail Problem 'the revert timer could not be armed, so nothing was changed'
       detail Fix 'check that systemd timers work on this host, then run the same command again'
@@ -1853,8 +2117,8 @@ unkept_modules() {
   done
 }
 
-# check_host: the host checks for plan, apply and probe (docs/Conventions.md
-# section 3.1). keep, rollback and runs skip them, so a stored revert-timer
+# check_host: the host checks for a preview, -r and --probe (docs/Conventions.md
+# section 3.1). -k, -u and --history skip them, so a stored revert-timer
 # command still works after the configuration changes.
 check_host() {
   local rc=0 host
@@ -1936,7 +2200,7 @@ plan_intro() {
     if [[ -n "${LAB_HOST_GROUP:-}" ]]; then
       out "Host $host is in group ${LAB_HOST_GROUP}."
     else
-      out "Host $host is not in the hosts file; apply needs it there."
+      out "Host $host is not in the hosts file; -r needs it there."
     fi
   else
     out 'First Labyrinth plans; nothing changes until you confirm.'
@@ -1985,7 +2249,7 @@ cmd_apply() {
   export LAB_DRY_RUN=1
   umask 077
   host="$(lab_host)"
-  lab_is_admin || die 'apply needs root' 20 "$FIX_ADMIN"
+  lab_is_admin || die '-r needs root' 20 "$FIX_ADMIN"
   gate_trusted
   rc=0; host_lookup "$host" || rc=$?
   (( rc == 0 )) || die "this host is not in the hosts file, so its group is unknown" 20 \
@@ -2016,7 +2280,7 @@ cmd_apply() {
   plan_all "$phase" || worst=$?
   if (( worst >= 40 )); then
     out ''
-    out 'The plan has errors, so apply stops here.'
+    out 'The plan has errors, so the run stops here.'
     finish apply "$worst" "$phase"
   fi
   if [[ -n "${GIVEN[approve]+set}" ]]; then approve_unmatched; fi
@@ -2082,14 +2346,14 @@ cmd_apply() {
     out 'All changes are applied and verified.'
     out 'From a NEW session, check that you can still log in.'
     if when="$(due_words "$LAB_RUN_ID")"; then
-      out "The revert timer rolls this run back $when."
+      out "The revert timer undoes this run $when."
     fi
     if ask 'Type keep to keep the changes, or press Enter to leave them to the timer: ' \
         && [[ "$ANSWER" == keep ]]; then
       keep_run || worst=$?
     else
-      out "Not kept. To keep later: $SELF keep ${LAB_RUN_ID: -4}"
-      out "To undo now: $SELF rollback ${LAB_RUN_ID: -4}"
+      out "Not kept. To keep later: $SELF -k ${LAB_RUN_ID: -4}"
+      out "To undo now: $SELF -u ${LAB_RUN_ID: -4}"
     fi
   fi
   finish apply "$worst" "$phase"
@@ -2105,8 +2369,8 @@ keep_run() {
   lab_lock_acquire 10 || return 20
   if run_rolled_back; then
     lab_lock_release
-    err "labyrinth: too late: run $LAB_RUN_ID was already rolled back"
-    err 'Its changes are gone. Plan and apply again if you still want them.'
+    err "labyrinth: too late: run $LAB_RUN_ID was already undone"
+    err 'Its changes are gone. Preview and run it again if you still want them.'
     return 20
   fi
   # Checked by hand: errexit is off inside a function called with ||.
@@ -2115,8 +2379,8 @@ keep_run() {
     local when=''
     if when="$(due_words "$LAB_RUN_ID")"; then when=" $when"; fi
     err "labyrinth: the revert timer for run $LAB_RUN_ID could not be cancelled"
-    err "The run is not kept, and the timer still rolls it back$when."
-    err "Retry: $SELF keep ${LAB_RUN_ID: -4}"
+    err "The run is not kept, and the timer still undoes it$when."
+    err "Retry: $SELF -k ${LAB_RUN_ID: -4}"
     return 40
   fi
   if ! record_for '' run_kept; then
@@ -2148,7 +2412,7 @@ run_state() {
   line="$(grep '"action":"run_rolled_back"' "$f" 2> /dev/null | tail -n 1)" || true
   if [[ -n "$line" ]]; then
     note="$(lab_json_get "$line" note)" || note=''
-    if [[ "$note" == 'exit 0' ]]; then printf 'rolled back\n'; else printf 'rolled back with errors\n'; fi
+    if [[ "$note" == 'exit 0' ]]; then printf 'undone\n'; else printf 'undone with errors\n'; fi
     return 0
   fi
   if grep -q '"action":"run_kept"' "$f" 2> /dev/null; then printf 'kept\n'; return 0; fi
@@ -2159,11 +2423,11 @@ run_state() {
       printf 'armed: timer lost\n'
       return 0
     fi
-    if ! due="$(lab_timer_due "$1")"; then printf 'armed: rollback time unknown\n'; return 0; fi
+    if ! due="$(lab_timer_due "$1")"; then printf 'armed: undo time unknown\n'; return 0; fi
     now="$(lab_now)"
     # The times are UTC in one fixed format, so they compare as strings.
     if [[ "$due" > "$now" ]]; then
-      printf 'armed: rolls back at %s UTC\n' "${due:11:5}"
+      printf 'armed: undo at %s UTC\n' "${due:11:5}"
     else
       printf 'armed: was due %s UTC\n' "${due:11:5}"
     fi
@@ -2194,7 +2458,7 @@ print_runs() {
 cmd_runs() {
   local -a runs=()
   local list
-  lab_is_admin || die 'runs needs root' 20 "$FIX_ADMIN"
+  lab_is_admin || die '--history needs root' 20 "$FIX_ADMIN"
   list="$(list_runs)" || die "the runs in $LAB_STATE_DIR/runs cannot be read" 40 "$FIX_DATA"
   flush_warnings
   if [[ -n "$list" ]]; then mapfile -t runs <<< "$list"; fi
@@ -2208,7 +2472,7 @@ cmd_runs() {
   local example="${runs[${#runs[@]}-1]}" armed id
   armed="$(armed_runs)" || armed=''
   if [[ -n "$armed" ]]; then example="${armed##*$'\n'}"; fi
-  printf "\nName a run by its last 4 characters, like '%s keep %s'.\n" "$SELF" "${example: -4}"
+  printf "\nName a run by its last 4 characters, like '%s -k %s'.\n" "$SELF" "${example: -4}"
   local -a probs=()
   for id in "${runs[@]}"; do
     if [[ -f "$LAB_STATE_DIR/runs/$id/problems" ]]; then probs+=("$id"); fi
@@ -2222,25 +2486,25 @@ cmd_runs() {
   exit 0
 }
 
-# resolve_run COMMAND REF: the full run ID REF names, in RUN_REF. REF is a
-# full ID, or its last 4 characters if they match exactly one run.
+# resolve_run REF: the full run ID REF names, in RUN_REF. REF is a full ID,
+# or its last 4 characters if they match exactly one run.
 resolve_run() {
-  local cmd="$1" ref="${2,,}" id list
+  local ref="${1,,}" id list
   local -a hits=()
-  if [[ "$2" =~ $RE_RUN_ID ]]; then
-    [[ -f "$LAB_STATE_DIR/runs/$2/manifest.jsonl" ]] \
-      || usage_error "no run $2 on this host" "$cmd" "'$SELF runs' lists them."
-    RUN_REF="$2"; return 0
+  if [[ "$1" =~ $RE_RUN_ID ]]; then
+    [[ -f "$LAB_STATE_DIR/runs/$1/manifest.jsonl" ]] \
+      || usage_error "no run $1 on this host" "'$SELF --history' lists them."
+    RUN_REF="$1"; return 0
   fi
   list="$(list_runs)" || die "the runs in $LAB_STATE_DIR/runs cannot be read" 40 "$FIX_DATA"
   for id in $list; do
     if [[ "${id: -4}" == "$ref" ]]; then hits+=("$id"); fi
   done
   case "${#hits[@]}" in
-    0) usage_error "no run ending in '$2' on this host" "$cmd" "'$SELF runs' lists them." ;;
+    0) usage_error "no run ending in '$1' on this host" "'$SELF --history' lists them." ;;
     1) RUN_REF="${hits[0]}"
        printf 'using run %s\n' "$RUN_REF" ;;
-    *) usage_error "'$2' ends more than one run; give the full ID" "$cmd" "'$SELF runs' lists them." ;;
+    *) usage_error "'$1' ends more than one run; give the full ID" "'$SELF --history' lists them." ;;
   esac
 }
 
@@ -2257,25 +2521,24 @@ cmd_keep() {
   local rc=0 list
   local -a armed=()
   export LAB_DRY_RUN=0
-  lab_is_admin || die 'keep needs root' 20 "$FIX_ADMIN"
-  gate_trusted
   if [[ -z "$1" ]]; then
-    # Without a run, keep the one run whose timer is armed (section 3.1).
+    # -k always needs a run (section 3.3): list the armed ones, keep none.
+    if ! lab_is_admin; then
+      usage_error '-k needs a run ID, or its last 4 characters' "As root, '$SELF --history' lists them."
+    fi
+    gate_trusted
     list="$(armed_runs)" || die "the runs in $LAB_STATE_DIR/runs cannot be read" 40 "$FIX_DATA"
-    if [[ -n "$list" ]]; then mapfile -t armed <<< "$list"; fi
-    case "${#armed[@]}" in
-      0) out 'There is nothing to keep: no run on this host has an armed revert timer.'
-         exit 0 ;;
-      1) RUN_REF="${armed[0]}"
-         printf 'using run %s\n' "$RUN_REF" ;;
-      *) print_runs "${armed[@]}" >&2
-         usage_error 'more than one run has an armed revert timer' keep "Name one, like '$SELF keep ${armed[0]: -4}'." ;;
-    esac
-  else
-    resolve_run keep "$1"
+    if [[ -z "$list" ]]; then
+      usage_error '-k needs a run ID, or its last 4 characters' 'No run on this host has an armed revert timer.'
+    fi
+    mapfile -t armed <<< "$list"; print_runs "${armed[@]}" >&2
+    usage_error '-k needs a run ID, or its last 4 characters' 'These runs have an armed revert timer; pick one from the list above.'
   fi
+  lab_is_admin || die '-k needs root' 20 "$FIX_ADMIN"
+  gate_trusted
+  resolve_run "$1"
   export LAB_RUN_ID="$RUN_REF"
-  [[ -f "$(lab_manifest_file)" ]] || die "no run $LAB_RUN_ID on this host" 40 "'$SELF runs' lists them."
+  [[ -f "$(lab_manifest_file)" ]] || die "no run $LAB_RUN_ID on this host" 40 "'$SELF --history' lists them."
   flush_warnings
   umask 077
   log_open "keep run $LAB_RUN_ID"
@@ -2290,22 +2553,23 @@ cmd_rollback() {
   export LAB_DRY_RUN=0
   umask 077
   if [[ -z "$1" ]]; then
-    # Rollback always needs a run (decision D3): list them, change nothing.
+    # -u always needs a run (decision D3): list them, change nothing.
     if ! lab_is_admin; then
-      usage_error 'rollback needs a run ID, or its last 4 characters' rollback "As root, '$SELF runs' lists them."
+      usage_error '-u needs a run ID, or its last 4 characters' "As root, '$SELF --history' lists them."
     fi
+    gate_trusted
     list="$(list_runs)" || true
     if [[ -z "$list" ]]; then
-      usage_error 'rollback needs a run ID, or its last 4 characters' rollback 'There are no runs on this host.'
+      usage_error '-u needs a run ID, or its last 4 characters' 'There are no runs on this host.'
     fi
     mapfile -t runs <<< "$list"; print_runs "${runs[@]}" >&2
-    usage_error 'rollback needs a run ID, or its last 4 characters' rollback 'Pick one from the list above.'
+    usage_error '-u needs a run ID, or its last 4 characters' 'Pick one from the list above.'
   fi
-  lab_is_admin || die 'rollback needs root' 20 "$FIX_ADMIN"
+  lab_is_admin || die '-u needs root' 20 "$FIX_ADMIN"
   gate_trusted
-  resolve_run rollback "$1"
+  resolve_run "$1"
   export LAB_RUN_ID="$RUN_REF"
-  [[ -f "$(lab_manifest_file)" ]] || die "no run $LAB_RUN_ID on this host" 40 "'$SELF runs' lists them."
+  [[ -f "$(lab_manifest_file)" ]] || die "no run $LAB_RUN_ID on this host" 40 "'$SELF --history' lists them."
   flush_warnings
   # The revert timer must work even if a run still holds the lock, hung or
   # waiting at a prompt. That run is stopped first: rolling back beside it
@@ -2318,22 +2582,22 @@ cmd_rollback() {
   if (( locked )); then
     trap 'lab_lock_release' EXIT
   else
-    warn 'rolling back without the run lock'
+    warn 'undoing without the run lock'
   fi
   # Captured, not read from a process substitution, so a failure is seen.
-  list="$(lab_manifest_applied "$LAB_RUN_ID")" || die "the manifest of run $LAB_RUN_ID cannot be read" 40 'Nothing was rolled back.'
+  list="$(lab_manifest_applied "$LAB_RUN_ID")" || die "the manifest of run $LAB_RUN_ID cannot be read" 40 'Nothing was undone.'
   if [[ -n "$list" ]]; then mapfile -t mods <<< "$list"; fi
   # Modules kept once verified stay, unless --all (section 3.1).
   if [[ -z "${GIVEN[all]+set}" ]]; then
-    kept="$(lab_manifest_kept "$LAB_RUN_ID")" || die "the manifest of run $LAB_RUN_ID cannot be read" 40 'Nothing was rolled back.'
+    kept="$(lab_manifest_kept "$LAB_RUN_ID")" || die "the manifest of run $LAB_RUN_ID cannot be read" 40 'Nothing was undone.'
     for id in "${mods[@]+"${mods[@]}"}"; do
       if lab_in_list "$id" "${kept//$'\n'/ }"; then left+=("$id"); else rest+=("$id"); fi
     done
     mods=("${rest[@]+"${rest[@]}"}")
   fi
   # A rollback started by the revert timer is logged too, though no one watches it.
-  log_open "rollback run $LAB_RUN_ID"
-  out "labyrinth $LAB_VERSION: rollback run $LAB_RUN_ID"
+  log_open "undo run $LAB_RUN_ID"
+  out "labyrinth $LAB_VERSION: undo run $LAB_RUN_ID"
   if (( ${#left[@]} > 0 )); then
     out 'Kept once verified, so left in place (add --all to undo these too):'
     for id in "${left[@]}"; do
@@ -2361,16 +2625,16 @@ cmd_rollback() {
   # A timer left armed runs this rollback again, which is safe.
   if ! lab_timer_cancel "$LAB_RUN_ID"; then
     err "labyrinth: warning: the revert timer for run $LAB_RUN_ID could not be removed"
-    err 'When it fires, it repeats this rollback, which is safe.'
+    err 'When it fires, it repeats this undo, which is safe.'
   fi
   if ! record_for '' run_rolled_back '' "exit $rc"; then
-    err 'labyrinth: rolled back, but the manifest cannot be written to record it'
+    err 'labyrinth: the changes are undone, but the manifest cannot be written to record it'
     rc=40
   fi
   lab_log_warn run_rolled_back "run rolled back, exit $rc" 2> /dev/null
   if (( ok + bad > 0 )); then
     # Whoever is logged in learns that changes were undone; best effort.
-    lab_notify_all "Labyrinth rolled back run $LAB_RUN_ID on $(lab_host): its changes are undone. See '$SELF runs'." || true
+    lab_notify_all "Labyrinth undid run $LAB_RUN_ID on $(lab_host): its changes are undone. See '$SELF --history'." || true
   fi
   out ''
   parts=''
@@ -2383,12 +2647,12 @@ cmd_rollback() {
   esac
   if [[ -n "$LOG_FILE" ]]; then out "Log: $LOG_FILE"; fi
   if (( rc == 0 )); then
-    out 'rollback finished: exit 0 (rolled back)'
+    out 'undo finished: exit 0 (undone)'
   else
     mark_problems
-    out 'Next: fix what is listed above, then run the rollback again; it is safe:'
-    out "  $SELF rollback ${LAB_RUN_ID: -4}"
-    out "rollback finished: exit $rc (error)"
+    out 'Next: fix what is listed above, then undo it again; it is safe:'
+    out "  $SELF -u ${LAB_RUN_ID: -4}"
+    out "undo finished: exit $rc (error)"
   fi
   exit "$rc"
 }
@@ -2427,11 +2691,11 @@ probe_report() {
   done
   printf 'Summary: %s\n' "${out:-no services}"
   if (( count[FAIL] == 1 )); then
-    printf "Next: bring the failed service back, then run '%s probe' again.\n" "$SELF"
+    printf "Next: bring the failed service back, then run '%s --probe' again.\n" "$SELF"
     printf 'probe finished: exit 30 (a service failed)\n'
     exit 30
   elif (( count[FAIL] > 1 )); then
-    printf "Next: bring the failed services back, then run '%s probe' again.\n" "$SELF"
+    printf "Next: bring the failed services back, then run '%s --probe' again.\n" "$SELF"
     printf 'probe finished: exit 30 (%d services failed)\n' "${count[FAIL]}"
     exit 30
   fi
@@ -2439,131 +2703,142 @@ probe_report() {
   exit 0
 }
 
-main() {
-  local cmd='' word='' lc phase
-  parse_args "$@"
-  set -- "${WORDS[@]+"${WORDS[@]}"}"
-  if [[ -n "$PARSE_ERR" ]]; then
-    # Point to the help of the command the line names, if it names one.
-    lc="${1:-}"; lc="${lc,,}"
-    if lab_in_list "$lc" "$PHASES"; then
-      if [[ -n "${GIVEN[apply]+set}" ]]; then lc=apply; else lc=plan; fi
-    elif ! lab_in_list "$lc" "$COMMANDS" || [[ "$lc" == help || "$lc" == version ]]; then
-      lc=''
-    fi
-    usage_error "$PARSE_ERR" "$lc"
-  fi
+# help_unknown WORD HINT: a help topic that does not exist: one line, with a
+# near miss if there is one, then the main help. Still exit 0.
+help_unknown() {
+  printf "No help for '%s'%s. Here is the main help.\n" "$1" "${2:+ (did you mean '$2'?)}"
+  cmd_help ''
+}
 
-  # Work out the command; the whole line must parse before help is shown.
-  if (( $# > 0 )); then
-    lc="${1,,}"
-    if lab_in_list "$lc" "$COMMANDS"; then
-      cmd="$lc"; shift
-    elif lab_in_list "$lc" "$PHASES"; then
-      cmd=plan                        # compatibility: a phase alone
+# show_help: the help the line asks for, and nothing else (docs/Conventions.md
+# section 3.3). The topic is the first action typed, else the first word (a
+# phase, 'basics', a module ID, or the long name of an action or option),
+# else the first option that has a page. Called before anything is read.
+show_help() {
+  local topic='' w lk hint name
+  if (( ${#ACTIONS[@]} > 0 )); then
+    topic="${ACTIONS[0]}"
+  elif (( ${#WORDS[@]} > 0 )); then
+    w="${WORDS[0]}"; lk="${w,,}"; lk="${lk//-/}"
+    if [[ "${w,,}" == *.* ]]; then cmd_help_module "${w,,}"; return 0; fi
+    if [[ "$lk" == basics ]] || lab_in_list "$lk" "$PHASES"; then
+      topic="$lk"
+    elif [[ "$lk" == help ]]; then
+      topic=''
+    elif opt_lookup "$lk"; then
+      topic="${OPT_NAMES[OPT_ROW]}"
     else
-      local hint
-      hint="$(synonym "$lc")"
-      if [[ -z "$hint" ]]; then hint="$(suggest "$lc" $COMMANDS $PHASES)"; fi
-      if [[ "$1" == '/?' ]]; then hint=help; fi
-      usage_error "unknown command '$1'${hint:+ (did you mean '$hint'?)}"
+      # shellcheck disable=SC2046 # one word per module ID
+      hint="$(suggest "$lk" basics $PHASES "${OPT_KEYS[@]}")"
+      if [[ -n "$hint" ]] && opt_lookup "$hint"; then hint="${OPT_NAMES[OPT_ROW]}"; fi
+      help_unknown "$w" "$hint"
+      return 0
     fi
+  else
+    for name in all profile root config break-glass confirm-group approve; do
+      if [[ -n "${GIVEN[$name]+set}" ]]; then topic="$name"; break; fi
+    done
   fi
-  if [[ -n "${GIVEN[apply]+set}" ]]; then
-    case "$cmd" in
-      plan) [[ "${lc:-}" != plan ]] || usage_error "plan and --apply conflict; use '$SELF apply <phase>'" apply
-            cmd=apply ;;
-      apply) ;;
-      '') usage_error '--apply needs a phase' apply ;;
-      *) usage_error "--apply cannot be used with $cmd" "$cmd" ;;
-    esac
-  fi
-  if [[ -n "${GIVEN[all]+set}" && -n "$cmd" && "$cmd" != rollback && "$cmd" != help ]]; then
-    usage_error "--all is only for rollback, not $cmd" "$cmd"
-  fi
-  # The whole line must parse before help or the version is shown.
-  local helping=0
-  if [[ -n "${GIVEN[help]+set}" || -n "${GIVEN[version]+set}" ]]; then helping=1; fi
+  cmd_help "$topic"
+}
+
+# set_try_topic: what the Try line of a usage error puts before -h: the
+# first action typed, else the phase typed.
+set_try_topic() {
+  local w=''
+  if (( ${#ACTIONS[@]} > 0 )); then TRY_TOPIC="$(show_opt "${ACTIONS[0]}")"; return 0; fi
+  if (( ${#WORDS[@]} > 0 )); then w="${WORDS[0],,}"; fi
+  if lab_in_list "$w" "$PHASES"; then TRY_TOPIC="$w"; fi
+  return 0
+}
+
+# bad_word WORD: the usage error for a word that is not a phase. The long
+# name of an action gets the real form; a near miss of a phase gets that.
+bad_word() {
+  local lc="${1,,}" hint
+  case "${lc//-/}" in
+    run) hint="$SELF -r PHASE" ;;
+    keep) hint="$SELF -k ID" ;;
+    undo) hint="$SELF -u ID" ;;
+    history) hint="$SELF --history" ;;
+    probe) hint="$SELF --probe" ;;
+    version) hint="$SELF -V" ;;
+    *) hint="$(suggest "$lc" $PHASES)" ;;
+  esac
+  usage_error "'$1' is not a phase.${hint:+ Did you mean '$hint'?}" \
+    'The phases are lockout, observe, deceive and sustain.'
+}
+
+main() {
+  local action='' word='' phase='' label shown
   local -a used=()
-  case "$cmd" in
-    '')
-      if [[ -n "${GIVEN[help]+set}" ]]; then cmd_help ''; exit 0; fi
-      if [[ -n "${GIVEN[version]+set}" ]]; then cmd_version; exit 0; fi
-      {
-        printf 'labyrinth: no command given\n'
-        printf 'Start here:\n'
-        printf '  1. %s help basics    what Labyrinth does, in plain words\n' "$SELF"
-        printf '  2. %s plan lockout   what the first phase would change; safe\n' "$SELF"
-        printf '  3. %s help           every command\n' "$SELF"
-        printf 'Usage: %s <command> [<phase> | <run>] [options]\n' "$SELF"
-      } >&2
-      exit 40 ;;
-    help)
-      word="${1:-}"; word="${word,,}"
-      if (( $# > 1 )); then
-        if lab_in_list "$word" "$COMMANDS"; then
-          usage_error "unexpected word '$2' after 'help $1'" "$word"
-        fi
-        usage_error "unexpected word '$2' after 'help $1'" help
-      fi
-      if [[ "$word" == basics ]]; then cmd_help basics; exit 0; fi
-      if [[ "$word" == *.* ]]; then cmd_help_module "$word"; exit 0; fi
-      if [[ -n "$word" ]] && ! lab_in_list "$word" "$COMMANDS"; then
-        local hint
-        hint="$(synonym "$word")"
-        if [[ -z "$hint" ]]; then hint="$(suggest "$word" basics $COMMANDS)"; fi
-        usage_error "no help for '$1'${hint:+ (did you mean '$hint'?)}"
-      fi
-      # 'help plan --help' is help on plan; 'help --help' is help on help.
-      if [[ -z "$word" && -n "${GIVEN[help]+set}" ]]; then word=help; fi
-      cmd_help "$word"; exit 0 ;;
-    version)
-      (( $# == 0 )) || usage_error "unexpected word '$1' after 'version'" version ;;
-    plan | apply)
+  parse_args "$@"
+  # Help never runs anything: it comes before every other check and read,
+  # whatever else the line says. Typing nothing is the same page.
+  if (( HELP_ASKED )); then show_help; exit 0; fi
+  if (( $# == 0 )); then cmd_help ''; exit 0; fi
+  set_try_topic
+  if [[ -n "$PARSE_ERR" ]]; then usage_error "$PARSE_ERR"; fi
+  if (( ${#ACTIONS[@]} > 1 )); then
+    usage_error "two actions on one line: $(show_opt "${ACTIONS[0]}") and $(show_opt "${ACTIONS[1]}")" \
+      'Give one action at a time.'
+  fi
+  action="${ACTIONS[0]:-}"
+  if [[ -n "${GIVEN[all]+set}" && "$action" != undo ]]; then
+    if [[ -z "$action" ]]; then
+      usage_error '--all is only for -u, not a preview'
+    fi
+    usage_error "--all is only for -u, not $(show_opt "$action")"
+  fi
+  set -- "${WORDS[@]+"${WORDS[@]}"}"
+  case "$action" in
+    '' | run)
       if (( $# == 0 )); then
-        (( helping )) || usage_error "$cmd needs a phase: lockout, observe, deceive or sustain" "$cmd"
-      else
-        phase="${1,,}"
-        if [[ "$phase" == probe ]]; then usage_error "probe is a command, not a phase: run '$SELF probe'" probe; fi
-        if ! lab_in_list "$phase" "$PHASES"; then
-          local hint
-          hint="$(suggest "$phase" $PHASES)"
-          usage_error "unknown phase '$1'${hint:+ (did you mean '$hint'?)}" "$cmd"
+        if [[ -z "$action" ]]; then
+          usage_error 'no phase or action given' \
+            'Give a phase to preview, such as observe, or an action such as -r PHASE.'
         fi
-        (( $# == 1 )) || usage_error "unexpected word '$2' after '$cmd $phase'" "$cmd"
+        usage_error '-r needs a phase: lockout, observe, deceive or sustain'
       fi
-      if [[ "$cmd" == plan ]]; then used=(profile); else used=(profile break-glass confirm-group approve); fi ;;
-    keep | rollback)
-      # Without a run, keep and rollback decide what to do (section 3.1).
-      (( $# <= 1 )) || usage_error "unexpected word '$2' after '$cmd $1'" "$cmd"
-      word="${1:-}"
+      phase="${1,,}"
+      lab_in_list "$phase" "$PHASES" || bad_word "$1"
+      shown="${action:+-r }$phase"
+      (( $# == 1 )) || usage_error "unexpected word '$2' after '$shown'"
+      if [[ -z "$action" ]]; then
+        label='a preview'; used=(profile)
+      else
+        label='-r'; used=(profile break-glass confirm-group approve)
+      fi ;;
+    keep | undo)
+      word="${GIVEN[$action]}"
+      (( $# == 0 )) || usage_error "unexpected word '$1' after '$(show_opt "$action")${word:+ $word}'"
       # A full run ID is accepted in any case, like its last 4 characters.
       if [[ "${word,,}" =~ ^[0-9]{8}t[0-9]{6}z-[0-9a-f]{4}$ ]]; then
         word="${word,,}"; word="${word:0:8}T${word:9:6}Z${word:16}"
       fi
       if [[ -n "$word" && ! "$word" =~ $RE_RUN_ID && ! "$word" =~ ^[0-9a-fA-F]{4}$ ]]; then
-        usage_error "not a run ID: '$word' (give the ID or its last 4 characters)" "$cmd"
-      fi ;;
-    runs | probe)
-      (( $# == 0 )) || usage_error "unexpected word '$1' after '$cmd'" "$cmd" ;;
+        usage_error "not a run ID: '$word' (give the ID or its last 4 characters)"
+      fi
+      label="$(show_opt "$action")" ;;
+    probe | history | version)
+      (( $# == 0 )) || usage_error "unexpected word '$1' after '$(show_opt "$action")'"
+      label="$(show_opt "$action")" ;;
   esac
-  if [[ -n "${GIVEN[help]+set}" ]]; then cmd_help "$cmd"; exit 0; fi
-  if [[ -n "${GIVEN[version]+set}" ]]; then cmd_version; exit 0; fi
-  if [[ "$cmd" == version ]]; then cmd_version; exit 0; fi
+  if [[ "$action" == version ]]; then cmd_version; exit 0; fi
 
   OPT_PROFILE="${GIVEN[profile]:-}"
   OPT_BREAKGLASS="${GIVEN[break-glass]:-}"
   OPT_CONFIRM="${GIVEN[confirm-group]:-}"
   DATA_ROOT="${GIVEN[root]:-/opt/labyrinth}"
   if [[ -n "$OPT_PROFILE" && ! "$OPT_PROFILE" =~ ^[a-z0-9-]+$ ]]; then
-    usage_error "invalid profile name '$OPT_PROFILE' (lower-case letters, digits and -)" "$cmd"
+    usage_error "invalid profile name '$OPT_PROFILE' (lower-case letters, digits and -)"
   fi
-  [[ "$DATA_ROOT" == /* ]] || usage_error "--root must be a full path, not '$DATA_ROOT'" "$cmd"
-  [[ -z "${GIVEN[config]:-}" || "${GIVEN[config]}" == /* ]] || usage_error "--config must be a full path, not '${GIVEN[config]}'" "$cmd"
-  if [[ "$cmd" == apply && -n "${GIVEN[approve]+set}" ]]; then check_approve; fi
+  [[ "$DATA_ROOT" == /* ]] || usage_error "--root must be a full path, not '$DATA_ROOT'"
+  [[ -z "${GIVEN[config]:-}" || "${GIVEN[config]}" == /* ]] || usage_error "--config must be a full path, not '${GIVEN[config]}'"
+  if [[ "$action" == run && -n "${GIVEN[approve]+set}" ]]; then check_approve; fi
 
-  # Noted now, printed by each command once its own checks pass.
-  check_used "$cmd" "${used[@]+"${used[@]}"}"
+  # Noted now, printed by each action once its own checks pass.
+  check_used "$label" "${used[@]+"${used[@]}"}"
 
   LAB_CONFIG_DIR="${GIVEN[config]:-$DATA_ROOT/etc}"
   LAB_STATE_DIR="$DATA_ROOT/state"
@@ -2572,12 +2847,21 @@ main() {
   LAB_RUN_ID="$(new_run_id)"
   export LAB_CONFIG_DIR LAB_STATE_DIR LAB_LOG_DIR LAB_BACKUP_DIR LAB_RUN_ID
 
-  CMD="$cmd"
-  case "$cmd" in plan | apply | probe) check_host ;; esac
-  case "$cmd" in
+  # The actions keep their internal names: preview is plan, -r is apply,
+  # -u is rollback and --history is runs.
+  case "$action" in
+    '') CMD=plan ;;
+    run) CMD=apply ;;
+    undo) CMD=rollback ;;
+    history) CMD=runs ;;
+    *) CMD="$action" ;;
+  esac
+  case "$CMD" in plan | apply | probe) check_host ;; esac
+  case "$CMD" in
     plan) cmd_plan "$phase" ;;
     apply) cmd_apply "$phase" ;;
-    keep | rollback) "cmd_$cmd" "$word" ;;
+    keep) cmd_keep "$word" ;;
+    rollback) cmd_rollback "$word" ;;
     probe) cmd_probe ;;
     runs) cmd_runs ;;
   esac

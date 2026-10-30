@@ -31,6 +31,8 @@ function Initialize-TestLab {
     $self = Join-Path $t.Lab 'labyrinth.ps1'
     if ($self -notmatch '^[A-Za-z0-9_.:\\/~-]+$') { $self = "& '" + $self.Replace("'", "''") + "'" }
     $t | Add-Member -NotePropertyName Self -NotePropertyValue $self
+    # The name a usage error starts with: the path as the tests start it.
+    $t | Add-Member -NotePropertyName Name -NotePropertyValue (Join-Path $t.Lab 'labyrinth.ps1')
     return $t
 }
 
@@ -103,13 +105,14 @@ function Invoke-TestPlan {
 
 function Invoke-TestApply {
     param($T, [string[]] $Answers = @(), [string[]] $Extra = @())
-    Invoke-TestLab $T (@('observe', '-Apply', '-Root', $T.Root, '-Config', $T.Etc) + $Extra) -Answers $Answers
+    Invoke-TestLab $T (@('-r', 'observe', '-Root', $T.Root, '-Config', $T.Etc) + $Extra) -Answers $Answers
 }
 
-# Invoke-TestRunCommand T COMMAND RUN: keep or rollback a run.
+# Invoke-TestRunCommand T COMMAND RUN: keep (-k) or roll back (-u) a run.
 function Invoke-TestRunCommand {
     param($T, [string] $Command, [string] $RunId)
-    Invoke-TestLab $T @($Command, $RunId, '-Root', $T.Root, '-Config', $T.Etc)
+    $flag = @{ keep = '-k'; rollback = '-u' }[$Command]
+    Invoke-TestLab $T @($flag, $RunId, '-Root', $T.Root, '-Config', $T.Etc)
 }
 
 # Get-TestRunId OUTPUT: the run id in a run's output.

@@ -102,7 +102,7 @@ LABELS='Found|Will do|Did|Why|Risk|Problem|Cause|Fix|Undo|Note|Log|Script|It sai
   [ "$(grep -c '^  It said:   line ' <<< "$output")" -eq 10 ]
   grep -qx '  It said:   line 3' <<< "$output"
   ! grep -qx '  It said:   line 2' <<< "$output"
-  [ "$(tail -n 1 <<< "$(grep '^  ' <<< "$output")")" = "  More:      $SELF help observe.crash" ]
+  [ "$(tail -n 1 <<< "$(grep '^  ' <<< "$output")")" = "  More:      $SELF -h observe.crash" ]
 }
 
 @test "a failed entry point that ends with 'problem:' is shown as it said it" {
@@ -128,7 +128,7 @@ LABELS='Found|Will do|Did|Why|Risk|Problem|Cause|Fix|Undo|Note|Log|Script|It sai
     # A block ends at the next status line or at a line that is not a detail.
     if [[ "$l" != '  '* ]]; then
       if [[ "$word" =~ ^(WARN|BLOCKED|ERROR)$ ]]; then
-        [[ "$prev" == "  More:      $SELF help observe."* ]] || { echo "no More after: $word"; return 1; }
+        [[ "$prev" == "  More:      $SELF -h observe."* ]] || { echo "no More after: $word"; return 1; }
       fi
       word="${l%% *}"
     fi
@@ -163,7 +163,7 @@ LABELS='Found|Will do|Did|Why|Risk|Problem|Cause|Fix|Undo|Note|Log|Script|It sai
   [ "${lines[last-3]}" = 'Nothing on this host was changed.' ]
   # Too long for one line with the test's paths, so the command has its own.
   [ "${lines[last-2]}" = 'Next:' ]
-  [ "${lines[last-1]}" = "  $SELF apply observe --profile test --root $ROOT --config $ETC" ]
+  [ "${lines[last-1]}" = "  $SELF -r observe --profile test --root $ROOT --config $ETC" ]
   [ "${lines[last]}" = 'plan finished: exit 10 (change needed)' ]
 }
 
@@ -180,7 +180,7 @@ LABELS='Found|Will do|Did|Why|Risk|Problem|Cause|Fix|Undo|Note|Log|Script|It sai
   profile observe.manual
   plan
   [ "$status" -eq 10 ]
-  [[ "$output" == *'Next: a person carries out the manual steps above; apply changes nothing.'* ]]
+  [[ "$output" == *'Next: a person carries out the manual steps above; -r changes nothing.'* ]]
 }
 
 @test "plan's Next line never names an apply that would be refused" {
@@ -189,13 +189,13 @@ LABELS='Found|Will do|Did|Why|Risk|Problem|Cause|Fix|Undo|Note|Log|Script|It sai
   plan
   [ "$status" -eq 10 ]
   [[ "$output" == *'Next: list this host in the hosts file, with its group and profile;'* ]]
-  [[ "$output" != *'labyrinth.sh apply observe'* ]]
+  [[ "$output" != *'labyrinth.sh -r observe'* ]]
   printf '%s ring1 other ubuntu\n' "$HOST" > "$ETC/hosts"
   printf 'observe.sample\n' > "$LAB/profiles/other.profile"
   plan
   [ "$status" -eq 10 ]
-  [[ "$output" == *"Next: apply uses this host's profile in the hosts file, other."* ]]
-  [[ "$output" != *'labyrinth.sh apply observe'* ]]
+  [[ "$output" == *"Next: -r uses this host's profile in the hosts file, other."* ]]
+  [[ "$output" != *'labyrinth.sh -r observe'* ]]
 }
 
 @test "plan shows a manual-only module as WARN and counts it as WARN" {
@@ -238,9 +238,9 @@ LABELS='Found|Will do|Did|Why|Risk|Problem|Cause|Fix|Undo|Note|Log|Script|It sai
   n="$(line_of 'FAIL     Toggle setting sample (observe.toggle)')"
   [ "${lines[n]}" = '  Problem:   its verify script failed with exit code 30 and gave no reason' ]
   [ "${lines[n+1]}" = "  Script:    $LAB/phases/observe/modules/toggle/verify.sh" ]
-  grep -qx '  Did:       rolled back' <<< "$output"
+  grep -qx '  Did:       undone' <<< "$output"
   grep -qx "  Log:       $ROOT/state/runs/$(run_id)/output.log" <<< "$output"
-  grep -qxF "  More:      $SELF help observe.toggle" <<< "$output"
+  grep -qxF "  More:      $SELF -h observe.toggle" <<< "$output"
   [[ "$output" == *'Summary: 1 module: 1 FAIL.'* ]]
   [[ "$output" == *'Next: undo the earlier changes, or keep them, with the commands above.'* ]]
   [[ "$output" == *'apply finished: exit 30 (a check failed; that change was undone)'* ]]
@@ -272,17 +272,17 @@ LABELS='Found|Will do|Did|Why|Risk|Problem|Cause|Fix|Undo|Note|Log|Script|It sai
   [[ "$output" == *'Keep a second session open until you have checked you can log in.'* ]]
 }
 
-@test "apply: before the keep prompt, the time the revert timer rolls the run back" {
+@test "apply: before the keep prompt, the time the revert timer undoes the run" {
   profile observe.toggle
   answers root ring1 no
   apply
   [ "$status" -eq 0 ]
   id="$(run_id)"
   due="$(cat "$ROOT/state/runs/$id/timer-due")"
-  a="$(line_of "The revert timer rolls this run back at ${due:11:5} UTC, ")"
+  a="$(line_of "The revert timer undoes this run at ${due:11:5} UTC, ")"
   b="$(line_of 'Type keep to keep')"
   [ -n "$a" ] && (( a <= b ))
-  [[ "$output" == *"Next: check you can log in from a NEW session, then '$SELF keep ${id: -4}'."* ]]
+  [[ "$output" == *"Next: check you can log in from a NEW session, then '$SELF -k ${id: -4}'."* ]]
 }
 
 @test "every prompt fits 78 columns, with what it asks for on the lines above" {
@@ -378,7 +378,7 @@ LABELS='Found|Will do|Did|Why|Risk|Problem|Cause|Fix|Undo|Note|Log|Script|It sai
   [ "$status" -eq 30 ]
   id="$(run_id)"
   [ -e "$ROOT/state/runs/$id/problems" ]
-  run bash "$LAB/labyrinth.sh" --root "$ROOT" --config "$ETC" runs
+  run bash "$LAB/labyrinth.sh" --root "$ROOT" --config "$ETC" --history
   [ "$status" -eq 0 ]
   grep -qx "  ${id: -4}  $ROOT/state/runs/$id/output.log" <<< "$output"
 }
@@ -393,25 +393,25 @@ LABELS='Found|Will do|Did|Why|Risk|Problem|Cause|Fix|Undo|Note|Log|Script|It sai
   run "${cmd[@]}"
   [ "$status" -eq 0 ]
   local log="$ROOT/state/runs/$id/output.log"
-  grep -q "labyrinth [^ ]*: rollback run $id" "$log"
-  grep -qx '  Did:       rolled back' "$log"
-  grep -qx 'rollback finished: exit 0 (rolled back)' "$log"
+  grep -q "labyrinth [^ ]*: undo run $id" "$log"
+  grep -qx '  Did:       undone' "$log"
+  grep -qx 'undo finished: exit 0 (undone)' "$log"
 }
 
 @test "probe: a header, a status line per service, Summary, Next and finished" {
   printf 'web http web.test 80 -\nmail smtp mail.test 25 -\n' > "$ETC/services"
-  run bash "$LAB/labyrinth.sh" --root "$ROOT" --config "$ETC" probe
+  run bash "$LAB/labyrinth.sh" --root "$ROOT" --config "$ETC" --probe
   [ "$status" -eq 0 ]
   [[ "${lines[0]}" =~ ^labyrinth\ [^\ ]+:\ probe\ the\ scored\ services$ ]]
   [ "${lines[1]}" = 'OK       [web] pass: fake probe' ]
   [ "${lines[3]}" = 'Summary: 2 OK' ]
   [ "${lines[4]}" = 'probe finished: exit 0 (no service failed)' ]
   printf 'web.test fail\nmail.test fail\n' > "$LAB/probe-state"
-  run bash "$LAB/labyrinth.sh" --root "$ROOT" --config "$ETC" probe
+  run bash "$LAB/labyrinth.sh" --root "$ROOT" --config "$ETC" --probe
   [ "$status" -eq 30 ]
   [ "${lines[1]}" = 'FAIL     [web] fail: fake probe' ]
   [ "${lines[3]}" = 'Summary: 2 FAIL' ]
-  [ "${lines[4]}" = "Next: bring the failed services back, then run '$SELF probe' again." ]
+  [ "${lines[4]}" = "Next: bring the failed services back, then run '$SELF --probe' again." ]
   [ "${lines[5]}" = 'probe finished: exit 30 (2 services failed)' ]
 }
 
@@ -438,13 +438,13 @@ LABELS='Found|Will do|Did|Why|Risk|Problem|Cause|Fix|Undo|Note|Log|Script|It sai
   answers root ring1 no
   apply
   id="$(run_id)"
-  run bash "$LAB/labyrinth.sh" --root "$ROOT" --config "$ETC" rollback "$id"
+  run bash "$LAB/labyrinth.sh" --root "$ROOT" --config "$ETC" -u "$id"
   [ "$status" -eq 0 ]
   # A copy with no release list warns first (design 21, section 5.1).
   mapfile -t lines < <(grep -v -e '^labyrinth: warning: ' -e '^$' <<< "$output")
-  [ "${lines[0]}" = "labyrinth $(sed -n "s/^readonly LAB_VERSION='\(.*\)'$/\1/p" "$LAB/labyrinth.sh"): rollback run $id" ]
+  [ "${lines[0]}" = "labyrinth $(sed -n "s/^readonly LAB_VERSION='\(.*\)'$/\1/p" "$LAB/labyrinth.sh"): undo run $id" ]
   grep -qx 'OK       Toggle setting sample (observe.toggle)' <<< "$output"
   [ "${lines[${#lines[@]}-3]}" = 'Summary: 1 module: 1 OK.' ]
   [ "${lines[${#lines[@]}-2]}" = "Log: $ROOT/state/runs/$id/output.log" ]
-  [ "${lines[${#lines[@]}-1]}" = 'rollback finished: exit 0 (rolled back)' ]
+  [ "${lines[${#lines[@]}-1]}" = 'undo finished: exit 0 (undone)' ]
 }

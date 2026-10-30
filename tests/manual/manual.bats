@@ -21,23 +21,25 @@ setup() {
 @test "the Windows manual has nothing from the Linux one" {
   run bash "$SPLIT" windows
   [ "$status" -eq 0 ]
-  if grep -Eq 'sudo|labyrinth\.sh|systemd|/opt/labyrinth|--(profile|root|config|break-glass|confirm-group|approve|all|apply)' <<<"$output"; then return 1; fi
-  [[ "$output" == *'.\labyrinth.ps1 plan lockout'* ]]
+  if grep -Eq 'sudo|labyrinth\.sh|systemd|/opt/labyrinth|--(profile|root|config|break-glass|confirm-group|approve|all|history|probe|run|keep|undo|help|version)' <<<"$output"; then return 1; fi
+  [[ "$output" == *'.\labyrinth.ps1 lockout'* ]]
+  [[ "$output" == *'.\labyrinth.ps1 -r lockout'* ]]
   [[ "$output" == *'C:\ProgramData\Labyrinth'* ]]
 }
 
 @test "the Linux manual has nothing from the Windows one" {
   run bash "$SPLIT" linux
   [ "$status" -eq 0 ]
-  if grep -Eq 'labyrinth\.ps1|PowerShell|ProgramData|scheduled task|Administrator|(^|[ `])-(Profile|Root|Config|BreakGlass|ConfirmGroup|Approve|All|Apply|Help|Version)' <<<"$output"; then return 1; fi
-  [[ "$output" == *'sudo ./labyrinth.sh plan lockout'* ]]
+  if grep -Eq 'labyrinth\.ps1|PowerShell|ProgramData|scheduled task|Administrator|(^|[ `])-(Profile|Root|Config|BreakGlass|ConfirmGroup|Approve|All|History|Probe|Run|Keep|Undo|Help|Version)' <<<"$output"; then return 1; fi
+  [[ "$output" == *'sudo ./labyrinth.sh lockout'* ]]
+  [[ "$output" == *'sudo ./labyrinth.sh -r lockout'* ]]
   [[ "$output" == *'/opt/labyrinth'* ]]
 }
 
 @test "both manuals describe every command, exit code and option" {
   for p in linux windows; do
     run bash "$SPLIT" "$p"
-    for c in plan apply keep rollback runs probe help version; do
+    for c in preview run keep undo history probe version help; do
       grep -Eq "^## $c( |\$)" <<<"$output" || { echo "$p: no section for $c"; return 1; }
     done
     for code in 0 10 20 30 40; do
@@ -45,11 +47,11 @@ setup() {
     done
   done
   run bash "$SPLIT" linux
-  for o in --profile --root --config --break-glass --confirm-group --approve --all --apply --help --version; do
+  for o in --run --keep --undo --history --probe --profile --root --config --break-glass --confirm-group --approve --all --help --version; do
     [[ "$output" == *"\`$o"* ]] || { echo "linux: $o missing"; return 1; }
   done
   run bash "$SPLIT" windows
-  for o in -Profile -Root -Config -BreakGlass -ConfirmGroup -Approve -All -Apply -Help -Version; do
+  for o in -Run -Keep -Undo -History -Probe -Profile -Root -Config -BreakGlass -ConfirmGroup -Approve -All -Help -Version; do
     [[ "$output" == *"\`$o"* ]] || { echo "windows: $o missing"; return 1; }
   done
 }
@@ -107,12 +109,12 @@ setup() {
   local rows
   run bash "$SPLIT" linux
   rows="$(grep -E '^\| `-[-a-zA-Z?]' <<<"$output")"
-  for o in -h '-?' -V; do
+  for o in -r -k -u -P -h '-?' -V; do
     [[ "$rows" == *"\`$o\`"* ]] || { echo "linux: $o missing"; return 1; }
   done
   run bash "$SPLIT" windows
   rows="$(grep -E '^\| `-[-a-zA-Z?]' <<<"$output")"
-  for o in -h -V; do
+  for o in -r -k -u -P -h -V; do
     [[ "$rows" == *"\`$o\`"* ]] || { echo "windows: $o missing"; return 1; }
   done
   # PowerShell takes -? for itself, so the Windows manual never offers it.
@@ -130,5 +132,5 @@ setup() {
 
 @test "the README describes the commands that are built" {
   if grep -q 'plan mode only' "$REPO/README.md"; then return 1; fi
-  grep -q 'plan, apply, keep, rollback, runs and probe' "$REPO/README.md"
+  grep -q 'preview, run (-r), keep (-k), undo (-u), --history and --probe' "$REPO/README.md"
 }

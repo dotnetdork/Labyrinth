@@ -60,7 +60,7 @@ Labyrinth/
 ├── CONTRIBUTING.md               ← how to pick up an issue and open a pull request
 ├── SECURITY.md                   ← how to report a weakness in Labyrinth privately
 ├── .claude/                      ← shared Claude Code agents, commands and settings
-├── labyrinth.sh / labyrinth.ps1  ← main program: plan, apply, keep, rollback, runs, probe, help, version
+├── labyrinth.sh / labyrinth.ps1  ← main program: preview, run, keep, undo, history, probe, help, version
 ├── core/ phases/ profiles/ platform/   ← code layout from design 00
 ├── report/                       ← incident reporting (planned; empty today)
 ├── config/                       ← *.example templates for run-time values; never real values
@@ -98,7 +98,7 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md): one issue, one person, one branch, one
 
 ## Status
 
-Build stages 0 to 3 are done. The design specs are the blueprint the code is built against, and [`docs/Roadmap.md`](docs/Roadmap.md) gives the order they are built in. The core is built for Linux and Windows: logging, the run manifest, the safety gates, the revert timer (which undoes a run unless someone keeps it), scoring-style probes, and the main program's plan, apply, keep, rollback, runs and probe commands (docs/Conventions.md, section 3.1). The groundwork modules need is built too: platform facts, the firewall adapter, quarantine, approval items and the shipped profiles. It is tested on CI, but not yet in a lab. The guard checks every script for outside calls and blanket actions. No hardening module exists yet, and remote mode (driving many hosts from one control node) is not built. Stage 4b is next: one command per host with no questions during the run, an approval queue, short output and the Harden phase. It is specified, not built ([`docs/Roadmap.md`](docs/Roadmap.md)).
+Build stages 0 to 3 are done. The design specs are the blueprint the code is built against, and [`docs/Roadmap.md`](docs/Roadmap.md) gives the order they are built in. The core is built for Linux and Windows: logging, the run manifest, the safety gates, the revert timer (which undoes a run unless someone keeps it), scoring-style probes, and the main program's command line: preview, run (-r), keep (-k), undo (-u), --history and --probe (docs/Conventions.md, section 3.1). The groundwork modules need is built too: platform facts, the firewall adapter, quarantine, approval items and the shipped profiles. It is tested on CI, but not yet in a lab. The guard checks every script for outside calls and blanket actions. No hardening module exists yet, and remote mode (driving many hosts from one control node) is not built. Stage 4b is next: one command per host with no questions during the run, an approval queue, short output and the Harden phase. It is specified, not built ([`docs/Roadmap.md`](docs/Roadmap.md)).
 
 
 > [!IMPORTANT]

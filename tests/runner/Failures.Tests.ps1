@@ -49,10 +49,10 @@ Describe 'labyrinth.ps1 hidden failures' {
         $id = Get-TestRunId $r.Output
         $r.Output | Should -Match 'labyrinth: internal error at \S+:\d+ \(the lock is gone\), exit 40'
         $r.Output | Should -Match 'The run stopped\. Earlier changes stay until the revert timer undoes them\.'
-        $r.Output | Should -Match 'The revert timer rolls this run back at \d\d:\d\d UTC'
-        $short = $id.Substring($id.Length - 4)
+        $r.Output | Should -Match 'The revert timer undoes this run at \d\d:\d\d UTC'
+        $short = "'$($id.Substring($id.Length - 4))'"
         # Undo comes first, and the safe choice is named.
-        $r.Output | Should -Match ([regex]::Escape("To undo them now: $($t.Self) rollback $short`nTo keep them now: $($t.Self) keep $short`nIf in doubt, undo them."))
+        $r.Output | Should -Match ([regex]::Escape("To undo them now: $($t.Self) -u $short`nTo keep them now: $($t.Self) -k $short`nIf in doubt, undo them."))
         Join-Path $t.Root "state\runs\$id\timer" | Should -Exist
         (Get-Content -LiteralPath $toggle) | Should -Be 'setting=on'
     }
@@ -121,8 +121,8 @@ function Register-LabRevertTimer {
         Add-TestStandIn $t 'function Unregister-LabRevertTimer { throw ''refused'' }'
         $k = Invoke-TestRunCommand $t 'keep' $id
         $k.Code | Should -Be 40
-        $k.Output | Should -Match 'still rolls it back at \d\d:\d\d UTC'
-        $k.Output | Should -Match ([regex]::Escape("Retry: $($t.Self) keep $($id.Substring($id.Length - 4))"))
+        $k.Output | Should -Match 'still undoes it at \d\d:\d\d UTC'
+        $k.Output | Should -Match ([regex]::Escape("Retry: $($t.Self) -k '$($id.Substring($id.Length - 4))'"))
     }
 
     It 'keep that cancels the timer but cannot record it says so and exits 40' {
@@ -143,7 +143,7 @@ function Register-LabRevertTimer {
         $r = Invoke-TestRunCommand $t 'rollback' $id
         Clear-TestReadOnly $t $id
         $r.Code | Should -Be 40
-        $r.Output | Should -Match 'rolled back, but the manifest cannot be written to record it'
+        $r.Output | Should -Match 'the changes are undone, but the manifest cannot be written to record it'
         $toggle | Should -Not -Exist
     }
 }

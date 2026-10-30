@@ -460,7 +460,7 @@ Labyrinth provisions the *shape*; the operator supplies the values. **No real cr
 
 ### 6.6 Speed & safety discipline
 
-- **Idempotent, and plan mode first:** every module is previewed in plan mode (a dry run) before it is run, especially near scored services: `laby PHASE` previews and `laby -r PHASE` runs (Conventions, section 3.3; design 00).
+- **Idempotent, and plan mode first:** every module is previewed in plan mode (a dry run) before it is run, especially near scored services: `laby PHASE` previews and `laby -r PHASE` runs (Conventions, section 3.1; design 00).
 - **Reversible:** every role backs up what it changes (timestamped) and documents its rollback.
 - **Tested on throwaway VMs** (or the CCDC practice image) before you trust it live.
 - **Fail-safe ordering:** never lock your own admin path before the new one is proven, and keep the break-glass path.
@@ -469,7 +469,7 @@ Labyrinth provisions the *shape*; the operator supplies the values. **No real cr
 
 ### 6.7 One command per host — specified, built later
 
-The runner does not do this yet; today `plan` and `apply` are separate steps with prompts. The intended change (Conventions, section 3.3) is a flag-style command line under the short name `laby`, and automatic runs with no switch to turn them off. Every existing command form keeps working.
+The flag-style command line is built for preview, run, keep, undo, history, probe, help and the version (Conventions, section 3.1). The runner does not do the rest yet; today a run still has prompts. The intended change (Conventions, section 3.3) is the short name `laby` on the `PATH`, and automatic runs with no switch to turn them off.
 
 - **Short commands:** `laby` shows the host's status and the next step, `laby init` previews Lock out and Harden, and `laby -r init` runs them as one run. Later phases work the same way (`laby -r observe`). `-q` lists the queue, `-q -a 1,3` approves items and `-q -d 2` declines one, `-k ID` keeps the changes of a run (firewall, SSH settings, stopped services and others that could lock the team out) whose login check was missed, `-u ID` undoes a run, and adding `-h` to any of them shows its help without running anything.
 - **The group comes from the hosts file,** matched on the host's name and address, and the break-glass account is the single `breakglass`-class account from the protected set that exists on the host. Anything else blocks the run (exit 20). Labyrinth checks for a console session itself and warns if it finds none, rather than prompting.
