@@ -45,6 +45,34 @@ lab_tree_trusted() {
   return 0
 }
 
+# lab_path_trusted PATH...: can only root change each PATH's folder chain?
+# The installer uses it before it writes anything: each PATH that exists,
+# and every folder above it, must be owned by root and not writable by
+# group or others, unless it is sticky, like /tmp. Unlike lab_tree_trusted
+# it looks at the folders themselves, not at what is inside them, so a
+# crowded folder such as /usr/bin is checked in one step. A PATH not made
+# yet is checked from its nearest folder. Prints the first path that fails
+# and returns 1; returns 0 if none does.
+lab_path_trusted() {
+  local p d st uid mode
+  for p in "$@"; do
+    [[ -n "$p" ]] || continue
+    d="$(readlink -m -- "$p")" || { printf '%s\n' "$p"; return 1; }
+    while :; do
+      if [[ -e "$d" ]]; then
+        st="$(stat -L -c '%u %a' -- "$d" 2> /dev/null)" || { printf '%s\n' "$d"; return 1; }
+        read -r uid mode <<< "$st"
+        if [[ "$uid" != 0 ]] || { (( (8#$mode & 8#022) != 0 )) && (( (8#$mode & 8#1000) == 0 )); }; then
+          printf '%s\n' "$d"; return 1
+        fi
+      fi
+      [[ "$d" != / ]] || break
+      d="$(dirname -- "$d")"
+    done
+  done
+  return 0
+}
+
 # lab_console_session ACCOUNT: print the ID of a session ACCOUNT has at
 # this host's own console (a seat or a local terminal, not a remote
 # login). Returns 1 if there is none, and 2 if this host cannot tell. This

@@ -17,10 +17,12 @@
 # this file as well: they could print whatever hash was expected. The
 # manual says how to check the release with the host's own tools instead.
 
-# The files the release list covers: the runners, and every file under
-# these folders.
-LAB_RELEASE_FILES='labyrinth.sh labyrinth.ps1'
-LAB_RELEASE_DIRS='core phases platform profiles vendor'
+# The files the release list covers: the runners, the installers and the
+# Windows launchers, and every file under these folders. The manual folder
+# holds the built man page and help topic (tools/manual/build.sh); a copy
+# taken straight from the repository does not have it.
+LAB_RELEASE_FILES='labyrinth.sh labyrinth.ps1 install.sh install.ps1 laby.cmd labyrinth.cmd'
+LAB_RELEASE_DIRS='core phases platform profiles vendor config manual'
 LAB_RELEASE_HASH=''     # SHA-256 of release.sha256, once it is read
 LAB_RELEASE_PROBLEM=''  # why the check failed
 

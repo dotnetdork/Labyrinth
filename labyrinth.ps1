@@ -83,6 +83,9 @@ $ReModuleId = '^(lockout|observe|deceive|sustain)\.[a-z0-9_-]+$'
 # (docs/Conventions.md section 3.1).
 $ReItem = "^item`t([a-z0-9-]+)`t([a-z0-9-]+)`t([0-9a-f]{12})`t(.*)$"
 $ReApprove = '^(lockout|observe|deceive|sustain)\.[a-z0-9_-]+:[a-z0-9-]+@[0-9a-f]{12}$'
+# A word that looks like one entry of a list option's value: here an
+# -Approve entry, well formed or not. A phase word or a run ID never does.
+$ReListItem = '^[A-Za-z0-9._-]+:[A-Za-z0-9._-]+@[A-Za-z0-9]+$'
 # How the operator started this program, so a hint can be pasted and run
 # (docs/Conventions.md section 3.2): .\labyrinth.ps1 from its own folder,
 # else its full path, after & and in quotes when the path needs them.
@@ -91,6 +94,9 @@ $SelfName = '.\labyrinth.ps1'
 if ((Get-Location).ProviderPath.TrimEnd('\') -ne $PSScriptRoot.TrimEnd('\')) {
     $SelfName = $PSCommandPath
 }
+# Started through the installed launcher (laby.cmd or labyrinth.cmd), which
+# sets LAB_SELF to its own name: show that name, as the operator types it.
+if ($env:LAB_SELF -ceq 'laby' -or $env:LAB_SELF -ceq 'labyrinth') { $SelfName = $env:LAB_SELF }
 $Self = $SelfName
 if ($Self -notmatch '^[A-Za-z0-9_.:\\/~-]+$') { $Self = "& '" + $Self.Replace("'", "''") + "'" }
 
@@ -182,7 +188,8 @@ $Labels = @('found', 'will do', 'did', 'why', 'risk', 'problem', 'cause', 'fix',
 # Show-LabHelp [TOPIC]: the main help, or one topic's, on stdout. A topic is
 # an action, an option, a phase or 'basics', by its canonical name. The text
 # is the same as labyrinth.sh's. It writes the program's name as @CMD@, and
-# the name as started ($Self) is put in until there is an installed 'laby'.
+# the name as started ($Self) is put in: 'laby' or 'labyrinth' when started
+# through the installed launcher.
 # The main page is at most 24 lines and each topic at most 18 (basics 24), of
 # at most 78 columns with the name '.\labyrinth.ps1', with an Exit line, an
 # Example line and a See also line (docs/Conventions.md section 3.2).
@@ -705,6 +712,25 @@ function Add-LabStackError {
     Add-LabParseError "unknown option '-$Bad' in '$shown'"
 }
 
+# Join-LabListWord FIRST: the value of a list option, FIRST, with the words
+# that follow it joined on by commas while each one looks like a list item.
+# The installed launcher is a .cmd file, and PowerShell hands a native
+# command an unquoted a,b as the two words a and b, so a comma list reaches
+# the runner in pieces. A phase word or a run ID never looks like an item, so
+# the words after the list keep their meaning. Later list options (queue
+# numbers and ranges) add their own kind of item here.
+function Join-LabListWord {
+    param([string] $First)
+    $list = $First
+    while ($script:ArgPos -lt $script:Arguments.Count) {
+        $next = $script:Arguments[$script:ArgPos]
+        if ($next -isnot [string] -or $next -cnotmatch $ReListItem) { break }
+        $list += ',' + $next
+        $script:ArgPos++
+    }
+    return $list
+}
+
 # Add-LabOption ROW SEP VAL: record the option in row ROW. SEP is the
 # separator typed before VAL ('' when none); an option that takes a value and
 # has none there takes the next word, unless that word looks like an option.
@@ -753,6 +779,7 @@ function Add-LabOption {
             }
         }
         if ($Val -eq '' -and -not $optional) { Add-LabParseError "$show needs a value"; return }
+        if ($name -ceq 'approve') { $Val = Join-LabListWord $Val }
     } elseif ($Sep -ne '') {
         Add-LabParseError "$show takes no value"; return
     }
