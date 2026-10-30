@@ -3,23 +3,50 @@ description: Cleanup or refactoring that changes no behavior
 labels: ["type: tech-debt"]
 body:
   - type: textarea
+    id: read
+    attributes:
+      label: Read first
+      description: "Links to the exact spec sections, the Roadmap row, the Conventions sections and the AGENTS.md rules the work needs. Keep the last line."
+      value: |
+        - [Design NN, section N.N: title](https://github.com/dotnetdork/Labyrinth/blob/main/docs/design/...)
+
+        Read these before starting. If this issue and the spec disagree, the spec wins; say so in the pull request.
+    validations:
+      required: false
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: "Two to four plain sentences: what to clean up and what it costs today."
+    validations:
+      required: true
+  - type: textarea
     id: location
     attributes:
       label: Location & Context
-      description: The files, lines or functions, and the commit.
+      description: "The files, lines or functions, and the commit."
     validations:
       required: true
   - type: textarea
     id: current
     attributes:
       label: Current Behavior
-      description: What is wrong with the code as it is, and what it costs.
+      description: "What is wrong with the code as it is, and what it costs."
     validations:
       required: true
   - type: textarea
     id: plan
     attributes:
-      label: Remediation Plan
-      description: The steps, and how the tests show nothing changed.
+      label: Plan
+      description: "Short numbered steps."
+    validations:
+      required: true
+  - type: textarea
+    id: tests
+    attributes:
+      label: Acceptance tests
+      description: "How the tests show nothing changed."
+      value: |
+        - [ ] 
     validations:
       required: true
