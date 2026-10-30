@@ -1,6 +1,18 @@
 # Contributing to Labyrinth
 
-Labyrinth is public, and every line of it is shared with every competing team. Read [`AGENTS.md`](AGENTS.md) first: its hard rules and its public boundary apply to every change, whoever or whatever writes it.
+Thanks for helping. Labyrinth is public, and every line of it is shared with every competing team. Read [`AGENTS.md`](AGENTS.md) first: its hard rules and its public boundary apply to every change, whoever or whatever writes it.
+
+## Ways to contribute
+
+- **Report a bug** in Labyrinth's behavior: open an issue from the Bug template.
+- **Fix or improve the documentation:** open an issue, or a small pull request on a `docs/<name>` branch.
+- **Build a Roadmap item:** pick an open issue in the current milestone ([`docs/Roadmap.md`](docs/Roadmap.md)) and follow the workflow below. `good first issue` marks a small, self-contained place to start.
+- **Propose something beyond the Roadmap:** open an issue from the Feature template.
+- **Report a weakness in Labyrinth itself:** never in a public issue. Use [private reporting](SECURITY.md).
+
+## The public boundary
+
+Generic, reusable defense logic only. Never add team strategy, schedules, deadlines, event values, real topology, hostnames, addresses, credentials or details about team members. Events differ, so every event value is supplied at run time from a `*.example` template, never committed.
 
 ## The workflow: one issue, one person, one branch, one small pull request
 
@@ -13,6 +25,10 @@ Labyrinth is public, and every line of it is shared with every competing team. R
 7. **Merge** once CI is green and someone other than the author approves it. The branch must be up to date with `main`.
 
 Never push to `main`, force-push, rewrite published history, or delete a branch you did not create.
+
+## Tests
+
+CI runs on every push: ShellCheck, the guard (`tests/lint/guard.sh`), bats, PSScriptAnalyzer, Pester under Windows PowerShell 5.1, and the manual build. All must pass. A branch that changes only documentation (outside `docs/manual/`) skips these tests, and they show as skipped, which counts as passing. You may run the suites locally if you already have the tools, but nobody needs to install anything: pushing the branch and reading the CI results is enough.
 
 ## Issues, labels and milestones
 
@@ -43,19 +59,11 @@ Each label group has its own color: the phase labels use the phase colors of the
 
 The **milestone** says when an issue is built: the first usable release, then the later milestones in the order of [`docs/Roadmap.md`](docs/Roadmap.md). There are no priority labels; the milestone and the Roadmap's order are the priority. When one issue cannot start until another is done, mark it with GitHub's **blocked by** relationship; a Roadmap row split into steps becomes a parent issue with **sub-issues**.
 
-## Without Claude Code
+## Using an AI assistant
 
-Copilot, another assistant or plain hands all work. The rules in [`AGENTS.md`](AGENTS.md) apply either way; most assistants read that file on their own, `CLAUDE.md` pulls it in for Claude Code, and `.github/copilot-instructions.md` points Copilot to it. The shared commands in `.claude/commands/` are checklists you can follow yourself:
+Any assistant, or none, works. The rules in [`AGENTS.md`](AGENTS.md) apply either way; most assistants read that file on their own, `CLAUDE.md` pulls it in for Claude Code, and `.github/copilot-instructions.md` points Copilot to it.
 
-1. **Claim the issue** (`/start-issue`): check nobody is assigned and no pull request covers it, assign yourself, update `main`, create the branch, and read every link in the issue's **Read first** section.
-2. **Build a module** (`/new-module`): create the folder and `module.yml` from the module contract (design 00), and write the tests from the spec's acceptance-test list first.
-3. **Before the pull request** (`/pre-pr`): read your own diff against the public boundary and the hard rules in `AGENTS.md`, tick every box in the pull request template, and push the branch so CI runs.
-
-## Tests
-
-CI runs on every push: ShellCheck, the guard (`tests/lint/guard.sh`), bats, PSScriptAnalyzer, Pester under Windows PowerShell 5.1, and the manual build. All must pass. A branch that changes only documentation (outside `docs/manual/`) skips these tests, and they show as skipped, which counts as passing. You may run the suites locally if you already have the tools, but nobody needs to install anything: pushing the branch and reading the CI results is enough.
-
-## Working with Claude Code
+### With Claude Code
 
 The repository ships a shared setup in `.claude/`, so every contributor's assistant works the same way:
 
@@ -75,22 +83,14 @@ Keep personal preferences out of the shared files:
 
 Changes to `AGENTS.md`, `CLAUDE.md` or `.claude/` go through a pull request like any other change, so everyone's setup changes together.
 
-## The public boundary
+### Without Claude Code
 
-Generic, reusable defense logic only. Never add team strategy, schedules, deadlines, event values, real topology, hostnames, addresses, credentials or details about team members. Events differ, so every event value is supplied at run time from a `*.example` template, never committed.
+Copilot, another assistant or plain hands all work. The shared commands in `.claude/commands/` are checklists you can follow yourself:
 
-## Ownership
+1. **Claim the issue** (`/start-issue`): check nobody is assigned and no pull request covers it, assign yourself, update `main`, create the branch, and read every link in the issue's **Read first** section.
+2. **Build a module** (`/new-module`): create the folder and `module.yml` from the module contract (design 00), and write the tests from the spec's acceptance-test list first.
+3. **Before the pull request** (`/pre-pr`): read your own diff against the public boundary and the hard rules in `AGENTS.md`, tick every box in the pull request template, and push the branch so CI runs.
 
-By contributing you agree to the terms in [`LICENSE`](LICENSE). This section records project ownership as the license defines it.
+## Ownership and license
 
-### Project owner
-
-- **Jay Sausa** (@dotnetdork)
-
-### PUG Cyber Games Club co-owners
-
-- *Club members are listed here once they make a contribution.*
-
-### Outside contributors
-
-- *None yet.*
+Jay Sausa is the sole owner of Labyrinth. By contributing you agree to the terms in [`LICENSE`](LICENSE), and contributing gives you no ownership of Labyrinth. A contributor whose contributions are substantial may ask to discuss co-ownership; the license explains how that works.
