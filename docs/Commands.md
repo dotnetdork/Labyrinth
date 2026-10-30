@@ -28,7 +28,8 @@ laby lockout
 **Preview** the lockdown. Lists every change Labyrinth would make on this host. Nothing changes and nothing is written, so run it as often as you like.
 
 ```
-laby -r lockout
+laby -r lockout         short form
+laby --run lockout      long form, the same
 ```
 
 **Run** the lockdown. Labyrinth takes control of the host back: it changes passwords, removes unknown SSH keys, ends intruder sessions and closes the firewall to everything except scored services. `-r` can go before or after the phase: `laby lockout -r` is the same. It asks you to confirm as it goes (the break-glass account, the host's group) and ends with its keep question: open a second login window, check you can get in, make sure the new passwords are in the team's offline record, then type `keep`. Pressing Enter, or typing anything else, leaves the revert timer armed, and it undoes the firewall and SSH changes when it runs out, so a mistake cannot lock the team out. Changes that only take access away from an intruder, such as a new password, are kept as soon as they check out and are not undone by the timer.
@@ -46,7 +47,7 @@ Keep the changes? [y/N]
 
 ```
 laby observe            preview the Observe phase
-laby -r observe         run it
+laby -r observe         run it (long form: laby --run observe)
 laby -r deceive         run the Deceive phase
 laby -r sustain         run the Sustain phase
 ```
@@ -58,19 +59,22 @@ Each works like `lockout`: the phase word alone previews, `-r` runs. Run the pha
 Planned (stage 4b). Some changes are too risky to make on their own, such as deleting an account or changing a scored service that has no test. A run puts those in this host's queue and carries on.
 
 ```
-laby -q
+laby -q                 short form
+laby --queue            long form, the same
 ```
 
 **List** the queue. Each item has a number that never changes, the module that wants it, and why. Nothing changes.
 
 ```
-laby -q -a 1,3
+laby -q -a 1,3          short form
+laby --queue --approve 1,3
 ```
 
 **Approve** items 1 and 3: Labyrinth applies just those, in a new run with the same backups, timer and checks as any run. Ranges work too: `-a 1-4,7`, or `-a all` (which shows the count and asks first). Short letters can be joined: `laby -qa 1,3`.
 
 ```
-laby -q -d 2
+laby -q -d 2            short form
+laby --queue --decline 2
 ```
 
 **Decline** item 2: it leaves the queue, recorded, and nothing changes.
@@ -78,19 +82,22 @@ laby -q -d 2
 ## Fixing a mistake
 
 ```
-laby -k 7f3a
+laby -k 7f3a            short form
+laby --keep 7f3a        long form, the same
 ```
 
 **Keep** run `7f3a`'s changes when you missed the keep question (for example, the window closed) but have checked a new login works. It must be done before the timer fires; after that, the changes are already undone.
 
 ```
-laby -u 7f3a
+laby -u 7f3a            short form
+laby --undo 7f3a        long form, the same
 ```
 
 **Undo** run `7f3a`, newest change first. Changes that were kept early, such as new passwords, stay.
 
 ```
 laby -u 7f3a --all
+laby --undo 7f3a --all
 ```
 
 Undo **everything** from that run, including new passwords and removed keys. It asks first, because it can hand an intruder their access back. After it, change those passwords again and correct the offline record.
@@ -114,7 +121,7 @@ Test every scored service on this host once, the same way the runs do. It change
 ```
 laby -h                 the main help, one screen (also --help)
 laby -h undo            help for one command or phase (also --help undo)
-laby -V                 the version and the release's hash
+laby -V                 the version and the release's hash (also --version)
 ```
 
 Adding `-h` to any command shows that command's help instead of running it: `laby -u 7f3a -h` shows the help for undo, and `laby -r lockout -h` changes nothing. So it is always safe to add `-h` to a command you are unsure of.
