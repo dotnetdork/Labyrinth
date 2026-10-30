@@ -140,7 +140,7 @@ A line holds one **action**, or only a phase.
 
 - **One action per line:** `-r`, `-k`, `-u`, `--probe`, `--history` or `-V`. Two actions are a usage error (`40`). A phase word alone previews it. Options may come before or after the action and its word.
 - **Case.** Short letters are case-sensitive: `-P` is the profile and `-V` the version, and `-p` and `-v` are errors with a near-miss suggestion. Long names ignore case and dashes, so PowerShell's `-Run`, `-Undo`, `-Profile`, `-BreakGlass` and `-Root` work, and each option has one name in both runners.
-- **Stacking.** Short letters may be joined: `-rP test`. A letter that takes a value comes last. A single dash before a word is read as a long name when the word is a long name (`-Undo`), and otherwise as a stack of letters, where a letter that is not a short flag is a usage error.
+- **Stacking.** Short letters may be joined, such as `-rv` once `-v` is built (section 3.3); today only `-r` and `-P` can share a stack (`-rP NAME`). A letter that takes a value comes last. A single dash before a word is read as a long name when the word is a long name (`-Undo`), and otherwise as a stack of letters, where a letter that is not a short flag is a usage error.
 - **Values** are given as `-k 7f3a`, `--keep 7f3a`, `--keep=7f3a` or `-Name:value`, and `--` ends the options. A run is never kept or undone by guess. PowerShell may hand `-k 0123` over as a number; the runner takes the raw text, never a number.
 - **PowerShell** takes an unquoted `-?` for itself before the script runs and shows the script's comment-based help, so that help is one short page that points to `laby -h`. `/?` reaches the runner and works like `-h`.
 

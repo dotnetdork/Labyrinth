@@ -112,13 +112,12 @@ Test every scored service on this host once, the same way the runs do. It change
 ## Help
 
 ```
-laby -h                 the main help, one screen
-laby -u -h              help for one action: add -h to what you would type
-laby -h observe         help for a phase
+laby -h                 the main help, one screen (also --help)
+laby -h undo            help for one command or phase (also --help undo)
 laby -V                 the version and the release's hash
 ```
 
-Help never runs anything. Even `laby -r lockout -h` only shows help, so it is always safe to add `-h` to a command you are unsure of.
+Adding `-h` to any command shows that command's help instead of running it: `laby -u 7f3a -h` shows the help for undo, and `laby -r lockout -h` changes nothing. So it is always safe to add `-h` to a command you are unsure of.
 
 ## Options that change how a command behaves
 
