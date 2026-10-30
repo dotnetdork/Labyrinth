@@ -64,6 +64,7 @@ All of these documents are also published as a website with a menu and search, r
 - **The detailed designs** for each part of the tool live in [`docs/design/`](docs/design/README.md).
 - **How the code is written** (formats, style, logging, tests): [`docs/Conventions.md`](docs/Conventions.md). **The build order:** [`docs/Roadmap.md`](docs/Roadmap.md).
 - **The operator manual,** one source for the Linux and Windows editions: [`docs/manual/labyrinth.md`](docs/manual/labyrinth.md).
+- **The test lab:** the machines, how to run a pass, and the results: [`docs/lab/README.md`](docs/lab/README.md).
 
 ### Repository map
 
@@ -126,7 +127,7 @@ Found a weakness in Labyrinth itself? Report it privately, never in a public iss
 
 ## License
 
-Labyrinth is free for noncommercial use, such as personal study, labs, schools and CCDC defense, under the PolyForm Noncommercial License 1.0.0 with a few additional terms: Jay Sausa is the sole owner, and publishing a changed version needs the owner's written permission. Third-party components under `vendor/` keep their own licenses. The full terms are in [`LICENSE`](LICENSE).
+Labyrinth is free for noncommercial use, such as personal study, labs, schools and CCDC defense, under the PolyForm Noncommercial License 1.0.0 with a few additional terms: Jay Sausa is the sole owner, and publishing or distributing a changed version needs the owner's written permission. Third-party components under `vendor/` keep their own licenses. The full terms are in [`LICENSE`](LICENSE).
 
 ## References
 
