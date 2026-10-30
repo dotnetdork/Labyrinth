@@ -72,8 +72,7 @@ body:
     attributes:
       label: Done when
       description: "A checklist: both platforms pass CI, the manual and help pages are written, the lab tests pass, or what fits this issue."
-      value: |
-        - [ ] 
+      placeholder: "- [ ] Both platforms pass CI."
     validations:
       required: true
   - type: textarea
