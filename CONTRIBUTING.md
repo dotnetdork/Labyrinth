@@ -93,4 +93,4 @@ Copilot, another assistant or plain hands all work. The shared commands in `.cla
 
 ## Ownership and license
 
-Jay Sausa is the sole owner of Labyrinth. By contributing you agree to the terms in [`LICENSE`](LICENSE), and contributing gives you no ownership of Labyrinth. A contributor whose contributions are substantial may ask to discuss co-ownership; the license explains how that works.
+Jay Sausa is the sole owner of Labyrinth. By contributing you agree to the terms in [`LICENSE`](LICENSE): you assign your rights in your contribution to the owner (or, where the law does not allow that, license it to the owner on any terms), and contributing gives you no ownership of Labyrinth. A contributor whose contributions are substantial may ask to discuss co-ownership; the license explains how that works.
