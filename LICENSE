@@ -2,7 +2,7 @@ Labyrinth
 
 Required Notice: Copyright (c) 2026 Jay Sausa (https://github.com/dotnetdork). All rights reserved.
 
-Labyrinth is made available under the PolyForm Noncommercial License 1.0.0, printed below, together with the Additional Terms that follow it. Where the two differ, the Additional Terms apply.
+Labyrinth is made available under the Additional Terms below, followed by the PolyForm Noncommercial License 1.0.0. Where the two differ, the Additional Terms apply.
 
 # Additional Terms
 
@@ -14,7 +14,11 @@ A contributor whose contributions are substantial may ask the owner to discuss c
 
 ## Changed Versions
 
-The Distribution License below is narrowed as follows. You may make changes and new works based on the software for any permitted purpose, but you may not publish or distribute a changed version, or a new work based on the software, without the licensor's written permission. Two things are always allowed: a fork on GitHub, as GitHub's terms of service provide, and a pull request to this repository.
+The Distribution License below is narrowed as follows. You may make changes and new works based on the software for any permitted purpose, but you may not publish or distribute a changed version, or a new work based on the software, without the licensor's written permission. Two things are always allowed: a fork on GitHub, as GitHub's terms of service provide, with changes pushed to it only to prepare a pull request to this repository; and that pull request.
+
+## Notices
+
+Anyone who distributes the software must include this whole LICENSE file. The PolyForm URL alone does not meet the Notices section below.
 
 ## Third-Party Components
 
