@@ -47,32 +47,32 @@ The numbers follow the order a run uses the parts: the foundations every module 
 
 Start here if you want to contribute. Pick a row whose status is **Next** and whose dependencies are built, open its issue (each Roadmap branch has one, and the small self-contained ones carry the `good first issue` label), and run `/start-issue` with the issue number: it reads the spec, lists the acceptance tests to write first and names the branch. The [Roadmap](../Roadmap.md) holds the exact branches and what each must deliver.
 
-Module IDs are `phase.name`, so the ID shows where the module runs. The IDs below are the planned ones; a spec may rename a module when it is built. `harden.*` modules wait for the Harden phase in the runner (Roadmap, stage 4b).
+Module IDs are `phase.name`, so the ID shows where the module runs. The IDs below are the planned ones; a spec may rename a module when it is built. The milestone column uses the Roadmap's numbers: 1 is the first usable release, 3 Observe and checkpoints, 4 Sustain and hardening, 5 Reporting and cleanup, 6 Deceive and extras. `harden.*` modules wait for the Harden phase in the runner (Roadmap, first usable release).
 
-| # | Part | Planned module IDs | Roadmap stage | Depends on | Size | Status |
+| # | Part | Planned module IDs | Milestone | Depends on | Size | Status |
 |---|---|---|---|---|---|---|
-| 00 | Module contract, both runners and the core | (the framework) | 1 to 3, then 4b | — | — | Built; automatic runs and short output are next (4b) |
-| 01 | Platform facts and the firewall adapter | (core) | 3, 4 | 00 | — | Built; the outbound default comes with `lockout.firewall` |
-| 02 | Packages and third-party tools | `harden.packages` | 4 | 01, 03 | M | Next |
-| 03 | Lockout and the first-minute bundle | `lockout.sessions`, `lockout.firewall`, `harden.reopen_outbound` | 4, 4b | 00, 01, 04 | L | Next |
-| 04 | Credentials and SSH keys | `lockout.credentials`, `lockout.ssh`, `lockout.accounts`, `harden.accounts` | 4 | 00, 16 (the seed core) | L | Next; new passwords shown once are built |
+| 00 | Module contract, both runners and the core | (the framework) | Built, then 1 | — | — | Built; automatic runs and short output are next (milestone 1) |
+| 01 | Platform facts and the firewall adapter | (core) | Built, then 1 | 00 | — | Built; the outbound default comes with `lockout.firewall` |
+| 02 | Packages and third-party tools | `harden.packages` | 1 | 01, 03 | M | Next |
+| 03 | Lockout and the first-minute bundle | `lockout.sessions`, `lockout.firewall`, `harden.reopen_outbound` | 1 | 00, 01, 04 | L | Next |
+| 04 | Credentials and SSH keys | `lockout.credentials`, `lockout.ssh`, `lockout.accounts`, `harden.accounts` | 1 | 00, 16 (the seed core) | L | Next; new passwords shown once are built |
 | 05 | Network appliance runbooks | `lockout.appliance_runbooks` (manual-only) | Any time | — | S | Next; good first issue (templates, no code) |
-| 06 | Persistence sweep | `harden.persistence_sweep` | 4 | 01, 07 | L | Next; the quarantine helper is built |
-| 07 | Backup and recovery | `harden.restore_points` | 4 | 00 | M | Next |
-| 08 | Baseline and integrity | `observe.inventory`, `harden.package_verify`, `observe.integrity` | 4, 4b, 6 | 00, 02 | L | Next |
-| 09 | Vulnerability tracker and mitigations | `harden.vuln_check`, `harden.mitigations` | 4, 7 | 02, 08 | L | Next (the read-only check); the tracker is waiting |
-| 10 | Patching and service reduction | `harden.service_reduction`, `harden.patching` | 7 | 07, 09 | M | Waiting |
-| 11 | Service packs and config library | `harden.pack_web`, `harden.pack_mail_dns`, `harden.pack_data` | 7 | 07, 19 | L | Waiting |
-| 12 | Windows and AD hardening | `harden.win_base`, `harden.ad_checks`, `harden.win_tier3` | 4, 7 | 01 | L | Next (the base settings and read-only domain checks) |
-| 13 | Service replacement and containers | `harden.service_replace` | 7 | 02, 07, 11, 19 | L | Waiting |
-| 14 | Log forwarding and detection | `observe.auditd`, `observe.win_audit`, `observe.sysmon`, `observe.forward_linux`, `observe.forward_windows`, `observe.searches`, `harden.siem` | 6, 7 | 02, 03 | M | Waiting |
-| 15 | Status feed and MOTD | `observe.status_feed` | 9 | 14, 19 | S | Waiting; a good first issue once 19 is built |
-| 16 | Event seed | (core: `core/seed/`), `deceive.canaries` | 4 (the seed core), 9 | 00 | S | Waiting; the seed core is needed by stage 4 (design 04); good first issue (self-contained) |
-| 17 | Deception maze and CVE decoys | `deceive.maze`, `deceive.decoys` | 9 | 14, 16 | L | Waiting |
-| 18 | Dynamic bans | `deceive.bans` | 9 | 01, 14, 17 | M | Waiting |
-| 19 | Health monitor and checkpoints | `sustain.health_monitor` | 6 | 00 | M | Waiting; the http, dns and banner probes are built |
-| 20 | Incident reporting | (cross-phase `report/`) | 8 | 06, 08, 09 | M | Waiting |
-| 21 | Cleanup and tool integrity | `sustain.cleanup` | 8 | 00 | M | Waiting; each host's release check is built |
+| 06 | Persistence sweep | `harden.persistence_sweep` | 1 | 01, 07 | L | Next; the quarantine helper is built |
+| 07 | Backup and recovery | `harden.restore_points` | 1 | 00 | M | Next |
+| 08 | Baseline and integrity | `observe.inventory`, `harden.package_verify`, `observe.integrity` | 1, 3 | 00, 02 | L | Next |
+| 09 | Vulnerability tracker and mitigations | `harden.vuln_check`, `harden.mitigations` | 1, 4 | 02, 08 | L | Next (the read-only check); the tracker is waiting |
+| 10 | Patching and service reduction | `harden.service_reduction`, `harden.patching` | 1, 4 | 07, 09 | M | Waiting |
+| 11 | Service packs and config library | `harden.pack_web`, `harden.pack_mail_dns`, `harden.pack_data` | 1 | 07, 19 | L | Waiting |
+| 12 | Windows and AD hardening | `harden.win_base`, `harden.ad_checks`, `harden.win_tier3` | 1 | 01 | L | Next (the base settings and read-only domain checks) |
+| 13 | Service replacement and containers | `harden.service_replace` | 4 | 02, 07, 11, 19 | L | Waiting |
+| 14 | Log forwarding and detection | `observe.auditd`, `observe.win_audit`, `observe.sysmon`, `observe.forward_linux`, `observe.forward_windows`, `observe.searches`, `harden.siem` | 3, 4 | 02, 03 | M | Waiting |
+| 15 | Status feed and MOTD | `observe.status_feed` | 6 | 14, 19 | S | Waiting; a good first issue once 19 is built |
+| 16 | Event seed | (core: `core/seed/`), `deceive.canaries` | 1 (the seed core), 6 | 00 | S | Waiting; the seed core is needed by milestone 1 (design 04); good first issue (self-contained) |
+| 17 | Deception maze and CVE decoys | `deceive.maze`, `deceive.decoys` | 6 | 14, 16 | L | Waiting |
+| 18 | Dynamic bans | `deceive.bans` | 6 | 01, 14, 17 | M | Waiting |
+| 19 | Health monitor and checkpoints | `sustain.health_monitor` | 1 (the probes), 3 | 00 | M | Waiting; the http, dns and banner probes are built |
+| 20 | Incident reporting | (cross-phase `report/`) | 5 | 06, 08, 09 | M | Waiting |
+| 21 | Cleanup and tool integrity | `sustain.cleanup` | 5 | 00 | M | Waiting; each host's release check is built |
 | 22 | Ideas mined from reference repos | — | — | — | — | Reference only; nothing to build |
 
 Size is a rough guide: **S** is a day or two of work, **M** about a week, **L** several branches.
@@ -147,7 +147,7 @@ Each diagram is a Mermaid block inside the document it illustrates, with a one-s
 5. Officials must be given access immediately when they ask (NCCDC, 2025, Rule 4.1).
 6. No new devices (NCCDC, 2025, Rule 4.2). No migrating or containerizing a scored service unless an inject or the local competition rules allow it (NCCDC, 2025, Rule 4.14); where they do, design 13 governs it, off by default.
 7. Assume breach, and defend scored services rather than avoid them. Scoring rewards controlling and preventing unauthorized access, and successful Red Team penetrations cost points (NCCDC, 2025, Scoring section). Scored services are a primary Red Team target, so leaving them as found is not the safe choice; changing them with probes, backups and a revert timer is.
-8. Confirm, then act. What a person approves, before the event with a pre-approval rule, at the prompt (today), or later from the approval queue (planned, Roadmap stage 4b), Labyrinth carries out with the same backups, records and rollback. Only actions too broad or too hard to undo (Group Policy, DNS changes on a domain controller, domain controller restores, rescuing an unbootable host, Windows patching, appliances) stay in a person's hands.
+8. Confirm, then act. What a person approves, before the event with a pre-approval rule, at the prompt (today), or later from the approval queue (planned, Roadmap, first usable release), Labyrinth carries out with the same backups, records and rollback. Only actions too broad or too hard to undo (Group Policy, DNS changes on a domain controller, domain controller restores, rescuing an unbootable host, Windows patching, appliances) stay in a person's hands.
 9. Keep every name and address. No host name, address, scored DNS name or username is changed, and no scored port is filtered by source address: scoring, officials and simulated users reach it from addresses nobody can list (design 03, section 6.1).
 
 ## References

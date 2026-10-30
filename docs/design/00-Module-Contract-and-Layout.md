@@ -208,7 +208,7 @@ Labyrinth runs in two modes that share the same modules:
 - **Remote mode.** Built after local mode, read-only first: `remote plan` comes before `remote apply`, which follows only once the read-only part has run safely in the lab. The control node holds access to every host, so it is a hardened server (Blueprint §6.1). `labyrinth remote plan <phase> --group <group>` or `labyrinth remote apply <phase> --group <group>` runs on a control node. For each target it copies the release, checks it (design 21, section 5), runs the *same* local command over SSH (Linux) or PowerShell remoting or OpenSSH (Windows), and brings back the logs and the run manifest. It must cope with being cut off, because the lockout rotates the very credentials and SSH settings it connects with.
 - **Keeping a run in remote mode.** A local apply ends with the single keep question (y/N; today the operator types `keep`). In remote mode the control node answers for each host, from what it can check itself: it keeps the host's run (`laby -k ID`) only when, after the run, it can still log in to the host over the admin path with a new connection, and no scored service on that host that passed its probe from the control node before the run fails it after. This is the same rule as the checks after each module: a service the Red Team had already broken does not undo the team's changes. Otherwise it keeps nothing, and the revert timer rolls the host back, except the modules already kept once they verified (section 4, rule 9). Either way the control node prints and records which hosts it kept and why. The break-glass check at the console still follows the run (design 03, section 6.3); an operator who cannot log in there undoes the run for that host (`laby -u ID`).
 
-  Acceptance tests for remote mode, written when it is built (Roadmap, stage 5):
+  Acceptance tests for remote mode, written when it is built (Roadmap milestone "Remote mode"):
   - A host whose scored service already failed its probe before the run, and still fails after it, is kept when the admin login works with a new connection and no other service regressed. The control node reports the failing service.
   - A host where a service that passed before the run fails after it is not kept. When the timer fires, it undoes the host's run but leaves the modules kept once they verified.
 
@@ -231,7 +231,7 @@ laby [-r] <phase> [-P <name>]        # local; remote adds --group <group>
 The steps above are the design; `docs/Conventions.md` sections 3.1 and 3.3 give the exact order of the gates and steps in an apply, and they win where the two differ.
 
 > [!NOTE]
-> Today the runner still asks for the group at a prompt (or takes `--confirm-group`) and the break-glass answer, and the local apply ends by asking the operator to type `keep`. The prompt-free run and the approval queue arrive in Roadmap stage 4b.
+> Today the runner still asks for the group at a prompt (or takes `--confirm-group`) and the break-glass answer, and the local apply ends by asking the operator to type `keep`. The prompt-free run and the approval queue arrive in the first usable release.
 
 **Commands.** `laby` means the installed command, or `labyrinth.sh` / `labyrinth.ps1` run directly from a release. Both runners accept the same commands and options (Conventions, section 3.1):
 
@@ -250,7 +250,7 @@ The commands below `-V` are planned and do not exist yet. When built, they take 
 
 ### 5.1 The rest of the command line and automatic runs (specified now, built later)
 
-The flag forms for preview, run, keep, undo, history, probe, help and the version are built (Conventions, section 3.1). The runner does not do the rest yet (planned, stage 4b, `docs/Roadmap.md`); the notes above say where today's runner differs. Conventions, section 3.3 holds the full contract and wins where the two differ. It exists so that one short command per host carries out a whole phase without a person answering prompts, while keeping every gate.
+The flag forms for preview, run, keep, undo, history, probe, help and the version are built (Conventions, section 3.1). The runner does not do the rest yet (planned, first usable release, `docs/Roadmap.md`); the notes above say where today's runner differs. Conventions, section 3.3 holds the full contract and wins where the two differ. It exists so that one short command per host carries out a whole phase without a person answering prompts, while keeping every gate.
 
 - **The commands** `laby` and `labyrinth` are installed by `install.sh` and `install.ps1` (built; Conventions, section 3.3): on Linux as links in `/usr/bin` to `<root>/bin/labyrinth.sh`, on Windows as the launchers `laby.cmd` and `labyrinth.cmd` in `C:\Program Files\Labyrinth`, which goes on the machine `PATH`.
 - **Flags, with short and long forms,** under the name `laby` as well as `labyrinth`: `laby` shows the host's status and the next step, `laby PHASE` previews a phase, and `laby -r PHASE` runs it. `init` is Lock out then Harden as one run. The queue is `-q`, approving and declining are `-q -a LIST` and `-q -d LIST`, keeping is `-k ID`, undoing is `-u ID`, and `--probe` and `--history` stay long.
