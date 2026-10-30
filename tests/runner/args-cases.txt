@@ -117,42 +117,42 @@
 10|err|is not used by a preview|observe --profile test --root @ROOT@ --config @ETC@ --approve observe.ask:item-a@2a2c17aaaf66
 #
 # Help and version: stdout, exit 0. Typing nothing is the main help.
-0|out|Usage: laby PHASE|
-0|out|Usage: laby PHASE|-h
-0|out|Usage: laby PHASE|--help
-0|out|Usage: laby PHASE|/?
+0|out|Usage: @SELF@ PHASE|
+0|out|Usage: @SELF@ PHASE|-h
+0|out|Usage: @SELF@ PHASE|--help
+0|out|Usage: @SELF@ PHASE|/?
 0|out|Full manual: docs/manual/labyrinth.md in the release|-h
-0|out|Usage: laby -r PHASE|-r -h
-0|out|Usage: laby -r PHASE|-h -r
-0|out|Usage: laby -r PHASE|--run --help
-0|out|Usage: laby -r PHASE|-h run
-0|out|Usage: laby -k ID|-k --help
-0|out|Usage: laby -u ID [--all]|-u -h
-0|out|Usage: laby -u ID [--all]|-h -u
-0|out|Usage: laby -u ID [--all]|--undo --help
-0|out|Usage: laby -u ID [--all]|-h undo
-0|out|Usage: laby -u ID [--all]|-h Undo
-0|out|Usage: laby -V|-V -h
-0|out|Usage: laby observe|observe -h
-0|out|Usage: laby observe|-h observe
-0|out|Usage: laby -h basics|-h basics
-0|out|Usage: laby [-r] PHASE -P NAME|-P test -h
-0|out|Usage: laby ACTION --root DIR|--root @ROOT@ -h
+0|out|Usage: @SELF@ -r PHASE|-r -h
+0|out|Usage: @SELF@ -r PHASE|-h -r
+0|out|Usage: @SELF@ -r PHASE|--run --help
+0|out|Usage: @SELF@ -r PHASE|-h run
+0|out|Usage: @SELF@ -k ID|-k --help
+0|out|Usage: @SELF@ -u ID [--all]|-u -h
+0|out|Usage: @SELF@ -u ID [--all]|-h -u
+0|out|Usage: @SELF@ -u ID [--all]|--undo --help
+0|out|Usage: @SELF@ -u ID [--all]|-h undo
+0|out|Usage: @SELF@ -u ID [--all]|-h Undo
+0|out|Usage: @SELF@ -V|-V -h
+0|out|Usage: @SELF@ observe|observe -h
+0|out|Usage: @SELF@ observe|-h observe
+0|out|Usage: @SELF@ -h basics|-h basics
+0|out|Usage: @SELF@ [-r] PHASE -P NAME|-P test -h
+0|out|Usage: @SELF@ ACTION --root DIR|--root @ROOT@ -h
 0|out|labyrinth |-V
 0|out|labyrinth |--version
 0|out|labyrinth |-Version
 #
 # Help never runs anything: it wins over every other part of the line.
-0|out|Usage: laby observe|observe bogus -h
-0|out|Usage: laby -u ID [--all]|-u 4f2a -k 4f2a --bogus -h
-0|out|Usage: laby -k ID|-k ../x -h
-0|out|Usage: laby PHASE|--bogus -h
-0|out|Usage: laby PHASE|--profile -h
+0|out|Usage: @SELF@ observe|observe bogus -h
+0|out|Usage: @SELF@ -u ID [--all]|-u 4f2a -k 4f2a --bogus -h
+0|out|Usage: @SELF@ -k ID|-k ../x -h
+0|out|Usage: @SELF@ PHASE|--bogus -h
+0|out|Usage: @SELF@ PHASE|--profile -h
 #
 # An unknown topic is one line and the main help, still exit 0.
 0|out|No help for 'bogus'. Here is the main help.|-h bogus
 0|out|No help for 'obsrve' (did you mean 'observe'?). Here is the main help.|-h obsrve
-0|out|Usage: laby PHASE|-h bogus
+0|out|Usage: @SELF@ PHASE|-h bogus
 #
 # After '--', -h is a word.
 40|err|'-h' is not a phase.|-- -h

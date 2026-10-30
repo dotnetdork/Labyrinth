@@ -705,11 +705,11 @@ function Add-LabStackError {
     Add-LabParseError "unknown option '-$Bad' in '$shown'"
 }
 
-# Set-LabOption ROW SEP VAL: record the option in row ROW. SEP is the
+# Add-LabOption ROW SEP VAL: record the option in row ROW. SEP is the
 # separator typed before VAL ('' when none); an option that takes a value and
 # has none there takes the next word, unless that word looks like an option.
 # -k and -u go without a value, and main lists the runs.
-function Set-LabOption {
+function Add-LabOption {
     param($Row, [string] $Sep, [string] $Val)
     $name = $Row.Name
     $show = $Row.Show
@@ -796,7 +796,7 @@ function Read-LabArgument {
         $lk = $key.ToLowerInvariant().Replace('-', '')
         $o = Find-LabOption $lk
         if ($long -or $null -ne $o) {
-            if ($null -ne $o) { Set-LabOption $o $sep $val } else { Add-LabUnknownOption $w $lk }
+            if ($null -ne $o) { Add-LabOption $o $sep $val } else { Add-LabUnknownOption $w $lk }
             continue
         }
         # A stack of short letters. Check every letter before using any.
@@ -818,8 +818,8 @@ function Read-LabArgument {
             Add-LabParseError "$($early.Show) takes a value, so it must come last in '-$key'"
             continue
         }
-        for ($c = 0; $c -lt $last; $c++) { Set-LabOption $rows[$c] '' '' }
-        Set-LabOption $rows[$last] $sep $val
+        for ($c = 0; $c -lt $last; $c++) { Add-LabOption $rows[$c] '' '' }
+        Add-LabOption $rows[$last] $sep $val
     }
     $script:Words = @($words)
 }
@@ -873,9 +873,9 @@ function Show-LabAskedHelp {
     Show-LabHelp $topic
 }
 
-# Set-LabTryTopic: what the Try line of a usage error puts before -h: the
+# Select-LabTryTopic: what the Try line of a usage error puts before -h: the
 # first action typed, else the phase typed.
-function Set-LabTryTopic {
+function Select-LabTryTopic {
     $script:TryTopic = ''
     if ($script:Actions.Count -gt 0) { $script:TryTopic = Get-LabShow $script:Actions[0]; return }
     if ($script:Words.Count -gt 0) {
@@ -2911,7 +2911,7 @@ try {
     # whatever else the line says. Typing nothing is the same page.
     if ($script:HelpAsked) { Show-LabAskedHelp; exit 0 }
     if ($script:Arguments.Count -eq 0) { Show-LabHelp ''; exit 0 }
-    Set-LabTryTopic
+    Select-LabTryTopic
     if ($script:ParseError -ne '') { Exit-LabUsage $script:ParseError }
     if ($script:Actions.Count -gt 1) {
         Exit-LabUsage "two actions on one line: $(Get-LabShow $script:Actions[0]) and $(Get-LabShow $script:Actions[1])" 'Give one action at a time.'
