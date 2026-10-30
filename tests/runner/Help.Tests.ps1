@@ -180,7 +180,7 @@ Describe 'labyrinth.ps1 help' {
     It '-h run and -h basics mention the break-glass prompt; exits name the 20 causes' {
         $out = (Get-TestHelp $t @('-h', 'run')).Out
         $out | Should -Match 'break-glass'
-        $out | Should -Match '(?m)^Blocked: not an Administrator, another run, host not in hosts, or a safety gate\.\r?$'
+        $out | Should -Match '(?m)^Blocked: not an Administrator, another run, host not in hosts, or a gate\.\r?$'
         (Get-TestHelp $t @('-h', 'basics')).Out | Should -Match 'break-glass'
         (Get-TestHelp $t @('-h', 'keep')).Out | Should -Match '(?m)^Blocked: not an Administrator, a file another account can change, or too late\r?$'
         (Get-TestHelp $t @('-h', 'undo')).Out | Should -Match '(?m)^Blocked: not an Administrator, or a file another account can change\.\r?$'

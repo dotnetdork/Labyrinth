@@ -228,7 +228,7 @@ Options:
   --approve LIST         approve without asking: module:item@fingerprint,...
 
 Exit: 0 done, 10 manual steps left, 20 blocked, 30 check failed, 40 error.
-Blocked: not root, another run, host not in hosts, or a safety gate.
+Blocked: not an Administrator, another run, host not in hosts, or a gate.
 Example: @CMD@ -r lockout
 See also: @CMD@ -h lockout, -h keep, -h basics
 '@ }
@@ -243,7 +243,7 @@ Administrator.
 Options: --root DIR (data root), --config DIR (configuration folder)
 
 Exit: 0 kept, 20 blocked, 40 error.
-Blocked: not root, a file another account can change, or too late
+Blocked: not an Administrator, a file another account can change, or too late
 (the run was already undone).
 Example: @CMD@ -k 4f2a
 See also: @CMD@ --history, @CMD@ -h undo
@@ -261,7 +261,7 @@ Options:
   --root DIR, --config DIR   data root, configuration folder
 
 Exit: 0 undone, 20 blocked, 40 error.
-Blocked: not root, or a file another account can change.
+Blocked: not an Administrator, or a file another account can change.
 Example: @CMD@ -u 4f2a
 See also: @CMD@ --history, @CMD@ -h keep
 '@ }

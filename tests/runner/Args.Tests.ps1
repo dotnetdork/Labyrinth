@@ -133,7 +133,7 @@ Describe 'labyrinth.ps1 command line' {
         $r.Err | Should -Not -Match 'full path'
     }
 
-    It 'a run ID PowerShell read as a number is refused with a hint to quote it' {
+    It 'a run ID PowerShell reads as a number keeps its digits, leading zero included' {
         foreach ($flag in @('-k', '-u')) {
             $o = "-Root '$($t.Root)' -Config '$($t.Etc)'"
             $line = "& '$(Join-Path $t.Lab 'labyrinth.ps1')' $flag 0123 $o; exit `$LASTEXITCODE"
@@ -147,7 +147,7 @@ Describe 'labyrinth.ps1 command line' {
                 $ErrorActionPreference = $saved
             }
             $code | Should -Be 40
-            (@($out) | ForEach-Object { "$_" }) -join "`n" | Should -Match 'put it in quotes'
+            (@($out) | ForEach-Object { "$_" }) -join "`n" | Should -Match "no run ending in '0123'"
         }
     }
 
