@@ -5,28 +5,80 @@ body:
   - type: markdown
     attributes:
       value: |
-        Most work starts from a row in `docs/Roadmap.md`. Name its branch (for example `phase-4/ssh`) and the spec it builds.
+        Most work starts from a row in `docs/Roadmap.md`. Name its branch (for example `phase-4/ssh`) and link the spec it builds.
+        Write it so someone new, or their AI assistant, can pick it up without asking anything (CONTRIBUTING.md, "Issues, labels and milestones").
         If it is about a published CVE, put the CVE ID in the title and the maintainers will add the `cve` label.
-        This repository is public: no event values, real hostnames, addresses or credentials.
+        This repository is public: no event values, real hostnames, addresses or credentials. Use placeholders.
+  - type: textarea
+    id: read
+    attributes:
+      label: Read first
+      description: "Links to the exact spec sections, the Roadmap row, the Conventions sections and the AGENTS.md rules the work needs. Keep the last line."
+      value: |
+        - [Design NN, section N.N: title](https://github.com/dotnetdork/Labyrinth/blob/main/docs/design/...)
+
+        Read these before starting. If this issue and the spec disagree, the spec wins; say so in the pull request.
+    validations:
+      required: true
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: "Two to four plain sentences: what it is and why it matters."
+    validations:
+      required: true
+  - type: textarea
+    id: depends
+    attributes:
+      label: Depends on
+      description: "The issues it is blocked by and the ones it blocks."
+      placeholder: "Blocked by #66. Blocks #85."
+    validations:
+      required: false
   - type: textarea
     id: location
     attributes:
       label: Location & Context
-      description: The Roadmap row and spec sections, and the files it will touch.
-      placeholder: "Roadmap phase-4/ssh; design 04, section 4; platform/linux/..., labyrinth.ps1"
+      description: "The branch, the module ID, and the files and functions it touches."
+      placeholder: "Branch phase-4/ssh. Module lockout.ssh in phases/lockout/modules/ssh/ (new)."
     validations:
       required: true
   - type: textarea
     id: current
     attributes:
       label: Current Behavior
-      description: What Labyrinth does today, and why that falls short.
+      description: "What Labyrinth does today, and why that falls short."
     validations:
       required: true
   - type: textarea
     id: plan
     attributes:
-      label: Remediation Plan
-      description: The steps to build it, and the acceptance tests from the spec, including the negative test that protected accounts and scored services are untouched.
+      label: Plan
+      description: "Short numbered steps."
     validations:
       required: true
+  - type: textarea
+    id: tests
+    attributes:
+      label: Acceptance tests
+      description: "A checklist, written first (bats and Pester where both platforms are covered), including the negative test that protected accounts and scored services are untouched."
+      value: |
+        - [ ] 
+        - [ ] Negative test: protected accounts and scored services are untouched before and after.
+    validations:
+      required: true
+  - type: textarea
+    id: done
+    attributes:
+      label: Done when
+      description: "A checklist: both platforms pass CI, the manual and help pages are written, the lab tests pass, or what fits this issue."
+      placeholder: "- [ ] Both platforms pass CI."
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Out of scope
+      description: "Nearby work that belongs to another issue, with its number."
+    validations:
+      required: false
