@@ -1,6 +1,5 @@
 name: Bug
 description: Labyrinth does something its spec or manual says it should not
-title: "[Bug] "
 labels: ["type: bug"]
 body:
   - type: markdown
