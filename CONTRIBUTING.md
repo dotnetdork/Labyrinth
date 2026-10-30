@@ -47,7 +47,7 @@ The **milestone** says when an issue is built: the first usable release, then th
 
 Copilot, another assistant or plain hands all work. The rules in [`AGENTS.md`](AGENTS.md) apply either way; most assistants read that file on their own, `CLAUDE.md` pulls it in for Claude Code, and `.github/copilot-instructions.md` points Copilot to it. The shared commands in `.claude/commands/` are checklists you can follow yourself:
 
-1. **Claim the issue** (`/start-issue`): check nobody is assigned and no pull request covers it, assign yourself, update `main`, create the branch, and read the spec sections the issue names.
+1. **Claim the issue** (`/start-issue`): check nobody is assigned and no pull request covers it, assign yourself, update `main`, create the branch, and read every link in the issue's **Read first** section.
 2. **Build a module** (`/new-module`): create the folder and `module.yml` from the module contract (design 00), and write the tests from the spec's acceptance-test list first.
 3. **Before the pull request** (`/pre-pr`): read your own diff against the public boundary and the hard rules in `AGENTS.md`, tick every box in the pull request template, and push the branch so CI runs.
 

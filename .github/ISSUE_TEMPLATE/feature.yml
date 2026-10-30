@@ -38,8 +38,8 @@ body:
     id: location
     attributes:
       label: Location & Context
-      description: "The specs and files it touches."
-      placeholder: "Conventions 3.3; labyrinth.sh, labyrinth.ps1"
+      description: "The branch, the module ID, and the files and functions it touches."
+      placeholder: "labyrinth.sh, labyrinth.ps1"
     validations:
       required: true
   - type: textarea
@@ -71,8 +71,7 @@ body:
     attributes:
       label: Done when
       description: "A checklist: both platforms pass CI, the manual and help pages are written, the lab tests pass, or what fits this issue."
-      value: |
-        - [ ] 
+      placeholder: "- [ ] Both platforms pass CI."
     validations:
       required: true
   - type: textarea
