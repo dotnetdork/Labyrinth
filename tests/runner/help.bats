@@ -1,196 +1,255 @@
 #!/usr/bin/env bats
-# labyrinth.sh help: the shape of every topic, the ways to ask for it, and
-# that the operator manual covers every command it lists
-# (docs/Conventions.md sections 3.1 and 3.2).
+# labyrinth.sh -h: the shape of the main help and of every topic, the ways to
+# ask for one, that help never runs anything, and that the operator manual
+# covers every action it lists (docs/Conventions.md sections 3.2 and 3.3).
 
 load lab_helper
 
 setup() { lab_setup; }
 
-TOPICS='plan apply keep rollback runs probe help version'
+# Every topic with a page of its own: the actions, the options and the
+# phases. Basics is the one screen that is longer.
+ACTIONS='run keep undo history probe version'
+OPTIONS='profile root config break-glass confirm-group approve all'
+PHASES='lockout observe deceive sustain'
+TOPICS="$ACTIONS $OPTIONS $PHASES"
 
-# help ARG...: run labyrinth.sh with ARG..., which must print help
-help() { run bash "$LAB/labyrinth.sh" "$@" < /dev/null; }
+# ask ARG...: run labyrinth.sh with ARG..., which must print help
+ask() { run bash "$LAB/labyrinth.sh" "$@" < /dev/null; }
 
-@test "every topic is short, fits 78 columns, and has one Exit and one Example line" {
+@test "the main help is one screen: Usage, Actions and Options, the manual last" {
+  ask -h
+  [ "$status" -eq 0 ]
+  [ "$(wc -l <<< "$output")" -le 24 ]
+  [ "$(awk '{ if (length > w) w = length } END { print w + 0 }' <<< "$output")" -le 78 ]
+  [ "$(head -n 1 <<< "$output")" = 'Usage: laby PHASE                preview a phase: nothing changes' ]
+  grep -q '^Actions' <<< "$output"
+  grep -q '^Options:' <<< "$output"
+  [ "$(grep -c '^Exit: ' <<< "$output")" -eq 1 ]
+  grep -q 'an action, option, phase or basics' <<< "$output"
+  [ "$(tail -n 1 <<< "$output")" = 'Full manual: docs/manual/labyrinth.md in the release' ]
+}
+
+@test "every topic is short, fits 78 columns, and has one Usage, one Exit, an Example and See also" {
   local t max
-  for t in '' $TOPICS basics; do
-    help help $t
-    [ "$status" -eq 0 ] || { echo "help $t: exit $status"; return 1; }
-    # Basics is one screen. The command in hints and the manual's path do
-    # not count toward the width (docs/Conventions.md section 3.2).
+  for t in $TOPICS basics; do
+    ask -h "$t"
+    [ "$status" -eq 0 ] || { echo "-h $t: exit $status"; return 1; }
     case "$t" in basics) max=24 ;; *) max=18 ;; esac
-    [ "$(wc -l <<< "$output")" -le "$max" ] || { echo "help $t: over $max lines"; return 1; }
-    [ "$(sed -e "s|$SELF|labyrinth.sh|g" -e "s|$LAB|/opt/labyrinth|g" <<< "$output" \
-        | awk '{ if (length > w) w = length } END { print w + 0 }')" -le 78 ] \
-      || { echo "help $t: a line is over 78 columns"; return 1; }
-    [ "$(grep -c '^Exit: ' <<< "$output")" -eq 1 ] || { echo "help $t: Exit lines"; return 1; }
-    [ "$(grep -c '^Example: ' <<< "$output")" -eq 1 ] || { echo "help $t: Example lines"; return 1; }
-    [[ "$(head -n 1 <<< "$output")" == "Usage: $SELF "* ]] || { echo "help $t: no Usage line"; return 1; }
+    [ "$(wc -l <<< "$output")" -le "$max" ] || { echo "-h $t: over $max lines"; return 1; }
+    [ "$(awk '{ if (length > w) w = length } END { print w + 0 }' <<< "$output")" -le 78 ] \
+      || { echo "-h $t: a line is over 78 columns"; return 1; }
+    [[ "$(head -n 1 <<< "$output")" == 'Usage: laby '* ]] || { echo "-h $t: no Usage line"; return 1; }
+    [ "$(grep -c '^Exit: ' <<< "$output")" -eq 1 ] || { echo "-h $t: Exit lines"; return 1; }
+    [ "$(grep -c '^Example: ' <<< "$output")" -eq 1 ] || { echo "-h $t: Example lines"; return 1; }
+    if [[ "$t" != basics ]]; then
+      [ "$(grep -c '^See also: ' <<< "$output")" -eq 1 ] || { echo "-h $t: See also lines"; return 1; }
+    fi
   done
 }
 
-@test "help X, X --help and X -h print the same" {
-  local t want
-  for t in $TOPICS; do
-    help help "$t"; want="$output"
-    help "$t" --help; [ "$status" -eq 0 ] && [ "$output" = "$want" ] || { echo "$t --help"; return 1; }
-    help "$t" -h; [ "$status" -eq 0 ] && [ "$output" = "$want" ] || { echo "$t -h"; return 1; }
+@test "the help names the command laby, not the way the runner was started" {
+  ask -h
+  [[ "$output" != *"$SELF"* ]]
+  [[ "$output" != *labyrinth.sh* ]]
+  ask -h run
+  [[ "$output" != *"$SELF"* ]]
+  [[ "$output" == *'Example: laby -r lockout'* ]]
+}
+
+@test "an action, its long name and its topic word print the same page" {
+  local a want
+  ask -h run; want="$output"
+  for a in '-r -h' '--run --help' '-h run' '--help RUN' '-h Run'; do
+    # shellcheck disable=SC2086 # the words are split on purpose
+    ask $a
+    [ "$status" -eq 0 ] && [ "$output" = "$want" ] || { echo "$a"; return 1; }
   done
-  help help; want="$output"
-  for a in --help -h '-?' HELP; do
-    help "$a"; [ "$status" -eq 0 ] && [ "$output" = "$want" ] || { echo "$a"; return 1; }
+  ask -h undo; want="$output"
+  for a in '-u -h' '--undo --help' '-u 4f2a -h' '-h -u'; do
+    # shellcheck disable=SC2086
+    ask $a
+    [ "$status" -eq 0 ] && [ "$output" = "$want" ] || { echo "$a"; return 1; }
+  done
+  ask -h keep; want="$output"
+  for a in '-k -h' '--keep --help' '-k=4f2a -h'; do
+    # shellcheck disable=SC2086
+    ask $a
+    [ "$status" -eq 0 ] && [ "$output" = "$want" ] || { echo "$a"; return 1; }
+  done
+  ask -h history; want="$output"
+  for a in '--history -h' '--history --help'; do
+    # shellcheck disable=SC2086
+    ask $a
+    [ "$status" -eq 0 ] && [ "$output" = "$want" ] || { echo "$a"; return 1; }
+  done
+  ask -h observe; want="$output"
+  for a in 'observe -h' 'observe --help' 'OBSERVE -h'; do
+    # shellcheck disable=SC2086
+    ask $a
+    [ "$status" -eq 0 ] && [ "$output" = "$want" ] || { echo "$a"; return 1; }
   done
 }
 
-@test "the general help lists every command, and each has a topic" {
-  help help
-  local listed
-  listed="$(awk '/^  [a-z]+ /{ print $1 }' <<< "$output" | tr '\n' ' ')"
-  [ "$listed" = "$TOPICS " ]
+@test "-h, --help, /? and -? print the main help, and so does typing nothing" {
+  local a want
+  ask -h; want="$output"
+  for a in --help /? '-?'; do
+    ask "$a"
+    [ "$status" -eq 0 ] && [ "$output" = "$want" ] || { echo "$a"; return 1; }
+  done
+  ask
+  [ "$status" -eq 0 ]
+  [ "$output" = "$want" ]
 }
 
-@test "both operator manuals have a section for every command help lists" {
-  local p c listed
-  help help
-  listed="$(awk '/^  [a-z]+ /{ print $1 }' <<< "$output")"
+@test "help wins over everything else on the line, even a mistake" {
+  local want
+  ask -h observe; want="$output"
+  ask observe bogus -h
+  [ "$status" -eq 0 ] && [ "$output" = "$want" ]
+  ask -u 4f2a -k 4f2a --bogus -h
+  [ "$status" -eq 0 ]
+  [[ "$(head -n 1 <<< "$output")" == 'Usage: laby -u ID'* ]]
+  ask --root relative --profile 'a;b' -h
+  [ "$status" -eq 0 ]
+  [[ "$(head -n 1 <<< "$output")" == 'Usage: laby [-r] PHASE -P NAME' ]]
+}
+
+@test "help runs nothing: no data root, no configuration read, no root needed" {
+  local f
+  rm -rf "$ETC"
+  touch "$LAB/NOT_ADMIN"
+  for f in -h '-h run' '-r -h' '-u -h' '--history --help' '-h basics' '-h bogus' '-h observe.sample'; do
+    # shellcheck disable=SC2086 # the words are split on purpose
+    ask --root "$ROOT" --config "$ETC" $f
+    [ "$status" -eq 0 ] || { echo "$f: exit $status"; return 1; }
+    [ ! -e "$ROOT" ] || { echo "$f: made $ROOT"; return 1; }
+  done
+}
+
+@test "an unknown topic is one line, the main help, and exit 0" {
+  ask -h bogus
+  [ "$status" -eq 0 ]
+  [ "${lines[0]}" = "No help for 'bogus'. Here is the main help." ]
+  [ "${lines[1]}" = 'Usage: laby PHASE                preview a phase: nothing changes' ]
+  ask -h obsrve
+  [ "$status" -eq 0 ]
+  [ "${lines[0]}" = "No help for 'obsrve' (did you mean 'observe'?). Here is the main help." ]
+  ask -h basic
+  [[ "${lines[0]}" == *"did you mean 'basics'"* ]]
+}
+
+@test "the old command words are no help topics" {
+  for w in plan apply rollback; do
+    ask -h "$w"
+    [ "$status" -eq 0 ]
+    [[ "${lines[0]}" == "No help for '$w'"* ]] || { echo "$w"; return 1; }
+    [[ "${lines[0]}" != *'did you mean'* ]] || { echo "$w: hint"; return 1; }
+  done
+}
+
+@test "a usage error points to the help of what was typed, the way the runner was started" {
+  run bash "$LAB/labyrinth.sh" obsrve < /dev/null
+  [ "$status" -eq 40 ]
+  [[ "$output" == *"Try '$LAB/labyrinth.sh -h'."* ]]
+  run env SUDO_USER=someone bash "$LAB/labyrinth.sh" obsrve < /dev/null
+  [[ "$output" == *"Try 'sudo $LAB/labyrinth.sh -h'."* ]]
+  cd "$LAB"
+  run bash ./labyrinth.sh bogus < /dev/null
+  [[ "$output" == *"Try './labyrinth.sh -h'."* ]]
+  run bash ./labyrinth.sh -u 4f2a --bogus < /dev/null
+  [[ "$output" == *"Try './labyrinth.sh -u -h'."* ]]
+}
+
+@test "both operator manuals have a section for every action help lists" {
+  local p c
   for p in linux windows; do
     run bash "$REPO/tools/manual/split.sh" "$p"
     [ "$status" -eq 0 ]
-    for c in $listed; do
+    for c in preview run keep undo history probe version help; do
       grep -Eq "^## $c( |\$)" <<< "$output" || { echo "$p manual: no section for $c"; return 1; }
     done
   done
 }
 
-@test "hints print the command the way it was started, with sudo under sudo" {
-  run bash "$LAB/labyrinth.sh" help < /dev/null
-  [[ "$(head -n 1 <<< "$output")" == "Usage: $LAB/labyrinth.sh "* ]]
-  run env SUDO_USER=someone bash "$LAB/labyrinth.sh" help < /dev/null
-  [[ "$(head -n 1 <<< "$output")" == "Usage: sudo $LAB/labyrinth.sh "* ]]
-  cd "$LAB"
-  run bash labyrinth.sh help < /dev/null
-  [[ "$(head -n 1 <<< "$output")" == 'Usage: ./labyrinth.sh '* ]]
-  run bash ./labyrinth.sh bogus < /dev/null
-  [[ "$output" == *"Try './labyrinth.sh help' for more information."* ]]
-}
-
-@test "the general help says where the options are and names a manual that exists" {
-  help help
-  grep -qF "Options: '$SELF help <command>' lists them; so does <command> -h." <<< "$output"
-  [ "$(grep '^Manual: ' <<< "$output")" = "Manual: the Linux parts of $LAB/docs/manual/labyrinth.md" ]
-  [[ "$output" != *'once installed'* ]]
-}
-
-@test "help runs names every state, and the commands say who must run them" {
-  help help runs
+@test "the actions that need root say so, and -h history names every state" {
+  local t s
+  for t in run keep undo history probe; do
+    ask -h "$t"
+    grep -qi 'needs root' <<< "$output" || { echo "-h $t: no root note"; return 1; }
+  done
+  ask -h history
   for s in armed kept 'rolled back' 'rolled back with errors' 'not kept, no timer' 'armed: timer lost'; do
-    [[ "$output" == *"$s"* ]] || { echo "help runs: no '$s'"; return 1; }
-  done
-  for t in plan apply keep rollback runs probe; do
-    help help "$t"
-    grep -q 'needs root\|Needs root' <<< "$output" || { echo "help $t: no root note"; return 1; }
+    [[ "$output" == *"$s"* ]] || { echo "-h history: no '$s'"; return 1; }
   done
 }
 
-@test "help apply and help basics mention the break-glass prompt; exits name the 20 causes" {
-  help help apply
+@test "-h run and -h basics mention the break-glass prompt; exits name the 20 causes" {
+  ask -h run
   [[ "$output" == *break-glass* ]]
   grep -q '^Blocked: not root, another run, host not in hosts, or a safety gate\.$' <<< "$output"
-  help help basics
+  ask -h basics
   [[ "$output" == *break-glass* ]]
-  help help keep
+  ask -h keep
   grep -q '^Blocked: not root, a file another account can change, or too late$' <<< "$output"
-  help help rollback
+  ask -h undo
   grep -q '^Blocked: not root, or a file another account can change\.$' <<< "$output"
 }
 
-@test "the option heading says Options, and the version names the runner" {
-  local t
-  for t in plan apply keep rollback runs probe; do
-    help help "$t"
-    grep -qx 'Options:' <<< "$output" || { echo "help $t: no Options heading"; return 1; }
-    [[ "$output" != *'Where:'* ]] || { echo "help $t: Where heading"; return 1; }
-  done
-  run bash "$LAB/labyrinth.sh" version < /dev/null
+@test "-h undo explains --all, and -h keep says an ID is always needed" {
+  ask -h undo
+  [[ "$output" == *"--all                  also undo changes kept once they verified"* ]]
+  ask -h keep
+  [[ "$output" == *'ID is always needed'* ]]
+}
+
+@test "-V names the runner, and -V -h is its help" {
+  run bash "$LAB/labyrinth.sh" -V < /dev/null
+  [ "$status" -eq 0 ]
   [[ "${lines[0]}" == "labyrinth "*" (labyrinth.sh, for Linux)" ]]
   [[ "${lines[1]}" == 'Release: '* ]]
+  ask -V -h
+  [ "$(head -n 1 <<< "$output")" = 'Usage: laby -V' ]
 }
 
-@test "everyday words and flags point to the command or option meant" {
-  local w want
-  for w in undo:rollback revert:rollback status:runs list:runs check:probe test:probe; do
-    run bash "$LAB/labyrinth.sh" "${w%%:*}" < /dev/null
-    [ "$status" -eq 40 ]
-    [[ "$output" == *"unknown command '${w%%:*}' (did you mean '${w#*:}'?)"* ]] || { echo "$w"; return 1; }
-  done
-  run bash "$LAB/labyrinth.sh" help undo < /dev/null
-  [[ "$output" == *"no help for 'undo' (did you mean 'rollback'?)"* ]]
-  run bash "$LAB/labyrinth.sh" apply observe --dry-run < /dev/null
-  [ "$status" -eq 40 ]
-  [[ "$output" == *"unknown option '--dry-run' (did you mean the command 'plan'?)"* ]]
-  for w in --yes --force; do
-    run bash "$LAB/labyrinth.sh" apply observe "$w" < /dev/null
-    [[ "$output" == *"unknown option '$w' (did you mean '--confirm-group'?)"* ]] || { echo "$w"; return 1; }
-  done
-}
-
-@test "a short word gets a suggestion only when it is one letter off" {
-  run bash "$LAB/labyrinth.sh" plan observe --foo < /dev/null
-  [ "$status" -eq 40 ]
-  [[ "$output" == *"unknown option '--foo'"* ]]
-  [[ "$output" != *'did you mean'* ]]
-  run bash "$LAB/labyrinth.sh" plan observe --ROT < /dev/null
-  [[ "$output" == *"did you mean '--root'"* ]]
-}
-
-@test "help for an unknown command is a usage error with a suggestion" {
-  run bash "$LAB/labyrinth.sh" help aply < /dev/null
-  [ "$status" -eq 40 ]
-  [[ "$output" == *"did you mean 'apply'"* ]]
-  run bash "$LAB/labyrinth.sh" help basic < /dev/null
-  [ "$status" -eq 40 ]
-  [[ "$output" == *"did you mean 'basics'"* ]]
-}
-
-@test "the general help points a beginner to help basics and names the manual" {
-  help help
-  [[ "$(sed -n 2p <<< "$output")" == *"$SELF help basics"* ]]
-  grep -q '^Manual: ' <<< "$output"
+@test "the basics tell the first run with the real forms" {
+  ask -h basics
+  [[ "$output" == *"'laby lockout'"* ]]
+  [[ "$output" == *"'laby -r lockout'"* ]]
+  [[ "$output" == *"'laby -k ID'"* ]]
+  [[ "$output" == *"'laby -u ID'"* ]]
+  [[ "$output" == *"'laby --history'"* ]]
+  [[ "$output" == *"'laby --probe'"* ]]
 }
 
 @test "help on a module ID prints its title, its risk in words, then its about.txt" {
-  help help observe.sample
+  ask -h observe.sample
   [ "$status" -eq 0 ]
   [ "$(head -n 1 <<< "$output")" = 'No-op sample (observe.sample)' ]
   grep -qx 'Risk: only looks; it never changes anything.' <<< "$output"
   grep -qx 'Runs on: ubuntu, rhel-family, windows.' <<< "$output"
   grep -qx "What it changes: nothing. Its plan describes a change it never makes." <<< "$output"
-  help help OBSERVE.SAMPLE --help
+  ask -h OBSERVE.SAMPLE
+  [ "$status" -eq 0 ]
+  [ "$(head -n 1 <<< "$output")" = 'No-op sample (observe.sample)' ]
+  ask observe.sample --help
   [ "$status" -eq 0 ]
   [ "$(head -n 1 <<< "$output")" = 'No-op sample (observe.sample)' ]
 }
 
 @test "help on a module without about.txt says so; any module ID works, in a profile or not" {
-  help help observe.toggle
+  ask -h observe.toggle
   [ "$status" -eq 0 ]
   grep -qx 'Risk: changes this host; each change is saved first and can be undone.' <<< "$output"
   grep -q '^This module has no about.txt yet' <<< "$output"
 }
 
-@test "help on an unknown or invalid module is an error that says why" {
-  run bash "$LAB/labyrinth.sh" help observe.sampel < /dev/null
-  [ "$status" -eq 40 ]
-  [[ "$output" == *"no module 'observe.sampel' (did you mean 'observe.sample'?)"* ]]
-  run bash "$LAB/labyrinth.sh" help observe.badyml < /dev/null
+@test "help on an unknown module is a near-miss line and the main help; an invalid one is an error" {
+  ask -h observe.sampel
+  [ "$status" -eq 0 ]
+  [ "${lines[0]}" = "No help for 'observe.sampel' (did you mean 'observe.sample'?). Here is the main help." ]
+  ask -h observe.badyml
   [ "$status" -eq 40 ]
   [[ "$output" == *"the module.yml of observe.badyml is not valid: unknown key color"* ]]
-}
-
-@test "no command prints three steps to start with, and exits 40" {
-  run bash "$LAB/labyrinth.sh" < /dev/null
-  [ "$status" -eq 40 ]
-  grep -qx 'Start here:' <<< "$output"
-  grep -qF "  1. $SELF help basics " <<< "$output"
-  grep -qF "  2. $SELF plan lockout " <<< "$output"
 }

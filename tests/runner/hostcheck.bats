@@ -17,9 +17,9 @@ listed() { printf '%s ring1 test %s\n' "$HOST" "$1" > "$ETC/hosts"; }
 
 lab() { run bash "$LAB/labyrinth.sh" --root "$ROOT" --config "$ETC" "$@" < /dev/null; }
 
-@test "plan, apply and probe refuse a host listed for Windows" {
+@test "preview, -r and --probe refuse a host listed for Windows" {
   listed windows
-  for words in "plan observe" "apply observe" probe; do
+  for words in "observe" "-r observe" --probe; do
     # shellcheck disable=SC2086 # the words are split on purpose
     lab $words
     [ "$status" -eq 20 ] || { echo "$words: $status"; return 1; }
@@ -29,9 +29,9 @@ lab() { run bash "$LAB/labyrinth.sh" --root "$ROOT" --config "$ETC" "$@" < /dev/
   [ ! -e "$LAB/toggle.conf" ]
 }
 
-@test "plan, apply and probe never act on an appliance" {
+@test "preview, -r and --probe never act on an appliance" {
   listed appliance
-  for words in "plan observe" "apply observe" probe; do
+  for words in "observe" "-r observe" --probe; do
     # shellcheck disable=SC2086 # the words are split on purpose
     lab $words
     [ "$status" -eq 20 ] || { echo "$words: $status"; return 1; }
@@ -40,29 +40,29 @@ lab() { run bash "$LAB/labyrinth.sh" --root "$ROOT" --config "$ETC" "$@" < /dev/
   [ ! -e "$ROOT" ]
 }
 
-@test "both Linux platforms are served, and an unlisted host may still plan" {
+@test "both Linux platforms are served, and an unlisted host may still preview" {
   listed rhel-family
-  lab plan observe
+  lab observe
   [ "$status" -eq 10 ]
   listed ubuntu
-  lab plan observe
+  lab observe
   [ "$status" -eq 10 ]
   listed debian
-  lab plan observe
+  lab observe
   [ "$status" -eq 10 ]
   rm "$ETC/hosts"
-  lab --profile test plan observe
+  lab --profile test observe
   [ "$status" -eq 10 ]
 }
 
-@test "keep still works after this host's line changes platform" {
+@test "-k still works after this host's line changes platform" {
   listed ubuntu
   answers root ring1 no
   apply
   [ "$status" -eq 0 ]
   id="$(run_id)"
   listed windows
-  lab keep "$id"
+  lab -k "$id"
   [ "$status" -eq 0 ]
   [[ "$output" == *"kept: the revert timer for run $id is cancelled"* ]]
 }
@@ -74,7 +74,7 @@ lab() { run bash "$LAB/labyrinth.sh" --root "$ROOT" --config "$ETC" "$@" < /dev/
   [ "$status" -eq 0 ]
   id="$(run_id)"
   rm -rf "$ETC"
-  lab rollback "$id"
+  lab -u "$id"
   [ "$status" -eq 0 ]
   [ ! -e "$LAB/toggle.conf" ]
 }

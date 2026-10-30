@@ -53,8 +53,7 @@ Each module is a folder `phases/<phase>/modules/<name>/` with `module.yml` and u
 
 `labyrinth.sh` and `labyrinth.ps1` share one vocabulary. Before changing a command, option, prompt, exit code or console message:
 
-- Follow `docs/Conventions.md` section 3.1 (commands, options, the order of an apply), section 3.2 (console output) and section 3.3 (the planned flag-style command line, built in stage 4b). If the change departs from them, update the spec first.
-- **Never edit the compatibility suite to make a change pass** (`tests/runner/compat.bats`, `tests/runner/Compat.Tests.ps1`). Armed revert timers run stored command lines, so every form it holds must keep working. Change the runner instead.
+- Follow `docs/Conventions.md` section 3.1 (commands, options, the order of an apply), section 3.2 (console output) and section 3.3 (the planned additions to the command line, built in stage 4b). If the change departs from them, update the spec first.
 - **Update the operator manual in the same commit** (`docs/manual/labyrinth.md`). Put platform-only text between `<!-- linux -->` or `<!-- windows -->` and `<!-- end -->`, and write in the plain style of `docs/Overview.md`. `tests/manual/manual.bats` must pass.
 - Make the same change in both runners, with tests in both suites.
 

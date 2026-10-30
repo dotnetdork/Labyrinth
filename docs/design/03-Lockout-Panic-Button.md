@@ -165,7 +165,7 @@ flowchart TD
 The opening seconds decide whether the Red Team keeps its foothold, and a person answering prompts host by host cannot keep up. A first-minute run applies a profile the team reviewed before the event, started on every host at once (by an operator on each host in local mode, or from a control node once remote apply exists; design 00, section 5). Today every answer is given on the command line:
 
 ```
-labyrinth apply lockout --profile <name> --confirm-group <group> --break-glass <account> [--approve <list>]
+laby -r lockout -P <name> --confirm-group <group> --break-glass <account> [--approve <list>]
 ```
 
 Once stage 4b is built it is one short command per host, with nothing to answer during the run (Conventions, section 3.3):
@@ -180,7 +180,7 @@ The group and the break-glass account come from the configuration, and items no 
 | Left out of a first-minute run | Kept in every run |
 |---|---|
 | Typing the confirmation and the break-glass answer: the options answer them today, and the configuration once stage 4b is built; the manifest records where each came from | The scoring allowlist, where one is given, goes in before any deny rule |
-| A separate `plan` command: `apply` prints the plan and carries it out | A revert timer on every host, re-armed before each module |
+| A separate preview step: `-r` prints the plan and carries it out | A revert timer on every host, re-armed before each module |
 | Per-item approval for the items a pre-approval rule covers | Probes before and after each module, with automatic rollback on a regression |
 | Rings: every host starts at once, each under its own revert timer | The protected set and the break-glass account are never changed |
 
@@ -202,10 +202,10 @@ The break-glass account is still the team's choice for each host (section 7): it
 ## 8. Preventing self-lockout
 
 - **Two-session rule.** Keep one session open while testing from a fresh one.
-- **Dead-man revert.** Before any change that is not `read-only`, such as a firewall or SSH change, arm a timer that rolls the run back unless the operator keeps it after verify. It runs `labyrinth rollback <run>` (`docs/Conventions.md`, section 3.1). Once stage 4b is built, the operator keeps the run by answering the login check, or with `laby -k <run>` (Conventions, section 3.3). A module that only takes access away from an intruder is kept once it verifies with no scored service worse, so the timer never hands an intruder their access back (design 00, section 4, rule 9). When the timer rolls a run back, every logged-in terminal or session on the host gets a notice.
+- **Dead-man revert.** Before any change that is not `read-only`, such as a firewall or SSH change, arm a timer that rolls the run back unless the operator keeps it after verify. It runs `laby -u ID` (`docs/Conventions.md`, section 3.1). Today the operator keeps the run with `laby -k ID` or by typing `keep` at the end of the run; once stage 4b is built, by answering the login check (Conventions, section 3.3). A module that only takes access away from an intruder is kept once it verifies with no scored service worse, so the timer never hands an intruder their access back (design 00, section 4, rule 9). When the timer rolls a run back, every logged-in terminal or session on the host gets a notice.
   - Linux: an enabled systemd timer and service, `lab-revert-<run>-<n>`, written to `/etc/systemd/system` with `OnCalendar=<due time>`, `Persistent=true` and `OnActiveSec=<minutes>m`. It survives a restart and fires at once if its time passed while the host was off. Keeping or rolling back the run stops and disables it and deletes its two unit files (`docs/Conventions.md`, section 3.1).
   - Windows: a one-time scheduled task, `\Labyrinth\lab-revert-<run>-<n>`, running as SYSTEM, unregistered when the run is kept. It also survives a restart.
-  - `labyrinth runs` (`laby --history` once stage 4b is built) shows which runs still have a timer armed, and when each one fires.
+  - `laby --history` shows which runs still have a timer armed, and when each one fires.
   - VyOS: `commit-confirm <minutes>` followed by `confirm`. Read the VyOS warning below first.
 - **Passwords shown once.** New credentials are displayed once, on the operator's screen, for the team's offline record (design 04, section 2). Labyrinth never writes them to disk or logs and never echoes them over an unencrypted channel. Use a cryptographic random source (`/dev/urandom` or .NET `RandomNumberGenerator`), not `Get-Random`.
 - **Recorded at the end.** There is no typed "recorded" confirmation during the run. New passwords are shown once, and recording them is part of the single end-of-run keep question: "passwords recorded and you can still log in? keep" (y/N). With no answer the revert timer undoes what it covers.

@@ -3,7 +3,7 @@
 Phase: 🟩 Sustain · Priority: P1
 
 > [!NOTE]
-> **Planned.** The health monitor, `checkpoint` and `restore` are not built yet (Roadmap, stage 6); the names and letters of the planned commands are decided when each is built (Conventions, section 3.3). Today `probe` (`laby --probe` in the new command line) probes every scored service once, and the `http`, `dns` and banner probes exist. The firewall-drift check, the login probes and the scheduled checkpoint arrive with the monitor.
+> **Planned.** The health monitor, `checkpoint` and `restore` are not built yet (Roadmap, stage 6); the names and letters of the planned commands are decided when each is built (Conventions, section 3.3). Today `laby --probe` probes every scored service once, and the `http`, `dns` and banner probes exist. The firewall-drift check, the login probes and the scheduled checkpoint arrive with the monitor.
 
 ## 1. Goal
 
@@ -53,7 +53,7 @@ Events differ in what a check does: some only connect, others log in and read a 
 - **Read-only.** A probe never writes, sends or deletes anything on the service.
 
 > [!IMPORTANT]
-> **Inside is not outside.** The control node probes from inside the network. The scoring engine checks from wherever it sits, often outside, through the edge firewall and NAT. A pass from inside does not prove the scoring engine sees a pass. Where possible, add one probe from the same side as the scoring engine, and trust the official scoreboard over the monitor. `labyrinth probe` (`laby --probe` in the new command line) may run from a machine outside the team's network, such as a console the event provides; it then probes only the addresses in the run-time `own-ranges` list and refuses any other, so it never touches a system outside the team's network (NCCDC, 2025, Rule 4.10).
+> **Inside is not outside.** The control node probes from inside the network. The scoring engine checks from wherever it sits, often outside, through the edge firewall and NAT. A pass from inside does not prove the scoring engine sees a pass. Where possible, add one probe from the same side as the scoring engine, and trust the official scoreboard over the monitor. `laby --probe` may run from a machine outside the team's network, such as a console the event provides; it then probes only the addresses in the run-time `own-ranges` list and refuses any other, so it never touches a system outside the team's network (NCCDC, 2025, Rule 4.10).
 
 ## 4. When a probe changes state
 
@@ -136,7 +136,7 @@ The command takes no action. It exists so that a regular review is quick and eve
 - Probe traffic is under the target rate per service.
 - With a test mailbox configured, breaking mail logins in the lab makes the checkpoint's login probe fail even though the banner probe still passes.
 - An `http` probe with a path fails when that page's content string is missing, though `/` still answers.
-- `labyrinth probe` refuses an address outside `own-ranges`, and refuses to run with no `own-ranges` list.
+- `laby --probe` refuses an address outside `own-ranges`, and refuses to run with no `own-ranges` list.
 
 ## References
 

@@ -127,7 +127,7 @@ Describe 'labyrinth.ps1 console output' {
         @($lines | Where-Object { $_ -like '  It said:   line *' }).Count | Should -Be 10
         ($lines -ccontains '  It said:   line 3') | Should -BeTrue
         ($lines -ccontains '  It said:   line 2') | Should -BeFalse
-        @($lines | Where-Object { $_ -like '  *' })[-1] | Should -BeExactly "  More:      $($t.Self) help observe.crash"
+        @($lines | Where-Object { $_ -like '  *' })[-1] | Should -BeExactly "  More:      $($t.Self) -h observe.crash"
     }
 
     It "a failed entry point that ends with 'problem:' is shown as it said it" {
@@ -153,7 +153,7 @@ Describe 'labyrinth.ps1 console output' {
             } else {
                 # A block ends at the next line that is not a detail line.
                 if ($word -cmatch '^(WARN|BLOCKED|ERROR)$') {
-                    $prev | Should -BeLike "  More:      $([Management.Automation.WildcardPattern]::Escape($t.Self)) help observe.*" -Because "a $word block"
+                    $prev | Should -BeLike "  More:      $([Management.Automation.WildcardPattern]::Escape($t.Self)) -h observe.*" -Because "a $word block"
                 }
                 $word = ($l -split ' ')[0]
             }
@@ -191,7 +191,7 @@ Describe 'labyrinth.ps1 console output' {
         $lines[$last - 3] | Should -BeExactly 'Nothing on this host was changed.'
         # Too long for one line with the test's paths, so the command has its own.
         $lines[$last - 2] | Should -BeExactly 'Next:'
-        $lines[$last - 1] | Should -BeExactly "  $($t.Self) apply observe -Profile test -Root $($t.Root) -Config $($t.Etc)"
+        $lines[$last - 1] | Should -BeExactly "  $($t.Self) -r observe -Profile test -Root $($t.Root) -Config $($t.Etc)"
         $lines[$last] | Should -BeExactly 'plan finished: exit 10 (change needed)'
     }
 
@@ -201,14 +201,14 @@ Describe 'labyrinth.ps1 console output' {
         $r = Invoke-TestPlan $t
         $r.Code | Should -Be 10
         $r.Output | Should -Match ([regex]::Escape('Next: list this host in the hosts file, with its group and profile;'))
-        $r.Output | Should -Not -Match 'labyrinth\.ps1 apply observe'
+        $r.Output | Should -Not -Match 'labyrinth\.ps1 -r observe'
         Write-TestHost $t 'ring1'
         $hostsFile = Join-Path $t.Etc 'hosts'
         [IO.File]::WriteAllText($hostsFile, [IO.File]::ReadAllText($hostsFile).Replace(' test windows', ' other windows'))
         $r = Invoke-TestPlan $t
         $r.Code | Should -Be 10
-        $r.Output | Should -Match ([regex]::Escape("Next: apply uses this host's profile in the hosts file, other."))
-        $r.Output | Should -Not -Match 'labyrinth\.ps1 apply observe'
+        $r.Output | Should -Match ([regex]::Escape("Next: -r uses this host's profile in the hosts file, other."))
+        $r.Output | Should -Not -Match 'labyrinth\.ps1 -r observe'
     }
 
     It 'the Next line fits what plan found' {
@@ -224,7 +224,7 @@ Describe 'labyrinth.ps1 console output' {
         Write-TestProfile $t @('observe.manual')
         $r = Invoke-TestPlan $t
         $r.Code | Should -Be 10
-        $r.Output | Should -Match ([regex]::Escape('Next: a person carries out the manual steps above; apply changes nothing.'))
+        $r.Output | Should -Match ([regex]::Escape('Next: a person carries out the manual steps above; -r changes nothing.'))
     }
 
     It 'plan shows a manual-only module as WARN and counts it as WARN' {
@@ -270,7 +270,7 @@ Describe 'labyrinth.ps1 console output' {
         $lines[$n + 2] | Should -BeExactly "  Script:    $(Join-Path $t.Lab 'phases\observe\modules\toggle\verify.ps1')"
         ($lines -ccontains '  Did:       rolled back') | Should -BeTrue
         ($lines -ccontains "  Log:       $(Join-Path $t.Root "state\runs\$id\output.log")") | Should -BeTrue
-        ($lines -ccontains "  More:      $($t.Self) help observe.toggle") | Should -BeTrue
+        ($lines -ccontains "  More:      $($t.Self) -h observe.toggle") | Should -BeTrue
         $r.Output | Should -Match ([regex]::Escape('Summary: 1 module: 1 FAIL.'))
         $r.Output | Should -Match ([regex]::Escape('Next: undo the earlier changes, or keep them, with the commands above.'))
         $r.Output | Should -Match ([regex]::Escape('apply finished: exit 30 (a check failed; that change was undone)'))
@@ -346,7 +346,7 @@ Describe 'labyrinth.ps1 console output' {
         $b = Get-TestLineOf $r 'Type keep to keep'
         $a | Should -BeGreaterThan -1
         ($b -ge $a) | Should -BeTrue
-        $r.Output | Should -Match ([regex]::Escape("Next: check you can log in from a NEW session, then '$($t.Self) keep $($id.Substring($id.Length - 4))'."))
+        $r.Output | Should -Match ([regex]::Escape("Next: check you can log in from a NEW session, then $($t.Self) -k '$($id.Substring($id.Length - 4))'."))
     }
 
     It 'output lines are at most 78 columns, unless they end with a path' {
@@ -400,7 +400,7 @@ Describe 'labyrinth.ps1 console output' {
         ($text -ccontains 'observe.toggle apply: 101 more lines not logged') | Should -BeTrue
     }
 
-    It "plan and a stopped apply: plan writes no log; the stopped run is marked for 'runs'" {
+    It "plan and a stopped apply: plan writes no log; the stopped run is marked for -History" {
         Write-TestProfile $t @('observe.toggle')
         [void](Invoke-TestPlan $t)
         $t.Root | Should -Not -Exist
@@ -409,9 +409,9 @@ Describe 'labyrinth.ps1 console output' {
         $r.Code | Should -Be 30
         $id = Get-TestRunId $r.Output
         Join-Path $t.Root "state\runs\$id\problems" | Should -Exist
-        $k = Invoke-TestLab $t @('runs', '-Root', $t.Root, '-Config', $t.Etc)
+        $k = Invoke-TestLab $t @('-History', '-Root', $t.Root, '-Config', $t.Etc)
         $k.Code | Should -Be 0
-        ((Get-TestLine $k) -ccontains "  $($id.Substring($id.Length - 4))  $(Join-Path $t.Root "state\runs\$id\output.log")") | Should -BeTrue
+        ((Get-TestLine $k) -ccontains "  '$($id.Substring($id.Length - 4))'  $(Join-Path $t.Root "state\runs\$id\output.log")") | Should -BeTrue
     }
 
     It 'a rollback by the revert timer adds to the run log' {
@@ -438,7 +438,7 @@ Describe 'labyrinth.ps1 console output' {
 
     It 'probe: a header, a status line per service, Summary, Next and finished' {
         Write-TestConfig $t 'services' @('web http web.test 80 -', 'mail smtp mail.test 25 -')
-        $r = Invoke-TestLab $t @('probe', '-Root', $t.Root, '-Config', $t.Etc)
+        $r = Invoke-TestLab $t @('-Probe', '-Root', $t.Root, '-Config', $t.Etc)
         $r.Code | Should -Be 0
         $lines = Get-TestLine $r
         $lines[0] | Should -Match '^labyrinth [^ ]+: probe the scored services$'
@@ -446,12 +446,12 @@ Describe 'labyrinth.ps1 console output' {
         $lines[3] | Should -BeExactly 'Summary: 2 OK'
         $lines[4] | Should -BeExactly 'probe finished: exit 0 (no service failed)'
         [IO.File]::WriteAllText((Join-Path $t.Lab 'probe-state'), "web.test fail`nmail.test fail`n")
-        $r = Invoke-TestLab $t @('probe', '-Root', $t.Root, '-Config', $t.Etc)
+        $r = Invoke-TestLab $t @('-Probe', '-Root', $t.Root, '-Config', $t.Etc)
         $r.Code | Should -Be 30
         $lines = Get-TestLine $r
         $lines[1] | Should -BeExactly 'FAIL     [web] fail: fake probe'
         $lines[3] | Should -BeExactly 'Summary: 2 FAIL'
-        $lines[4] | Should -BeExactly "Next: bring the failed services back, then run '$($t.Self) probe' again."
+        $lines[4] | Should -BeExactly "Next: bring the failed services back, then run '$($t.Self) -Probe' again."
         $lines[5] | Should -BeExactly 'probe finished: exit 30 (2 services failed)'
     }
 

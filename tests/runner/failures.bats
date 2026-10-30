@@ -31,7 +31,7 @@ read_only_after_cancel() {
   [[ "$output" =~ The\ revert\ timer\ rolls\ this\ run\ back\ at\ [0-9]{2}:[0-9]{2}\ UTC ]]
   id="$(run_id)"
   # Undo comes first, and the safe choice is named.
-  [[ "$output" == *"To undo them now: $SELF rollback ${id: -4}"$'\n'"To keep them now: $SELF keep ${id: -4}"$'\n''If in doubt, undo them.'* ]]
+  [[ "$output" == *"To undo them now: $SELF -u ${id: -4}"$'\n'"To keep them now: $SELF -k ${id: -4}"$'\n''If in doubt, undo them.'* ]]
   [ -f "$ROOT/state/runs/$(run_id)/timer" ]
   grep -qx 'setting=on' "$LAB/toggle.conf"
 }
@@ -66,10 +66,10 @@ read_only_after_cancel() {
   apply
   [ "$status" -eq 0 ]
   id="$(run_id)"
-  run bash "$LAB/labyrinth.sh" --root "$ROOT" --config "$ETC" rollback "$id"
+  run bash "$LAB/labyrinth.sh" --root "$ROOT" --config "$ETC" -u "$id"
   [ "$status" -eq 0 ]
   [[ "$output" != *"internal error"* ]]
-  run bash "$LAB/labyrinth.sh" --root "$ROOT" --config "$ETC" keep "$id"
+  run bash "$LAB/labyrinth.sh" --root "$ROOT" --config "$ETC" -k "$id"
   [ "$status" -eq 20 ]
   [[ "$output" != *"internal error"* ]]
   hosts manual
@@ -83,10 +83,10 @@ read_only_after_cancel() {
   apply
   id="$(run_id)"
   stand_in 'lab_timer_cancel() { return 1; }'
-  run bash "$LAB/labyrinth.sh" --root "$ROOT" --config "$ETC" keep "$id"
+  run bash "$LAB/labyrinth.sh" --root "$ROOT" --config "$ETC" -k "$id"
   [ "$status" -eq 40 ]
   [[ "$output" =~ still\ rolls\ it\ back\ at\ [0-9]{2}:[0-9]{2}\ UTC ]]
-  [[ "$output" == *"Retry: $SELF keep ${id: -4}"* ]]
+  [[ "$output" == *"Retry: $SELF -k ${id: -4}"* ]]
 }
 
 @test "keep that cancels the timer but cannot record it says so and exits 40" {
@@ -95,7 +95,7 @@ read_only_after_cancel() {
   apply
   id="$(run_id)"
   read_only_after_cancel
-  run bash "$LAB/labyrinth.sh" --root "$ROOT" --config "$ETC" keep "$id"
+  run bash "$LAB/labyrinth.sh" --root "$ROOT" --config "$ETC" -k "$id"
   [ "$status" -eq 40 ]
   [[ "$output" == *"could not be recorded"*"Its revert timer is cancelled, so the changes stay."* ]]
   [[ "$output" != *"kept: the revert timer"* ]]
@@ -108,7 +108,7 @@ read_only_after_cancel() {
   apply
   id="$(run_id)"
   read_only_after_cancel
-  run bash "$LAB/labyrinth.sh" --root "$ROOT" --config "$ETC" rollback "$id"
+  run bash "$LAB/labyrinth.sh" --root "$ROOT" --config "$ETC" -u "$id"
   [ "$status" -eq 40 ]
   [[ "$output" == *"rolled back, but the manifest cannot be written to record it"* ]]
   [ ! -e "$LAB/toggle.conf" ]

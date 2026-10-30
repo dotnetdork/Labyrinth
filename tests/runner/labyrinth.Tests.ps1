@@ -242,7 +242,7 @@ Describe 'labyrinth.ps1 plan mode' {
 
     It 'argument errors exit 40' {
         Write-TestProfile $t 'observe.sample'
-        (Invoke-TestLab $t @('observe')).Code | Should -Be 40
+        (Invoke-TestLab $t @('obsrve')).Code | Should -Be 40
         (Invoke-TestLab $t @('nope', '-Profile', 'test')).Code | Should -Be 40
         (Invoke-TestLab $t @('observe', '-Profile', 'a;b')).Code | Should -Be 40
         (Invoke-TestLab $t @('observe', '-Profile', 'test', '-Root', 'relative')).Code | Should -Be 40
@@ -250,8 +250,8 @@ Describe 'labyrinth.ps1 plan mode' {
         (Invoke-TestLab $t @('observe', '-Profile', 'test', '-Bogus')).Code | Should -Be 40
     }
 
-    It '-Version and -Help exit 0' {
-        (Invoke-TestLab $t @('-Version')).Code | Should -Be 0
-        (Invoke-TestLab $t @('-Help')).Code | Should -Be 0
+    It '-V and -h exit 0' {
+        (Invoke-TestLab $t @('-V')).Code | Should -Be 0
+        (Invoke-TestLab $t @('-h')).Code | Should -Be 0
     }
 }
