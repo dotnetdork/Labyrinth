@@ -373,7 +373,7 @@ if (( ! YES )); then
     printf '%s\n' 'Run it from a terminal, or add -y to answer yes.' >&2
     exit 40
   fi
-  lab_tty_write 'Install? [y/N] '
+  lab_tty_write '  Install? [y/N] '
   answer=''
   answer="$(lab_tty_read)" || answer=''
   case "${answer,,}" in

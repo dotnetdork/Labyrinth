@@ -551,25 +551,30 @@ Describe 'the installer screen (core\banner\Banner.ps1)' {
         foreach ($k in @($LabBox.Keys)) { $box[$k] = $LabBox[$k] }
     }
 
-    It 'with box lines: the maze, the version, then the warning box with the hash' {
+    It 'with box lines: the maze, the version, what it is, the notice, then the warning box with the hash' {
         $s = @(Get-LabBanner -Unicode $true -Version '0.1.0' -Sha $sha)
         $maze = @(Get-LabBannerMaze -Unicode $true)
-        $maze.Count | Should -Be 13
-        for ($i = 0; $i -lt 13; $i++) { $s[$i] | Should -BeExactly $maze[$i] }
-        $s[13] | Should -BeExactly 'VERSION 0.1.0 (https://dotnetdork.github.io/Labyrinth/)'
-        $s[14] | Should -BeExactly ''
-        for ($i = 15; $i -lt 28; $i++) { $s[$i].Length | Should -Be 55 }
+        $maze.Count | Should -Be 7
+        for ($i = 0; $i -lt 7; $i++) { $s[$i] | Should -BeExactly $maze[$i] }
+        $s[7] | Should -BeExactly 'VERSION 0.1.0 (https://dotnetdork.github.io/Labyrinth/)'
+        $s[8] | Should -BeExactly ''
+        $s[9] | Should -BeExactly ' Rapid first-minute hardening tool for Linux & Windows,'
+        $s[10] | Should -BeExactly ' with traps that log every attacker move as a tripwire.'
+        $s[11] | Should -BeExactly ''
+        $s[12] | Should -BeExactly '      Copyright (c) 2026 Jay Sausa. See LICENSE.'
+        $s[13] | Should -BeExactly ''
+        for ($i = 14; $i -lt 23; $i++) { $s[$i].Length | Should -Be 55 }
         $v = $box.V
-        $s[15] | Should -BeExactly ($box.TL + ($box.H * 53) + $box.TR)
-        $s[16] | Should -BeExactly ("$v " + $box.ITL + ($box.IH * 49) + $box.ITR + " $v")
-        $s[18] | Should -BeExactly ("$v $v" + (' ' * 21) + 'WARNING' + (' ' * 21) + "$v $v")
-        $s[20] | Should -BeExactly ("$v $v" + (' ' * 7) + "If this SHA-256 doesn't match your" + (' ' * 8) + "$v $v")
-        $s[21] | Should -BeExactly ("$v $v" + (' ' * 6) + 'offline record, it was tampered with.' + (' ' * 6) + "$v $v")
-        $s[23] | Should -BeExactly ("$v $v     3f9a 1c2b 8e4d 0a77 5b19 c3e2 9d04 6f8a     $v $v")
-        $s[24] | Should -BeExactly ("$v $v     2b6e 71c0 d95a 4e3f 08b2 a6c1 5e97 c21e     $v $v")
-        $s[26] | Should -BeExactly ("$v " + $box.IBL + ($box.IH * 49) + $box.IBR + " $v")
-        $s[27] | Should -BeExactly ($box.BL + ($box.H * 53) + $box.BR)
-        $s.Count | Should -Be 28
+        $s[14] | Should -BeExactly ($box.TL + ($box.H * 53) + $box.TR)
+        $s[15] | Should -BeExactly ($v + (' ' * 23) + 'WARNING' + (' ' * 23) + $v)
+        $s[16] | Should -BeExactly ($box.ML + ($box.H * 53) + $box.MR)
+        $s[17] | Should -BeExactly ($v + (' ' * 9) + "If this SHA-256 doesn't match your" + (' ' * 10) + $v)
+        $s[18] | Should -BeExactly ($v + (' ' * 8) + 'offline record, it was tampered with.' + (' ' * 8) + $v)
+        $s[19] | Should -BeExactly ($v + (' ' * 53) + $v)
+        $s[20] | Should -BeExactly ($v + '       3f9a 1c2b 8e4d 0a77 5b19 c3e2 9d04 6f8a       ' + $v)
+        $s[21] | Should -BeExactly ($v + '       2b6e 71c0 d95a 4e3f 08b2 a6c1 5e97 c21e       ' + $v)
+        $s[22] | Should -BeExactly ($box.BL + ($box.H * 53) + $box.BR)
+        $s.Count | Should -Be 23
         foreach ($l in $s) { $l.Length | Should -BeLessOrEqual 79 }
     }
 
@@ -581,29 +586,31 @@ Describe 'the installer screen (core\banner\Banner.ps1)' {
             $s[$i].Length | Should -Be $u[$i].Length
             $s[$i] | Should -Not -Match '[^ -~]'
         }
-        $s[0] | Should -BeLike '+IN-*'
-        $s[12] | Should -BeLike '*-OUT+'
-        $s[15] | Should -BeExactly ('+' + ('-' * 53) + '+')
-        $s[18] | Should -BeExactly ('| |' + (' ' * 21) + 'WARNING' + (' ' * 21) + '| |')
-        $s[23] | Should -BeExactly '| |     3f9a 1c2b 8e4d 0a77 5b19 c3e2 9d04 6f8a     | |'
+        $s[0] | Should -BeLike '+ IN -*'
+        $s[6] | Should -BeLike '*+ OUT +'
+        $s[14] | Should -BeExactly ('+' + ('-' * 53) + '+')
+        $s[15] | Should -BeExactly ('|' + (' ' * 23) + 'WARNING' + (' ' * 23) + '|')
+        $s[16] | Should -BeExactly ('+' + ('-' * 53) + '+')
+        $s[20] | Should -BeExactly '|       3f9a 1c2b 8e4d 0a77 5b19 c3e2 9d04 6f8a       |'
     }
 
     It 'with no release list, the box says nothing proves the copy is genuine' {
         $s = @(Get-LabBanner -Unicode $false -Version '0.1.0' -Sha '')
-        $s[20] | Should -BeExactly ('| |' + (' ' * 8) + 'This copy has no release.sha256,' + (' ' * 9) + '| |')
-        $s[21] | Should -BeExactly ('| |' + (' ' * 6) + 'so nothing proves that it is genuine.' + (' ' * 6) + '| |')
+        $s[17] | Should -BeExactly ('|' + (' ' * 10) + 'This copy has no release.sha256,' + (' ' * 11) + '|')
+        $s[18] | Should -BeExactly ('|' + (' ' * 8) + 'so nothing proves that it is genuine.' + (' ' * 8) + '|')
+        $s[19] | Should -BeExactly ('+' + ('-' * 53) + '+')
         ($s -join "`n") | Should -Not -Match '[0-9a-f]{4} [0-9a-f]{4}'
     }
 
     It 'the tree of changes: box branches and an arrow, or plain ASCII' {
         $rows = @(@('Program', 'C:\P (new)'), @('Config', '3 templates -> C:\D\etc'))
         $t = @(Get-LabBannerTree -Unicode $true -Arrow $true -Rows $rows)
-        $t[0] | Should -BeExactly 'CHANGES TO THIS HOST'
-        $t[1] | Should -BeExactly (' ' + $box.Mid + $box.IH + $box.IH + ' Program   C:\P (new)')
-        $t[2] | Should -BeExactly (' ' + $box.Last + $box.IH + $box.IH + ' Config    3 templates ' + $box.Arrow + ' C:\D\etc')
+        $t[0] | Should -BeExactly '  CHANGES TO THIS HOST'
+        $t[1] | Should -BeExactly ('   ' + $box.Mid + $box.IH + $box.IH + ' Program   C:\P (new)')
+        $t[2] | Should -BeExactly ('   ' + $box.Last + $box.IH + $box.IH + ' Config    3 templates ' + $box.Arrow + ' C:\D\etc')
         $a = @(Get-LabBannerTree -Unicode $false -Arrow $false -Rows $rows)
-        $a[1] | Should -BeExactly ' |-- Program   C:\P (new)'
-        $a[2] | Should -BeExactly ' `-- Config    3 templates -> C:\D\etc'
+        $a[1] | Should -BeExactly '   |-- Program   C:\P (new)'
+        $a[2] | Should -BeExactly '   `-- Config    3 templates -> C:\D\etc'
     }
 
     It 'box lines are used only when the console can write them' {

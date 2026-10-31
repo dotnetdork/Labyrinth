@@ -76,7 +76,18 @@ snapshot() {
 
 # screen: the installer's screen from the maze's first line to the tree's
 # heading, one line per item of SCREEN.
-screen() { mapfile -t SCREEN < <(sed -n '/^\(╔IN\|+IN\)/,/^CHANGES TO THIS HOST$/p' <<< "$output"); }
+screen() { mapfile -t SCREEN < <(sed -n '/^\(╔ IN\|+ IN\)/,/^  CHANGES TO THIS HOST$/p' <<< "$output"); }
+
+# about: the lines under the version, what Labyrinth is and the notice,
+# centred on the maze's 55 columns.
+about() {
+  [ "${SCREEN[8]}" = '' ]
+  [ "${SCREEN[9]}" = ' Rapid first-minute hardening tool for Linux & Windows,' ]
+  [ "${SCREEN[10]}" = ' with traps that log every attacker move as a tripwire.' ]
+  [ "${SCREEN[11]}" = '' ]
+  [ "${SCREEN[12]}" = '      Copyright (c) 2026 Jay Sausa. See LICENSE.' ]
+  [ "${SCREEN[13]}" = '' ]
+}
 
 @test "on a UTF-8 terminal the screen shows the maze, the version and the hash in a box" {
   inst_setup
@@ -87,29 +98,33 @@ screen() { mapfile -t SCREEN < <(sed -n '/^\(╔IN\|+IN\)/,/^CHANGES TO THIS HOS
   sum="$(sha256sum < "$REL/release.sha256" | cut -d' ' -f1)"
   ver="$(sed -n "s/^readonly LAB_VERSION='\([^']*\)'.*/\1/p" "$REPO/labyrinth.sh")"
   screen
-  # The maze as drawn, then the version and the site.
+  # The maze as drawn, then the version and the site, what Labyrinth is and
+  # the notice.
   mapfile -t maze < "$REPO/core/banner/maze.txt"
+  [ "${#maze[@]}" -eq 7 ]
   for i in "${!maze[@]}"; do [ "${SCREEN[i]}" = "${maze[i]}" ]; done
-  [ "${SCREEN[13]}" = "VERSION $ver (https://dotnetdork.github.io/Labyrinth/)" ]
-  # The box: every line as wide as the maze, the warning centred.
-  for ((i = 15; i < 28; i++)); do [ "${#SCREEN[i]}" -eq 55 ]; done
-  [ "${SCREEN[15]:0:1}" = '╔' ]
-  [ "${SCREEN[16]:0:3}" = '║ ╓' ]
-  [ "${SCREEN[18]}" = '║ ║                     WARNING                     ║ ║' ]
-  [ "${SCREEN[20]}" = "║ ║       If this SHA-256 doesn't match your        ║ ║" ]
-  [ "${SCREEN[21]}" = '║ ║      offline record, it was tampered with.      ║ ║' ]
+  [ "${SCREEN[7]}" = "VERSION $ver (https://dotnetdork.github.io/Labyrinth/)" ]
+  about
+  # The box: every line as wide as the maze, the warning centred over a rule.
+  for ((i = 14; i < 23; i++)); do [ "${#SCREEN[i]}" -eq 55 ]; done
+  [ "${SCREEN[14]}" = "╔$(printf '%53s' '' | sed 's/ /═/g')╗" ]
+  [ "${SCREEN[15]}" = '║                       WARNING                       ║' ]
+  [ "${SCREEN[16]}" = "╠$(printf '%53s' '' | sed 's/ /═/g')╣" ]
+  [ "${SCREEN[17]}" = "║         If this SHA-256 doesn't match your          ║" ]
+  [ "${SCREEN[18]}" = '║        offline record, it was tampered with.        ║' ]
   # The hash: two lines of eight groups of four that join into the SHA-256.
-  for i in 23 24; do
-    [[ "${SCREEN[i]}" =~ ^'║ ║     '([0-9a-f]{4}( [0-9a-f]{4}){7})'     ║ ║'$ ]]
+  for i in 20 21; do
+    [[ "${SCREEN[i]}" =~ ^'║       '([0-9a-f]{4}( [0-9a-f]{4}){7})'       ║'$ ]]
     joined+="${BASH_REMATCH[1]}"
   done
   [ "${joined// /}" = "$sum" ]
-  [ "${SCREEN[27]:0:1}" = '╚' ]
+  [ "${SCREEN[22]}" = "╚$(printf '%53s' '' | sed 's/ /═/g')╝" ]
+  [ "${SCREEN[24]}" = '  CHANGES TO THIS HOST' ]
   # No line of the art is wider than 79 columns.
   for l in "${SCREEN[@]}"; do [ "${#l}" -le 79 ]; done
   # The tree, with the arrow.
-  [[ "$output" == *" ├── Program   $ROOT/bin (new)"* ]]
-  [[ "$output" == *" └── Config    8 templates → $ROOT/etc"* ]]
+  [[ "$output" == *"   ├── Program   $ROOT/bin (new)"* ]]
+  [[ "$output" == *"   └── Config    8 templates → $ROOT/etc"* ]]
 }
 
 @test "without UTF-8 the same screen is drawn in plain ASCII" {
@@ -120,11 +135,13 @@ screen() { mapfile -t SCREEN < <(sed -n '/^\(╔IN\|+IN\)/,/^CHANGES TO THIS HOS
   screen
   mapfile -t maze < "$REPO/core/banner/maze-ascii.txt"
   for i in "${!maze[@]}"; do [ "${SCREEN[i]}" = "${maze[i]}" ]; done
-  [ "${SCREEN[15]}" = "+$(printf '%53s' '' | tr ' ' -)+" ]
-  [ "${SCREEN[18]}" = '| |                     WARNING                     | |' ]
-  [[ "${SCREEN[23]}" =~ ^'| |     '[0-9a-f]{4}( [0-9a-f]{4}){7}'     | |'$ ]]
-  [[ "$output" == *" |-- Program   $ROOT/bin (new)"* ]]
-  [[ "$output" == *' `-- Config    8 templates -> '"$ROOT/etc"* ]]
+  about
+  [ "${SCREEN[14]}" = "+$(printf '%53s' '' | tr ' ' -)+" ]
+  [ "${SCREEN[15]}" = '|                       WARNING                       |' ]
+  [ "${SCREEN[16]}" = "+$(printf '%53s' '' | tr ' ' -)+" ]
+  [[ "${SCREEN[20]}" =~ ^'|       '[0-9a-f]{4}( [0-9a-f]{4}){7}'       |'$ ]]
+  [[ "$output" == *"   |-- Program   $ROOT/bin (new)"* ]]
+  [[ "$output" == *'   `-- Config    8 templates -> '"$ROOT/etc"* ]]
   if LC_ALL=C grep -q '[^ -~]' <<< "$output"; then return 1; fi
 }
 
@@ -136,10 +153,10 @@ screen() { mapfile -t SCREEN < <(sed -n '/^\(╔IN\|+IN\)/,/^CHANGES TO THIS HOS
   [ "${#u[@]}" -eq "${#a[@]}" ]
   for i in "${!u[@]}"; do
     [ "${#u[i]}" -eq "${#a[i]}" ]
-    [ "${#u[i]}" -le 79 ]
+    [ "${#u[i]}" -eq 55 ]
   done
-  [[ "${a[0]}" == '+IN-'* ]]
-  [[ "${a[-1]}" == *'-OUT+' ]]
+  [[ "${a[0]}" == '+ IN -'* ]]
+  [[ "${a[-1]}" == *'+ OUT +' ]]
 }
 
 @test "no answer at all changes nothing either" {

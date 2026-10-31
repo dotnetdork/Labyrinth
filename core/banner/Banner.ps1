@@ -1,6 +1,7 @@
 #Requires -Version 5.1
 # core/banner/Banner.ps1: the installer's screen (docs\Conventions.md
-# section 3.3): the maze with the version under it, the warning box with the
+# section 3.3): the maze with the version, what Labyrinth is and the
+# copyright notice under it, the warning box with the
 # release hash to compare by eye with the offline record, and the tree of
 # changes. Needs core\safety\Release.ps1 (Get-LabReleaseGroup) and nothing
 # else from the core; building it changes nothing.
@@ -12,13 +13,18 @@
 # file without a byte order mark as ANSI.
 
 $LabBannerUrl = 'https://dotnetdork.github.io/Labyrinth/'
-$LabBannerInner = 49   # columns inside the warning box's inner wall
+$LabBannerWidth = 55   # columns of the maze and the warning box
+$LabBannerInner = 53   # columns inside the warning box's walls
+# What Labyrinth is, and the copyright notice, centred under the version.
+$LabBannerAbout = @('Rapid first-minute hardening tool for Linux & Windows,',
+    'with traps that log every attacker move as a tripwire.')
+$LabBannerNotice = 'Copyright (c) 2026 Jay Sausa. See LICENSE.'
 
 # The box lines, by name.
 $LabBox = @{}
 foreach ($pair in @(
         @('TL', 0x2554), @('TR', 0x2557), @('BL', 0x255A), @('BR', 0x255D), @('H', 0x2550), @('V', 0x2551),
-        @('ITL', 0x2553), @('ITR', 0x2556), @('IBL', 0x2559), @('IBR', 0x255C), @('IH', 0x2500),
+        @('ML', 0x2560), @('MR', 0x2563), @('IH', 0x2500),
         @('Mid', 0x251C), @('Last', 0x2514), @('Arrow', 0x2192))) {
     $LabBox[$pair[0]] = [string][char]$pair[1]
 }
@@ -47,7 +53,7 @@ function Get-LabBannerMaze {
 # Test-LabBannerUnicode: can this console show the maze and the box lines?
 function Test-LabBannerUnicode {
     $all = (Get-LabBannerMaze -Unicode $true) -join ''
-    foreach ($k in 'TL', 'TR', 'BL', 'BR', 'H', 'V', 'ITL', 'ITR', 'IBL', 'IBR', 'IH', 'Mid', 'Last') { $all += $LabBox[$k] }
+    foreach ($k in 'TL', 'TR', 'BL', 'BR', 'H', 'V', 'ML', 'MR', 'IH', 'Mid', 'Last') { $all += $LabBox[$k] }
     return (Test-LabBannerText $all)
 }
 
@@ -58,27 +64,32 @@ function Get-LabBannerCenter {
     return (' ' * $left) + $Text + (' ' * ($LabBannerInner - $Text.Length - $left))
 }
 
-# Get-LabBanner UNICODE VERSION SHA: the maze, the version line and the
-# warning box, as lines. SHA empty means the copy has no release.sha256.
+# Get-LabBanner UNICODE VERSION SHA: the maze, the version line, what
+# Labyrinth is, the copyright notice and the warning box, as lines. SHA empty
+# means the copy has no release.sha256.
 function Get-LabBanner {
     param([bool] $Unicode, [string] $Version, [AllowEmptyString()] [string] $Sha)
-    $b = @{ TL = '+'; TR = '+'; BL = '+'; BR = '+'; H = '-'; V = '|'; ITL = '+'; ITR = '+'; IBL = '+'; IBR = '+'; IH = '-' }
+    $b = @{ TL = '+'; TR = '+'; BL = '+'; BR = '+'; H = '-'; V = '|'; ML = '+'; MR = '+' }
     if ($Unicode) { foreach ($k in @($b.Keys)) { $b[$k] = $LabBox[$k] } }
     $lines = @(Get-LabBannerMaze -Unicode $Unicode)
     $lines += "VERSION $Version ($LabBannerUrl)"
     $lines += ''
-    $lines += $b.TL + ($b.H * ($LabBannerInner + 4)) + $b.TR
-    $lines += "$($b.V) $($b.ITL)" + ($b.IH * $LabBannerInner) + "$($b.ITR) $($b.V)"
-    $body = @('', 'WARNING', '')
+    foreach ($t in @($LabBannerAbout + '' + $LabBannerNotice + '')) {
+        if ($t) { $t = (' ' * [Math]::Max(0, [int][Math]::Ceiling(($LabBannerWidth - $t.Length) / 2))) + $t }
+        $lines += $t
+    }
+    $rule = $b.H * $LabBannerInner
+    $lines += $b.TL + $rule + $b.TR
+    $lines += $b.V + (Get-LabBannerCenter 'WARNING') + $b.V
+    $lines += $b.ML + $rule + $b.MR
     if ($Sha) {
         $g = Get-LabReleaseGroup -Sha $Sha
-        $body += @("If this SHA-256 doesn't match your", 'offline record, it was tampered with.', '', $g[0], $g[1], '')
+        $body = @("If this SHA-256 doesn't match your", 'offline record, it was tampered with.', '', $g[0], $g[1])
     } else {
-        $body += @('This copy has no release.sha256,', 'so nothing proves that it is genuine.', '')
+        $body = @('This copy has no release.sha256,', 'so nothing proves that it is genuine.')
     }
-    foreach ($t in $body) { $lines += "$($b.V) $($b.V)" + (Get-LabBannerCenter $t) + "$($b.V) $($b.V)" }
-    $lines += "$($b.V) $($b.IBL)" + ($b.IH * $LabBannerInner) + "$($b.IBR) $($b.V)"
-    $lines += $b.BL + ($b.H * ($LabBannerInner + 4)) + $b.BR
+    foreach ($t in $body) { $lines += $b.V + (Get-LabBannerCenter $t) + $b.V }
+    $lines += $b.BL + $rule + $b.BR
     return $lines
 }
 
@@ -87,10 +98,10 @@ function Get-LabBanner {
 # when ARROW is set.
 function Get-LabBannerTree {
     param([bool] $Unicode, [bool] $Arrow, [object[]] $Rows)
-    $mid = ' |-- '
-    $last = ' `-- '
-    if ($Unicode) { $mid = " $($LabBox.Mid)$($LabBox.IH)$($LabBox.IH) "; $last = " $($LabBox.Last)$($LabBox.IH)$($LabBox.IH) " }
-    $lines = @('CHANGES TO THIS HOST')
+    $mid = '   |-- '
+    $last = '   `-- '
+    if ($Unicode) { $mid = "   $($LabBox.Mid)$($LabBox.IH)$($LabBox.IH) "; $last = "   $($LabBox.Last)$($LabBox.IH)$($LabBox.IH) " }
+    $lines = @('  CHANGES TO THIS HOST')
     for ($i = 0; $i -lt $Rows.Count; $i++) {
         $text = [string] $Rows[$i][1]
         if ($Arrow) { $text = $text.Replace(' -> ', " $($LabBox.Arrow) ") }

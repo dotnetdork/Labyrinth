@@ -420,7 +420,7 @@ try {
             [Console]::Error.WriteLine('Run it from a PowerShell window, or add -y to answer yes.')
             exit 40
         }
-        Write-LabTerminal 'Install? [y/N] '
+        Write-LabTerminal '  Install? [y/N] '
         $answer = Read-LabTerminal
         if ($null -eq $answer -or @('y', 'yes') -cnotcontains "$answer".Trim().ToLowerInvariant()) {
             [Console]::Out.WriteLine('Nothing was changed.')
