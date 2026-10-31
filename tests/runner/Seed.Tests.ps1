@@ -24,9 +24,9 @@ BeforeAll {
         Invoke-TestLabCapture $T (@($Arguments) + @('-Root', $T.Root, '-Config', $T.Etc))
     }
 
-    # Set-TestTyped T LINES: the lines the operator types, in order. The
+    # Write-TestTyped T LINES: the lines the operator types, in order. The
     # position is reset, so the lines are read from the first.
-    function Set-TestTyped {
+    function Write-TestTyped {
         param($T, [AllowEmptyString()] [string[]] $Lines)
         Remove-Item -LiteralPath (Join-Path $T.Lab 'tty.pos') -Force -ErrorAction SilentlyContinue
         Remove-Item -LiteralPath (Join-Path $T.Lab 'tty.out') -Force -ErrorAction SilentlyContinue
@@ -51,7 +51,7 @@ BeforeAll {
         return ''
     }
 
-    function Set-TestSeedFile {
+    function Write-TestSeedFile {
         param($T, [string[]] $Lines)
         [IO.File]::WriteAllText((Join-Path $T.Etc 'seed.conf'), (($Lines | ForEach-Object { "$_`n" }) -join ''))
     }
@@ -65,7 +65,7 @@ Describe 'labyrinth.ps1 -NewSeed' {
 
     It 'needs an Administrator, and saves nothing without one' {
         New-Item -ItemType File -Path (Join-Path $t.Lab 'NOT_ADMIN') | Out-Null
-        Set-TestTyped $t @('recorded')
+        Write-TestTyped $t @('recorded')
         $r = Invoke-TestSeed $t @('-NewSeed')
         $r.Code | Should -Be 20
         $r.Err | Should -Match ([regex]::Escape('-NewSeed needs an elevated Administrator session'))
@@ -83,7 +83,7 @@ Describe 'labyrinth.ps1 -NewSeed' {
     }
 
     It 'needs the configuration folder' {
-        Set-TestTyped $t @('recorded')
+        Write-TestTyped $t @('recorded')
         $missing = Join-Path $TestDrive 'missing'
         $r = Invoke-TestLabCapture $t @('-NewSeed', '-Root', $t.Root, '-Config', $missing)
         $r.Code | Should -Be 40
@@ -92,7 +92,7 @@ Describe 'labyrinth.ps1 -NewSeed' {
     }
 
     It 'saves a valid seed and shows it only on the terminal' {
-        Set-TestTyped $t @('recorded')
+        Write-TestTyped $t @('recorded')
         $r = Invoke-TestSeed $t @('-NewSeed')
         $r.Code | Should -Be 0
         $seed = Get-TestStored $t 'DECOY_SEED'
@@ -110,17 +110,17 @@ Describe 'labyrinth.ps1 -NewSeed' {
     }
 
     It 'makes a seed that passes -SeedCheck' {
-        Set-TestTyped $t @('recorded')
+        Write-TestTyped $t @('recorded')
         (Invoke-TestSeed $t @('-NewSeed')).Code | Should -Be 0
-        Set-TestTyped $t @((Get-TestStored $t 'DECOY_SEED'))
+        Write-TestTyped $t @((Get-TestStored $t 'DECOY_SEED'))
         $r = Invoke-TestSeed $t @('-SeedCheck')
         $r.Code | Should -Be 0
         $r.Out | Should -BeExactly 'Valid seed: the check group matches.'
     }
 
     It 'keeps the other keys in seed.conf' {
-        Set-TestSeedFile $t @("TEAM_SEED=$other")
-        Set-TestTyped $t @('recorded')
+        Write-TestSeedFile $t @("TEAM_SEED=$other")
+        Write-TestTyped $t @('recorded')
         (Invoke-TestSeed $t @('-NewSeed')).Code | Should -Be 0
         Get-TestStored $t 'TEAM_SEED' | Should -BeExactly $other
         Get-TestStored $t 'DECOY_SEED' | Should -Match $seedShape
@@ -128,8 +128,8 @@ Describe 'labyrinth.ps1 -NewSeed' {
 
     It 'asks before replacing a seed, and keeps the old one unless you say yes' {
         foreach ($a in @('n', '', 'no', 'maybe')) {
-            Set-TestSeedFile $t @("DECOY_SEED=$good")
-            Set-TestTyped $t @($a, 'recorded')
+            Write-TestSeedFile $t @("DECOY_SEED=$good")
+            Write-TestTyped $t @($a, 'recorded')
             $r = Invoke-TestSeed $t @('-NewSeed')
             $r.Code | Should -Be 0 -Because "answer '$a'"
             $r.Out | Should -BeExactly 'Nothing was changed.'
@@ -143,8 +143,8 @@ Describe 'labyrinth.ps1 -NewSeed' {
 
     It 'replaces the seed when you answer yes' {
         foreach ($a in @('y', 'YES', 'yes')) {
-            Set-TestSeedFile $t @("DECOY_SEED=$good")
-            Set-TestTyped $t @($a, 'recorded')
+            Write-TestSeedFile $t @("DECOY_SEED=$good")
+            Write-TestTyped $t @($a, 'recorded')
             (Invoke-TestSeed $t @('-NewSeed')).Code | Should -Be 0 -Because "answer '$a'"
             Get-TestStored $t 'DECOY_SEED' | Should -Not -BeExactly $good
             Get-TestStored $t 'DECOY_SEED' | Should -Match $seedShape
@@ -153,25 +153,25 @@ Describe 'labyrinth.ps1 -NewSeed' {
     }
 
     It '-y replaces the seed without asking' {
-        Set-TestSeedFile $t @("DECOY_SEED=$good")
-        Set-TestTyped $t @('recorded')
+        Write-TestSeedFile $t @("DECOY_SEED=$good")
+        Write-TestTyped $t @('recorded')
         (Invoke-TestSeed $t @('-NewSeed', '-y')).Code | Should -Be 0
         Get-TestStored $t 'DECOY_SEED' | Should -Not -BeExactly $good
         (Get-TestTtyOut $t).Contains('Replace it?') | Should -BeFalse
         Remove-Item -LiteralPath $seedFile -Force
-        Set-TestTyped $t @('recorded')
+        Write-TestTyped $t @('recorded')
         (Invoke-TestSeed $t @('-Yes', '-NewSeed')).Code | Should -Be 0
         Get-TestStored $t 'DECOY_SEED' | Should -Match $seedShape
     }
 
     It 'asks again for recorded until it is typed' {
-        Set-TestTyped $t @('no', 'recorded')
+        Write-TestTyped $t @('no', 'recorded')
         (Invoke-TestSeed $t @('-NewSeed')).Code | Should -Be 0
         Get-TestStored $t 'DECOY_SEED' | Should -Match $seedShape
     }
 
     It 'a console that goes before recorded leaves no new seed' {
-        Set-TestSeedFile $t @("TEAM_SEED=$other")
+        Write-TestSeedFile $t @("TEAM_SEED=$other")
         Remove-Item -LiteralPath (Join-Path $t.Lab 'tty.in') -Force -ErrorAction SilentlyContinue
         $r = Invoke-TestSeed $t @('-NewSeed')
         $r.Code | Should -Be 20
@@ -182,7 +182,7 @@ Describe 'labyrinth.ps1 -NewSeed' {
     }
 
     It 'a console that goes before recorded puts the old seed back' {
-        Set-TestSeedFile $t @("DECOY_SEED=$good", "TEAM_SEED=$other")
+        Write-TestSeedFile $t @("DECOY_SEED=$good", "TEAM_SEED=$other")
         Remove-Item -LiteralPath (Join-Path $t.Lab 'tty.in') -Force -ErrorAction SilentlyContinue
         $r = Invoke-TestSeed $t @('-NewSeed', '-y')
         $r.Code | Should -Be 20
@@ -190,21 +190,21 @@ Describe 'labyrinth.ps1 -NewSeed' {
         Get-TestStored $t 'DECOY_SEED' | Should -BeExactly $good
         Get-TestStored $t 'TEAM_SEED' | Should -BeExactly $other
         # Answering yes, then losing the console, restores it too.
-        Set-TestTyped $t @('y')
+        Write-TestTyped $t @('y')
         (Invoke-TestSeed $t @('-NewSeed')).Code | Should -Be 20
         Get-TestStored $t 'DECOY_SEED' | Should -BeExactly $good
     }
 
     It 'a seed.conf that is not valid is an error that names the file and never the seed' {
-        Set-TestSeedFile $t @("DECOY_SEED=$typo")
-        Set-TestTyped $t @('y', 'recorded')
+        Write-TestSeedFile $t @("DECOY_SEED=$typo")
+        Write-TestTyped $t @('y', 'recorded')
         $r = Invoke-TestSeed $t @('-NewSeed')
         $r.Code | Should -Be 40
         $r.Err | Should -Match ([regex]::Escape($seedFile))
         ($r.Out + $r.Err).Contains($typo) | Should -BeFalse
         Get-TestStored $t 'DECOY_SEED' | Should -BeExactly $typo
-        Set-TestSeedFile $t @('not a key line')
-        Set-TestTyped $t @('recorded')
+        Write-TestSeedFile $t @('not a key line')
+        Write-TestTyped $t @('recorded')
         $r = Invoke-TestSeed $t @('-NewSeed')
         $r.Code | Should -Be 40
         $r.Err | Should -Match ([regex]::Escape($seedFile))
@@ -232,7 +232,7 @@ Describe 'labyrinth.ps1 -SeedCheck' {
 
     It 'says a valid seed is valid, in any case and with or without dashes' {
         foreach ($s in @($good, $good.ToLowerInvariant(), $good.Replace('-', ''), $good.Replace('-', ' '))) {
-            Set-TestTyped $t @($s)
+            Write-TestTyped $t @($s)
             $r = Invoke-TestSeed $t @('-SeedCheck')
             $r.Code | Should -Be 0 -Because "'$s'"
             $r.Out | Should -BeExactly 'Valid seed: the check group matches.'
@@ -241,18 +241,18 @@ Describe 'labyrinth.ps1 -SeedCheck' {
     }
 
     It 'refuses a typo, exits 30, and never repeats what was typed' {
-        Set-TestTyped $t @($typo)
+        Write-TestTyped $t @($typo)
         $r = Invoke-TestSeed $t @('-SeedCheck')
         $r.Code | Should -Be 30
         $r.Out | Should -Match ([regex]::Escape('the check group does not match'))
         $r.Out | Should -Match ([regex]::Escape('Check it against the offline record and type it again.'))
         ($r.Out + $r.Err).Contains($typo) | Should -BeFalse
         ($r.Out + $r.Err).Contains($typo.Replace('-', '')) | Should -BeFalse
-        Set-TestTyped $t @('K7QM-2XRP')
+        Write-TestTyped $t @('K7QM-2XRP')
         $r = Invoke-TestSeed $t @('-SeedCheck')
         $r.Code | Should -Be 30
         ($r.Out + $r.Err).Contains('K7QM-2XRP') | Should -BeFalse
-        Set-TestTyped $t @('')
+        Write-TestTyped $t @('')
         (Invoke-TestSeed $t @('-SeedCheck')).Code | Should -Be 30
     }
 
@@ -270,7 +270,7 @@ Describe 'labyrinth.ps1 -SeedCheck' {
     It 'needs no Administrator, no configuration folder and no data root' {
         New-Item -ItemType File -Path (Join-Path $t.Lab 'NOT_ADMIN') | Out-Null
         Remove-Item -LiteralPath $t.Etc -Recurse -Force
-        Set-TestTyped $t @($good)
+        Write-TestTyped $t @($good)
         $r = Invoke-TestSeed $t @('-SeedCheck')
         $r.Code | Should -Be 0
         $r.Out | Should -BeExactly 'Valid seed: the check group matches.'
