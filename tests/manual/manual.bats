@@ -132,5 +132,5 @@ setup() {
 
 @test "the README describes the commands that are built" {
   if grep -q 'plan mode only' "$REPO/README.md"; then return 1; fi
-  grep -q 'preview, run (-r), keep (-k), undo (-u), --history and --probe' "$REPO/README.md"
+  grep -qF 'the status (`laby` alone), preview, run (`-r`), keep (`-k`), undo (`-u`), `--history`, `--probe` and `--manual`' "$REPO/README.md"
 }
