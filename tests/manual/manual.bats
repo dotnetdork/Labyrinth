@@ -39,7 +39,7 @@ setup() {
 @test "both manuals describe every command, exit code and option" {
   for p in linux windows; do
     run bash "$SPLIT" "$p"
-    for c in status preview run keep undo history probe version manual help; do
+    for c in status preview run keep undo history probe new-seed seed-check version manual help; do
       grep -Eq "^## $c( |\$)" <<<"$output" || { echo "$p: no section for $c"; return 1; }
     done
     for code in 0 10 20 30 40; do
@@ -47,11 +47,11 @@ setup() {
     done
   done
   run bash "$SPLIT" linux
-  for o in --run --keep --undo --history --probe --profile --root --config --break-glass --confirm-group --approve --all --yes --no-revert --help --version --manual; do
+  for o in --run --keep --undo --history --probe --new-seed --seed-check --profile --root --config --break-glass --confirm-group --approve --all --yes --no-revert --help --version --manual; do
     [[ "$output" == *"\`$o"* ]] || { echo "linux: $o missing"; return 1; }
   done
   run bash "$SPLIT" windows
-  for o in -Run -Keep -Undo -History -Probe -Profile -Root -Config -BreakGlass -ConfirmGroup -Approve -All -Yes -NoRevert -Help -Version -Manual; do
+  for o in -Run -Keep -Undo -History -Probe -NewSeed -SeedCheck -Profile -Root -Config -BreakGlass -ConfirmGroup -Approve -All -Yes -NoRevert -Help -Version -Manual; do
     [[ "$output" == *"\`$o"* ]] || { echo "windows: $o missing"; return 1; }
   done
 }

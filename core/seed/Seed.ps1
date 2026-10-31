@@ -175,3 +175,29 @@ function Save-LabSeed {
         if (Test-Path -LiteralPath $tmp) { Remove-Item -LiteralPath $tmp -Force }
     }
 }
+
+# Show-LabSeed: show Seed once on the console, wait until the operator types
+# 'recorded', then clear it from the screen, as a new password is shown
+# (Show-LabSecret). Label is the host's name. Returns 0 once recorded, 20
+# when there is no console, and 1 when the console goes before the answer:
+# the caller must then undo what it saved, because nobody recorded the seed.
+function Show-LabSeed {
+    param([string] $Label, [string] $Seed)
+    if (-not (Test-LabTerminal)) {
+        [Console]::Error.WriteLine('seed: no terminal to show the seed on')
+        return 20
+    }
+    $row = Get-LabTerminalRow
+    Write-LabTerminal ("`r`n  Decoy seed for $Label, shown once:`r`n`r`n      $Seed`r`n`r`n")
+    while ($true) {
+        Write-LabTerminal "  Type 'recorded' once it is in the offline record and the team chat: "
+        $answer = Read-LabTerminal
+        if ($null -eq $answer) {
+            Write-LabTerminal "`r`n"
+            return 1
+        }
+        if ($answer.Trim() -eq 'recorded') { break }
+    }
+    Clear-LabTerminal -Row $row
+    return 0
+}

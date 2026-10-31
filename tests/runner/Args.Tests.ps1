@@ -183,11 +183,11 @@ Describe 'labyrinth.ps1 command line' {
         $r.Out | Should -BeNullOrEmpty
         @($r.Err -split "`r?`n") | Should -Be @("$($t.Name): -y is only for -u ID -All: add -All, or leave out -y", "Try '$($t.Self) -u -h'.")
         $r = Invoke-TestLabCapture $t @('-y', 'observe')
-        $r.Err | Should -Match ([regex]::Escape('-y is only for -u ID -All, not a preview'))
+        $r.Err | Should -Match ([regex]::Escape('-y is only for -u ID -All or -NewSeed, not a preview'))
         $r = Invoke-TestLabCapture $t @('-Yes')
-        $r.Err | Should -Match ([regex]::Escape('-y is only for -u ID -All, not the status'))
+        $r.Err | Should -Match ([regex]::Escape('-y is only for -u ID -All or -NewSeed, not the status'))
         $r = Invoke-TestLabCapture $t @('-r', 'observe', '-NoRevert', '-y')
-        $r.Err | Should -Match ([regex]::Escape('-y is only for -u ID -All, not -r'))
+        $r.Err | Should -Match ([regex]::Escape('-y is only for -u ID -All or -NewSeed, not -r'))
         $r = Invoke-TestLabCapture $t @('-NoRevert', '-Probe')
         $r.Code | Should -Be 40
         $r.Err | Should -Match ([regex]::Escape('-NoRevert is only for -r, not -Probe'))

@@ -191,3 +191,29 @@ lab_seed_store() {
     return 1
   fi
 }
+
+# lab_seed_show LABEL SEED: show SEED once on the terminal, wait until the
+# operator types 'recorded', then clear it from the screen, as a new password
+# is shown (lab_secret_show). LABEL is the host's name. Returns 20 when there
+# is no terminal, and 1 when the terminal goes before the answer: the caller
+# must then undo what it saved, because nobody recorded the seed.
+lab_seed_show() {
+  local label="$1" seed="$2" answer lines=6
+  if ! lab_tty_ok; then
+    printf 'seed: no terminal to show the seed on\n' >&2
+    return 20
+  fi
+  lab_tty_write $'\n'"  Decoy seed for $label, shown once:"$'\n\n'"      $seed"$'\n\n'
+  while :; do
+    lab_tty_write "  Type 'recorded' once it is in the offline record and the team chat: "
+    if ! answer="$(lab_tty_read)"; then
+      lab_tty_write $'\n'
+      return 1
+    fi
+    answer="$(lab_trim "$answer")"
+    if [[ "${answer,,}" == recorded ]]; then break; fi
+    lines=$((lines + 1))
+  done
+  # Back up over the lines shown and clear to the end of the screen.
+  lab_tty_write $'\r\033['"$lines"$'A\033[J'
+}

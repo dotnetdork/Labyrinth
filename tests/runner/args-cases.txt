@@ -24,6 +24,8 @@
 40|err|'version' is not a phase. Did you mean '@SELF@ -V'?|version
 40|err|'history' is not a phase. Did you mean '|history
 40|err|'probe' is not a phase. Did you mean '|probe
+40|err|'newseed' is not a phase. Did you mean '|newseed
+40|err|'seed-check' is not a phase. Did you mean '|seed-check
 40|err|no phase or action given|-P test
 40|err|-r needs a phase|-r --root @ROOT@
 40|err|unexpected word 'extra' after 'observe'|observe extra
@@ -31,6 +33,8 @@
 40|err|unexpected word 'extra' after '-V'|-V extra
 40|err|unexpected word 'extra'|--probe extra
 40|err|unexpected word 'extra'|--history extra
+40|err|unexpected word 'extra'|--new-seed extra
+40|err|unexpected word 'extra'|--seed-check extra
 40|err|unexpected word 'observe' after '-k'|observe -k
 #
 # Options: near misses, values and stacks of letters.
@@ -84,6 +88,8 @@
 40|err|-y is only for -u ID|-r observe --yes
 40|err|-y is only for -u ID|-y
 40|err|-y is only for -u ID|-k 4f2a -y
+40|err|-y is only for -u ID|--seed-check -y
+40|err|-y is only for -u ID|--probe -y
 40|err|or leave out -y|-u 4f2a -y
 40|err|is only for -r, not a preview|observe --no-revert
 40|err|is only for -r, not -k|-k 4f2a --no-revert

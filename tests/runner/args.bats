@@ -73,11 +73,11 @@ streams() {
   [ -z "$OUT" ]
   [[ "$ERR" == "$SELF: -y is only for -u ID --all: add --all, or leave out -y"$'\n'"Try '$SELF -u -h'." ]]
   streams -y observe
-  [[ "$ERR" == *"-y is only for -u ID --all, not a preview"* ]]
+  [[ "$ERR" == *"-y is only for -u ID --all or --new-seed, not a preview"* ]]
   streams --yes
-  [[ "$ERR" == *"-y is only for -u ID --all, not the status"* ]]
+  [[ "$ERR" == *"-y is only for -u ID --all or --new-seed, not the status"* ]]
   streams -r observe --no-revert -y
-  [[ "$ERR" == *"-y is only for -u ID --all, not -r"* ]]
+  [[ "$ERR" == *"-y is only for -u ID --all or --new-seed, not -r"* ]]
   streams --no-revert --probe
   [ "$CODE" -eq 40 ]
   [[ "$ERR" == *"--no-revert is only for -r, not --probe"* ]]

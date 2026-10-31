@@ -218,6 +218,8 @@ Labyrinth does **one action per line**. A phase on its own is a preview. Every o
 | Undo a run | `@CMD@ -u ID [--all [-y]]` | 0, 20 or 40 |
 | List the runs | `@CMD@ --history` | 0, 20 or 40 |
 | Test the scored services | `@CMD@ --probe` | 0, 20, 30 or 40 |
+| Make this host's decoy seed | `@CMD@ --new-seed [-y]` | 0, 20 or 40 |
+| Check a seed you typed | `@CMD@ --seed-check` | 0, 20 or 30 |
 | Show the version | `@CMD@ -V` | 0 |
 | Read this manual | `@CMD@ --manual` | 0 or 40 |
 | Get help | `@CMD@ -h [TOPIC]` | 0 |
@@ -232,6 +234,8 @@ Labyrinth does **one action per line**. A phase on its own is a preview. Every o
 | Undo a run | `@CMD@ -u ID [-All [-y]]` | 0, 20 or 40 |
 | List the runs | `@CMD@ -History` | 0, 20 or 40 |
 | Test the scored services | `@CMD@ -Probe` | 0, 20, 30 or 40 |
+| Make this host's decoy seed | `@CMD@ -NewSeed [-y]` | 0, 20 or 40 |
+| Check a seed you typed | `@CMD@ -SeedCheck` | 0, 20 or 30 |
 | Show the version | `@CMD@ -V` | 0 |
 | Read this manual | `@CMD@ -Manual` | 0 or 40 |
 | Get help | `@CMD@ -h [TOPIC]` | 0 |
@@ -393,9 +397,33 @@ Below the list, it shows how to name a run by its last four characters. Then it 
 <!-- end -->
 every scored service once, the way the scoring engine would, and prints the result for each. Changes nothing. Run it as @ADMIN@, so it can read the configuration. Ends with 0 when every service passes, 20 when there is no list of scored services or the list names none, 30 when any service fails, and 40 on an error.
 
+## new-seed
+
+<!-- linux -->
+`--new-seed` makes
+<!-- end -->
+<!-- windows -->
+`-NewSeed` makes
+<!-- end -->
+this host's **decoy seed**: a long code that the decoys on this host (traps that give an intruder away) are worked out from. Labyrinth saves it in `seed.conf` in the configuration folder, shows it once on the terminal, and waits until you type `recorded`; then it clears the screen. Put the seed in the offline record, and post it in the team chat with this host's name. Labyrinth shows it nowhere else and never logs it.
+
+If the host already has a decoy seed, Labyrinth asks before it replaces it, because the decoys made from the old seed must be made again. `-y` answers yes without asking.
+
+It must be run as @ADMIN@, from a terminal, and checks both before it makes or saves anything. If the terminal goes before you type `recorded`, nobody recorded the seed, so Labyrinth does not keep it: the file is put back as it was. Ends with 0 when the seed is saved (or when you answer no to the question), 20 when not run as @ADMIN@, when there is no terminal, or when the terminal goes before `recorded`, and 40 on an error.
+
+## seed-check
+
+<!-- linux -->
+`--seed-check` asks
+<!-- end -->
+<!-- windows -->
+`-SeedCheck` asks
+<!-- end -->
+for a seed at a prompt on the terminal and says whether it is a valid seed. Use it on a seed that someone sent you or that you copied by hand: the last group of a seed is worked out from the rest, so a typo anywhere is caught. Case, spaces and dashes do not matter. The seed is typed at the prompt and never given on the command line. A message about a bad seed says what is wrong, never the seed. It reads no configuration and needs no @ADMIN@, so it works on any machine with Labyrinth. Ends with 0 when the seed is valid, 20 when there is no terminal, and 30 when it is not valid.
+
 ## help (-h) [*topic*]
 
-Prints help for the whole program, or for one topic. A topic is an action (`run`, `keep`, `undo`, `history`, `probe`, `version`), an option (such as `profile` or `root`), a phase, or one of two more:
+Prints help for the whole program, or for one topic. A topic is an action (`run`, `keep`, `undo`, `history`, `probe`, `new-seed`, `seed-check`, `version`), an option (such as `profile` or `root`), a phase, or one of two more:
 
 - `@CMD@ -h basics` explains phases, modules, previews and runs, the history, the revert timer, keep, undo and scored services, in plain words, on one screen.
 - `@CMD@ -h <module-id>`, such as `@CMD@ -h lockout.firewall`, explains one module: its name, its phase and order, what it may change in plain words, whether it can affect a scored service, the platforms it runs on, its folder, and then its own page: what it checks and changes, why, what can go wrong, how to undo it, and what to do when it fails. Every warning, block, failure and error in the output names the page to read.
@@ -459,14 +487,16 @@ all work. A word that starts with a dash and holds a long name (even with one da
 | `-u`, `--undo ID` | Undo a run. The ID is always needed. | action |
 | `--history` | List this host's runs. | action |
 | `--probe` | Test every scored service once. | action |
+| `--new-seed` | Make this host's decoy seed, show it once and save it. | action |
+| `--seed-check` | Check a seed you type at a prompt. | action |
 | `-P`, `--profile NAME` | Use this profile instead of the one in the `hosts` file. On a run, it must match the host's line. | preview, run |
 | `--root DIR` | The data root, if not `/opt/labyrinth`. Must be a full path. | all |
-| `--config DIR` | The configuration folder, if not `<root>/etc`. Must be a full path, and for a preview, run and probe it must exist. | all |
+| `--config DIR` | The configuration folder, if not `<root>/etc`. Must be a full path, and for a preview, run, probe and new-seed it must exist. | all |
 | `--break-glass NAME` | Answers the break-glass prompt without typing. | run |
 | `--confirm-group GROUP` | Answers the group-name prompt without typing. | run |
 | `--approve LIST` | Approves items without the approval prompt; see section 7. | run |
 | `--all` | Also undoes the changes that were kept once verified. Asks first. | undo |
-| `-y`, `--yes` | Answers yes to the question before `-u ID --all`. Refused anywhere else. | undo with `--all` |
+| `-y`, `--yes` | Answers yes to the question before `-u ID --all` or before `--new-seed` replaces a seed. Refused anywhere else. | undo with `--all`, new-seed |
 | `--no-revert` | Arms no revert timer and asks nothing at the end: the changes stay until you undo them. For test machines only. Refused anywhere else. | run |
 | `-h`, `-?`, `--help` | Show help. | all |
 | `-V`, `--version` | Show the version. | all |
@@ -482,14 +512,16 @@ Example: `sudo ./labyrinth.sh -r lockout --root /srv/labyrinth`
 | `-u`, `-Undo ID` | Undo a run. The ID is always needed. | action |
 | `-History` | List this host's runs. | action |
 | `-Probe` | Test every scored service once. | action |
+| `-NewSeed` | Make this host's decoy seed, show it once and save it. | action |
+| `-SeedCheck` | Check a seed you type at a prompt. | action |
 | `-P`, `-Profile NAME` | Use this profile instead of the one in the `hosts` file. On a run, it must match the host's line. | preview, run |
 | `-Root DIR` | The data root, if not `C:\ProgramData\Labyrinth`. Must be a full path; `/` and `\` both work. | all |
-| `-Config DIR` | The configuration folder, if not `<root>\etc`. Must be a full path, and for a preview, run and probe it must exist. | all |
+| `-Config DIR` | The configuration folder, if not `<root>\etc`. Must be a full path, and for a preview, run, probe and new-seed it must exist. | all |
 | `-BreakGlass NAME` | Answers the break-glass prompt without typing. | run |
 | `-ConfirmGroup GROUP` | Answers the group-name prompt without typing. | run |
 | `-Approve LIST` | Approves items without the approval prompt; see section 7. | run |
 | `-All` | Also undoes the changes that were kept once verified. Asks first. | undo |
-| `-y`, `-Yes` | Answers yes to the question before `-u ID -All`. Refused anywhere else. | undo with `-All` |
+| `-y`, `-Yes` | Answers yes to the question before `-u ID -All` or before `-NewSeed` replaces a seed. Refused anywhere else. | undo with `-All`, new-seed |
 | `-NoRevert` | Arms no revert timer and asks nothing at the end: the changes stay until you undo them. For test machines only. Refused anywhere else. | run |
 | `-h`, `-Help` | Show help. | all |
 | `-V`, `-Version` | Show the version. | all |
@@ -652,7 +684,7 @@ Every command ends with one of these numbers. Scripts can test it; people can re
 | 0 | Done, or nothing to do. |
 | 10 | A change is needed (preview), or only steps a person must carry out are left (run). |
 | 20 | Blocked by a safety check. The blocked part changed nothing. |
-| 30 | A check after a change failed, and that change was undone. The changes made before it stay, and the revert timer is still armed. For probe: a scored service failed. |
+| 30 | A check after a change failed, and that change was undone. The changes made before it stay, and the revert timer is still armed. For probe: a scored service failed. For the seed check: the seed is not valid. |
 | 40 | An error, including a mistyped command. Read the message. |
 
 # 10. Files
@@ -663,7 +695,7 @@ Everything Labyrinth keeps is under one folder, the **data root**: `@ROOT@` unle
 | Folder | Holds |
 |---|---|
 | `<root>/bin` | The program, and `release.sha256`, the hash of each of its files. The commands `laby` and `labyrinth` are links to it in `/usr/bin`. |
-| `<root>/etc` | The event's configuration: `hosts`, `protected-accounts`, `event.conf`, `services`, `scoring-allowlist`, `never-ban`, `outbound-allow`, `pre-approved`. |
+| `<root>/etc` | The event's configuration: `hosts`, `protected-accounts`, `event.conf`, `services`, `scoring-allowlist`, `never-ban`, `outbound-allow`, `pre-approved`. Labyrinth itself writes `seed.conf` here: this host's decoy seed. It is for this host only: never copy it to another host. |
 | `<root>/state` | Run records: one folder per run under `state/runs`, with the run's change record (`manifest.jsonl`), its timer, and its log (`output.log`). |
 | `<root>/logs` | Logs, one folder per kind. |
 | `<root>/backup` | Copies of every file taken before it was changed. |
@@ -674,7 +706,7 @@ Only root can read `etc`, `state` and `backup`. Only root may be able to change 
 | Folder | Holds |
 |---|---|
 | `C:\Program Files\Labyrinth` | The program, its `laby.cmd` and `labyrinth.cmd` commands, and `release.sha256`, the hash of each of its files. It is not under the data root. |
-| `<root>\etc` | The event's configuration: `hosts`, `protected-accounts`, `event.conf`, `services`, `scoring-allowlist`, `never-ban`, `outbound-allow`, `pre-approved`. |
+| `<root>\etc` | The event's configuration: `hosts`, `protected-accounts`, `event.conf`, `services`, `scoring-allowlist`, `never-ban`, `outbound-allow`, `pre-approved`. Labyrinth itself writes `seed.conf` here: this host's decoy seed. It is for this host only: never copy it to another host. |
 | `<root>\state` | Run records: one folder per run under `state\runs`, with the run's change record (`manifest.jsonl`), its timer, and its log (`output.log`). |
 | `<root>\logs` | Logs, one folder per kind. |
 | `<root>\backup` | Copies of every file taken before it was changed. |
