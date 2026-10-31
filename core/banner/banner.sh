@@ -33,14 +33,15 @@ lab_banner_center() {
 # means the copy has no release.sha256.
 lab_banner_print() {
   local uni="$1" ver="$2" sha="$3" line one two
-  local tl tr bl br h v itl itr ibl ibr ih
+  local tl tr bl br h v itl itr ibl ibr ih maze
   if (( uni )); then
     tl='╔' tr='╗' bl='╚' br='╝' h='═' v='║' itl='╓' itr='╖' ibl='╙' ibr='╜' ih='─'
-    cat -- "$LAB_BANNER_DIR/maze.txt"
+    maze="$LAB_BANNER_DIR/maze.txt"
   else
     tl='+' tr='+' bl='+' br='+' h='-' v='|' itl='+' itr='+' ibl='+' ibr='+' ih='-'
-    cat -- "$LAB_BANNER_DIR/maze-ascii.txt"
-  fi | tr -d '\r'
+    maze="$LAB_BANNER_DIR/maze-ascii.txt"
+  fi
+  tr -d '\r' < "$maze"
   printf 'VERSION %s (%s)\n\n' "$ver" "$LAB_BANNER_URL"
   local outer inner
   printf -v outer '%*s' $(( LAB_BANNER_INNER + 4 )) ''
