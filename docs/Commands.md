@@ -3,7 +3,7 @@
 This page shows the commands a person types to run Labyrinth, with what each one does and when to use it. It is written for teammates learning the tool, not for the people building it.
 
 > [!NOTE]
-> **Working now and planned.** The status, preview, run, keep, undo, history, probe, help, the manual and the version work now. Parts marked **Planned** are not built yet; each names its stage (Roadmap). The installer (`sudo ./install.sh` on Linux, `.\install.ps1` as Administrator on Windows) adds the commands `laby` and `labyrinth`; without it, `laby` means `./labyrinth.sh` on Linux or `.\labyrinth.ps1` on Windows, run from the release folder. The exact rules, including every flag and every edge case, are in [Conventions, section 3.1](Conventions.md#31-commands-options-gates-and-the-order-of-an-apply) for what works now and [section 3.3](Conventions.md#33-automatic-runs-and-the-rest-of-the-command-line-specified-planned) for what is planned; if this page and Conventions ever disagree, Conventions wins.
+> **Working now and planned.** The status, preview, run, keep, undo, history, probe, the decoy seed commands, help, the manual and the version work now. Parts marked **Planned** are not built yet; each names its stage (Roadmap). The installer (`sudo ./install.sh` on Linux, `.\install.ps1` as Administrator on Windows) adds the commands `laby` and `labyrinth`; without it, `laby` means `./labyrinth.sh` on Linux or `.\labyrinth.ps1` on Windows, run from the release folder. The exact rules, including every flag and every edge case, are in [Conventions, section 3.1](Conventions.md#31-commands-options-gates-and-the-order-of-an-apply) for what works now and [section 3.3](Conventions.md#33-automatic-runs-and-the-rest-of-the-command-line-specified-planned) for what is planned; if this page and Conventions ever disagree, Conventions wins.
 
 ## The idea in one paragraph
 
@@ -116,6 +116,20 @@ laby --probe
 
 Test every scored service on this host once, the same way the runs do. It changes nothing, and exits with code `30` if a service fails. Useful after any change made by hand.
 
+## The decoy seed
+
+```
+laby --new-seed
+```
+
+Make this host's decoy seed, once per host. It shows the seed once; post it in the team chat with the host's name, write it in the offline record, then type `recorded` and it is cleared from the screen. If the host already has one, it asks before replacing it (`-y` answers yes). The installer never makes a seed, because one made at install time would be copied along with the machine.
+
+```
+laby --seed-check
+```
+
+Type a seed at the prompt to check it for typos. It needs no root and reads no configuration, so it works on any machine with Labyrinth. A seed never goes on the command line itself: it would stay in the shell history.
+
 ## Help
 
 ```
@@ -133,7 +147,7 @@ Adding `-h` to any command shows that command's help instead of running it: `lab
 |---|---|---|
 | `-P NAME` | `--profile NAME` | Use this profile; it must match the host's line in the `hosts` file |
 | `-v` | `--verbose` | **Planned** (first usable release). Show the full detail for every module, not one line each |
-| `-y` | `--yes` | Answer yes to the question before `laby -u ID --all`. **Planned** (first usable release): also the queue's "are you sure?" questions. It never answers the login check |
+| `-y` | `--yes` | Answer yes to the question before `laby -u ID --all`, or before `--new-seed` replaces a seed. **Planned** (first usable release): also the queue's "are you sure?" questions. It never answers the login check |
 | | `--no-revert` | With `-r`: no revert timer and no keep question; the changes stay until you undo them with `-u`. For test machines only |
 
 ## A typical host, start to finish
@@ -148,6 +162,7 @@ laby observe             preview the next phase
 laby -r observe          then the later phases, in order
 laby --history           find a run's ID
 laby --probe             re-check the scored services at any time
+laby --new-seed          make this host's decoy seed, once
 ```
 
 Planned (stages 4b and later):
