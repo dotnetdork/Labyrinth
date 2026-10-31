@@ -29,7 +29,7 @@ fake_run() {
 @test "a new host: its group, no runs, no timer, and the first phase to preview" {
   status_of
   [ "$status" -eq 0 ]
-  [ "${lines[0]}" = "labyrinth $(bash "$LAB/labyrinth.sh" -V | head -n 1 | cut -d' ' -f2): status of host $HOST" ]
+  [ "${lines[0]}" = "labyrinth $(bash "$LAB/labyrinth.sh" -V | head -n 1 | cut -d' ' -f3): status of host $HOST" ]
   [ "${lines[1]}" = 'Group:    ring1, profile test' ]
   [ "${lines[2]}" = 'lockout   not run' ]
   [ "${lines[3]}" = 'observe   not run' ]

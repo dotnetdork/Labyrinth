@@ -330,7 +330,7 @@ Describe 'install.ps1 installs' -Skip:(-not $elevated) {
         $x.Code | Should -Be 0
         [IO.File]::ReadAllText((Join-Path $r.Root 'etc\hosts')) | Should -Be "my own hosts`n"
         Join-Path $r.Root 'etc\protected-accounts' | Should -Exist
-        $x.Output | Should -Match ([regex]::Escape('1 file(s) already there kept'))
+        $x.Output | Should -Match ([regex]::Escape('copied, 1 kept'))
     }
 
     It 'an existing data root that is open to other accounts is made private, its files untouched' {
@@ -338,7 +338,7 @@ Describe 'install.ps1 installs' -Skip:(-not $elevated) {
         [IO.File]::WriteAllText((Join-Path $r.Root 'logs\run.txt'), "log`n")
         $x = Invoke-TestInstall $r @('-Yes')
         $x.Code | Should -Be 0
-        $x.Output | Should -Match 'made private to Administrators and SYSTEM'
+        $x.Output | Should -Match ([regex]::Escape('(kept, made private)'))
         (Get-Acl -LiteralPath $r.Root).AreAccessRulesProtected | Should -BeTrue
         [IO.File]::ReadAllText((Join-Path $r.Root 'logs\run.txt')) | Should -Be "log`n"
     }

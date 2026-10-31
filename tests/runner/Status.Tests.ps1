@@ -54,7 +54,7 @@ Describe 'labyrinth.ps1 status' {
     It 'a new host: its group, no runs, no timer, and the first phase to preview' {
         $r = Get-TestStatus $t
         $r.Code | Should -Be 0
-        $version = ((Invoke-TestLabCapture $t @('-V')).Out -split ' ')[1]
+        $version = ((Invoke-TestLabCapture $t @('-V')).Out -split ' ')[2]
         $r.Lines | Should -Be @(
             "labyrinth ${version}: status of host $script:ThisHost",
             'Group:    ring1, profile test',

@@ -231,7 +231,7 @@ screen() { mapfile -t SCREEN < <(sed -n '/^\(╔IN\|+IN\)/,/^CHANGES TO THIS HOS
   [ "$status" -eq 0 ]
   [ "$(cat "$ROOT/etc/hosts")" = 'my own hosts' ]
   [ -f "$ROOT/etc/protected-accounts" ]
-  [[ "$output" == *'1 file(s) already there kept'* ]]
+  [[ "$output" == *'copied, 1 kept'* ]]
 }
 
 @test "a reinstall replaces the code completely and never touches state or configuration" {
@@ -270,7 +270,7 @@ screen() { mapfile -t SCREEN < <(sed -n '/^\(╔IN\|+IN\)/,/^CHANGES TO THIS HOS
   [ ! -L "$LINKS/laby" ]
   [ "$(readlink "$LINKS/labyrinth")" = "$ROOT/bin/labyrinth.sh" ]
   # Its man page name is left out too, so man laby never shows Labyrinth.
-  [[ "$output" == *'laby.1.gz left out: the command laby is left out'* ]]
+  [[ "$output" == *'man laby is left out: the command laby is left out'* ]]
   [ -f "$MAN/labyrinth.1.gz" ]
   [ ! -e "$MAN/laby.1.gz" ]
 }
@@ -282,7 +282,7 @@ screen() { mapfile -t SCREEN < <(sed -n '/^\(╔IN\|+IN\)/,/^CHANGES TO THIS HOS
 ' > "$MAN/laby.1.gz"
   install_sh -y
   [ "$status" -eq 0 ]
-  [[ "$output" == *"laby.1.gz left out: $MAN/laby.1.gz belongs to another program"* ]]
+  [[ "$output" == *"man laby is left out: $MAN/laby.1.gz belongs to another program"* ]]
   [ "$(cat "$MAN/laby.1.gz")" = 'not ours' ]
   [ -f "$MAN/labyrinth.1.gz" ]
 }
