@@ -192,7 +192,9 @@ manual() { PATH="$BATS_TEST_TMPDIR/bin:$PATH" run bash "$LAB/labyrinth.sh" --man
 
 @test "--manual needs no root and creates nothing" {
   stub_tools
-  touch "$LAB/NOT_ADMIN" "$BATS_TEST_TMPDIR/INSTALLED"
+  mkdir -p "$LAB/manual"
+  printf '.TH LABY 1\n.SH NAME\nMANUALMARKER\n' > "$LAB/manual/labyrinth.1"
+  touch "$LAB/NOT_ADMIN"
   manual --root "$ROOT" --config "$ETC"
   [ "$status" -eq 0 ]
   [ ! -e "$ROOT" ]
