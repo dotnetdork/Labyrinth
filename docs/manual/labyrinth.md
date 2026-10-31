@@ -51,19 +51,79 @@ You need:
 - **Labyrinth's folders on the host.** The data root is normally `C:\ProgramData\Labyrinth`. The program, `labyrinth.ps1`, is in `C:\Program Files\Labyrinth`, where only Administrators can change it. The installer below adds that folder to the machine's `PATH`, so you can type `laby` anywhere in a new window; without it, run the commands from the program's folder.
 - **Permission to run the script.** The installer's `laby` command (a file named `laby.cmd`) starts Windows PowerShell with the execution policy set aside for that one run, and never changes the policy of the host. Without the installer, if Windows refuses to run the script because of the execution policy, start it like this instead, for this window only: `powershell -ExecutionPolicy Bypass -File .\labyrinth.ps1 lockout`.
 <!-- end -->
-- **The release hash,** in the team's notes kept off the hosts. When the team makes a release, the captain records the SHA-256 of its release list, `release.sha256`. Before it runs, Labyrinth checks each of its own files against that list, and it prints the list's hash on the `Release:` line of `-V` and of every run. Compare the two by eye. If they differ, stop: this copy is not the release the team checked. A copy taken straight from the repository has no list, and its `Release:` line says `not checked`.
+- **The release hash,** in the team's notes kept off the hosts. When the team makes a release, the captain records the SHA-256 of its release list, `release.sha256`. Before it runs, Labyrinth checks each of its own files against that list, and it prints the list's hash on the `SHA-256:` lines of `-V` and of every run, and in the installer's `WARNING` box, as two lines of eight groups of four. Compare it with the team's notes by eye. If they differ, stop: this copy is not the release the team checked. A copy taken straight from the repository has no list, and its `SHA-256:` line says `not checked`.
 - **The event's configuration,** in the `etc` folder under the data root (section 10). The team prepares these files before the event. The two that matter most:
   - `hosts` lists every host Labyrinth may act on, with its **group** (which wave of hosts it belongs to), its profile and its platform: `ubuntu` (any Debian-family system; `debian` means the same), `rhel-family`, `windows` or `appliance`.
   - `protected-accounts` is the **protected set**: accounts Labyrinth must never touch, such as the officials' accounts and the accounts the scoring engine logs in with. If this file is missing or empty, Labyrinth refuses to run.
 
-**Installing it.** The installer sets Labyrinth up on a host in one guided step. Unpack the release and compare its hash with the team's notes, as above. Then, in the unpacked folder:
+**Getting it onto a host.** Each release is published as one archive, and the team's notes hold the archive's SHA-256. You fetch the archive, compare its SHA-256 with the notes, and only then unpack it. Nothing here needs more than the host's own tools. `<tag>` is the release's tag, as written in the team's notes; work in an empty folder.
+
+<!-- linux -->
+Fetch the archive:
+
+```
+tag=<tag>
+url=https://github.com/dotnetdork/Labyrinth/releases/download/$tag
+curl -fsSLO "$url/labyrinth-$tag.tar.gz"
+```
+
+Print its SHA-256 and compare it with the notes, character by character:
+
+```
+sha256sum labyrinth-$tag.tar.gz
+```
+
+If it differs, stop and do not unpack the archive: fetch it again, or use the team's own copy. If it matches, unpack the archive as root, so that the files belong to root, and check the list of files inside it:
+
+```
+sudo tar --no-same-owner -xzf labyrinth-$tag.tar.gz
+cd labyrinth-$tag
+sha256sum -c --quiet release.sha256
+```
+
+The last command prints nothing when every file matches the list. Then install it, as below.
+<!-- end -->
+<!-- windows -->
+Fetch the archive. The first lines set the tag and the address, and make Windows PowerShell use TLS 1.2, which older Windows Server releases need:
+
+```
+$tag = '<tag>'
+$url = "https://github.com/dotnetdork/Labyrinth/releases/download/$tag"
+[Net.ServicePointManager]::SecurityProtocol = 'Tls12'
+Invoke-WebRequest -UseBasicParsing -Uri "$url/labyrinth-$tag.zip" `
+  -OutFile "labyrinth-$tag.zip"
+```
+
+Print its SHA-256 and compare it with the notes, character by character. `Get-FileHash` prints capital letters; the case does not matter:
+
+```
+Get-FileHash "labyrinth-$tag.zip"
+```
+
+If it differs, stop and do not unpack the archive: fetch it again, or use the team's own copy. If it matches, unpack the archive in your elevated window, so that the files belong to the Administrators, and check the list of files inside it. The last command prints nothing when every file matches the list:
+
+```
+Expand-Archive "labyrinth-$tag.zip" -DestinationPath .
+cd "labyrinth-$tag"
+Get-Content .\release.sha256 | ForEach-Object {
+  $h, $f = $_ -split '  ', 2
+  if ((Get-FileHash $f).Hash -ne $h) { $f }
+}
+```
+
+Then install it, as below.
+<!-- end -->
+
+Where only a console reaches the internet, fetch the archive and compare its SHA-256 there, then copy it to the host over the admin path and compare it again on the host before you unpack it. Never pipe a download into a shell, and never skip the comparison.
+
+**Installing it.** The installer sets Labyrinth up on a host in one guided step. Fetch and check the release as above. Then, in the unpacked folder:
 
 <!-- linux -->
 ```
 sudo ./install.sh
 ```
 
-It checks the release against `release.sha256` and refuses if a file differs. It then prints its plan, which says where the program, the data root, the commands and the manual will go, and asks `Install? [y/N]`. Anything but `y` changes nothing; `-y` answers yes for you, and without a terminal it refuses unless you give `-y`. It then:
+It checks the release against `release.sha256` and refuses if a file differs. It then shows the release hash in a `WARNING` box (compare it with the team's notes; if it differs, answer no) and, under `CHANGES TO THIS HOST`, where the program, the data root, the commands and the manual will go, and asks `Install? [y/N]`. Anything but `y` changes nothing; `-y` answers yes for you, and without a terminal it refuses unless you give `-y`. It then:
 
 - creates the data root, `/opt/labyrinth`, with `etc`, `state`, `logs` and `backup` open to root only (`--root DIR` picks another);
 - copies the program to `/opt/labyrinth/bin`, owned by root;
@@ -80,7 +140,7 @@ The installer is safe to run again, for example to install a new release: it rep
 .\install.ps1
 ```
 
-It checks the release against `release.sha256` and refuses if a file differs. It then prints its plan, which says where the program, the data root, the commands and the help topic will go, and asks `Install? [y/N]`. Anything but `y` changes nothing; `-y` answers yes for you, and without a terminal it refuses unless you give `-y`. It then:
+It checks the release against `release.sha256` and refuses if a file differs. It then shows the release hash in a `WARNING` box (compare it with the team's notes; if it differs, answer no) and, under `CHANGES TO THIS HOST`, where the program, the data root, the commands, the `PATH` change and the help topic will go, and asks `Install? [y/N]`. Anything but `y` changes nothing; `-y` answers yes for you, and without a terminal it refuses unless you give `-y`. It then:
 
 - creates the data root, `C:\ProgramData\Labyrinth`, with `etc`, `state`, `logs` and `backup`, and makes it usable by Administrators and SYSTEM only (`-Root DIR` picks another);
 - copies the program to `C:\Program Files\Labyrinth`, where only Administrators can write;
@@ -206,7 +266,7 @@ Type `@CMD@` alone to see where this host stands and the one command to run next
 
 <!-- linux -->
 ```
-labyrinth 0.1.0-dev: status of host web1
+labyrinth 0.1.0: status of host web1
 Group:    ring1, profile linux-web
 lockout   kept (run 4f2a, 2026-10-02 14:03 UTC)
 observe   armed: undo at 14:41 UTC (run 7c19, 2026-10-02 14:26 UTC)
@@ -218,7 +278,7 @@ Next: check you can log in from a NEW session, then 'sudo ./labyrinth.sh -k 7c19
 <!-- end -->
 <!-- windows -->
 ```
-labyrinth 0.1.0-dev: status of host web1
+labyrinth 0.1.0: status of host web1
 Group:    ring1, profile windows-member
 lockout   kept (run 4f2a, 2026-10-02 14:03 UTC)
 observe   armed: undo at 14:41 UTC (run 7c19, 2026-10-02 14:26 UTC)
@@ -362,7 +422,7 @@ The main help ends with how to open this manual (below).
 
 ## version (-V)
 
-Prints Labyrinth's version, which program printed it, and the release hash on a `Release:` line (section 2).
+Prints Labyrinth's version and site, which program printed it, and the release hash on its `SHA-256:` lines (section 2).
 <!-- linux -->
 `--version` does the same.
 <!-- end -->
@@ -454,7 +514,7 @@ A run goes through a fixed series of safety checks. If one fails, the run stops 
 2. **No other run is in progress** on this host. Only one run at a time may change a host.
 3. **Every module is planned.** If any plan has an error, nothing is applied. If nothing needs changing, the run ends here without asking you anything.
 4. **Break-glass check.** Log in at the host's own console with the break-glass account, then type its name at the `Break-glass account name:` prompt. Labyrinth asks this once per host. It takes your word for it, then looks for that account's session at the console. Your answer is saved only once you confirm the plan in step 5, so a run that stops before then asks again next time; the run's manifest records what the console check found. If it finds none, it warns `no session for NAME was found at this host's console` and goes on: stop there and check the login yourself if you did not just use it.
-5. **Confirmation.** Labyrinth shows what each module will do and the release hash on its `Release:` line, which you compare with the team's notes (section 2), then asks you to type the host's group name. Anything else stops the run, and nothing is changed or saved.
+5. **Confirmation.** Labyrinth shows what each module will do and the release hash on its `SHA-256:` lines, which you compare with the team's notes (section 2), then asks you to type the host's group name. Anything else stops the run, and nothing is changed or saved.
 6. **Changes start.** For each module that needs a change, in order:
    - the revert timer is armed (or moved later), unless the module only reads;
    - the change is made;
@@ -503,7 +563,7 @@ Copy it into the team's offline record, check the copy, then type `recorded`. An
 A preview looks like this:
 
 ```
-labyrinth 0.1.0-dev: plan lockout, profile web
+labyrinth 0.1.0: plan lockout, profile web
 run 20261002T140301Z-4f2a (plan mode: nothing is recorded)
 This is a plan: Labyrinth only looks, and nothing on web1 changes.
 Host web1 is in group ring1.
@@ -566,7 +626,7 @@ After a blank line, the run ends with:
 The probe reports in the same way, one line per scored service:
 
 ```
-labyrinth 0.1.0-dev: probe the scored services
+labyrinth 0.1.0: probe the scored services
 OK       [web] pass: status 200
 FAIL     [mail] fail: no banner
 Summary: 1 OK, 1 FAIL
@@ -684,7 +744,9 @@ The run that is `armed` is the one to undo; its ID is also on the second line of
 <!-- end -->
 Then run the command again. Labyrinth's own check finds a changed, added or missing file. It cannot find an intruder who changed the check as well, who could make it print the expected hash; the commands above can.
 
-**"no release.sha256, so Labyrinth's files were not checked".** This copy has no release list, so Labyrinth could not check its files, and `Release:` says `not checked`. A copy taken straight from the repository has none. Go on only if the team's notes say this copy is the one to run.
+**The archive's SHA-256 does not match the team's notes.** The archive you fetched is not the one the team recorded: the download may be damaged, or it may not be the release. Do not unpack it, and do not run anything from it. Delete it and fetch it again (section 2). If it still differs, use the team's own copy of the release and tell the captain.
+
+**"no release.sha256, so Labyrinth's files were not checked".** This copy has no release list, so Labyrinth could not check its files, and `SHA-256:` says `not checked`. A copy taken straight from the repository has none. Go on only if the team's notes say this copy is the one to run.
 
 **"the protected set is not loaded".** The line ends with the reason: there is no `protected-accounts` file in the configuration folder, or it lists no accounts. Labyrinth will not change anything without it. Copy in the team's prepared file.
 

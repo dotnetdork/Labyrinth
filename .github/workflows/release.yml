@@ -1,0 +1,95 @@
+# Build the release archives and, for a pushed tag, publish them (design 21,
+# section 5.2).
+#
+# A pushed tag named v* builds labyrinth-<tag>.tar.gz (Linux) and
+# labyrinth-<tag>.zip (Windows) with tools/release/archive.sh and publishes
+# both as release assets. The release notes carry each archive's SHA-256 and
+# the SHA-256 of release.sha256, for the team to compare with its offline
+# record before anything is unpacked.
+#
+# A manual run (workflow_dispatch) with a test tag builds the archives and
+# keeps them as workflow artifacts only; it publishes nothing.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to name the archives after (nothing is published)'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build the archives
+    runs-on: ubuntu-24.04
+    env:
+      # Passed through the environment, never pasted into a script.
+      TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Install pandoc
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pandoc
+          pandoc --version | head -1
+          google-chrome --version
+
+      - name: Build the archives
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p build/release
+          bash tools/release/archive.sh "$TAG" build/release | tee build/archive.out
+
+      - name: Write the release notes
+        run: |
+          {
+            printf '## Compare these with the offline record before you unpack\n\n'
+            printf 'Check each value below by eye against the team'"'"'s offline record. If one differs, do not unpack the archive.\n\n'
+            printf 'SHA-256 of each archive, as `sha256sum` prints it:\n\n```\n'
+            grep -v ' release\.sha256$' build/archive.out
+            printf '```\n\n'
+            # Grouped as the installer, laby -V and the run recap show it.
+            sum="$(grep ' release\.sha256$' build/archive.out | cut -d' ' -f1)"
+            printf 'SHA-256 of `release.sha256` inside the archives, as the installer and `laby -V` show it:\n\n```\n'
+            sed -E 's/(.{4})/\1 /g; s/ $//' <<< "${sum:0:32}"
+            sed -E 's/(.{4})/\1 /g; s/ $//' <<< "${sum:32}"
+            printf '```\n'
+          } > build/release-notes.md
+          cat build/release-notes.md
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: labyrinth-release
+          # Holds release/ (the archives), release-notes.md and archive.out.
+          path: build/
+          if-no-files-found: error
+
+  publish:
+    name: Publish the release
+    needs: build
+    if: github.event_name == 'push'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    env:
+      TAG: ${{ github.ref_name }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131  # v7.0.0
+        with:
+          name: labyrinth-release
+
+      - name: Create the release with both archives
+        run: |
+          gh release create "$TAG" "release/labyrinth-$TAG.tar.gz" "release/labyrinth-$TAG.zip" \
+            --repo "$GITHUB_REPOSITORY" --verify-tag --title "$TAG" --notes-file release-notes.md

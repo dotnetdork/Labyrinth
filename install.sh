@@ -134,6 +134,8 @@ if (( RELEASE == 2 )); then
     "Copy Labyrinth here again from the team's copy, as manual section 11 says."
 fi
 REL_HASH="$LAB_RELEASE_HASH"
+# shellcheck source=core/banner/banner.sh
+source "$HERE/core/banner/banner.sh"
 export LAB_ROOT="$HERE"
 # shellcheck source=core/lib.sh
 source "$HERE/core/lib.sh"
@@ -315,44 +317,59 @@ for name in laby labyrinth; do
   [[ "${LINK_STATE[$name]}" != free ]] || TODO=1
 done
 
-# 4. The plan, before the question.
-row() { printf '  %-11s%s\n' "$1" "$2"; }
-printf 'Labyrinth install plan:\n'
-if (( RELEASE == 0 )); then
-  row 'Release:' "$REL_HASH"
-else
-  row 'Release:' 'not checked: this copy has no release.sha256'
-fi
-case "$CODE_STATE" in
-  new) row 'Code:' "$CODE (new)" ;;
-  replace) row 'Code:' "$CODE (replaced completely)" ;;
-  same) row 'Code:' "$CODE (already this release, unchanged)" ;;
-esac
-if (( ROOT_NEW )); then
-  row 'Data root:' "$ROOT (new; only root can use etc, state, logs and backup)"
-else
-  row 'Data root:' "$ROOT (already there; its files are never touched)"
-fi
+# 4. The screen, before the question: the release hash to compare by eye
+# with the offline record, then what changes on this host.
 if [[ "${LINK_STATE[laby]}" == taken ]]; then
-  row 'Commands:' "$LINKDIR/labyrinth -> $WANT"
-  row '' "laby left out: ${LINK_WHY[laby]}"
-else
-  row 'Commands:' "$LINKDIR/laby and $LINKDIR/labyrinth -> $WANT"
+  warn "the command laby is left out: ${LINK_WHY[laby]}"
 fi
-case "$MAN_STATE" in
-  skip) row 'Manual:' "skipped: $MAN_WHY" ;;
-  same) row 'Manual:' "$MANDIR/labyrinth.1.gz (unchanged)" ;;
-  new)
-    if (( MAN_LABY )); then
-      row 'Manual:' "$MANDIR/labyrinth.1.gz, and laby.1.gz pointing to it"
+if [[ "$MAN_STATE" == new ]] && (( ! MAN_LABY )); then
+  warn "man laby is left out: $MAN_LABY_WHY"
+fi
+UNI=0
+if lab_banner_unicode; then UNI=1; fi
+version="$(sed -n "s/^readonly LAB_VERSION='\([^']*\)'.*/\1/p" "$HERE/labyrinth.sh")"
+sha=''
+if (( RELEASE == 0 )); then sha="$REL_HASH"; fi
+lab_banner_print "$UNI" "${version:-unknown}" "$sha"
+printf '\n'
+rows=()
+case "$CODE_STATE" in
+  new) rows+=("Program|$CODE (new)") ;;
+  replace)
+    # The version being replaced, when it differs from this one.
+    old="$(sed -n "s/^readonly LAB_VERSION='\([^']*\)'.*/\1/p" "$CODE/labyrinth.sh" 2> /dev/null || true)"
+    if [[ -n "$old" && -n "$version" && "$old" != "$version" ]]; then
+      rows+=("Program|$CODE (replaced: $old -> $version)")
     else
-      row 'Manual:' "$MANDIR/labyrinth.1.gz (laby.1.gz left out: $MAN_LABY_WHY)"
+      rows+=("Program|$CODE (replaced)")
     fi ;;
+  same) rows+=("Program|$CODE (unchanged)") ;;
 esac
-row 'Settings:' "${#TEMPLATES[@]} template(s) copied into $ROOT/etc; $KEPT file(s) already there kept"
+if (( ROOT_NEW )); then rows+=("Data|$ROOT (new, root only)"); else rows+=("Data|$ROOT (kept)"); fi
+state=new
+if [[ "${LINK_STATE[labyrinth]}" == ours && "${LINK_STATE[laby]}" != free ]]; then state=unchanged; fi
+if [[ "${LINK_STATE[laby]}" == taken ]]; then
+  rows+=("Commands|labyrinth in $LINKDIR ($state; laby is taken)")
+else
+  rows+=("Commands|laby, labyrinth in $LINKDIR ($state)")
+fi
+man_cmd=laby
+if (( ! MAN_LABY )); then man_cmd=labyrinth; fi
+case "$MAN_STATE" in
+  skip) rows+=("Manual|skipped: $MAN_WHY") ;;
+  same) rows+=("Manual|man $man_cmd (unchanged)") ;;
+  new) rows+=("Manual|man $man_cmd (new)") ;;
+esac
+n="${#TEMPLATES[@]}"
+if (( KEPT > 0 )); then config="$n copied, $KEPT kept"
+elif (( n == 1 )); then config='1 template'
+else config="$n templates"; fi
+rows+=("Config|$config -> $ROOT/etc")
+lab_banner_tree "$UNI" "${rows[@]}"
 
 if (( TODO == 0 )); then
-  printf '\nLabyrinth is already installed from this release. Nothing to change.\n'
+  printf '\n'
+  lab_banner_list "$UNI" 'ALREADY INSTALLED' 'This release is already in place. Nothing to change.'
   exit 0
 fi
 
@@ -364,12 +381,12 @@ if (( ! YES )); then
     printf '%s\n' 'Run it from a terminal, or add -y to answer yes.' >&2
     exit 40
   fi
-  lab_tty_write 'Install? [y/N] '
+  lab_tty_write '  Install? [y/N] '
   answer=''
   answer="$(lab_tty_read)" || answer=''
   case "${answer,,}" in
     y | yes) ;;
-    *) printf 'Nothing was changed.\n'; exit 0 ;;
+    *) printf '\n  Nothing was changed.\n'; exit 0 ;;
   esac
 fi
 
@@ -451,18 +468,17 @@ if bad="$(lab_tree_trusted "$CODE")"; then :; else
     'The install is in place, but Labyrinth will refuse to run until that is fixed.'
 fi
 
-printf '\nInstalled.\n'
-printf '%s\n' "The templates are in $ROOT/etc without the .example ending. They hold"
-printf '%s\n' 'placeholders: replace the names in hosts and protected-accounts with the'
-printf '%s\n' "event's, and see the manual (section 10) for the other files."
+items=("Fill in $ROOT/etc: hosts and protected-accounts"$'\n''hold placeholder names (manual, section 10)')
+cmd=laby
 if [[ "${LINK_STATE[laby]}" == taken ]]; then
-  printf '%s\n' "The name laby was left out; the command is labyrinth."
+  items+=('laby is taken here, so the command is labyrinth')
   cmd=labyrinth
-else
-  cmd=laby
 fi
 if [[ "$ROOT" != "$DEFAULT_ROOT" ]]; then
-  printf 'Next: sudo %s --root %s\n' "$cmd" "$ROOT"
+  items+=("Next: sudo $cmd --root $ROOT")
 else
-  printf 'Next: sudo %s\n' "$cmd"
+  items+=("Next: sudo $cmd")
 fi
+# After the question, a blank line; with -y one is already there.
+if (( ! YES )); then printf '\n'; fi
+lab_banner_list "$UNI" INSTALLED "${items[@]}"

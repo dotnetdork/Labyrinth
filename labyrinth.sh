@@ -35,7 +35,8 @@ on_internal_error() {
 }
 trap 'on_internal_error "$?" "${BASH_SOURCE[0]##*/}" "$LINENO" "$BASH_COMMAND"' ERR
 
-readonly LAB_VERSION='0.1.0-dev'
+readonly LAB_VERSION='0.1.0'
+readonly LAB_URL='https://dotnetdork.github.io/Labyrinth/'
 readonly PHASES='lockout observe deceive sustain'
 readonly MODULE_KEYS='id title phase priority platforms risk touches_scored requires outputs spec pre_approvable keep_on_verify'
 readonly -a REQUIRED_KEYS=(id title phase priority platforms risk touches_scored)
@@ -519,9 +520,21 @@ EOF
 # cmd_version: the version, the runner, and the release hash to compare
 # with the team's offline record (design 21, section 5).
 cmd_version() {
-  printf 'labyrinth %s (labyrinth.sh, for Linux)\n' "$LAB_VERSION"
-  if (( LAB_RELEASE == 0 )); then printf 'Release: %s\n' "$LAB_RELEASE_HASH"
-  else printf 'Release: not checked (no release.sha256)\n'; fi
+  printf 'Labyrinth version %s (%s)\n' "$LAB_VERSION" "$LAB_URL"
+  printf 'Runner:   bash\n'
+  release_lines
+}
+
+# release_lines: the release hash, as two lines of eight groups of four, or
+# that it was not checked.
+release_lines() {
+  local one two
+  if (( LAB_RELEASE == 0 )); then
+    { read -r one; read -r two; } < <(lab_release_groups "$LAB_RELEASE_HASH")
+    printf 'SHA-256:  %s\n          %s\n' "$one" "$two"
+  else
+    printf 'SHA-256:  not checked (no release.sha256)\n'
+  fi
 }
 
 # risk_words RISK: what a module's risk means, in plain words.
@@ -2287,8 +2300,7 @@ recap() {
   local i what l remote=0 kept=0
   out ''
   out "About to apply on host $1, group $2:"
-  if (( LAB_RELEASE == 0 )); then out "Release: $LAB_RELEASE_HASH"
-  else out 'Release: not checked (no release.sha256)'; fi
+  while IFS= read -r l; do out "$l"; done < <(release_lines)
   for ((i = 0; i < ${#RUN_IDS[@]}; i++)); do
     case "${RUN_RC[i]}" in
       10) what='Will change:'

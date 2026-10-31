@@ -94,11 +94,6 @@ function Exit-LabInstall {
     exit $Code
 }
 
-function Write-LabRow {
-    param([string] $Label, [string] $Text)
-    [Console]::Out.WriteLine(('  ' + $Label.PadRight(11) + $Text))
-}
-
 # Get-LabFullPath PATH: PATH as a full path with no closing backslash.
 function Get-LabFullPath {
     param([string] $Path)
@@ -376,29 +371,58 @@ try {
     $todo = ($codeState -ne 'same') -or $rootNew -or $subsMissing -or (-not $rootLocked) -or ($templates.Count -gt 0) -or
         ($helpState -eq 'new') -or ($pathState -eq 'new')
 
-    # 4. The plan, before the question.
-    [Console]::Out.WriteLine('Labyrinth install plan:')
-    if ($release.Status -eq 'ok') { Write-LabRow 'Release:' $release.Hash }
-    else { Write-LabRow 'Release:' 'not checked: this copy has no release.sha256' }
-    if ($codeState -eq 'new') { Write-LabRow 'Code:' "$CodeDir (new)" }
-    elseif ($codeState -eq 'replace') { Write-LabRow 'Code:' "$CodeDir (replaced completely)" }
-    else { Write-LabRow 'Code:' "$CodeDir (already this release, unchanged)" }
-    if ($rootNew) { Write-LabRow 'Data root:' "$Root (new; only Administrators and SYSTEM can use it)" }
-    elseif ($rootLocked) { Write-LabRow 'Data root:' "$Root (already there and private; its files are never touched)" }
-    else { Write-LabRow 'Data root:' "$Root (already there; made private to Administrators and SYSTEM)" }
-    Write-LabRow 'Commands:' "laby.cmd and labyrinth.cmd, in $CodeDir"
-    if ($taken.ContainsKey('laby')) { Write-LabRow '' "laby is taken by $($taken['laby']): type labyrinth instead" }
-    if ($pathState -eq 'skip') { Write-LabRow 'PATH:' 'not changed (-NoPath)' }
-    elseif ($pathState -eq 'same') { Write-LabRow 'PATH:' "$CodeDir is already on the machine PATH" }
-    else { Write-LabRow 'PATH:' "$CodeDir is added to the machine PATH (new windows only)" }
-    if ($helpState -eq 'skip') { Write-LabRow 'Manual:' 'skipped: this copy has no built manual (manual\about_Labyrinth.help.txt)' }
-    elseif ($helpState -eq 'same') { Write-LabRow 'Manual:' "$HelpModule (unchanged)" }
-    else { Write-LabRow 'Manual:' "$HelpModule, for Get-Help about_Labyrinth" }
-    Write-LabRow 'Settings:' "$($templates.Count) template(s) copied into $Root\etc; $kept file(s) already there kept"
+    # 4. The screen, before the question: the release hash to compare by eye
+    # with the offline record, then what changes on this host.
+    if ($taken.ContainsKey('laby')) {
+        [Console]::Error.WriteLine("${Me}: warning: laby is taken by $($taken['laby']): type labyrinth instead")
+    }
+    . (Join-Path $Here 'core\banner\Banner.ps1')
+    $unicode = Test-LabBannerUnicode
+    $arrow = $unicode -and (Test-LabBannerText $LabBox.Arrow)
+    $version = 'unknown'
+    $m = [regex]::Match([IO.File]::ReadAllText((Join-Path $Here 'labyrinth.ps1')), "(?m)^\`$LabVersion = '([^']+)'")
+    if ($m.Success) { $version = $m.Groups[1].Value }
+    $sha = ''
+    if ($release.Status -eq 'ok') { $sha = $release.Hash }
+    $state = @{ new = 'new'; replace = 'replaced'; same = 'unchanged' }[$codeState]
+    $program = $state
+    if ($codeState -eq 'replace') {
+        # The version being replaced, when it differs from this one.
+        $installed = Join-Path $CodeDir 'labyrinth.ps1'
+        if (Test-Path -LiteralPath $installed -PathType Leaf) {
+            $o = [regex]::Match([IO.File]::ReadAllText($installed), "(?m)^\`$LabVersion = '([^']+)'")
+            if ($o.Success -and $version -ne 'unknown' -and $o.Groups[1].Value -cne $version) {
+                $program = "replaced: $($o.Groups[1].Value) -> $version"
+            }
+        }
+    }
+    $rows = @(, @('Program', "$CodeDir ($program)"))
+    if ($rootNew) { $rows += , @('Data', "$Root (new, private)") }
+    elseif ($rootLocked) { $rows += , @('Data', "$Root (kept)") }
+    else { $rows += , @('Data', "$Root (kept, made private)") }
+    if ($taken.ContainsKey('laby')) { $rows += , @('Commands', "labyrinth ($state; laby is taken)") }
+    else { $rows += , @('Commands', "laby, labyrinth ($state)") }
+    if ($pathState -eq 'skip') { $rows += , @('PATH', 'not changed (-NoPath)') }
+    elseif ($pathState -eq 'same') { $rows += , @('PATH', "has $CodeDir (unchanged)") }
+    else { $rows += , @('PATH', "adds $CodeDir") }
+    if ($helpState -eq 'skip') { $rows += , @('Manual', 'skipped: this copy has no built manual (manual\about_Labyrinth.help.txt)') }
+    elseif ($helpState -eq 'same') { $rows += , @('Manual', 'Get-Help about_Labyrinth (unchanged)') }
+    else { $rows += , @('Manual', 'Get-Help about_Labyrinth (new)') }
+    $config = "$($templates.Count) templates"
+    if ($kept -gt 0) { $config = "$($templates.Count) copied, $kept kept" }
+    elseif ($templates.Count -eq 1) { $config = '1 template' }
+    $rows += , @('Config', "$config -> $Root\etc")
+    foreach ($line in @(Get-LabBanner -Unicode $unicode -Version $version -Sha $sha) + @('') +
+        @(Get-LabBannerTree -Unicode $unicode -Arrow $arrow -Rows $rows)) {
+        [Console]::Out.WriteLine($line)
+    }
 
     if (-not $todo) {
         [Console]::Out.WriteLine('')
-        [Console]::Out.WriteLine('Labyrinth is already installed from this release. Nothing to change.')
+        foreach ($line in @(Get-LabBannerList -Unicode $unicode -Heading 'ALREADY INSTALLED' `
+                    -Items @('This release is already in place. Nothing to change.'))) {
+            [Console]::Out.WriteLine($line)
+        }
         exit 0
     }
 
@@ -410,10 +434,11 @@ try {
             [Console]::Error.WriteLine('Run it from a PowerShell window, or add -y to answer yes.')
             exit 40
         }
-        Write-LabTerminal 'Install? [y/N] '
+        Write-LabTerminal '  Install? [y/N] '
         $answer = Read-LabTerminal
         if ($null -eq $answer -or @('y', 'yes') -cnotcontains "$answer".Trim().ToLowerInvariant()) {
-            [Console]::Out.WriteLine('Nothing was changed.')
+            [Console]::Out.WriteLine('')
+            [Console]::Out.WriteLine('  Nothing was changed.')
             exit 0
         }
     }
@@ -492,15 +517,16 @@ try {
             'The install is in place, but Labyrinth will refuse to run until that is fixed.'
     }
 
-    [Console]::Out.WriteLine('')
-    [Console]::Out.WriteLine('Installed.')
-    [Console]::Out.WriteLine("The templates are in $Root\etc without the .example ending. They hold")
-    [Console]::Out.WriteLine('placeholders: replace the names in hosts and protected-accounts with the')
-    [Console]::Out.WriteLine("event's, and see the manual (section 10) for the other files.")
-    if ($pathState -eq 'new') { [Console]::Out.WriteLine("Open a new PowerShell window so that it finds the $cmd command.") }
-    if ($taken.ContainsKey('laby')) { [Console]::Out.WriteLine('The name laby belongs to another program here; the command is labyrinth.') }
-    if ($Root -ne $DefaultRoot) { [Console]::Out.WriteLine("Next: $cmd -Root `"$Root`"") }
-    else { [Console]::Out.WriteLine("Next: $cmd") }
+    $items = @("Fill in $Root\etc: hosts and protected-accounts`nhold placeholder names (manual, section 10)")
+    if ($taken.ContainsKey('laby')) { $items += 'laby is taken here, so the command is labyrinth' }
+    if ($pathState -eq 'new') { $items += "Open a new PowerShell window so it finds $cmd" }
+    if ($Root -ne $DefaultRoot) { $items += "Next: $cmd -Root `"$Root`"" }
+    else { $items += "Next: $cmd" }
+    # After the question, a blank line; with -y one is already there.
+    if (-not $Yes) { [Console]::Out.WriteLine('') }
+    foreach ($line in @(Get-LabBannerList -Unicode $unicode -Heading 'INSTALLED' -Items $items)) {
+        [Console]::Out.WriteLine($line)
+    }
 } catch {
     [Console]::Error.WriteLine("${Me}: stopped: $($_.Exception.Message), exit 40")
     [Console]::Error.WriteLine('Some steps may be done. It is safe to run the installer again.')

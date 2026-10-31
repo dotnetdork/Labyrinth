@@ -1,0 +1,116 @@
+# shellcheck shell=bash
+# core/banner/banner.sh: the installer's screen (docs/Conventions.md
+# section 3.3): the maze with the version, what Labyrinth is and the
+# copyright notice under it, the warning box with the
+# release hash to compare by eye with the offline record, and the tree of
+# changes. Needs core/safety/release.sh (lab_release_groups) and nothing else
+# from the core; printing it changes nothing.
+#
+# The maze is in maze.txt, drawn with box lines, and in maze-ascii.txt, drawn
+# with + - and |, for a terminal that cannot show the box lines. No colour:
+# many consoles and logs would show the escape codes instead.
+
+LAB_BANNER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+LAB_BANNER_URL='https://dotnetdork.github.io/Labyrinth/'
+LAB_BANNER_WIDTH=55   # columns of the maze
+LAB_BANNER_INNER=49   # columns inside the warning box's walls; the box is indented 2
+# What Labyrinth is, and the copyright notice, centred under the version.
+LAB_BANNER_ABOUT=('Rapid first-minute hardening tool for Linux & Windows,'
+  'with traps that log every attacker move as a tripwire.')
+LAB_BANNER_NOTICE='Copyright (c) 2026 Jay Sausa. See LICENSE.'
+
+# lab_banner_unicode: can this terminal show the box lines? Yes when the
+# locale's character set is UTF-8.
+lab_banner_unicode() {
+  case "${LC_ALL:-${LC_CTYPE:-${LANG:-}}}" in
+    *[Uu][Tt][Ff]-8* | *[Uu][Tt][Ff]8*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+# lab_banner_center TEXT: TEXT centred in the box's inner width.
+lab_banner_center() {
+  local left=$(( (LAB_BANNER_INNER - ${#1} + 1) / 2 ))
+  printf '%*s%s%*s' "$left" '' "$1" $(( LAB_BANNER_INNER - ${#1} - left )) ''
+}
+
+# lab_banner_print UNICODE VERSION SHA: the maze, the version line, what
+# Labyrinth is, the copyright notice and the warning box. UNICODE is 1 for
+# box lines, 0 for plain ASCII. SHA empty means the copy has no
+# release.sha256.
+lab_banner_print() {
+  local uni="$1" ver="$2" sha="$3" line one two left head
+  local tl tr bl br h v ml mr maze
+  if (( uni )); then
+    tl='╓' tr='╖' bl='╙' br='╜' h='─' v='║' ml='╟' mr='╢'
+    maze="$LAB_BANNER_DIR/maze.txt"
+  else
+    tl='+' tr='+' bl='+' br='+' h='-' v='|' ml='+' mr='+'
+    maze="$LAB_BANNER_DIR/maze-ascii.txt"
+  fi
+  tr -d '\r' < "$maze"
+  printf 'VERSION %s (%s)\n\n' "$ver" "$LAB_BANNER_URL"
+  for line in "${LAB_BANNER_ABOUT[@]}" '' "$LAB_BANNER_NOTICE" ''; do
+    left=$(( (LAB_BANNER_WIDTH - ${#line} + 1) / 2 ))
+    if (( left < 0 )); then left=0; fi
+    if [[ -n "$line" ]]; then printf '%*s%s\n' "$left" '' "$line"; else printf '\n'; fi
+  done
+  local rule
+  printf -v rule '%*s' "$LAB_BANNER_INNER" ''
+  rule="${rule// /$h}"
+  # With no hash, the same box with ? in place of each digit.
+  if [[ -n "$sha" ]]; then
+    { read -r one; read -r two; } < <(lab_release_groups "$sha")
+    head='WARNING: COMPARE WITH YOUR OFFLINE SHA-256'
+  else
+    one='???? ???? ???? ???? ???? ???? ???? ????' two="$one"
+    head='WARNING: THIS COPY HAS NO release.sha256, ABORT'
+  fi
+  # The box is indented 2, so it sits centred under the maze.
+  printf '  %s%s%s\n' "$tl" "$rule" "$tr"
+  printf '  %s%s%s\n' "$v" "$(lab_banner_center "$head")" "$v"
+  printf '  %s%s%s\n' "$ml" "$rule" "$mr"
+  printf '  %s%s%s\n' "$v" "$(lab_banner_center "$one")" "$v"
+  printf '  %s%s%s\n' "$v" "$(lab_banner_center "$two")" "$v"
+  printf '  %s%s%s\n' "$bl" "$rule" "$br"
+}
+
+# lab_banner_tree UNICODE ROW...: the tree of changes to this host. Each ROW
+# is 'Label|text'; ' -> ' in the text becomes an arrow on a UTF-8 terminal.
+lab_banner_tree() {
+  local uni="$1" i=0 n mid last row label text
+  shift
+  n=$#
+  if (( uni )); then mid='   ├── ' last='   └── '; else mid='   |-- ' last='   `-- '; fi
+  printf '  CHANGES TO THIS HOST\n'
+  for row in "$@"; do
+    i=$(( i + 1 ))
+    label="${row%%|*}" text="${row#*|}"
+    if (( uni )); then text="${text// -> / → }"; fi
+    if (( i == n )); then printf '%s%-10s%s\n' "$last" "$label" "$text"
+    else printf '%s%-10s%s\n' "$mid" "$label" "$text"; fi
+  done
+}
+
+# lab_banner_list UNICODE HEADING ITEM...: a heading and a tree of items, as
+# shown when the installer ends. An ITEM may hold newlines; its later lines
+# hang under its first.
+lab_banner_list() {
+  local uni="$1" head="$2" i=0 n lead cont item first line
+  shift 2
+  n=$#
+  printf '  %s\n' "$head"
+  for item in "$@"; do
+    i=$(( i + 1 ))
+    if (( uni )); then
+      if (( i == n )); then lead='   └── ' cont='       '; else lead='   ├── ' cont='   │   '; fi
+    else
+      if (( i == n )); then lead='   `-- ' cont='       '; else lead='   |-- ' cont='   |   '; fi
+    fi
+    first=1
+    while IFS= read -r line; do
+      if (( first )); then printf '%s%s\n' "$lead" "$line"; first=0
+      else printf '%s%s\n' "$cont" "$line"; fi
+    done <<< "$item"
+  done
+}

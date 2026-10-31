@@ -208,8 +208,11 @@ Describe 'labyrinth.ps1 help' {
 
     It '-V names the runner, and -V -h is its help' {
         $v = @((Get-TestHelp $t @('-V')).Out -split "`r?`n")
-        $v[0] | Should -Match '^labyrinth \S+ \(labyrinth\.ps1, for Windows\)$'
-        $v[1] | Should -BeLike 'Release: *'
+        $v[0] | Should -MatchExactly '^Labyrinth version \S+ \(https://dotnetdork\.github\.io/Labyrinth/\)$'
+        $v[1] | Should -MatchExactly '^Runner:   PowerShell \d+\.\d+$'
+        $v[2] | Should -BeLike 'SHA-256:  *'
+        # Plain ASCII and short: the same on every console.
+        foreach ($l in $v) { $l | Should -Not -Match '[^ -~]'; $l.Length | Should -BeLessOrEqual 78 }
         @((Get-TestHelp $t @('-V', '-h')).Out -split "`r?`n")[0] | Should -BeExactly 'Usage: laby -V'
     }
 

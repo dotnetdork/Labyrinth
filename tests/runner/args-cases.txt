@@ -143,9 +143,9 @@
 0|out|Usage: @SELF@ -h basics|-h basics
 0|out|Usage: @SELF@ [-r] PHASE -P NAME|-P test -h
 0|out|Usage: @SELF@ ACTION --root DIR|--root @ROOT@ -h
-0|out|labyrinth |-V
-0|out|labyrinth |--version
-0|out|labyrinth |-Version
+0|out|Labyrinth version |-V
+0|out|Labyrinth version |--version
+0|out|Labyrinth version |-Version
 #
 # Typing nothing is the status of this host, which always exits 0.
 0|out|Next: |

@@ -21,7 +21,7 @@
 # Windows launchers, and every file under these folders. The manual folder
 # holds the built man page and help topic (tools/manual/build.sh); a copy
 # taken straight from the repository does not have it.
-LAB_RELEASE_FILES='labyrinth.sh labyrinth.ps1 install.sh install.ps1 laby.cmd labyrinth.cmd'
+LAB_RELEASE_FILES='labyrinth.sh labyrinth.ps1 install.sh install.ps1 laby.cmd labyrinth.cmd LICENSE'
 LAB_RELEASE_DIRS='core phases platform profiles vendor config manual'
 LAB_RELEASE_HASH=''     # SHA-256 of release.sha256, once it is read
 LAB_RELEASE_PROBLEM=''  # why the check failed
@@ -31,6 +31,16 @@ lab_release_sha() {
   local h
   h="$(sha256sum < "$1")" || return 1
   printf '%s\n' "${h%% *}"
+}
+
+# lab_release_groups SHA: SHA in two lines of eight groups of four, which
+# are easier to compare by eye with the offline record than one long run.
+lab_release_groups() {
+  local i line=''
+  for ((i = 0; i < 64; i += 4)); do
+    line+="${1:i:4}"
+    if (( i % 32 == 28 )); then printf '%s\n' "$line"; line=''; else line+=' '; fi
+  done
 }
 
 # lab_release_files ROOT: print, sorted, the path under ROOT of every
