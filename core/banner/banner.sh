@@ -90,3 +90,26 @@ lab_banner_tree() {
     else printf '%s%-10s%s\n' "$mid" "$label" "$text"; fi
   done
 }
+
+# lab_banner_list UNICODE HEADING ITEM...: a heading and a tree of items, as
+# shown when the installer ends. An ITEM may hold newlines; its later lines
+# hang under its first.
+lab_banner_list() {
+  local uni="$1" head="$2" i=0 n lead cont item first line
+  shift 2
+  n=$#
+  printf '  %s\n' "$head"
+  for item in "$@"; do
+    i=$(( i + 1 ))
+    if (( uni )); then
+      if (( i == n )); then lead='   └── ' cont='       '; else lead='   ├── ' cont='   │   '; fi
+    else
+      if (( i == n )); then lead='   `-- ' cont='       '; else lead='   |-- ' cont='   |   '; fi
+    fi
+    first=1
+    while IFS= read -r line; do
+      if (( first )); then printf '%s%s\n' "$lead" "$line"; first=0
+      else printf '%s%s\n' "$cont" "$line"; fi
+    done <<< "$item"
+  done
+}

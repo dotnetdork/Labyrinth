@@ -24,7 +24,7 @@ $LabBannerNotice = 'Copyright (c) 2026 Jay Sausa. See LICENSE.'
 $LabBox = @{}
 foreach ($pair in @(
         @('TL', 0x2554), @('TR', 0x2557), @('BL', 0x255A), @('BR', 0x255D), @('H', 0x2550), @('V', 0x2551),
-        @('ML', 0x2560), @('MR', 0x2563), @('IH', 0x2500),
+        @('ML', 0x2560), @('MR', 0x2563), @('IH', 0x2500), @('VI', 0x2502),
         @('Mid', 0x251C), @('Last', 0x2514), @('Arrow', 0x2192))) {
     $LabBox[$pair[0]] = [string][char]$pair[1]
 }
@@ -53,7 +53,7 @@ function Get-LabBannerMaze {
 # Test-LabBannerUnicode: can this console show the maze and the box lines?
 function Test-LabBannerUnicode {
     $all = (Get-LabBannerMaze -Unicode $true) -join ''
-    foreach ($k in 'TL', 'TR', 'BL', 'BR', 'H', 'V', 'ML', 'MR', 'IH', 'Mid', 'Last') { $all += $LabBox[$k] }
+    foreach ($k in 'TL', 'TR', 'BL', 'BR', 'H', 'V', 'ML', 'MR', 'IH', 'VI', 'Mid', 'Last') { $all += $LabBox[$k] }
     return (Test-LabBannerText $all)
 }
 
@@ -108,6 +108,33 @@ function Get-LabBannerTree {
         $lead = $mid
         if ($i -eq $Rows.Count - 1) { $lead = $last }
         $lines += $lead + ([string] $Rows[$i][0]).PadRight(10) + $text
+    }
+    return $lines
+}
+
+# Get-LabBannerList UNICODE HEADING ITEMS: a heading and a tree of items, as
+# shown when the installer ends. An item may hold newlines; its later lines
+# hang under its first.
+function Get-LabBannerList {
+    param([bool] $Unicode, [string] $Heading, [string[]] $Items)
+    $lines = @("  $Heading")
+    for ($i = 0; $i -lt $Items.Count; $i++) {
+        $isLast = $i -eq $Items.Count - 1
+        if ($Unicode) {
+            $lead = "   $($LabBox.Mid)$($LabBox.IH)$($LabBox.IH) "
+            $cont = "   $($LabBox.VI)   "
+            if ($isLast) { $lead = "   $($LabBox.Last)$($LabBox.IH)$($LabBox.IH) " }
+        } else {
+            $lead = '   |-- '
+            $cont = '   |   '
+            if ($isLast) { $lead = '   `-- ' }
+        }
+        if ($isLast) { $cont = '       ' }
+        $first = $true
+        foreach ($line in ($Items[$i] -split "`n")) {
+            if ($first) { $lines += $lead + $line; $first = $false }
+            else { $lines += $cont + $line }
+        }
     }
     return $lines
 }

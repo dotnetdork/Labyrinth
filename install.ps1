@@ -419,7 +419,10 @@ try {
 
     if (-not $todo) {
         [Console]::Out.WriteLine('')
-        [Console]::Out.WriteLine('Labyrinth is already installed from this release. Nothing to change.')
+        foreach ($line in @(Get-LabBannerList -Unicode $unicode -Heading 'ALREADY INSTALLED' `
+                    -Items @('This release is already in place. Nothing to change.'))) {
+            [Console]::Out.WriteLine($line)
+        }
         exit 0
     }
 
@@ -434,7 +437,8 @@ try {
         Write-LabTerminal '  Install? [y/N] '
         $answer = Read-LabTerminal
         if ($null -eq $answer -or @('y', 'yes') -cnotcontains "$answer".Trim().ToLowerInvariant()) {
-            [Console]::Out.WriteLine('Nothing was changed.')
+            [Console]::Out.WriteLine('')
+            [Console]::Out.WriteLine('  Nothing was changed.')
             exit 0
         }
     }
@@ -513,15 +517,16 @@ try {
             'The install is in place, but Labyrinth will refuse to run until that is fixed.'
     }
 
-    [Console]::Out.WriteLine('')
-    [Console]::Out.WriteLine('Installed.')
-    [Console]::Out.WriteLine("The templates are in $Root\etc without the .example ending. They hold")
-    [Console]::Out.WriteLine('placeholders: replace the names in hosts and protected-accounts with the')
-    [Console]::Out.WriteLine("event's, and see the manual (section 10) for the other files.")
-    if ($pathState -eq 'new') { [Console]::Out.WriteLine("Open a new PowerShell window so that it finds the $cmd command.") }
-    if ($taken.ContainsKey('laby')) { [Console]::Out.WriteLine('The name laby belongs to another program here; the command is labyrinth.') }
-    if ($Root -ne $DefaultRoot) { [Console]::Out.WriteLine("Next: $cmd -Root `"$Root`"") }
-    else { [Console]::Out.WriteLine("Next: $cmd") }
+    $items = @("Fill in $Root\etc: hosts and protected-accounts`nhold placeholder names (manual, section 10)")
+    if ($taken.ContainsKey('laby')) { $items += 'laby is taken here, so the command is labyrinth' }
+    if ($pathState -eq 'new') { $items += "Open a new PowerShell window so it finds $cmd" }
+    if ($Root -ne $DefaultRoot) { $items += "Next: $cmd -Root `"$Root`"" }
+    else { $items += "Next: $cmd" }
+    # After the question, a blank line; with -y one is already there.
+    if (-not $Yes) { [Console]::Out.WriteLine('') }
+    foreach ($line in @(Get-LabBannerList -Unicode $unicode -Heading 'INSTALLED' -Items $items)) {
+        [Console]::Out.WriteLine($line)
+    }
 } catch {
     [Console]::Error.WriteLine("${Me}: stopped: $($_.Exception.Message), exit 40")
     [Console]::Error.WriteLine('Some steps may be done. It is safe to run the installer again.')

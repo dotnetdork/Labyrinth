@@ -368,7 +368,8 @@ rows+=("Config|$config -> $ROOT/etc")
 lab_banner_tree "$UNI" "${rows[@]}"
 
 if (( TODO == 0 )); then
-  printf '\nLabyrinth is already installed from this release. Nothing to change.\n'
+  printf '\n'
+  lab_banner_list "$UNI" 'ALREADY INSTALLED' 'This release is already in place. Nothing to change.'
   exit 0
 fi
 
@@ -385,7 +386,7 @@ if (( ! YES )); then
   answer="$(lab_tty_read)" || answer=''
   case "${answer,,}" in
     y | yes) ;;
-    *) printf 'Nothing was changed.\n'; exit 0 ;;
+    *) printf '\n  Nothing was changed.\n'; exit 0 ;;
   esac
 fi
 
@@ -467,18 +468,17 @@ if bad="$(lab_tree_trusted "$CODE")"; then :; else
     'The install is in place, but Labyrinth will refuse to run until that is fixed.'
 fi
 
-printf '\nInstalled.\n'
-printf '%s\n' "The templates are in $ROOT/etc without the .example ending. They hold"
-printf '%s\n' 'placeholders: replace the names in hosts and protected-accounts with the'
-printf '%s\n' "event's, and see the manual (section 10) for the other files."
+items=("Fill in $ROOT/etc: hosts and protected-accounts"$'\n''hold placeholder names (manual, section 10)')
+cmd=laby
 if [[ "${LINK_STATE[laby]}" == taken ]]; then
-  printf '%s\n' "The name laby was left out; the command is labyrinth."
+  items+=('laby is taken here, so the command is labyrinth')
   cmd=labyrinth
-else
-  cmd=laby
 fi
 if [[ "$ROOT" != "$DEFAULT_ROOT" ]]; then
-  printf 'Next: sudo %s --root %s\n' "$cmd" "$ROOT"
+  items+=("Next: sudo $cmd --root $ROOT")
 else
-  printf 'Next: sudo %s\n' "$cmd"
+  items+=("Next: sudo $cmd")
 fi
+# After the question, a blank line; with -y one is already there.
+if (( ! YES )); then printf '\n'; fi
+lab_banner_list "$UNI" INSTALLED "${items[@]}"

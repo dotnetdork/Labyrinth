@@ -192,7 +192,8 @@ about() {
   answer y
   install_sh
   [ "$status" -eq 0 ]
-  [[ "$output" == *'Installed.'* ]]
+  [[ "$output" == *'  INSTALLED'* ]]
+  [[ "$output" == *"Fill in $ROOT/etc: hosts and protected-accounts"* ]]
   [[ "$output" == *'Next: sudo laby'* ]]
   # The code, checked against its own release list as the runner will check it.
   [ -f "$ROOT/bin/labyrinth.sh" ]
