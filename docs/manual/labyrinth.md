@@ -56,7 +56,67 @@ You need:
   - `hosts` lists every host Labyrinth may act on, with its **group** (which wave of hosts it belongs to), its profile and its platform: `ubuntu` (any Debian-family system; `debian` means the same), `rhel-family`, `windows` or `appliance`.
   - `protected-accounts` is the **protected set**: accounts Labyrinth must never touch, such as the officials' accounts and the accounts the scoring engine logs in with. If this file is missing or empty, Labyrinth refuses to run.
 
-**Installing it.** The installer sets Labyrinth up on a host in one guided step. Unpack the release and compare its hash with the team's notes, as above. Then, in the unpacked folder:
+**Getting it onto a host.** Each release is published as one archive, and the team's notes hold the archive's SHA-256. You fetch the archive, compare its SHA-256 with the notes, and only then unpack it. Nothing here needs more than the host's own tools. `<tag>` is the release's tag, as written in the team's notes; work in an empty folder.
+
+<!-- linux -->
+Fetch the archive:
+
+```
+tag=<tag>
+url=https://github.com/dotnetdork/Labyrinth/releases/download/$tag
+curl -fsSLO "$url/labyrinth-$tag.tar.gz"
+```
+
+Print its SHA-256 and compare it with the notes, character by character:
+
+```
+sha256sum labyrinth-$tag.tar.gz
+```
+
+If it differs, stop and do not unpack the archive: fetch it again, or use the team's own copy. If it matches, unpack the archive as root, so that the files belong to root, and check the list of files inside it:
+
+```
+sudo tar --no-same-owner -xzf labyrinth-$tag.tar.gz
+cd labyrinth-$tag
+sha256sum -c --quiet release.sha256
+```
+
+The last command prints nothing when every file matches the list. Then install it, as below.
+<!-- end -->
+<!-- windows -->
+Fetch the archive. The first lines set the tag and the address, and make Windows PowerShell use TLS 1.2, which older Windows Server releases need:
+
+```
+$tag = '<tag>'
+$url = "https://github.com/dotnetdork/Labyrinth/releases/download/$tag"
+[Net.ServicePointManager]::SecurityProtocol = 'Tls12'
+Invoke-WebRequest -UseBasicParsing -Uri "$url/labyrinth-$tag.zip" `
+  -OutFile "labyrinth-$tag.zip"
+```
+
+Print its SHA-256 and compare it with the notes, character by character. `Get-FileHash` prints capital letters; the case does not matter:
+
+```
+Get-FileHash "labyrinth-$tag.zip"
+```
+
+If it differs, stop and do not unpack the archive: fetch it again, or use the team's own copy. If it matches, unpack the archive in your elevated window, so that the files belong to the Administrators, and check the list of files inside it. The last command prints nothing when every file matches the list:
+
+```
+Expand-Archive "labyrinth-$tag.zip" -DestinationPath .
+cd "labyrinth-$tag"
+Get-Content .\release.sha256 | ForEach-Object {
+  $h, $f = $_ -split '  ', 2
+  if ((Get-FileHash $f).Hash -ne $h) { $f }
+}
+```
+
+Then install it, as below.
+<!-- end -->
+
+Where only a console reaches the internet, fetch the archive and compare its SHA-256 there, then copy it to the host over the admin path and compare it again on the host before you unpack it. Never pipe a download into a shell, and never skip the comparison.
+
+**Installing it.** The installer sets Labyrinth up on a host in one guided step. Fetch and check the release as above. Then, in the unpacked folder:
 
 <!-- linux -->
 ```
@@ -683,6 +743,8 @@ The run that is `armed` is the one to undo; its ID is also on the second line of
 `(Get-FileHash .\release.sha256).Hash.ToLower()` must print the hash in the team's notes, and `Get-Content .\release.sha256 | ForEach-Object { $h, $f = $_ -split '  ', 2; if ((Get-FileHash $f).Hash -ne $h) { $f } }` must print nothing.
 <!-- end -->
 Then run the command again. Labyrinth's own check finds a changed, added or missing file. It cannot find an intruder who changed the check as well, who could make it print the expected hash; the commands above can.
+
+**The archive's SHA-256 does not match the team's notes.** The archive you fetched is not the one the team recorded: the download may be damaged, or it may not be the release. Do not unpack it, and do not run anything from it. Delete it and fetch it again (section 2). If it still differs, use the team's own copy of the release and tell the captain.
 
 **"no release.sha256, so Labyrinth's files were not checked".** This copy has no release list, so Labyrinth could not check its files, and `SHA-256:` says `not checked`. A copy taken straight from the repository has none. Go on only if the team's notes say this copy is the one to run.
 
