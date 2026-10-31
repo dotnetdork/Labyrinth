@@ -474,11 +474,12 @@ if [[ "${LINK_STATE[laby]}" == taken ]]; then
   items+=('laby is taken here, so the command is labyrinth')
   cmd=labyrinth
 fi
-if [[ "$ROOT" != "$DEFAULT_ROOT" ]]; then
-  items+=("Next: sudo $cmd --root $ROOT")
-else
-  items+=("Next: sudo $cmd")
-fi
+rootarg=''
+if [[ "$ROOT" != "$DEFAULT_ROOT" ]]; then rootarg=" --root $ROOT"; fi
+# Each host makes its own decoy seed once it runs, never here: a seed made
+# by the installer would be copied with the machine (design 16, section 4.1).
+items+=("Make this host's decoy seed: sudo $cmd --new-seed$rootarg"$'\n''and post it in the team chat with the host name')
+items+=("Next: sudo $cmd$rootarg")
 # After the question, a blank line; with -y one is already there.
 if (( ! YES )); then printf '\n'; fi
 lab_banner_list "$UNI" INSTALLED "${items[@]}"

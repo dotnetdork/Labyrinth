@@ -283,6 +283,7 @@ Describe 'install.ps1 installs' -Skip:(-not $elevated) {
         $x.Code | Should -Be 0
         $x.Output | Should -Match '  INSTALLED'
         $x.Output | Should -Match ([regex]::Escape("Fill in $($r.Root)\etc: hosts and protected-accounts"))
+        $x.Output | Should -Match ([regex]::Escape("Make this host's decoy seed: laby -NewSeed -Root"))
         $x.Output | Should -Match ([regex]::Escape('Next: laby -Root'))
         # The code, with its commands, checked against its own release list as the runner will.
         foreach ($f in 'labyrinth.ps1', 'install.ps1', 'laby.cmd', 'labyrinth.cmd', 'release.sha256', 'config\hosts.example', 'manual\about_Labyrinth.help.txt') {

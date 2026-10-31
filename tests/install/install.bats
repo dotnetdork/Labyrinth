@@ -192,6 +192,7 @@ about() {
   [ "$status" -eq 0 ]
   [[ "$output" == *'  INSTALLED'* ]]
   [[ "$output" == *"Fill in $ROOT/etc: hosts and protected-accounts"* ]]
+  [[ "$output" == *"Make this host's decoy seed: sudo laby --new-seed"* ]]
   [[ "$output" == *'Next: sudo laby'* ]]
   # The code, checked against its own release list as the runner will check it.
   [ -f "$ROOT/bin/labyrinth.sh" ]
@@ -509,6 +510,7 @@ something else
   inst_setup
   install_sh -y
   [[ "$output" == *"Next: sudo laby --root $ROOT"* ]]
+  [[ "$output" == *"sudo laby --new-seed --root $ROOT"* ]]
 }
 
 @test "usage errors exit 40 and name the fix" {

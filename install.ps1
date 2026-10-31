@@ -520,8 +520,12 @@ try {
     $items = @("Fill in $Root\etc: hosts and protected-accounts`nhold placeholder names (manual, section 10)")
     if ($taken.ContainsKey('laby')) { $items += 'laby is taken here, so the command is labyrinth' }
     if ($pathState -eq 'new') { $items += "Open a new PowerShell window so it finds $cmd" }
-    if ($Root -ne $DefaultRoot) { $items += "Next: $cmd -Root `"$Root`"" }
-    else { $items += "Next: $cmd" }
+    $rootArg = ''
+    if ($Root -ne $DefaultRoot) { $rootArg = " -Root `"$Root`"" }
+    # Each host makes its own decoy seed once it runs, never here: a seed made
+    # by the installer would be copied with the machine (design 16, section 4.1).
+    $items += "Make this host's decoy seed: $cmd -NewSeed$rootArg`nand post it in the team chat with the host name"
+    $items += "Next: $cmd$rootArg"
     # After the question, a blank line; with -y one is already there.
     if (-not $Yes) { [Console]::Out.WriteLine('') }
     foreach ($line in @(Get-LabBannerList -Unicode $unicode -Heading 'INSTALLED' -Items $items)) {
