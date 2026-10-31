@@ -1029,7 +1029,7 @@ function Exit-Lab {
 # Write-LabVersion: the version, the runner, and the release hash to
 # compare with the team's offline record (design 21, section 5).
 function Write-LabVersion {
-    Write-LabLine "Labyrinth version $LabVersion ( $LabUrl )"
+    Write-LabLine "Labyrinth version $LabVersion ($LabUrl)"
     Write-LabLine "Runner:   PowerShell $($PSVersionTable.PSVersion.Major).$($PSVersionTable.PSVersion.Minor)"
     Write-LabReleaseLine
 }

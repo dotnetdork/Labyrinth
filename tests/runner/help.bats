@@ -246,7 +246,7 @@ here() { cd "$LAB" && run bash ./labyrinth.sh "$@" < /dev/null; }
 @test "-V names the runner, and -V -h is its help" {
   run bash "$LAB/labyrinth.sh" -V < /dev/null
   [ "$status" -eq 0 ]
-  local want='^Labyrinth version [^ ]+ \( https://dotnetdork\.github\.io/Labyrinth/ \)$'
+  local want='^Labyrinth version [^ ]+ \(https://dotnetdork\.github\.io/Labyrinth/\)$'
   [[ "${lines[0]}" =~ $want ]]
   [ "${lines[1]}" = 'Runner:   bash' ]
   [[ "${lines[2]}" == 'SHA-256:  '* ]]

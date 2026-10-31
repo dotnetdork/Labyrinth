@@ -520,7 +520,7 @@ EOF
 # cmd_version: the version, the runner, and the release hash to compare
 # with the team's offline record (design 21, section 5).
 cmd_version() {
-  printf 'Labyrinth version %s ( %s )\n' "$LAB_VERSION" "$LAB_URL"
+  printf 'Labyrinth version %s (%s)\n' "$LAB_VERSION" "$LAB_URL"
   printf 'Runner:   bash\n'
   release_lines
 }
