@@ -76,7 +76,7 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$LabVersion = '0.1.0-dev'
+$LabVersion = '0.1.0'
 $LabUrl = 'https://dotnetdork.github.io/Labyrinth/'
 $Phases = @('lockout', 'observe', 'deceive', 'sustain')
 $ModuleKeys = @('id', 'title', 'phase', 'priority', 'platforms', 'risk', 'touches_scored', 'requires', 'outputs', 'spec', 'pre_approvable', 'keep_on_verify')

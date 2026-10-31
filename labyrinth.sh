@@ -35,7 +35,7 @@ on_internal_error() {
 }
 trap 'on_internal_error "$?" "${BASH_SOURCE[0]##*/}" "$LINENO" "$BASH_COMMAND"' ERR
 
-readonly LAB_VERSION='0.1.0-dev'
+readonly LAB_VERSION='0.1.0'
 readonly LAB_URL='https://dotnetdork.github.io/Labyrinth/'
 readonly PHASES='lockout observe deceive sustain'
 readonly MODULE_KEYS='id title phase priority platforms risk touches_scored requires outputs spec pre_approvable keep_on_verify'

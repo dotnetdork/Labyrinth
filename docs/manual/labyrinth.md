@@ -266,7 +266,7 @@ Type `@CMD@` alone to see where this host stands and the one command to run next
 
 <!-- linux -->
 ```
-labyrinth 0.1.0-dev: status of host web1
+labyrinth 0.1.0: status of host web1
 Group:    ring1, profile linux-web
 lockout   kept (run 4f2a, 2026-10-02 14:03 UTC)
 observe   armed: undo at 14:41 UTC (run 7c19, 2026-10-02 14:26 UTC)
@@ -278,7 +278,7 @@ Next: check you can log in from a NEW session, then 'sudo ./labyrinth.sh -k 7c19
 <!-- end -->
 <!-- windows -->
 ```
-labyrinth 0.1.0-dev: status of host web1
+labyrinth 0.1.0: status of host web1
 Group:    ring1, profile windows-member
 lockout   kept (run 4f2a, 2026-10-02 14:03 UTC)
 observe   armed: undo at 14:41 UTC (run 7c19, 2026-10-02 14:26 UTC)
@@ -563,7 +563,7 @@ Copy it into the team's offline record, check the copy, then type `recorded`. An
 A preview looks like this:
 
 ```
-labyrinth 0.1.0-dev: plan lockout, profile web
+labyrinth 0.1.0: plan lockout, profile web
 run 20261002T140301Z-4f2a (plan mode: nothing is recorded)
 This is a plan: Labyrinth only looks, and nothing on web1 changes.
 Host web1 is in group ring1.
@@ -626,7 +626,7 @@ After a blank line, the run ends with:
 The probe reports in the same way, one line per scored service:
 
 ```
-labyrinth 0.1.0-dev: probe the scored services
+labyrinth 0.1.0: probe the scored services
 OK       [web] pass: status 200
 FAIL     [mail] fail: no banner
 Summary: 1 OK, 1 FAIL
