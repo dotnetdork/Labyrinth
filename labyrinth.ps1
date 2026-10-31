@@ -77,6 +77,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $LabVersion = '0.1.0-dev'
+$LabUrl = 'https://dotnetdork.github.io/Labyrinth/'
 $Phases = @('lockout', 'observe', 'deceive', 'sustain')
 $ModuleKeys = @('id', 'title', 'phase', 'priority', 'platforms', 'risk', 'touches_scored', 'requires', 'outputs', 'spec', 'pre_approvable', 'keep_on_verify')
 $RequiredKeys = @('id', 'title', 'phase', 'priority', 'platforms', 'risk', 'touches_scored')
@@ -1028,10 +1029,21 @@ function Exit-Lab {
 # Write-LabVersion: the version, the runner, and the release hash to
 # compare with the team's offline record (design 21, section 5).
 function Write-LabVersion {
-    Write-LabLine "labyrinth $LabVersion (labyrinth.ps1, for Windows)"
-    $release = 'not checked (no release.sha256)'
-    if ($script:Release.Status -eq 'ok') { $release = $script:Release.Hash }
-    Write-LabLine "Release: $release"
+    Write-LabLine "Labyrinth version $LabVersion ( $LabUrl )"
+    Write-LabLine "Runner:   PowerShell $($PSVersionTable.PSVersion.Major).$($PSVersionTable.PSVersion.Minor)"
+    Write-LabReleaseLine
+}
+
+# Write-LabReleaseLine: the release hash, as two lines of eight groups of
+# four, or that it was not checked.
+function Write-LabReleaseLine {
+    if ($script:Release.Status -eq 'ok') {
+        $groups = Get-LabReleaseGroup -Sha $script:Release.Hash
+        Write-LabLine "SHA-256:  $($groups[0])"
+        Write-LabLine "          $($groups[1])"
+    } else {
+        Write-LabLine 'SHA-256:  not checked (no release.sha256)'
+    }
 }
 
 # Test-LabUndoAsked: does the line ask for -u? Read from the raw words, as
@@ -2514,9 +2526,7 @@ function Write-LabRecap {
     $kept = $false
     Write-LabLine ''
     Write-LabLine "About to apply on host $HostName, group ${Group}:"
-    $release = 'not checked (no release.sha256)'
-    if ($script:Release.Status -eq 'ok') { $release = $script:Release.Hash }
-    Write-LabLine "Release: $release"
+    Write-LabReleaseLine
     foreach ($m in $script:Run) {
         $what = ''
         if ($m.Rc -eq 10 -and $m.Risk -eq 'manual-only') { $what = 'Manual:' }

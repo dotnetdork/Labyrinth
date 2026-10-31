@@ -121,12 +121,19 @@ Describe 'install.ps1 refuses, or asks, before it changes anything' {
         $x = Invoke-TestInstall $r
         $x.Code | Should -Be 0
         $flat = ConvertTo-TestFlat $x.Output
-        $x.Output | Should -Match 'Labyrinth install plan:'
-        $flat | Should -Match ([regex]::Escape("Code: $($r.Code) (new)"))
-        $flat | Should -Match ([regex]::Escape('Commands: laby.cmd and labyrinth.cmd, in ' + $r.Code))
-        $flat | Should -Match ([regex]::Escape('PATH: not changed (-NoPath)'))
-        $flat | Should -Match ([regex]::Escape("Manual: $($r.Modules)\Labyrinth, for Get-Help about_Labyrinth"))
-        $flat | Should -Match ([regex]::Escape("Settings: 8 template(s) copied into $($r.Root)\etc"))
+        $x.Output | Should -Match 'CHANGES TO THIS HOST'
+        $flat | Should -Match ([regex]::Escape("Program $($r.Code) (new)"))
+        $flat | Should -Match ([regex]::Escape("Data $($r.Root) (new, private)"))
+        $flat | Should -Match ([regex]::Escape('Commands laby, labyrinth (new)'))
+        $flat | Should -Match ([regex]::Escape('PATH not changed (-NoPath)'))
+        $flat | Should -Match ([regex]::Escape('Manual Get-Help about_Labyrinth (new)'))
+        $flat | Should -Match ([regex]::Escape('Config 8 templates '))
+        # The release hash, in two lines of eight groups of four, before the tree.
+        $sum = (Get-FileHash -LiteralPath (Join-Path $r.Rel 'release.sha256') -Algorithm SHA256).Hash.ToLowerInvariant()
+        $hash = @([regex]::Matches($x.Output, '(?m)^.{3} {5}([0-9a-f]{4}(?: [0-9a-f]{4}){7}) {5}.{3}\r?$') | ForEach-Object { $_.Groups[1].Value })
+        $hash.Count | Should -Be 2
+        ($hash -join '').Replace(' ', '') | Should -BeExactly $sum
+        $x.Output.IndexOf('WARNING') | Should -BeLessThan $x.Output.IndexOf('CHANGES TO THIS HOST')
         $x.Output | Should -Match 'Nothing was changed\.'
         [IO.File]::ReadAllText((Join-Path $r.Rel 'tty.out')) | Should -Match ([regex]::Escape('Install? [y/N]'))
         Get-TestSnapshot $r.Sys | Should -Be $before
@@ -151,7 +158,7 @@ Describe 'install.ps1 refuses, or asks, before it changes anything' {
         New-Item -ItemType File -Path (Join-Path $r.Rel 'NO_TTY') | Out-Null
         $x = Invoke-TestInstall $r
         $x.Code | Should -Be 40
-        $x.Output | Should -Match 'Labyrinth install plan:'
+        $x.Output | Should -Match 'CHANGES TO THIS HOST'
         $x.Output | Should -Match 'no terminal to ask on'
         $x.Output | Should -Match 'add -y'
         Get-TestSnapshot $r.Sys | Should -Be $before
@@ -244,6 +251,7 @@ Describe 'install.ps1 refuses, or asks, before it changes anything' {
         }
         $x.Code | Should -Be 0
         (ConvertTo-TestFlat $x.Output) | Should -Match ([regex]::Escape("laby is taken by $other\laby.cmd: type labyrinth instead"))
+        (ConvertTo-TestFlat $x.Output) | Should -Match ([regex]::Escape('Commands labyrinth (new; laby is taken)'))
         Get-TestSnapshot $r.Sys | Should -Be $before
     }
 
@@ -381,7 +389,8 @@ Describe 'install.ps1 installs' -Skip:(-not $elevated) {
         Remove-Item -LiteralPath (Join-Path $r.Rel 'release.sha256')
         $x = Invoke-TestInstall $r @('-Yes')
         $x.Code | Should -Be 0
-        $x.Output | Should -Match ([regex]::Escape('not checked: this copy has no release.sha256'))
+        (ConvertTo-TestFlat $x.Output) | Should -Match ([regex]::Escape(' This copy has no release.sha256, '))
+        (ConvertTo-TestFlat $x.Output) | Should -Match ([regex]::Escape(' so nothing proves that it is genuine. '))
         Join-Path $r.Code 'labyrinth.ps1' | Should -Exist
         Join-Path $r.Code 'release.sha256' | Should -Not -Exist
     }
@@ -391,7 +400,7 @@ Describe 'install.ps1 installs' -Skip:(-not $elevated) {
         Write-TestSeal $r
         $x = Invoke-TestInstall $r @('-Yes')
         $x.Code | Should -Be 0
-        (ConvertTo-TestFlat $x.Output) | Should -Match ([regex]::Escape('Manual: skipped: this copy has no built manual'))
+        (ConvertTo-TestFlat $x.Output) | Should -Match ([regex]::Escape('Manual skipped: this copy has no built manual'))
         Join-Path $r.Code 'labyrinth.ps1' | Should -Exist
         Join-Path $r.Modules 'Labyrinth' | Should -Not -Exist
     }
@@ -531,5 +540,84 @@ Describe 'labyrinth.ps1 started through the launcher' {
     It 'any other value of LAB_SELF is ignored' {
         $env:LAB_SELF = 'something-else'
         (Invoke-TestLabCapture $t @('-h')).Out | Should -Not -Match '^Usage: something-else'
+    }
+}
+
+Describe 'the installer screen (core\banner\Banner.ps1)' {
+    BeforeAll {
+        . (Join-Path $script:Repo 'core\banner\Banner.ps1')
+        $sha = '3f9a1c2b8e4d0a775b19c3e29d046f8a2b6e71c0d95a4e3f08b2a6c15e97c21e'
+        $box = @{}
+        foreach ($k in @($LabBox.Keys)) { $box[$k] = $LabBox[$k] }
+    }
+
+    It 'with box lines: the maze, the version, then the warning box with the hash' {
+        $s = @(Get-LabBanner -Unicode $true -Version '0.1.0' -Sha $sha)
+        $maze = @(Get-LabBannerMaze -Unicode $true)
+        $maze.Count | Should -Be 13
+        for ($i = 0; $i -lt 13; $i++) { $s[$i] | Should -BeExactly $maze[$i] }
+        $s[13] | Should -BeExactly 'VERSION 0.1.0 (https://dotnetdork.github.io/Labyrinth/)'
+        $s[14] | Should -BeExactly ''
+        for ($i = 15; $i -lt 28; $i++) { $s[$i].Length | Should -Be 55 }
+        $v = $box.V
+        $s[15] | Should -BeExactly ($box.TL + ($box.H * 53) + $box.TR)
+        $s[16] | Should -BeExactly ("$v " + $box.ITL + ($box.IH * 49) + $box.ITR + " $v")
+        $s[18] | Should -BeExactly ("$v $v" + (' ' * 21) + 'WARNING' + (' ' * 21) + "$v $v")
+        $s[20] | Should -BeExactly ("$v $v" + (' ' * 7) + "If this SHA-256 doesn't match your" + (' ' * 8) + "$v $v")
+        $s[21] | Should -BeExactly ("$v $v" + (' ' * 6) + 'offline record, it was tampered with.' + (' ' * 6) + "$v $v")
+        $s[23] | Should -BeExactly ("$v $v     3f9a 1c2b 8e4d 0a77 5b19 c3e2 9d04 6f8a     $v $v")
+        $s[24] | Should -BeExactly ("$v $v     2b6e 71c0 d95a 4e3f 08b2 a6c1 5e97 c21e     $v $v")
+        $s[26] | Should -BeExactly ("$v " + $box.IBL + ($box.IH * 49) + $box.IBR + " $v")
+        $s[27] | Should -BeExactly ($box.BL + ($box.H * 53) + $box.BR)
+        $s.Count | Should -Be 28
+        foreach ($l in $s) { $l.Length | Should -BeLessOrEqual 79 }
+    }
+
+    It 'in plain ASCII: the same shape, with + - and |' {
+        $s = @(Get-LabBanner -Unicode $false -Version '0.1.0' -Sha $sha)
+        $u = @(Get-LabBanner -Unicode $true -Version '0.1.0' -Sha $sha)
+        $s.Count | Should -Be $u.Count
+        for ($i = 0; $i -lt $s.Count; $i++) {
+            $s[$i].Length | Should -Be $u[$i].Length
+            $s[$i] | Should -Not -Match '[^ -~]'
+        }
+        $s[0] | Should -BeLike '+IN-*'
+        $s[12] | Should -BeLike '*-OUT+'
+        $s[15] | Should -BeExactly ('+' + ('-' * 53) + '+')
+        $s[18] | Should -BeExactly ('| |' + (' ' * 21) + 'WARNING' + (' ' * 21) + '| |')
+        $s[23] | Should -BeExactly '| |     3f9a 1c2b 8e4d 0a77 5b19 c3e2 9d04 6f8a     | |'
+    }
+
+    It 'with no release list, the box says nothing proves the copy is genuine' {
+        $s = @(Get-LabBanner -Unicode $false -Version '0.1.0' -Sha '')
+        $s[20] | Should -BeExactly ('| |' + (' ' * 8) + 'This copy has no release.sha256,' + (' ' * 9) + '| |')
+        $s[21] | Should -BeExactly ('| |' + (' ' * 6) + 'so nothing proves that it is genuine.' + (' ' * 6) + '| |')
+        ($s -join "`n") | Should -Not -Match '[0-9a-f]{4} [0-9a-f]{4}'
+    }
+
+    It 'the tree of changes: box branches and an arrow, or plain ASCII' {
+        $rows = @(@('Program', 'C:\P (new)'), @('Config', '3 templates -> C:\D\etc'))
+        $t = @(Get-LabBannerTree -Unicode $true -Arrow $true -Rows $rows)
+        $t[0] | Should -BeExactly 'CHANGES TO THIS HOST'
+        $t[1] | Should -BeExactly (' ' + $box.Mid + $box.IH + $box.IH + ' Program   C:\P (new)')
+        $t[2] | Should -BeExactly (' ' + $box.Last + $box.IH + $box.IH + ' Config    3 templates ' + $box.Arrow + ' C:\D\etc')
+        $a = @(Get-LabBannerTree -Unicode $false -Arrow $false -Rows $rows)
+        $a[1] | Should -BeExactly ' |-- Program   C:\P (new)'
+        $a[2] | Should -BeExactly ' `-- Config    3 templates -> C:\D\etc'
+    }
+
+    It 'box lines are used only when the console can write them' {
+        $saved = [Console]::OutputEncoding
+        try {
+            try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch {
+                Set-ItResult -Skipped -Because 'this session has no console whose encoding can be set'
+                return
+            }
+            Test-LabBannerUnicode | Should -BeTrue
+            [Console]::OutputEncoding = [Text.Encoding]::ASCII
+            Test-LabBannerUnicode | Should -BeFalse
+        } finally {
+            try { [Console]::OutputEncoding = $saved } catch { $null = $_ }
+        }
     }
 }

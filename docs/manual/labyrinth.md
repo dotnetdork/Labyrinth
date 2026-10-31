@@ -51,7 +51,7 @@ You need:
 - **Labyrinth's folders on the host.** The data root is normally `C:\ProgramData\Labyrinth`. The program, `labyrinth.ps1`, is in `C:\Program Files\Labyrinth`, where only Administrators can change it. The installer below adds that folder to the machine's `PATH`, so you can type `laby` anywhere in a new window; without it, run the commands from the program's folder.
 - **Permission to run the script.** The installer's `laby` command (a file named `laby.cmd`) starts Windows PowerShell with the execution policy set aside for that one run, and never changes the policy of the host. Without the installer, if Windows refuses to run the script because of the execution policy, start it like this instead, for this window only: `powershell -ExecutionPolicy Bypass -File .\labyrinth.ps1 lockout`.
 <!-- end -->
-- **The release hash,** in the team's notes kept off the hosts. When the team makes a release, the captain records the SHA-256 of its release list, `release.sha256`. Before it runs, Labyrinth checks each of its own files against that list, and it prints the list's hash on the `Release:` line of `-V` and of every run. Compare the two by eye. If they differ, stop: this copy is not the release the team checked. A copy taken straight from the repository has no list, and its `Release:` line says `not checked`.
+- **The release hash,** in the team's notes kept off the hosts. When the team makes a release, the captain records the SHA-256 of its release list, `release.sha256`. Before it runs, Labyrinth checks each of its own files against that list, and it prints the list's hash on the `SHA-256:` lines of `-V` and of every run, and in the installer's `WARNING` box, as two lines of eight groups of four. Compare it with the team's notes by eye. If they differ, stop: this copy is not the release the team checked. A copy taken straight from the repository has no list, and its `SHA-256:` line says `not checked`.
 - **The event's configuration,** in the `etc` folder under the data root (section 10). The team prepares these files before the event. The two that matter most:
   - `hosts` lists every host Labyrinth may act on, with its **group** (which wave of hosts it belongs to), its profile and its platform: `ubuntu` (any Debian-family system; `debian` means the same), `rhel-family`, `windows` or `appliance`.
   - `protected-accounts` is the **protected set**: accounts Labyrinth must never touch, such as the officials' accounts and the accounts the scoring engine logs in with. If this file is missing or empty, Labyrinth refuses to run.
@@ -63,7 +63,7 @@ You need:
 sudo ./install.sh
 ```
 
-It checks the release against `release.sha256` and refuses if a file differs. It then prints its plan, which says where the program, the data root, the commands and the manual will go, and asks `Install? [y/N]`. Anything but `y` changes nothing; `-y` answers yes for you, and without a terminal it refuses unless you give `-y`. It then:
+It checks the release against `release.sha256` and refuses if a file differs. It then shows the release hash in a `WARNING` box (compare it with the team's notes; if it differs, answer no) and, under `CHANGES TO THIS HOST`, where the program, the data root, the commands and the manual will go, and asks `Install? [y/N]`. Anything but `y` changes nothing; `-y` answers yes for you, and without a terminal it refuses unless you give `-y`. It then:
 
 - creates the data root, `/opt/labyrinth`, with `etc`, `state`, `logs` and `backup` open to root only (`--root DIR` picks another);
 - copies the program to `/opt/labyrinth/bin`, owned by root;
@@ -80,7 +80,7 @@ The installer is safe to run again, for example to install a new release: it rep
 .\install.ps1
 ```
 
-It checks the release against `release.sha256` and refuses if a file differs. It then prints its plan, which says where the program, the data root, the commands and the help topic will go, and asks `Install? [y/N]`. Anything but `y` changes nothing; `-y` answers yes for you, and without a terminal it refuses unless you give `-y`. It then:
+It checks the release against `release.sha256` and refuses if a file differs. It then shows the release hash in a `WARNING` box (compare it with the team's notes; if it differs, answer no) and, under `CHANGES TO THIS HOST`, where the program, the data root, the commands, the `PATH` change and the help topic will go, and asks `Install? [y/N]`. Anything but `y` changes nothing; `-y` answers yes for you, and without a terminal it refuses unless you give `-y`. It then:
 
 - creates the data root, `C:\ProgramData\Labyrinth`, with `etc`, `state`, `logs` and `backup`, and makes it usable by Administrators and SYSTEM only (`-Root DIR` picks another);
 - copies the program to `C:\Program Files\Labyrinth`, where only Administrators can write;
@@ -362,7 +362,7 @@ The main help ends with how to open this manual (below).
 
 ## version (-V)
 
-Prints Labyrinth's version, which program printed it, and the release hash on a `Release:` line (section 2).
+Prints Labyrinth's version and site, which program printed it, and the release hash on its `SHA-256:` lines (section 2).
 <!-- linux -->
 `--version` does the same.
 <!-- end -->
@@ -454,7 +454,7 @@ A run goes through a fixed series of safety checks. If one fails, the run stops 
 2. **No other run is in progress** on this host. Only one run at a time may change a host.
 3. **Every module is planned.** If any plan has an error, nothing is applied. If nothing needs changing, the run ends here without asking you anything.
 4. **Break-glass check.** Log in at the host's own console with the break-glass account, then type its name at the `Break-glass account name:` prompt. Labyrinth asks this once per host. It takes your word for it, then looks for that account's session at the console. Your answer is saved only once you confirm the plan in step 5, so a run that stops before then asks again next time; the run's manifest records what the console check found. If it finds none, it warns `no session for NAME was found at this host's console` and goes on: stop there and check the login yourself if you did not just use it.
-5. **Confirmation.** Labyrinth shows what each module will do and the release hash on its `Release:` line, which you compare with the team's notes (section 2), then asks you to type the host's group name. Anything else stops the run, and nothing is changed or saved.
+5. **Confirmation.** Labyrinth shows what each module will do and the release hash on its `SHA-256:` lines, which you compare with the team's notes (section 2), then asks you to type the host's group name. Anything else stops the run, and nothing is changed or saved.
 6. **Changes start.** For each module that needs a change, in order:
    - the revert timer is armed (or moved later), unless the module only reads;
    - the change is made;
@@ -684,7 +684,7 @@ The run that is `armed` is the one to undo; its ID is also on the second line of
 <!-- end -->
 Then run the command again. Labyrinth's own check finds a changed, added or missing file. It cannot find an intruder who changed the check as well, who could make it print the expected hash; the commands above can.
 
-**"no release.sha256, so Labyrinth's files were not checked".** This copy has no release list, so Labyrinth could not check its files, and `Release:` says `not checked`. A copy taken straight from the repository has none. Go on only if the team's notes say this copy is the one to run.
+**"no release.sha256, so Labyrinth's files were not checked".** This copy has no release list, so Labyrinth could not check its files, and `SHA-256:` says `not checked`. A copy taken straight from the repository has none. Go on only if the team's notes say this copy is the one to run.
 
 **"the protected set is not loaded".** The line ends with the reason: there is no `protected-accounts` file in the configuration folder, or it lists no accounts. Labyrinth will not change anything without it. Copy in the team's prepared file.
 

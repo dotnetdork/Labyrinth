@@ -122,9 +122,20 @@ check() {
 @test "release: the tool writes the list and prints the hash to record" {
   run bash "$REPO/tools/release/manifest.sh" "$R"
   [ "$status" -eq 0 ]
-  [ "${lines[1]}" = "Release: $(sha256sum < "$R/release.sha256" | cut -d' ' -f1)" ]
+  sum="$(sha256sum < "$R/release.sha256" | cut -d' ' -f1)"
+  # Two lines of eight groups of four, which join back into the SHA-256.
+  [[ "${lines[1]}" =~ ^'SHA-256:  '([0-9a-f]{4}( [0-9a-f]{4}){7})$ ]]
+  [[ "${lines[2]}" =~ ^'          '([0-9a-f]{4}( [0-9a-f]{4}){7})$ ]]
+  [ "$(tr -d ' ' <<< "${lines[1]#SHA-256:}${lines[2]}")" = "$sum" ]
   check
   [ "$RC" -eq 0 ]
+}
+
+@test "release: the hash is shown as two lines of eight groups of four" {
+  run lab_release_groups 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+  [ "${#lines[@]}" -eq 2 ]
+  [ "${lines[0]}" = '0123 4567 89ab cdef 0123 4567 89ab cdef' ]
+  [ "${lines[1]}" = '0123 4567 89ab cdef 0123 4567 89ab cdef' ]
 }
 
 @test "release: the repository's own files fit the list's path rules" {

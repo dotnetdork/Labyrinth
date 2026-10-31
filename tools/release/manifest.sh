@@ -18,4 +18,5 @@ source "$here/../../core/safety/release.sh"
 sum="$(lab_release_write "$root")"
 lab_release_check "$root" || { echo "manifest.sh: the new list does not check: $LAB_RELEASE_PROBLEM" >&2; exit 1; }
 printf 'Wrote %s/release.sha256\n' "$root"
-printf 'Release: %s\n' "$sum"
+{ read -r one; read -r two; } < <(lab_release_groups "$sum")
+printf 'SHA-256:  %s\n          %s\n' "$one" "$two"

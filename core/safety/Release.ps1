@@ -23,6 +23,14 @@ function Get-LabReleaseSha {
     return (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant()
 }
 
+# Get-LabReleaseGroup SHA: SHA as two lines of eight groups of four, which
+# are easier to compare by eye with the offline record than one long run.
+function Get-LabReleaseGroup {
+    param([Parameter(Mandatory)] [string] $Sha)
+    $groups = @(for ($i = 0; $i -lt 64; $i += 4) { $Sha.Substring($i, 4) })
+    return @(($groups[0..7] -join ' '), ($groups[8..15] -join ' '))
+}
+
 # Test-LabReleasePlain PATH: is PATH a file that is not a link?
 function Test-LabReleasePlain {
     param([Parameter(Mandatory)] [string] $Path)

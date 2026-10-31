@@ -94,11 +94,6 @@ function Exit-LabInstall {
     exit $Code
 }
 
-function Write-LabRow {
-    param([string] $Label, [string] $Text)
-    [Console]::Out.WriteLine(('  ' + $Label.PadRight(11) + $Text))
-}
-
 # Get-LabFullPath PATH: PATH as a full path with no closing backslash.
 function Get-LabFullPath {
     param([string] $Path)
@@ -376,25 +371,40 @@ try {
     $todo = ($codeState -ne 'same') -or $rootNew -or $subsMissing -or (-not $rootLocked) -or ($templates.Count -gt 0) -or
         ($helpState -eq 'new') -or ($pathState -eq 'new')
 
-    # 4. The plan, before the question.
-    [Console]::Out.WriteLine('Labyrinth install plan:')
-    if ($release.Status -eq 'ok') { Write-LabRow 'Release:' $release.Hash }
-    else { Write-LabRow 'Release:' 'not checked: this copy has no release.sha256' }
-    if ($codeState -eq 'new') { Write-LabRow 'Code:' "$CodeDir (new)" }
-    elseif ($codeState -eq 'replace') { Write-LabRow 'Code:' "$CodeDir (replaced completely)" }
-    else { Write-LabRow 'Code:' "$CodeDir (already this release, unchanged)" }
-    if ($rootNew) { Write-LabRow 'Data root:' "$Root (new; only Administrators and SYSTEM can use it)" }
-    elseif ($rootLocked) { Write-LabRow 'Data root:' "$Root (already there and private; its files are never touched)" }
-    else { Write-LabRow 'Data root:' "$Root (already there; made private to Administrators and SYSTEM)" }
-    Write-LabRow 'Commands:' "laby.cmd and labyrinth.cmd, in $CodeDir"
-    if ($taken.ContainsKey('laby')) { Write-LabRow '' "laby is taken by $($taken['laby']): type labyrinth instead" }
-    if ($pathState -eq 'skip') { Write-LabRow 'PATH:' 'not changed (-NoPath)' }
-    elseif ($pathState -eq 'same') { Write-LabRow 'PATH:' "$CodeDir is already on the machine PATH" }
-    else { Write-LabRow 'PATH:' "$CodeDir is added to the machine PATH (new windows only)" }
-    if ($helpState -eq 'skip') { Write-LabRow 'Manual:' 'skipped: this copy has no built manual (manual\about_Labyrinth.help.txt)' }
-    elseif ($helpState -eq 'same') { Write-LabRow 'Manual:' "$HelpModule (unchanged)" }
-    else { Write-LabRow 'Manual:' "$HelpModule, for Get-Help about_Labyrinth" }
-    Write-LabRow 'Settings:' "$($templates.Count) template(s) copied into $Root\etc; $kept file(s) already there kept"
+    # 4. The screen, before the question: the release hash to compare by eye
+    # with the offline record, then what changes on this host.
+    if ($taken.ContainsKey('laby')) {
+        [Console]::Error.WriteLine("${Me}: warning: laby is taken by $($taken['laby']): type labyrinth instead")
+    }
+    . (Join-Path $Here 'core\banner\Banner.ps1')
+    $unicode = Test-LabBannerUnicode
+    $arrow = $unicode -and (Test-LabBannerText $LabBox.Arrow)
+    $version = 'unknown'
+    $m = [regex]::Match([IO.File]::ReadAllText((Join-Path $Here 'labyrinth.ps1')), "(?m)^\`$LabVersion = '([^']+)'")
+    if ($m.Success) { $version = $m.Groups[1].Value }
+    $sha = ''
+    if ($release.Status -eq 'ok') { $sha = $release.Hash }
+    $state = @{ new = 'new'; replace = 'replaced'; same = 'unchanged' }[$codeState]
+    $rows = @(, @('Program', "$CodeDir ($state)"))
+    if ($rootNew) { $rows += , @('Data', "$Root (new, private)") }
+    elseif ($rootLocked) { $rows += , @('Data', "$Root (kept)") }
+    else { $rows += , @('Data', "$Root (kept, made private)") }
+    if ($taken.ContainsKey('laby')) { $rows += , @('Commands', "labyrinth ($state; laby is taken)") }
+    else { $rows += , @('Commands', "laby, labyrinth ($state)") }
+    if ($pathState -eq 'skip') { $rows += , @('PATH', 'not changed (-NoPath)') }
+    elseif ($pathState -eq 'same') { $rows += , @('PATH', "has $CodeDir (unchanged)") }
+    else { $rows += , @('PATH', "adds $CodeDir") }
+    if ($helpState -eq 'skip') { $rows += , @('Manual', 'skipped: this copy has no built manual (manual\about_Labyrinth.help.txt)') }
+    elseif ($helpState -eq 'same') { $rows += , @('Manual', 'Get-Help about_Labyrinth (unchanged)') }
+    else { $rows += , @('Manual', 'Get-Help about_Labyrinth (new)') }
+    $config = "$($templates.Count) templates"
+    if ($kept -gt 0) { $config = "$($templates.Count) copied, $kept kept" }
+    elseif ($templates.Count -eq 1) { $config = '1 template' }
+    $rows += , @('Config', "$config -> $Root\etc")
+    foreach ($line in @(Get-LabBanner -Unicode $unicode -Version $version -Sha $sha) + @('') +
+        @(Get-LabBannerTree -Unicode $unicode -Arrow $arrow -Rows $rows)) {
+        [Console]::Out.WriteLine($line)
+    }
 
     if (-not $todo) {
         [Console]::Out.WriteLine('')

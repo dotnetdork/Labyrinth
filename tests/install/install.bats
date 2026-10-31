@@ -62,15 +62,84 @@ snapshot() {
   answer n
   install_sh
   [ "$status" -eq 0 ]
-  [[ "$output" == *'Labyrinth install plan:'* ]]
+  [[ "$output" == *'CHANGES TO THIS HOST'* ]]
   flat="$(tr -s " " <<< "$output")"
-  [[ "$flat" == *"Code: $ROOT/bin (new)"* ]]
-  [[ "$flat" == *"Commands: $LINKS/laby and $LINKS/labyrinth -> $ROOT/bin/labyrinth.sh"* ]]
-  [[ "$flat" == *"Manual: $MAN/labyrinth.1.gz"* ]]
-  [[ "$flat" == *"Settings: 8 template(s) copied into $ROOT/etc"* ]]
+  [[ "$flat" == *"Program $ROOT/bin (new)"* ]]
+  [[ "$flat" == *"Data $ROOT (new, root only)"* ]]
+  [[ "$flat" == *"Commands laby, labyrinth in $LINKS (new)"* ]]
+  [[ "$flat" == *"Manual man laby (new)"* ]]
+  [[ "$flat" == *"Config 8 templates "*" $ROOT/etc"* ]]
   [[ "$output" == *'Nothing was changed.'* ]]
   grep -q 'Install? \[y/N\]' "$REL/tty.out"
   [ -z "$(ls -A "$SYS")" ]
+}
+
+# screen: the installer's screen from the maze's first line to the tree's
+# heading, one line per item of SCREEN.
+screen() { mapfile -t SCREEN < <(sed -n '/^\(╔IN\|+IN\)/,/^CHANGES TO THIS HOST$/p' <<< "$output"); }
+
+@test "on a UTF-8 terminal the screen shows the maze, the version and the hash in a box" {
+  inst_setup
+  answer n
+  LC_ALL=C.UTF-8 install_sh
+  [ "$status" -eq 0 ]
+  local LC_ALL=C.UTF-8 sum ver i l joined=''
+  sum="$(sha256sum < "$REL/release.sha256" | cut -d' ' -f1)"
+  ver="$(sed -n "s/^readonly LAB_VERSION='\([^']*\)'.*/\1/p" "$REPO/labyrinth.sh")"
+  screen
+  # The maze as drawn, then the version and the site.
+  mapfile -t maze < "$REPO/core/banner/maze.txt"
+  for i in "${!maze[@]}"; do [ "${SCREEN[i]}" = "${maze[i]}" ]; done
+  [ "${SCREEN[13]}" = "VERSION $ver (https://dotnetdork.github.io/Labyrinth/)" ]
+  # The box: every line as wide as the maze, the warning centred.
+  for ((i = 15; i < 28; i++)); do [ "${#SCREEN[i]}" -eq 55 ]; done
+  [ "${SCREEN[15]:0:1}" = '╔' ]
+  [ "${SCREEN[16]:0:3}" = '║ ╓' ]
+  [ "${SCREEN[18]}" = '║ ║                     WARNING                     ║ ║' ]
+  [ "${SCREEN[20]}" = "║ ║       If this SHA-256 doesn't match your        ║ ║" ]
+  [ "${SCREEN[21]}" = '║ ║      offline record, it was tampered with.      ║ ║' ]
+  # The hash: two lines of eight groups of four that join into the SHA-256.
+  for i in 23 24; do
+    [[ "${SCREEN[i]}" =~ ^'║ ║     '([0-9a-f]{4}( [0-9a-f]{4}){7})'     ║ ║'$ ]]
+    joined+="${BASH_REMATCH[1]}"
+  done
+  [ "${joined// /}" = "$sum" ]
+  [ "${SCREEN[27]:0:1}" = '╚' ]
+  # No line of the art is wider than 79 columns.
+  for l in "${SCREEN[@]}"; do [ "${#l}" -le 79 ]; done
+  # The tree, with the arrow.
+  [[ "$output" == *" ├── Program   $ROOT/bin (new)"* ]]
+  [[ "$output" == *" └── Config    8 templates → $ROOT/etc"* ]]
+}
+
+@test "without UTF-8 the same screen is drawn in plain ASCII" {
+  inst_setup
+  answer n
+  LC_ALL=C LANG= install_sh
+  [ "$status" -eq 0 ]
+  screen
+  mapfile -t maze < "$REPO/core/banner/maze-ascii.txt"
+  for i in "${!maze[@]}"; do [ "${SCREEN[i]}" = "${maze[i]}" ]; done
+  [ "${SCREEN[15]}" = "+$(printf '%53s' '' | tr ' ' -)+" ]
+  [ "${SCREEN[18]}" = '| |                     WARNING                     | |' ]
+  [[ "${SCREEN[23]}" =~ ^'| |     '[0-9a-f]{4}( [0-9a-f]{4}){7}'     | |'$ ]]
+  [[ "$output" == *" |-- Program   $ROOT/bin (new)"* ]]
+  [[ "$output" == *' `-- Config    8 templates -> '"$ROOT/etc"* ]]
+  if LC_ALL=C grep -q '[^ -~]' <<< "$output"; then return 1; fi
+}
+
+@test "the two mazes have the same shape" {
+  local LC_ALL=C.UTF-8 i
+  inst_setup
+  mapfile -t u < "$REPO/core/banner/maze.txt"
+  mapfile -t a < "$REPO/core/banner/maze-ascii.txt"
+  [ "${#u[@]}" -eq "${#a[@]}" ]
+  for i in "${!u[@]}"; do
+    [ "${#u[i]}" -eq "${#a[i]}" ]
+    [ "${#u[i]}" -le 79 ]
+  done
+  [[ "${a[0]}" == '+IN-'* ]]
+  [[ "${a[-1]}" == *'-OUT+' ]]
 }
 
 @test "no answer at all changes nothing either" {
@@ -95,7 +164,7 @@ snapshot() {
   : > "$REL/NO_TTY"
   install_sh
   [ "$status" -eq 40 ]
-  [[ "$output" == *'Labyrinth install plan:'* ]]
+  [[ "$output" == *'CHANGES TO THIS HOST'* ]]
   [[ "$output" == *'no terminal to ask on'* ]]
   [[ "$output" == *'add -y'* ]]
   [ -z "$(ls -A "$SYS")" ]
@@ -193,7 +262,8 @@ snapshot() {
   printf 'not ours\n' > "$LINKS/laby"
   install_sh -y
   [ "$status" -eq 0 ]
-  [[ "$output" == *'laby left out:'* ]]
+  [[ "$output" == *'the command laby is left out:'* ]]
+  [[ "$(tr -s " " <<< "$output")" == *"Commands labyrinth in $LINKS (new; laby is taken)"* ]]
   [[ "$output" == *"$LINKS/laby already exists"* ]]
   [[ "$output" == *'Next: sudo labyrinth'* ]]
   [ "$(cat "$LINKS/laby")" = 'not ours' ]
@@ -278,9 +348,10 @@ something else
 @test "a copy with no release list installs with a note that it was not checked" {
   inst_setup
   rm "$REL/release.sha256"
-  install_sh -y
+  LC_ALL=C install_sh -y
   [ "$status" -eq 0 ]
-  [[ "$output" == *'not checked: this copy has no release.sha256'* ]]
+  [[ "$(tr -s " " <<< "$output")" == *'| This copy has no release.sha256, |'* ]]
+  [[ "$(tr -s " " <<< "$output")" == *'| so nothing proves that it is genuine. |'* ]]
   [ -f "$ROOT/bin/labyrinth.sh" ]
   [ ! -e "$ROOT/bin/release.sha256" ]
 }
@@ -291,7 +362,7 @@ something else
   seal
   install_sh -y
   [ "$status" -eq 0 ]
-  [[ "$(tr -s " " <<< "$output")" == *"Manual: skipped: this copy has no built manual"* ]]
+  [[ "$(tr -s " " <<< "$output")" == *"Manual skipped: this copy has no built manual"* ]]
   [ -f "$ROOT/bin/labyrinth.sh" ]
   [ ! -e "$MAN" ]
 }

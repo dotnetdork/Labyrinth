@@ -246,8 +246,12 @@ here() { cd "$LAB" && run bash ./labyrinth.sh "$@" < /dev/null; }
 @test "-V names the runner, and -V -h is its help" {
   run bash "$LAB/labyrinth.sh" -V < /dev/null
   [ "$status" -eq 0 ]
-  [[ "${lines[0]}" == "labyrinth "*" (labyrinth.sh, for Linux)" ]]
-  [[ "${lines[1]}" == 'Release: '* ]]
+  [[ "${lines[0]}" =~ ^'Labyrinth version '[^ ]+' ( https://dotnetdork.github.io/Labyrinth/ )'$ ]]
+  [ "${lines[1]}" = 'Runner:   bash' ]
+  [[ "${lines[2]}" == 'SHA-256:  '* ]]
+  # Plain ASCII and short: the same on every terminal.
+  if LC_ALL=C grep -q '[^ -~]' <<< "$output"; then return 1; fi
+  for l in "${lines[@]}"; do [ "${#l}" -le 78 ]; done
   ask -V -h
   [ "$(head -n 1 <<< "$output")" = 'Usage: laby -V' ]
 }

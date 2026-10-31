@@ -543,9 +543,9 @@ Describe 'labyrinth.ps1 -r' {
         $r = Invoke-TestApply $t $answers
         $r.Code | Should -Be 0
         $r.Output | Should -Match ([regex]::Escape("labyrinth: warning: no release.sha256, so Labyrinth's files were not checked"))
-        @($r.Output -split "`n") -ccontains 'Release: not checked (no release.sha256)' | Should -BeTrue
+        @($r.Output -split "`n") -ccontains 'SHA-256:  not checked (no release.sha256)' | Should -BeTrue
         $v = @((Invoke-TestLabCapture $t @('-V')).Out -split "`r?`n")
-        $v[1] | Should -BeExactly 'Release: not checked (no release.sha256)'
+        $v[2] | Should -BeExactly 'SHA-256:  not checked (no release.sha256)'
     }
 
     It 'release: with a matching list, apply and version print its hash, and nothing warns' {
@@ -554,13 +554,20 @@ Describe 'labyrinth.ps1 -r' {
         $r = Invoke-TestApply $t $answers
         $r.Code | Should -Be 0
         $r.Output | Should -Not -Match 'no release\.sha256'
+        # The hash is in the recap, as two lines of eight groups of four,
+        # before the group prompt.
+        $g = @(for ($i = 0; $i -lt 64; $i += 4) { $sum.Substring($i, 4) })
+        $g1 = $g[0..7] -join ' '
+        $g2 = $g[8..15] -join ' '
         $lines = @($r.Output -split "`n")
-        $a = [array]::IndexOf($lines, "Release: $sum")
+        $a = [array]::IndexOf($lines, "SHA-256:  $g1")
         $a | Should -BeGreaterOrEqual 0
+        $lines[$a + 1] | Should -BeExactly "          $g2"
         $b = @(0..($lines.Count - 1) | Where-Object { $lines[$_] -match 'Type the group name' })[0]
         $a | Should -BeLessThan $b
         $v = @((Invoke-TestLabCapture $t @('-V')).Out -split "`r?`n")
-        $v[1] | Should -BeExactly "Release: $sum"
+        $v[2] | Should -BeExactly "SHA-256:  $g1"
+        $v[3] | Should -BeExactly "          $g2"
     }
 
     It 'release: a changed core file stops every command before any of the core runs' {

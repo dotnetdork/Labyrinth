@@ -107,7 +107,18 @@ Describe 'the release check' {
 
     It 'the tool writes the list and prints the hash to record' {
         $out = @(& (Join-Path $script:Repo 'tools\release\manifest.ps1') $r)
-        $out[1] | Should -Be "Release: $((Get-FileHash -LiteralPath $list -Algorithm SHA256).Hash.ToLowerInvariant())"
+        $sum = (Get-FileHash -LiteralPath $list -Algorithm SHA256).Hash.ToLowerInvariant()
+        # Two lines of eight groups of four, which join back into the SHA-256.
+        $out[1] | Should -MatchExactly '^SHA-256:  [0-9a-f]{4}( [0-9a-f]{4}){7}$'
+        $out[2] | Should -MatchExactly '^          [0-9a-f]{4}( [0-9a-f]{4}){7}$'
+        ($out[1].Substring(8) + $out[2]).Replace(' ', '') | Should -BeExactly $sum
         (Test-LabRelease -Root $r).Status | Should -Be 'ok'
+    }
+
+    It 'the hash is shown as two lines of eight groups of four' {
+        $g = @(Get-LabReleaseGroup -Sha ('0123456789abcdef' * 4))
+        $g.Count | Should -Be 2
+        $g[0] | Should -BeExactly '0123 4567 89ab cdef 0123 4567 89ab cdef'
+        $g[1] | Should -BeExactly '0123 4567 89ab cdef 0123 4567 89ab cdef'
     }
 }

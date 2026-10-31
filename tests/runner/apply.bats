@@ -580,14 +580,16 @@ fp() { printf '%s' "$1" | sha256sum | cut -c1-12; }
 # release: write release.sha256 into the test copy, as at release time.
 release() { bash "$REPO/tools/release/manifest.sh" "$LAB" > /dev/null; }
 release_hash() { sha256sum < "$LAB/release.sha256" | cut -d' ' -f1; }
+# groups SHA: the two lines Labyrinth shows SHA as, eight groups of four each.
+groups() { sed -E 's/(.{4})/\1 /g; s/ $//' <<< "${1:0:32}"; sed -E 's/(.{4})/\1 /g; s/ $//' <<< "${1:32}"; }
 
 @test "release: with no release list, apply warns and its recap says not checked" {
   apply
   [ "$status" -eq 0 ]
   [[ "$output" == *"labyrinth: warning: no release.sha256, so Labyrinth's files were not checked"* ]]
-  grep -qx 'Release: not checked (no release.sha256)' <<< "$output"
+  grep -qx 'SHA-256:  not checked (no release.sha256)' <<< "$output"
   run bash "$LAB/labyrinth.sh" -V
-  [ "${lines[1]}" = 'Release: not checked (no release.sha256)' ]
+  [ "${lines[2]}" = 'SHA-256:  not checked (no release.sha256)' ]
 }
 
 @test "release: with a matching list, apply and version print its hash, and nothing warns" {
@@ -595,16 +597,19 @@ release_hash() { sha256sum < "$LAB/release.sha256" | cut -d' ' -f1; }
   apply
   [ "$status" -eq 0 ]
   [[ "$output" != *'no release.sha256'* ]]
-  local sum; sum="$(release_hash)"
-  grep -qx "Release: $sum" <<< "$output"
-  # The hash is in the recap, before the group prompt.
+  local sum g1 g2; sum="$(release_hash)"
+  { read -r g1; read -r g2; } < <(groups "$sum")
+  # The hash is in the recap, as two lines, before the group prompt.
   local a b
-  a="$(grep -n "^Release: $sum\$" <<< "$output" | head -n 1 | cut -d: -f1)"
+  a="$(grep -n "^SHA-256:  $g1\$" <<< "$output" | head -n 1 | cut -d: -f1)"
+  [ -n "$a" ]
+  [ "$(sed -n "$((a + 1))p" <<< "$output")" = "          $g2" ]
   b="$(grep -n 'Type the group name' <<< "$output" | head -n 1 | cut -d: -f1)"
   [ "$a" -lt "$b" ]
   run bash "$LAB/labyrinth.sh" -V
   [ "$status" -eq 0 ]
-  [ "${lines[1]}" = "Release: $sum" ]
+  [ "${lines[2]}" = "SHA-256:  $g1" ]
+  [ "${lines[3]}" = "          $g2" ]
 }
 
 @test "release: a changed core file stops every command before any of the core runs" {

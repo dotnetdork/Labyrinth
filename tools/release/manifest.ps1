@@ -27,4 +27,6 @@ if ($check.Status -ne 'ok') {
     exit 1
 }
 Write-Output "Wrote $(Join-Path $root 'release.sha256')"
-Write-Output "Release: $sum"
+$groups = Get-LabReleaseGroup -Sha $sum
+Write-Output "SHA-256:  $($groups[0])"
+Write-Output "          $($groups[1])"

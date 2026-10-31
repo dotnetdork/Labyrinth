@@ -33,6 +33,16 @@ lab_release_sha() {
   printf '%s\n' "${h%% *}"
 }
 
+# lab_release_groups SHA: SHA in two lines of eight groups of four, which
+# are easier to compare by eye with the offline record than one long run.
+lab_release_groups() {
+  local i line=''
+  for ((i = 0; i < 64; i += 4)); do
+    line+="${1:i:4}"
+    if (( i % 32 == 28 )); then printf '%s\n' "$line"; line=''; else line+=' '; fi
+  done
+}
+
 # lab_release_files ROOT: print, sorted, the path under ROOT of every
 # file the release list covers.
 lab_release_files() {
