@@ -62,10 +62,74 @@ rollback() { run bash "$LAB/labyrinth.sh" --root "$ROOT" --config "$ETC" -u "$@"
   [[ "$output" == *"Nothing else needs undoing."* ]]
   grep -qx 'setting=on' "$LAB/keeper.conf"
   [ ! -e "$LAB/notice.log" ]
+  printf 'y\n' > "$LAB/tty.in"
   rollback "$id" --all
   [ "$status" -eq 0 ]
+  [[ "$(cat "$LAB/tty.out")" == *"Undo run ${id: -4} with --all? It also undoes changes kept once verified,"* ]]
   [ ! -e "$LAB/keeper.conf" ]
   grep -q "undid run $id" "$LAB/notice.log"
+}
+
+@test "-u --all asks first: no answer, or anything but yes, undoes nothing" {
+  answers root ring1
+  apply
+  id="$(run_id)"
+  rollback "$id" --all
+  [ "$status" -eq 0 ]
+  [[ "$(cat "$LAB/tty.out")" == *'[y/N] ' ]]
+  [[ "$output" == *'Nothing was undone.'* ]]
+  grep -qx 'setting=on' "$LAB/keeper.conf"
+  [[ "$(manifest)" != *'"action":"run_rolled_back"'* ]]
+  rm -f "$LAB/tty.pos"
+  printf 'no\n' > "$LAB/tty.in"
+  rollback "$id" --all
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'Nothing was undone.'* ]]
+  grep -qx 'setting=on' "$LAB/keeper.conf"
+}
+
+@test "-u --all with no terminal is refused unless -y answers yes" {
+  answers root ring1
+  apply
+  id="$(run_id)"
+  rm -f "$LAB/tty.out"
+  touch "$LAB/NO_TTY"
+  rollback "$id" --all
+  [ "$status" -eq 40 ]
+  [[ "$output" == *'-u --all asks first, and there is no terminal to ask on'* ]]
+  [[ "$output" == *"To answer yes, add -y: $LAB/labyrinth.sh -u ${id: -4} --all -y"* ]]
+  grep -qx 'setting=on' "$LAB/keeper.conf"
+  rollback "$id" --all -y
+  [ "$status" -eq 0 ]
+  [ ! -e "$LAB/tty.out" ]
+  [ ! -e "$LAB/keeper.conf" ]
+  grep -q "undid run $id" "$LAB/notice.log"
+}
+
+@test "-u --all asks nothing when the run has no kept module" {
+  profile observe.toggle
+  answers root ring1 no
+  apply
+  id="$(run_id)"
+  rm -f "$LAB/tty.out"
+  touch "$LAB/NO_TTY"
+  rollback "$id" --all
+  [ "$status" -eq 0 ]
+  [ ! -e "$LAB/toggle.conf" ]
+  [ ! -e "$LAB/tty.out" ]
+}
+
+@test "the revert timer's own -u never asks, even with no terminal" {
+  profile observe.toggle observe.keeper
+  answers root ring1 no
+  apply
+  id="$(run_id)"
+  rm -f "$LAB/tty.out"
+  touch "$LAB/NO_TTY"
+  rollback "$id"
+  [ "$status" -eq 0 ]
+  [ ! -e "$LAB/toggle.conf" ]
+  [ ! -e "$LAB/tty.out" ]
 }
 
 @test "with no service list, nothing is kept early and the timer still covers it" {

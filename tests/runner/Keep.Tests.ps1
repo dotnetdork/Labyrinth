@@ -69,10 +69,70 @@ Describe 'labyrinth.ps1 keep_on_verify' {
         $r.Output | Should -Match ([regex]::Escape('Nothing else needs undoing.'))
         (Get-Content -LiteralPath $keeper) | Should -Be 'setting=on'
         $notice | Should -Not -Exist
+        [IO.File]::WriteAllText((Join-Path $lab 'tty.in'), "y`n")
         $r = Invoke-TestLab $t @('-u', $id, '-All', '-Root', $t.Root, '-Config', $t.Etc)
         $r.Code | Should -Be 0
+        [IO.File]::ReadAllText((Join-Path $lab 'tty.out')) | Should -Match ([regex]::Escape("Undo run $($id.Substring($id.Length - 4)) with -All? It also undoes changes kept once verified,"))
         $keeper | Should -Not -Exist
         [IO.File]::ReadAllText($notice) | Should -Match "undid run $id"
+    }
+
+    It '-u -All asks first: no answer, or anything but yes, undoes nothing' {
+        $r = Invoke-TestApply $t @('labadmin', 'ring1')
+        $id = Get-TestRunId $r.Output
+        $r = Invoke-TestLab $t @('-u', $id, '-All', '-Root', $t.Root, '-Config', $t.Etc)
+        $r.Code | Should -Be 0
+        [IO.File]::ReadAllText((Join-Path $lab 'tty.out')) | Should -BeLike '*`[y/N`] '
+        $r.Output | Should -Match ([regex]::Escape('Nothing was undone.'))
+        (Get-Content -LiteralPath $keeper) | Should -Be 'setting=on'
+        Get-TestManifest $t $id | Should -Not -Match '"action":"run_rolled_back"'
+        Remove-Item -LiteralPath (Join-Path $lab 'tty.pos') -Force -ErrorAction SilentlyContinue
+        [IO.File]::WriteAllText((Join-Path $lab 'tty.in'), "no`n")
+        $r = Invoke-TestLab $t @('-u', $id, '-All', '-Root', $t.Root, '-Config', $t.Etc)
+        $r.Code | Should -Be 0
+        $r.Output | Should -Match ([regex]::Escape('Nothing was undone.'))
+        (Get-Content -LiteralPath $keeper) | Should -Be 'setting=on'
+    }
+
+    It '-u -All with no terminal is refused unless -y answers yes' {
+        $r = Invoke-TestApply $t @('labadmin', 'ring1')
+        $id = Get-TestRunId $r.Output
+        Remove-Item -LiteralPath (Join-Path $lab 'tty.out') -Force -ErrorAction SilentlyContinue
+        New-Item -ItemType File -Path (Join-Path $lab 'NO_TTY') | Out-Null
+        $r = Invoke-TestLab $t @('-u', $id, '-All', '-Root', $t.Root, '-Config', $t.Etc)
+        $r.Code | Should -Be 40
+        $r.Output | Should -Match ([regex]::Escape('-u -All asks first, and there is no terminal to ask on'))
+        $r.Output | Should -Match ([regex]::Escape("To answer yes, add -y: $($t.Self) -u '$($id.Substring($id.Length - 4))' -All -y"))
+        (Get-Content -LiteralPath $keeper) | Should -Be 'setting=on'
+        $r = Invoke-TestLab $t @('-u', $id, '-All', '-y', '-Root', $t.Root, '-Config', $t.Etc)
+        $r.Code | Should -Be 0
+        (Join-Path $lab 'tty.out') | Should -Not -Exist
+        $keeper | Should -Not -Exist
+        [IO.File]::ReadAllText($notice) | Should -Match "undid run $id"
+    }
+
+    It '-u -All asks nothing when the run has no kept module' {
+        Write-TestProfile $t 'observe.toggle'
+        $r = Invoke-TestApply $t @('labadmin', 'ring1', 'no')
+        $id = Get-TestRunId $r.Output
+        Remove-Item -LiteralPath (Join-Path $lab 'tty.out') -Force -ErrorAction SilentlyContinue
+        New-Item -ItemType File -Path (Join-Path $lab 'NO_TTY') | Out-Null
+        $r = Invoke-TestLab $t @('-u', $id, '-All', '-Root', $t.Root, '-Config', $t.Etc)
+        $r.Code | Should -Be 0
+        $toggle | Should -Not -Exist
+        (Join-Path $lab 'tty.out') | Should -Not -Exist
+    }
+
+    It "the revert timer's own -u never asks, even with no terminal" {
+        Write-TestProfile $t @('observe.toggle', 'observe.keeper')
+        $r = Invoke-TestApply $t @('labadmin', 'ring1', 'no')
+        $id = Get-TestRunId $r.Output
+        Remove-Item -LiteralPath (Join-Path $lab 'tty.out') -Force -ErrorAction SilentlyContinue
+        New-Item -ItemType File -Path (Join-Path $lab 'NO_TTY') | Out-Null
+        $r = Invoke-TestRunCommand $t 'rollback' $id
+        $r.Code | Should -Be 0
+        $toggle | Should -Not -Exist
+        (Join-Path $lab 'tty.out') | Should -Not -Exist
     }
 
     It 'with no service list, nothing is kept early and the timer still covers it' {

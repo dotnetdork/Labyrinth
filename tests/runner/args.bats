@@ -63,10 +63,25 @@ streams() {
   [[ "$ERR" == *"'-a' (--approve, with -q) is planned and not built yet"* ]]
   streams -rq observe
   [[ "$ERR" == *"'-q' (--queue) is planned and not built yet"* ]]
-  streams --no-revert -r observe
-  [[ "$ERR" == *"'--no-revert' is planned and not built yet"* ]]
   streams --Verbose observe
   [[ "$ERR" == *"'--Verbose' is planned and not built yet"* ]]
+}
+
+@test "-y and --no-revert are refused where they would do nothing, by name" {
+  streams -u 4f2a -y --root "$ROOT" --config "$ETC"
+  [ "$CODE" -eq 40 ]
+  [ -z "$OUT" ]
+  [[ "$ERR" == "$SELF: -y is only for -u ID --all: add --all, or leave out -y"$'\n'"Try '$SELF -u -h'." ]]
+  streams -y observe
+  [[ "$ERR" == *"-y is only for -u ID --all, not a preview"* ]]
+  streams --yes
+  [[ "$ERR" == *"-y is only for -u ID --all, not the status"* ]]
+  streams -r observe --no-revert -y
+  [[ "$ERR" == *"-y is only for -u ID --all, not -r"* ]]
+  streams --no-revert --probe
+  [ "$CODE" -eq 40 ]
+  [[ "$ERR" == *"--no-revert is only for -r, not --probe"* ]]
+  [ ! -e "$ROOT" ]
 }
 
 @test "the old command words are plain mistakes, with no hint that maps them" {

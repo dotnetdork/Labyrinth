@@ -14,7 +14,7 @@ Labyrinth is not ready to defend a host yet: no hardening module exists. [`docs/
 **Built,** for Linux and Windows, and tested on CI but not yet in a lab:
 
 - **The core:** logging, the run manifest, the safety gates, the revert timer (which undoes a run unless someone keeps it) and scoring-style probes.
-- **The command line:** preview, run (`-r`), keep (`-k`), undo (`-u`), `--history` and `--probe` ([`docs/Conventions.md`](docs/Conventions.md), section 3.1).
+- **The command line:** the status (`laby` alone), preview, run (`-r`), keep (`-k`), undo (`-u`), `--history`, `--probe` and `--manual` ([`docs/Conventions.md`](docs/Conventions.md), section 3.1).
 - **The guided installers,** `install.sh` and `install.ps1`, which add the `laby` and `labyrinth` commands (section 3.3).
 - **The groundwork modules need:** platform facts, the firewall adapter, quarantine, approval items and the shipped profiles.
 - **The guard,** which checks every script for outside calls and blanket actions.
@@ -70,7 +70,7 @@ All of these documents are also published as a website with a menu and search, r
 
 ```
 Labyrinth/
-├── labyrinth.sh / labyrinth.ps1  ← main program: preview, run, keep, undo, history, probe, help, version
+├── labyrinth.sh / labyrinth.ps1  ← main program: status, preview, run, keep, undo, history, probe, manual, help, version
 ├── install.sh / install.ps1      ← guided installers; laby.cmd / labyrinth.cmd are the Windows commands
 ├── core/ phases/ profiles/ platform/   ← code layout from design 00
 ├── config/                       ← *.example templates for run-time values; never real values

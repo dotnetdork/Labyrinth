@@ -2,12 +2,14 @@
 # labyrinth.sh: main program for Linux hosts (design 00, section 5;
 # docs/Conventions.md sections 3.1 to 3.3). 'laby' below is this program.
 #
+#   laby                     this host's status and the next step
 #   laby PHASE               preview a phase: nothing changes, nothing written
 #   laby -r PHASE            run a phase: plan, confirm, then make the changes
 #   laby -k ID               keep a run: cancel its revert timer
 #   laby -u ID [--all]       undo a run, newest change first
 #   laby --history           list this host's runs and their state
 #   laby --probe             test every scored service once
+#   laby --manual            the full manual, scrollable
 #   laby -V                  the version; also --version
 #   laby -h [TOPIC]          help; also --help, -? and /?
 #
@@ -69,7 +71,7 @@ if (( LAB_RELEASE == 2 )); then
     # the changes in place: whoever is logged in must learn that, as from
     # the revert timer. Best effort.
     lower="${a,,}"
-    if [[ "$a" =~ ^-[rkuVPh]*u[rkuVPh]*$ || "$lower" == --undo || "$lower" == --undo=* \
+    if [[ "$a" =~ ^-[rkuVPhy]*u[rkuVPhy]*$ || "$lower" == --undo || "$lower" == --undo=* \
         || "$lower" == -undo || "$lower" == -undo:* || "$lower" == -undo=* ]] \
         && command -v wall > /dev/null 2>&1; then
       printf '%s\n' "Labyrinth did not undo the changes on $(uname -n): its files differ from the release, so they are still in place." \
@@ -97,6 +99,7 @@ OPT_PROFILE='' OPT_BREAKGLASS='' OPT_CONFIRM=''
 RUN_REF=''                 # the run keep or rollback acts on
 CMD=''                     # the command being run, for on_internal_error
 RUN_OPEN=0                 # 1 once an apply has recorded run_start
+NO_REVERT=0                # 1 with --no-revert: no revert timer, no keep question
 # How the operator started this program, so a hint can be pasted and run
 # (docs/Conventions.md section 3.2): the path as typed, './' added when it
 # was a bare name not on the PATH, quoted if it needs it, and 'sudo' in
@@ -118,18 +121,18 @@ NAME="${SELF#sudo }"   # the name as typed, for the start of a usage error
 # name, the key its long name is matched by (lower case, no dashes), whether
 # it takes a value, its short letter, if it has one, and whether it is an
 # action. Short letters are case-sensitive; long names are not.
-readonly -a OPT_NAMES=(run keep undo probe history version all profile root config break-glass confirm-group approve help)
-readonly -a OPT_KEYS=(run keep undo probe history version all profile root config breakglass confirmgroup approve help)
-readonly -a OPT_VALUE=(0 1 1 0 0 0 0 1 1 1 1 1 1 0)
-readonly -a OPT_SHORT=(r k u '' '' V '' P '' '' '' '' '' h)
-readonly -a OPT_ACTION=(1 1 1 1 1 1 0 0 0 0 0 0 0 0)
+readonly -a OPT_NAMES=(run keep undo probe history version manual all profile root config break-glass confirm-group approve yes no-revert help)
+readonly -a OPT_KEYS=(run keep undo probe history version manual all profile root config breakglass confirmgroup approve yes norevert help)
+readonly -a OPT_VALUE=(0 1 1 0 0 0 0 0 1 1 1 1 1 1 0 0 0)
+readonly -a OPT_SHORT=(r k u '' '' V '' '' P '' '' '' '' '' y '' h)
+readonly -a OPT_ACTION=(1 1 1 1 1 1 1 0 0 0 0 0 0 0 0 0 0)
 # The flags that docs/Conventions.md section 3.3 plans and nothing builds yet,
 # one row each: the short letter, the long name's match key ('' when the name
 # is already an option) and how a message shows it. Typing one is a usage
 # error that says so; building one means moving its row up into OPT_*.
-readonly -a PLAN_SHORT=(q a d v y '' '')
-readonly -a PLAN_KEYS=(queue '' decline verbose yes norevert manual)
-readonly -a PLAN_SHOW=(--queue '--approve, with -q' '--decline, with -q' --verbose --yes --no-revert --manual)
+readonly -a PLAN_SHORT=(q a d v)
+readonly -a PLAN_KEYS=(queue '' decline verbose)
+readonly -a PLAN_SHOW=(--queue '--approve, with -q' '--decline, with -q' --verbose)
 declare -A GIVEN=()        # canonical option name -> value given
 declare -a WORDS=()        # the words that are not options, in order
 declare -a ACTIONS=()      # the actions given, in the order typed
@@ -181,6 +184,7 @@ help_page() {
     '') cat <<'EOF'
 Usage: @CMD@ PHASE                preview a phase: nothing changes
        @CMD@ -r PHASE             run a phase for real
+       @CMD@                      this host's status and next step
        @CMD@ ACTION [OPTIONS]
 
 Actions (one per line):
@@ -189,18 +193,19 @@ Actions (one per line):
   -u, --undo ID [--all]   undo a run, newest change first
       --history           list this host's runs and their IDs
       --probe             test every scored service once
-  -V, --version           print the version
+  -V, --version           print the version      --manual   the full manual
 
 Options:
   -P, --profile NAME      profile to use, if not this host's line in hosts
   --root DIR              data root         --config DIR   configuration
-  --break-glass NAME, --confirm-group GROUP, --approve LIST:
-                          see @CMD@ -h run
+  -y, --yes               yes to the question before -u ID --all
+  --no-revert             with -r: no revert timer, for test machines
+  --break-glass NAME, --confirm-group GROUP, --approve LIST: see -h run
   -h, --help [TOPIC]      help; TOPIC: an action, option, phase or basics
 
 Phases: lockout, observe, deceive, sustain. ID: a run ID or its last 4.
 Exit: 0 ok, 10 change needed, 20 blocked, 30 check failed, 40 error.
-Full manual: docs/manual/labyrinth.md in the release
+Full manual: @CMD@ --manual   (Linux also: man laby)
 EOF
     ;;
     run) cat <<'EOF'
@@ -216,6 +221,7 @@ Options:
   --break-glass NAME     answer the break-glass prompt
   --confirm-group GROUP  answer the group-name prompt
   --approve LIST         approve without asking: module:item@fingerprint,...
+  --no-revert            no revert timer and no keep question: test machines
 
 Exit: 0 done, 10 manual steps left, 20 blocked, 30 check failed, 40 error.
 Blocked: not root, another run, host not in hosts, or a safety gate.
@@ -241,7 +247,7 @@ See also: @CMD@ --history, @CMD@ -h undo
 EOF
     ;;
     undo) cat <<'EOF'
-Usage: @CMD@ -u ID [--all] [--root DIR] [--config DIR]
+Usage: @CMD@ -u ID [--all [-y]] [--root DIR] [--config DIR]
 
 Undo what the run changed, newest change first. This is what the
 revert timer runs. Safe to run twice. ID is always needed: a run ID or
@@ -250,9 +256,10 @@ an Administrator.
 
 Options:
   --all                  also undo changes kept once they verified
+  -y, --yes              with --all: yes to its question, asked first
   --root DIR, --config DIR   data root, configuration folder
 
-Exit: 0 undone, 20 blocked, 40 error.
+Exit: 0 undone or not confirmed, 20 blocked, 40 error.
 Blocked: not root, or a file another account can change.
 Example: @CMD@ -u 4f2a
 See also: @CMD@ --history, @CMD@ -h keep
@@ -263,7 +270,8 @@ Usage: @CMD@ --history [--root DIR] [--config DIR]
 
 List this host's runs, oldest first: run ID, phase, start time (UTC)
 and state: armed (and when it is undone), kept, undone,
-undone with errors, or not kept, no timer. 'armed: timer lost'
+undone with errors, no revert (run with --no-revert), or
+not kept, no timer. 'armed: timer lost'
 means the timer's files are gone and nothing will undo the run by
 itself: keep it or undo it. Changes nothing; needs root or an
 Administrator.
@@ -294,6 +302,47 @@ release hash. --version does the same.
 Exit: 0 printed.
 Example: @CMD@ -V
 See also: @CMD@ -h
+EOF
+    ;;
+    manual) cat <<'EOF'
+Usage: @CMD@ --manual
+
+Open the full manual, one screen at a time: the copy in this
+release's manual folder ('man laby' shows the installed one). When
+nothing can page it, the manual is printed. Changes nothing and
+needs no root.
+
+Exit: 0 shown, 40 no manual in this copy.
+Example: @CMD@ --manual
+See also: @CMD@ -h, @CMD@ -h basics
+EOF
+    ;;
+    yes) cat <<'EOF'
+Usage: @CMD@ -u ID --all -y
+
+Answer yes to the question asked before -u ID --all, which also
+undoes changes kept once verified, such as a new password. Without a
+terminal to ask on, -u ID --all is refused unless -y is given.
+-y never keeps a run: the login check after -r is always yours.
+Used by: -u with --all only.
+
+Exit: 40 if given with anything else.
+Example: @CMD@ -u 4f2a --all -y
+See also: @CMD@ -h all, @CMD@ -h undo
+EOF
+    ;;
+    no-revert) cat <<'EOF'
+Usage: @CMD@ -r PHASE --no-revert
+
+Arm no revert timer and ask nothing at the end: the changes stay
+until you undo them with -u. For test machines only: a change that
+locks you out is not undone by itself. The run records it, and
+--history shows the run as 'no revert'.
+Used by: -r only.
+
+Exit: 40 if given with anything else.
+Example: @CMD@ -r observe --no-revert
+See also: @CMD@ -h run, @CMD@ -h undo
 EOF
     ;;
     profile) cat <<'EOF'
@@ -627,6 +676,11 @@ run_recovery() {
 # run_stopped: what the operator needs after a run stops partway.
 run_stopped() {
   local when
+  if (( NO_REVERT )); then
+    out 'The run stopped. Earlier changes stay: there is no revert timer (--no-revert).'
+    out "To undo them now: $SELF -u ${LAB_RUN_ID: -4}"
+    return 0
+  fi
   out 'The run stopped. Earlier changes stay until the revert timer undoes them.'
   if when="$(due_words "$LAB_RUN_ID")"; then
     out "The revert timer undoes this run $when."
@@ -870,7 +924,9 @@ shell_word() {
 # next_step MODE CODE PHASE: the one command to run next, if there is one.
 next_step() {
   local mode="$1" code="$2" phase="$3" i manual=0 other=0 opts=''
-  if [[ "$mode" == apply ]] && (( STOPPED )); then
+  if [[ "$mode" == apply ]] && (( STOPPED && NO_REVERT )); then
+    out 'Next: undo the earlier changes with the command above, unless they should stay.'
+  elif [[ "$mode" == apply ]] && (( STOPPED )); then
     out 'Next: undo the earlier changes, or keep them, with the commands above.'
   elif [[ "$mode" == apply ]] && lab_timer_armed "$LAB_RUN_ID"; then
     out "Next: check you can log in from a NEW session, then '$SELF -k ${LAB_RUN_ID: -4}'."
@@ -897,8 +953,7 @@ next_step() {
       out "  To run ${GIVEN[profile]}, change that line first: $LAB_CONFIG_DIR/hosts"
     else
       if [[ -n "${GIVEN[profile]:-}" ]]; then opts+=" --profile ${GIVEN[profile]}"; fi
-      if [[ -n "${GIVEN[root]:-}" ]]; then opts+=" --root $(shell_word "${GIVEN[root]}")"; fi
-      if [[ -n "${GIVEN[config]:-}" ]]; then opts+=" --config $(shell_word "${GIVEN[config]}")"; fi
+      opts+="$(data_opts)"
       # A command too long for one line goes on a line of its own.
       if (( ${#SELF} + ${#phase} + ${#opts} + 10 > 78 )); then
         out 'Next:'
@@ -934,6 +989,7 @@ finish() {
       case "${RUN_STATE[i]}" in failed | error) problems=1 ;; esac
     done
     if (( problems )); then mark_problems; fi
+    if (( NO_REVERT )); then out 'Revert timer: none (--no-revert).'; fi
   fi
   if [[ -n "$LOG_FILE" ]]; then out "Log: $LOG_FILE"; fi
   next_step "$mode" "$code" "$3"
@@ -1015,6 +1071,7 @@ show_opt() {
     keep) printf '%s' '-k' ;;
     undo) printf '%s' '-u' ;;
     version) printf '%s' '-V' ;;
+    yes) printf '%s' '-y' ;;
     help) printf '%s' '-h' ;;
     *) printf '%s' "--$1" ;;
   esac
@@ -2007,7 +2064,7 @@ apply_one() {
     detail Found 'it has no apply step; nothing changed'
     RUN_STATE[i]='done'; return 0
   fi
-  if [[ "$risk" != read-only ]]; then
+  if [[ "$risk" != read-only ]] && (( ! NO_REVERT )); then
     if ! lab_timer_arm "$((LAB_EVENT[REVERT_MINUTES] * 60))" "$LAB_RUN_ID" \
         "$BASH" "$LAB_ROOT/labyrinth.sh" --root "$(readlink -m -- "$DATA_ROOT")" \
         --config "$(readlink -m -- "$LAB_CONFIG_DIR")" -u "$LAB_RUN_ID"; then
@@ -2094,7 +2151,8 @@ apply_one() {
   say OK "$name"
   detail Did 'applied and verified'
   LAB_MODULE_ID="$id" lab_log_info applied "applied and verified"
-  if [[ "${RUN_KEEP[i]}" == true ]]; then keep_module "$id"; fi
+  # With no revert timer there is nothing for a module to be kept from.
+  if [[ "${RUN_KEEP[i]}" == true ]] && (( ! NO_REVERT )); then keep_module "$id"; fi
   RUN_STATE[i]='done'
   return 0
 }
@@ -2243,8 +2301,12 @@ recap() {
     printf -v l '  %-13s%s' "$what" "$(module_name "${RUN_IDS[i]}")"
     out "$l"
   done
-  out "A revert timer undoes this run in ${LAB_EVENT[REVERT_MINUTES]} minutes unless you keep it."
-  if (( kept )); then
+  if (( NO_REVERT )); then
+    out 'No revert timer (--no-revert): the changes stay until you undo them.'
+  else
+    out "A revert timer undoes this run in ${LAB_EVENT[REVERT_MINUTES]} minutes unless you keep it."
+  fi
+  if (( kept && ! NO_REVERT )); then
     out 'A change that only takes access away is kept once it verifies; the timer'
     out 'then leaves it alone.'
   fi
@@ -2313,7 +2375,8 @@ cmd_apply() {
   mkdir -p "$LAB_STATE_DIR/runs/$LAB_RUN_ID" "$LAB_BACKUP_DIR/$LAB_RUN_ID" \
     || die 'the run and backup folders cannot be created; nothing was changed' 40
   if ! record_for '' run_start "$host" "phase $phase, profile $OPT_PROFILE, group $group" \
-      || ! record_for '' breakglass_verified "$BREAKGLASS" "$BREAKGLASS_NOTE"; then
+      || ! record_for '' breakglass_verified "$BREAKGLASS" "$BREAKGLASS_NOTE" \
+      || ! { (( ! NO_REVERT )) || record_for '' run_no_revert '' 'no revert timer: --no-revert'; }; then
     die 'the run manifest cannot be written; nothing was changed' 40 "$FIX_DATA"
   fi
   RUN_OPEN=1 APPLIED=1
@@ -2349,6 +2412,9 @@ cmd_apply() {
   out ''
   if (( stopped )); then
     run_stopped
+  elif (( NO_REVERT )); then
+    out 'All changes are applied and verified. There is no revert timer (--no-revert),'
+    out "so they stay. To undo them: $SELF -u ${LAB_RUN_ID: -4}"
   elif lab_timer_armed "$LAB_RUN_ID" && unkept="$(unkept_modules)" && [[ -z "$unkept" ]]; then
     # Every change was kept once verified: the timer has nothing to undo.
     out 'All changes are applied, verified and kept.'
@@ -2384,6 +2450,12 @@ keep_run() {
     err 'Its changes are gone. Preview and run it again if you still want them.'
     return 20
   fi
+  # A --no-revert run has no timer to cancel, and stays 'no revert'.
+  if grep -q '"action":"run_no_revert"' "$(lab_manifest_file)" 2> /dev/null; then
+    lab_lock_release
+    out "nothing to keep: run $LAB_RUN_ID has no revert timer (--no-revert), so its changes stay"
+    return 0
+  fi
   # Checked by hand: errexit is off inside a function called with ||.
   if ! lab_timer_cancel "$LAB_RUN_ID"; then
     lab_lock_release
@@ -2416,7 +2488,8 @@ list_runs() {
 }
 
 # run_state RUN: the run's state, the first that applies: rolled back,
-# kept, armed (with when the timer fires), or not kept, no timer.
+# kept, no revert (run with --no-revert), armed (with when the timer
+# fires), or not kept, no timer.
 run_state() {
   local f due now line note
   f="$(lab_manifest_file "$1")"
@@ -2427,6 +2500,7 @@ run_state() {
     return 0
   fi
   if grep -q '"action":"run_kept"' "$f" 2> /dev/null; then printf 'kept\n'; return 0; fi
+  if grep -q '"action":"run_no_revert"' "$f" 2> /dev/null; then printf 'no revert\n'; return 0; fi
   if lab_timer_armed "$1"; then
     # Without its unit files systemd has no timer; the run stays armed so
     # keep and rollback still find it, but nothing will roll it back.
@@ -2582,6 +2656,12 @@ cmd_rollback() {
   export LAB_RUN_ID="$RUN_REF"
   [[ -f "$(lab_manifest_file)" ]] || die "no run $LAB_RUN_ID on this host" 40 "'$SELF --history' lists them."
   flush_warnings
+  # --all asks only when it would undo more than -u alone: a module kept
+  # once verified.
+  if [[ -n "${GIVEN[all]+set}" ]]; then
+    kept="$(lab_manifest_kept "$LAB_RUN_ID")" || die "the manifest of run $LAB_RUN_ID cannot be read" 40 'Nothing was undone.'
+    if [[ -n "$kept" ]]; then confirm_all; fi
+  fi
   # The revert timer must work even if a run still holds the lock, hung or
   # waiting at a prompt. That run is stopped first: rolling back beside it
   # would undo changes while it goes on making them and reports success.
@@ -2714,6 +2794,131 @@ probe_report() {
   exit 0
 }
 
+# data_opts: the --root and --config the line gave, for a command to paste.
+data_opts() {
+  if [[ -n "${GIVEN[root]:-}" ]]; then printf ' --root %s' "$(shell_word "${GIVEN[root]}")"; fi
+  if [[ -n "${GIVEN[config]:-}" ]]; then printf ' --config %s' "$(shell_word "${GIVEN[config]}")"; fi
+}
+
+# cmd_status: what typing the name alone shows (docs/Conventions.md section
+# 3.1): the host, its group and profile, the latest run of each phase, any
+# armed revert timer, and the one command to run next. It only reads, and
+# always exits 0, even on a host with no configuration yet.
+cmd_status() {
+  local host rc=0 why='' p id list opts when text next=''
+  local -a page=() runs=() armed=()
+  local -A latest=()
+  if ! lab_is_admin; then
+    mapfile -t page < <(cmd_help '')
+    printf '%s\n' "${page[@]:0:4}"
+    printf '\nThe status of this host needs root: sudo %s\n' "$NAME"
+    printf "'%s -h' lists every action.\n" "$SELF"
+    exit 0
+  fi
+  opts="$(data_opts)"
+  host="$(lab_host)"
+  printf 'labyrinth %s: status of host %s\n' "$LAB_VERSION" "$host"
+  if [[ -f "$LAB_CONFIG_DIR/hosts" ]]; then
+    lab_host_lookup "$host" 2> /dev/null || rc=$?
+    case "$rc" in
+      0) printf 'Group:    %s, profile %s\n' "$LAB_HOST_GROUP" "$LAB_HOST_PROFILE" ;;
+      2) why=unlisted; printf 'Group:    unknown: this host is not in %s/hosts\n' "$LAB_CONFIG_DIR" ;;
+      *) why=malformed; printf 'Group:    unknown: %s/hosts is malformed\n' "$LAB_CONFIG_DIR" ;;
+    esac
+  else
+    why=missing; printf 'Group:    unknown: there is no %s/hosts yet\n' "$LAB_CONFIG_DIR"
+  fi
+  list="$(list_runs)" || list=''
+  if [[ -n "$list" ]]; then mapfile -t runs <<< "$list"; fi
+  for id in "${runs[@]+"${runs[@]}"}"; do latest[$(run_phase "$id")]="$id"; done
+  for p in $PHASES; do
+    id="${latest[$p]:-}"
+    if [[ -z "$id" ]]; then
+      printf '%-9s %s\n' "$p" 'not run'
+    else
+      printf '%-9s %s (run %s, %s UTC)\n' "$p" "$(run_state "$id")" "${id: -4}" \
+        "${id:0:4}-${id:4:2}-${id:6:2} ${id:9:2}:${id:11:2}"
+    fi
+  done
+  list="$(armed_runs)" || list=''
+  if [[ -n "$list" ]]; then mapfile -t armed <<< "$list"; fi
+  if (( ${#armed[@]} == 0 )); then printf 'Timer:    none armed\n'; fi
+  for id in "${armed[@]+"${armed[@]}"}"; do
+    when="$(due_words "$id")" || when='at a time not known'
+    printf 'Timer:    run %s is undone %s\n' "${id: -4}" "$when"
+  done
+  # The next step: the first that applies.
+  case "$why" in
+    missing | unlisted) next="list this host in $LAB_CONFIG_DIR/hosts, then run '$SELF$opts' again." ;;
+    malformed) next="correct $LAB_CONFIG_DIR/hosts, then run '$SELF$opts' again." ;;
+  esac
+  if [[ -z "$next" ]] && (( ${#armed[@]} > 0 )); then
+    id="${armed[${#armed[@]}-1]}"
+    next="check you can log in from a NEW session, then '$SELF -k ${id: -4}$opts'."
+  fi
+  if [[ -z "$next" && "${LAB_HOST_GROUP:-}" == manual ]]; then
+    next='none: this host is in the manual group; configure it by hand, from its runbook.'
+  fi
+  if [[ -z "$next" ]]; then
+    for p in $PHASES; do
+      id="${latest[$p]:-}"
+      text=''
+      if [[ -n "$id" ]]; then text="$(run_state "$id")"; fi
+      if [[ -z "$id" || "$text" == undone* ]]; then next="preview $p: '$SELF $p$opts'"; break; fi
+    done
+  fi
+  printf 'Next: %s\n' "${next:-"test the scored services: '$SELF --probe$opts'"}"
+  exit 0
+}
+
+# cmd_manual: the full manual, scrollable (docs/Conventions.md section 3.1):
+# this copy's own man page, with 'man -l', then through less; else printed.
+# 'man laby' is never asked, as another program can own that name. Without
+# a man page, the Markdown source is shown the same way, split for Linux
+# when the splitter is there. It changes nothing and needs no root; it
+# exits 0, or 40 when this copy has no manual at all.
+cmd_manual() {
+  local manpage="$LAB_ROOT/manual/labyrinth.1" src="$LAB_ROOT/docs/manual/labyrinth.md" text=''
+  local split="$LAB_ROOT/tools/manual/split.sh"
+  if [[ -f "$manpage" ]] && command -v man > /dev/null 2>&1 && man -l "$manpage"; then exit 0; fi
+  if [[ -f "$manpage" ]]; then
+    # Formatted when nroff is there, without its overstrike for bold.
+    if command -v nroff > /dev/null 2>&1; then
+      text="$(GROFF_NO_SGR=1 nroff -man "$manpage" 2> /dev/null | sed 's/.\x08//g')" || text=''
+    fi
+    if [[ -z "$text" ]]; then text="$(cat -- "$manpage")"; fi
+  elif [[ -f "$src" ]]; then
+    if [[ -f "$split" ]]; then text="$(bash "$split" linux "$src" 2> /dev/null)" || text=''; fi
+    if [[ -z "$text" ]]; then text="$(cat -- "$src")"; fi
+  else
+    die "this copy has no manual: there is no $manpage" 40 \
+      "Copy Labyrinth here again from the team's copy, which has it."
+  fi
+  if command -v less > /dev/null 2>&1 && printf '%s\n' "$text" | less; then exit 0; fi
+  printf '%s\n' "$text"
+  exit 0
+}
+
+# confirm_all: the question before -u ID --all, which also undoes changes
+# kept once verified (docs/Conventions.md section 3.1). The default is no;
+# -y answers yes. Without a terminal and without -y, nothing is undone (40).
+confirm_all() {
+  local answer=''
+  if [[ -n "${GIVEN[yes]+set}" ]]; then return 0; fi
+  if ! lab_tty_ok; then
+    printf '%s: -u --all asks first, and there is no terminal to ask on\n' "$NAME" >&2
+    printf 'Nothing was undone. To answer yes, add -y: %s -u %s --all -y\n' "$SELF" "${LAB_RUN_ID: -4}" >&2
+    exit 40
+  fi
+  lab_tty_write "Undo run ${LAB_RUN_ID: -4} with --all? It also undoes changes kept once verified,"$'\n'
+  lab_tty_write 'such as a new password, which can give an intruder access back. [y/N] '
+  answer="$(lab_tty_read)" || answer=''
+  case "${answer,,}" in
+    y | yes) ;;
+    *) printf 'Nothing was undone.\n'; exit 0 ;;
+  esac
+}
+
 # help_unknown WORD HINT: a help topic that does not exist: one line, with a
 # near miss if there is one, then the main help. Still exit 0.
 help_unknown() {
@@ -2746,7 +2951,7 @@ show_help() {
       return 0
     fi
   else
-    for name in all profile root config break-glass confirm-group approve; do
+    for name in all yes no-revert profile root config break-glass confirm-group approve; do
       if [[ -n "${GIVEN[$name]+set}" ]]; then topic="$name"; break; fi
     done
   fi
@@ -2774,6 +2979,7 @@ bad_word() {
     history) hint="$SELF --history" ;;
     probe) hint="$SELF --probe" ;;
     version) hint="$SELF -V" ;;
+    manual) hint="$SELF --manual" ;;
     *) hint="$(suggest "$lc" $PHASES)" ;;
   esac
   usage_error "'$1' is not a phase.${hint:+ Did you mean '$hint'?}" \
@@ -2785,9 +2991,8 @@ main() {
   local -a used=()
   parse_args "$@"
   # Help never runs anything: it comes before every other check and read,
-  # whatever else the line says. Typing nothing is the same page.
+  # whatever else the line says.
   if (( HELP_ASKED )); then show_help; exit 0; fi
-  if (( $# == 0 )); then cmd_help ''; exit 0; fi
   set_try_topic
   if [[ -n "$PARSE_ERR" ]]; then usage_error "$PARSE_ERR"; fi
   if (( ${#ACTIONS[@]} > 1 )); then
@@ -2795,13 +3000,31 @@ main() {
       'Give one action at a time.'
   fi
   action="${ACTIONS[0]:-}"
-  if [[ -n "${GIVEN[all]+set}" && "$action" != undo ]]; then
-    if [[ -z "$action" ]]; then
-      usage_error '--all is only for -u, not a preview'
-    fi
-    usage_error "--all is only for -u, not $(show_opt "$action")"
-  fi
   set -- "${WORDS[@]+"${WORDS[@]}"}"
+  # No action and no phase is the status (docs/Conventions.md section 3.1),
+  # unless the line gives an option only a preview or -r uses.
+  if [[ -z "$action" ]] && (( $# == 0 )) \
+      && [[ -z "${GIVEN[profile]+s}${GIVEN[break-glass]+s}${GIVEN[confirm-group]+s}${GIVEN[approve]+s}" ]]; then
+    action=status
+  fi
+  case "$action" in
+    '') label='a preview' ;;
+    status) label='the status' ;;
+    *) label="$(show_opt "$action")" ;;
+  esac
+  if [[ -n "${GIVEN[all]+set}" && "$action" != undo ]]; then
+    usage_error "--all is only for -u, not $label"
+  fi
+  # -y and --no-revert are refused where they would do nothing, so no one
+  # believes they took effect.
+  if [[ -n "${GIVEN[yes]+set}" && "$action" == undo && -z "${GIVEN[all]+set}" ]]; then
+    usage_error '-y is only for -u ID --all: add --all, or leave out -y'
+  elif [[ -n "${GIVEN[yes]+set}" && "$action" != undo ]]; then
+    usage_error "-y is only for -u ID --all, not $label"
+  fi
+  if [[ -n "${GIVEN[no-revert]+set}" && "$action" != run ]]; then
+    usage_error "--no-revert is only for -r, not $label"
+  fi
   case "$action" in
     '' | run)
       if (( $# == 0 )); then
@@ -2831,11 +3054,14 @@ main() {
         usage_error "not a run ID: '$word' (give the ID or its last 4 characters)"
       fi
       label="$(show_opt "$action")" ;;
-    probe | history | version)
+    probe | history | version | manual)
       (( $# == 0 )) || usage_error "unexpected word '$1' after '$(show_opt "$action")'"
       label="$(show_opt "$action")" ;;
   esac
   if [[ "$action" == version ]]; then cmd_version; exit 0; fi
+  # Like help and -V, the manual reads no configuration and needs no root.
+  if [[ "$action" == manual ]]; then cmd_manual; fi
+  if [[ "$action" == run && -n "${GIVEN[no-revert]+set}" ]]; then NO_REVERT=1; fi
 
   OPT_PROFILE="${GIVEN[profile]:-}"
   OPT_BREAKGLASS="${GIVEN[break-glass]:-}"
@@ -2869,6 +3095,7 @@ main() {
   esac
   case "$CMD" in plan | apply | probe) check_host ;; esac
   case "$CMD" in
+    status) cmd_status ;;
     plan) cmd_plan "$phase" ;;
     apply) cmd_apply "$phase" ;;
     keep) cmd_keep "$word" ;;

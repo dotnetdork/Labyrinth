@@ -5,12 +5,14 @@
 
 .DESCRIPTION
     One action per line ('laby' is this program, run as shown):
+      .\labyrinth.ps1                  this host's status and the next step
       .\labyrinth.ps1 PHASE            preview a phase: nothing changes
       .\labyrinth.ps1 -r PHASE         run a phase: plan, confirm, then change
       .\labyrinth.ps1 -k ID            keep a run: cancel its revert timer
       .\labyrinth.ps1 -u ID [-All]     undo a run, newest change first
       .\labyrinth.ps1 -History         list this host's runs and their state
       .\labyrinth.ps1 -Probe           test every scored service once
+      .\labyrinth.ps1 -Manual          the full manual, one screen at a time
       .\labyrinth.ps1 -V               the version; also -Version
       .\labyrinth.ps1 -h [TOPIC]       help; also -Help and /?
 
@@ -25,6 +27,8 @@
       -ConfirmGroup GROUP     answer the group-name prompt (-r only)
       -Approve LIST           approve items without the prompt (-r only)
       -All                    with -u: also undo changes kept once verified
+      -y, -Yes                with -u ID -All: yes to its question
+      -NoRevert               with -r: no revert timer, for test machines
 
     Short letters are case-sensitive: -P and -V are capitals. Long names
     ignore case, and a double dash (--root) works too. -k and -u need an ID.
@@ -35,8 +39,9 @@
 
     New to Labyrinth? '.\labyrinth.ps1 -h basics' explains the ideas in
     plain words. '.\labyrinth.ps1 -h ACTION' explains one action, and
-    '.\labyrinth.ps1 -h MODULE-ID' one module. The operator manual is the
-    Windows parts of docs\manual\labyrinth.md in Labyrinth's folder.
+    '.\labyrinth.ps1 -h MODULE-ID' one module. '.\labyrinth.ps1 -Manual'
+    shows the operator manual, which installed Labyrinth also has as
+    Get-Help about_Labyrinth.
 
 .EXAMPLE
     .\labyrinth.ps1 lockout
@@ -112,6 +117,7 @@ $script:LabOptions = @(
     @{ Name = 'probe'; Show = '-Probe'; Long = '-Probe'; Key = 'probe'; Short = ''; Value = $false; Action = $true }
     @{ Name = 'history'; Show = '-History'; Long = '-History'; Key = 'history'; Short = ''; Value = $false; Action = $true }
     @{ Name = 'version'; Show = '-V'; Long = '-Version'; Key = 'version'; Short = 'V'; Value = $false; Action = $true }
+    @{ Name = 'manual'; Show = '-Manual'; Long = '-Manual'; Key = 'manual'; Short = ''; Value = $false; Action = $true }
     @{ Name = 'all'; Show = '-All'; Long = '-All'; Key = 'all'; Short = ''; Value = $false; Action = $false }
     @{ Name = 'profile'; Show = '-Profile'; Long = '-Profile'; Key = 'profile'; Short = 'P'; Value = $true; Action = $false }
     @{ Name = 'root'; Show = '-Root'; Long = '-Root'; Key = 'root'; Short = ''; Value = $true; Action = $false }
@@ -119,6 +125,8 @@ $script:LabOptions = @(
     @{ Name = 'break-glass'; Show = '-BreakGlass'; Long = '-BreakGlass'; Key = 'breakglass'; Short = ''; Value = $true; Action = $false }
     @{ Name = 'confirm-group'; Show = '-ConfirmGroup'; Long = '-ConfirmGroup'; Key = 'confirmgroup'; Short = ''; Value = $true; Action = $false }
     @{ Name = 'approve'; Show = '-Approve'; Long = '-Approve'; Key = 'approve'; Short = ''; Value = $true; Action = $false }
+    @{ Name = 'yes'; Show = '-y'; Long = '-Yes'; Key = 'yes'; Short = 'y'; Value = $false; Action = $false }
+    @{ Name = 'no-revert'; Show = '-NoRevert'; Long = '-NoRevert'; Key = 'norevert'; Short = ''; Value = $false; Action = $false }
     @{ Name = 'help'; Show = '-h'; Long = '-Help'; Key = 'help'; Short = 'h'; Value = $false; Action = $false }
 )
 # The flags that docs/Conventions.md section 3.3 plans and nothing builds yet:
@@ -130,9 +138,6 @@ $script:LabPlanned = @(
     @{ Short = 'a'; Key = ''; Show = '-Approve, with -Queue' }
     @{ Short = 'd'; Key = 'decline'; Show = '-Decline, with -Queue' }
     @{ Short = 'v'; Key = 'verbose'; Show = '-Verbose' }
-    @{ Short = 'y'; Key = 'yes'; Show = '-Yes' }
-    @{ Short = ''; Key = 'norevert'; Show = '-NoRevert' }
-    @{ Short = ''; Key = 'manual'; Show = '-Manual' }
 )
 $script:Arguments = @($args)     # the words, before any function runs
 $script:ArgPos = 0               # the next word of Arguments to read
@@ -175,6 +180,7 @@ $script:Answer = ''
 $script:Command = ''             # the command being run, for the last catch
 $script:RunRef = ''              # the run keep or rollback acts on
 $script:RunOpen = $false         # true once an apply has recorded run_start
+$script:NoRevert = $false        # -NoRevert: no revert timer, no keep question
 $script:GaveReason = $false      # did the last entry point end with a 'problem:' line?
 $script:EntryLast = ''           # the last line an entry point printed that was not blank
 $script:Titles = @{}             # module ID -> title, for the status lines
@@ -193,12 +199,14 @@ $Labels = @('found', 'will do', 'did', 'why', 'risk', 'problem', 'cause', 'fix',
 # The main page is at most 24 lines and each topic at most 18 (basics 24), of
 # at most 78 columns with the name '.\labyrinth.ps1', with an Exit line, an
 # Example line and a See also line (docs/Conventions.md section 3.2).
+# -Lines N prints only the first N lines.
 function Show-LabHelp {
-    param([string] $Topic = '')
+    param([string] $Topic = '', [int] $Lines = 0)
     $text = switch ($Topic) {
         '' { @'
 Usage: @CMD@ PHASE                preview a phase: nothing changes
        @CMD@ -r PHASE             run a phase for real
+       @CMD@                      this host's status and next step
        @CMD@ ACTION [OPTIONS]
 
 Actions (one per line):
@@ -207,18 +215,19 @@ Actions (one per line):
   -u, --undo ID [--all]   undo a run, newest change first
       --history           list this host's runs and their IDs
       --probe             test every scored service once
-  -V, --version           print the version
+  -V, --version           print the version      --manual   the full manual
 
 Options:
   -P, --profile NAME      profile to use, if not this host's line in hosts
   --root DIR              data root         --config DIR   configuration
-  --break-glass NAME, --confirm-group GROUP, --approve LIST:
-                          see @CMD@ -h run
+  -y, --yes               yes to the question before -u ID --all
+  --no-revert             with -r: no revert timer, for test machines
+  --break-glass NAME, --confirm-group GROUP, --approve LIST: see -h run
   -h, --help [TOPIC]      help; TOPIC: an action, option, phase or basics
 
 Phases: lockout, observe, deceive, sustain. ID: a run ID or its last 4.
 Exit: 0 ok, 10 change needed, 20 blocked, 30 check failed, 40 error.
-Full manual: docs/manual/labyrinth.md in the release
+Full manual: @CMD@ --manual   (Linux also: man laby)
 '@ }
         'run' { @'
 Usage: @CMD@ -r PHASE [-P NAME] [--root DIR] [--config DIR]
@@ -233,6 +242,7 @@ Options:
   --break-glass NAME     answer the break-glass prompt
   --confirm-group GROUP  answer the group-name prompt
   --approve LIST         approve without asking: module:item@fingerprint,...
+  --no-revert            no revert timer and no keep question: test machines
 
 Exit: 0 done, 10 manual steps left, 20 blocked, 30 check failed, 40 error.
 Blocked: not an Administrator, another run, host not in hosts, or a gate.
@@ -256,7 +266,7 @@ Example: @CMD@ -k 4f2a
 See also: @CMD@ --history, @CMD@ -h undo
 '@ }
         'undo' { @'
-Usage: @CMD@ -u ID [--all] [--root DIR] [--config DIR]
+Usage: @CMD@ -u ID [--all [-y]] [--root DIR] [--config DIR]
 
 Undo what the run changed, newest change first. This is what the
 revert timer runs. Safe to run twice. ID is always needed: a run ID or
@@ -265,9 +275,10 @@ an Administrator.
 
 Options:
   --all                  also undo changes kept once they verified
+  -y, --yes              with --all: yes to its question, asked first
   --root DIR, --config DIR   data root, configuration folder
 
-Exit: 0 undone, 20 blocked, 40 error.
+Exit: 0 undone or not confirmed, 20 blocked, 40 error.
 Blocked: not an Administrator, or a file another account can change.
 Example: @CMD@ -u 4f2a
 See also: @CMD@ --history, @CMD@ -h keep
@@ -277,7 +288,8 @@ Usage: @CMD@ --history [--root DIR] [--config DIR]
 
 List this host's runs, oldest first: run ID, phase, start time (UTC)
 and state: armed (and when it is undone), kept, undone,
-undone with errors, or not kept, no timer. 'armed: timer lost'
+undone with errors, no revert (run with --no-revert), or
+not kept, no timer. 'armed: timer lost'
 means the timer's files are gone and nothing will undo the run by
 itself: keep it or undo it. Changes nothing; needs root or an
 Administrator.
@@ -306,6 +318,44 @@ release hash. --version does the same.
 Exit: 0 printed.
 Example: @CMD@ -V
 See also: @CMD@ -h
+'@ }
+        'manual' { @'
+Usage: @CMD@ --manual
+
+Open the full manual, one screen at a time: the help topic
+about_Labyrinth from this release's manual folder or the installed
+copy. When the output is not a console, the manual is printed.
+Changes nothing and needs no Administrator.
+
+Exit: 0 shown, 40 no manual in this copy.
+Example: @CMD@ --manual
+See also: @CMD@ -h, @CMD@ -h basics
+'@ }
+        'yes' { @'
+Usage: @CMD@ -u ID --all -y
+
+Answer yes to the question asked before -u ID --all, which also
+undoes changes kept once verified, such as a new password. Without a
+terminal to ask on, -u ID --all is refused unless -y is given.
+-y never keeps a run: the login check after -r is always yours.
+Used by: -u with --all only.
+
+Exit: 40 if given with anything else.
+Example: @CMD@ -u 4f2a --all -y
+See also: @CMD@ -h all, @CMD@ -h undo
+'@ }
+        'no-revert' { @'
+Usage: @CMD@ -r PHASE --no-revert
+
+Arm no revert timer and ask nothing at the end: the changes stay
+until you undo them with -u. For test machines only: a change that
+locks you out is not undone by itself. The run records it, and
+--history shows the run as 'no revert'.
+Used by: -r only.
+
+Exit: 40 if given with anything else.
+Example: @CMD@ -r observe --no-revert
+See also: @CMD@ -h run, @CMD@ -h undo
 '@ }
         'profile' { @'
 Usage: @CMD@ [-r] PHASE -P NAME
@@ -464,7 +514,9 @@ Exit: 0 printed.
 Example: @CMD@ -h basics
 '@ }
     }
-    foreach ($l in ($text -split "`r?`n")) { [Console]::Out.WriteLine($l.Replace('@CMD@', $Self)) }
+    $all = @($text -split "`r?`n")
+    if ($Lines -gt 0 -and $Lines -lt $all.Count) { $all = $all[0..($Lines - 1)] }
+    foreach ($l in $all) { [Console]::Out.WriteLine($l.Replace('@CMD@', $Self)) }
 }
 
 # Get-LabRiskWord RISK: what a module's risk means, in plain words.
@@ -893,7 +945,7 @@ function Show-LabAskedHelp {
             }
         }
     } else {
-        foreach ($name in @('all', 'profile', 'root', 'config', 'break-glass', 'confirm-group', 'approve')) {
+        foreach ($name in @('all', 'yes', 'no-revert', 'profile', 'root', 'config', 'break-glass', 'confirm-group', 'approve')) {
             if ($script:Given.ContainsKey($name)) { $topic = $name; break }
         }
     }
@@ -923,6 +975,7 @@ function Exit-LabBadWord {
     elseif ($lc -ceq 'history') { $hint = "$Self -History" }
     elseif ($lc -ceq 'probe') { $hint = "$Self -Probe" }
     elseif ($lc -ceq 'version') { $hint = "$Self -V" }
+    elseif ($lc -ceq 'manual') { $hint = "$Self -Manual" }
     else { $hint = Get-LabSuggestion $Word.ToLowerInvariant() $Phases }
     $text = "'$Word' is not a phase."
     if ($hint -ne '') { $text += " Did you mean '$hint'?" }
@@ -987,7 +1040,7 @@ function Write-LabVersion {
 function Test-LabUndoAsked {
     foreach ($a in $script:Arguments) {
         if ($a -isnot [string]) { continue }
-        if ($a -cmatch '^-[rkuVPh]*u[rkuVPh]*$' -or $a -match '^--?undo([=:].*)?$') { return $true }
+        if ($a -cmatch '^-[rkuVPhy]*u[rkuVPhy]*$' -or $a -match '^--?undo([=:].*)?$') { return $true }
     }
     return $false
 }
@@ -1271,7 +1324,9 @@ function ConvertTo-LabShellWord {
 function Write-LabNextStep {
     param([string] $Mode, [int] $Code, [string] $Phase)
     $short = Get-LabShortId $env:LAB_RUN_ID
-    if ($Mode -ceq 'apply' -and $script:Stopped) {
+    if ($Mode -ceq 'apply' -and $script:Stopped -and $script:NoRevert) {
+        Write-LabLine 'Next: undo the earlier changes with the command above, unless they should stay.'
+    } elseif ($Mode -ceq 'apply' -and $script:Stopped) {
         Write-LabLine 'Next: undo the earlier changes, or keep them, with the commands above.'
     } elseif ($Mode -ceq 'apply' -and $script:Applied -and (Test-LabRevertTimer -RunId $env:LAB_RUN_ID)) {
         Write-LabLine "Next: check you can log in from a NEW session, then $Self -k $short."
@@ -1297,8 +1352,7 @@ function Write-LabNextStep {
         } else {
             $opts = ''
             if ($script:Given.ContainsKey('profile')) { $opts += " -Profile $($script:Given['profile'])" }
-            if ($script:Given.ContainsKey('root')) { $opts += " -Root $(ConvertTo-LabShellWord $script:Given['root'])" }
-            if ($script:Given.ContainsKey('config')) { $opts += " -Config $(ConvertTo-LabShellWord $script:Given['config'])" }
+            $opts += Get-LabDataOption
             # A command too long for one line goes on a line of its own.
             if (("$Self -r $Phase$opts").Length + 6 -gt 78) {
                 Write-LabLine 'Next:'
@@ -1330,6 +1384,7 @@ function Exit-LabRun {
         Write-LabSummary 'apply'
         $problems = $script:Stopped -or @($script:Run | Where-Object { $_.State -ceq 'failed' -or $_.State -ceq 'error' }).Count -gt 0
         if ($problems) { Add-LabProblemMark }
+        if ($script:NoRevert) { Write-LabLine 'Revert timer: none (-NoRevert).' }
     }
     if ($script:LogFile -ne '') { Write-LabLine "Log: $($script:LogFile)" }
     Write-LabNextStep $Mode $Code $Phase
@@ -1345,6 +1400,11 @@ function Add-LabProblemMark {
 
 # Get-LabRunStopped: what the operator needs after a run stops partway.
 function Get-LabRunStopped {
+    if ($script:NoRevert) {
+        'The run stopped. Earlier changes stay: there is no revert timer (-NoRevert).'
+        "To undo them now: $Self -u $(Get-LabShortId $env:LAB_RUN_ID)"
+        return
+    }
     'The run stopped. Earlier changes stay until the revert timer undoes them.'
     $when = Get-LabDueWord $env:LAB_RUN_ID
     if ($when -ne '') { "The revert timer undoes this run $when." }
@@ -2198,7 +2258,7 @@ function Invoke-LabApplyOne {
         Write-LabDetail 'Found' 'it has no apply step; nothing changed'
         $M.State = 'done'; return 0
     }
-    if ($M.Risk -ne 'read-only') {
+    if ($M.Risk -ne 'read-only' -and -not $script:NoRevert) {
         try {
             $exe = (Get-Process -Id $PID).Path
             $arg = '-NoProfile -NonInteractive -ExecutionPolicy Bypass -File {0} -u {1} -Root {2} -Config {3}' -f `
@@ -2295,7 +2355,8 @@ function Invoke-LabApplyOne {
     Write-LabStatus 'OK' $name
     Write-LabDetail 'Did' 'applied and verified'
     Write-LabLogFor $id 'info' 'applied' 'applied and verified'
-    if ($M.Keep) { Save-LabModuleKept $id }
+    # With no revert timer there is nothing for a module to be kept from.
+    if ($M.Keep -and -not $script:NoRevert) { Save-LabModuleKept $id }
     $M.State = 'done'
     return 0
 }
@@ -2467,8 +2528,12 @@ function Write-LabRecap {
         elseif ($m.Rc -eq 20) { $what = 'Blocked:' }
         if ($what -ne '') { Write-LabLine ('  {0}{1}' -f $what.PadRight(13), (Get-LabModuleName $m.Id)) }
     }
-    Write-LabLine "A revert timer undoes this run in $($script:Settings['REVERT_MINUTES']) minutes unless you keep it."
-    if ($kept) {
+    if ($script:NoRevert) {
+        Write-LabLine 'No revert timer (-NoRevert): the changes stay until you undo them.'
+    } else {
+        Write-LabLine "A revert timer undoes this run in $($script:Settings['REVERT_MINUTES']) minutes unless you keep it."
+    }
+    if ($kept -and -not $script:NoRevert) {
         Write-LabLine 'A change that only takes access away is kept once it verifies; the timer'
         Write-LabLine 'then leaves it alone.'
     }
@@ -2541,6 +2606,7 @@ function Invoke-LabApplyCommand {
         try {
             Add-LabEntryFor '' 'run_start' $hostName "phase $Phase, profile $($script:ProfileName), group $group"
             Add-LabEntryFor '' 'breakglass_verified' $script:BreakGlassAccount $script:BreakGlassNote
+            if ($script:NoRevert) { Add-LabEntryFor '' 'run_no_revert' '' 'no revert timer: -NoRevert' }
         } catch {
             Write-LabErrorLine $_.Exception.Message
             Exit-Lab 'the run manifest cannot be written; nothing was changed' 40 $FixData
@@ -2580,6 +2646,9 @@ function Invoke-LabApplyCommand {
     Write-LabLine ''
     if ($stopped) {
         foreach ($l in (Get-LabRunStopped)) { Write-LabLine $l }
+    } elseif ($script:NoRevert) {
+        Write-LabLine 'All changes are applied and verified. There is no revert timer (-NoRevert),'
+        Write-LabLine "so they stay. To undo them: $Self -u $(Get-LabShortId $env:LAB_RUN_ID)"
     } elseif ((Test-LabRevertTimer -RunId $env:LAB_RUN_ID) -and @(Get-LabUnkeptModule).Count -eq 0) {
         # Every change was kept once verified: the timer has nothing to undo.
         Write-LabLine 'All changes are applied, verified and kept.'
@@ -2616,6 +2685,11 @@ function Invoke-LabKeep {
             Write-LabErrorLine "labyrinth: too late: run $env:LAB_RUN_ID was already undone"
             Write-LabErrorLine 'Its changes are gone. Preview and run it again if you still want them.'
             return 20
+        }
+        # A -NoRevert run has no timer to cancel, and stays 'no revert'.
+        if (@(Get-LabManifestEntry | Where-Object { $_.action -ceq 'run_no_revert' }).Count -gt 0) {
+            Write-LabLine "nothing to keep: run $env:LAB_RUN_ID has no revert timer (-NoRevert), so its changes stay"
+            return 0
         }
         try {
             Unregister-LabRevertTimer -RunId $env:LAB_RUN_ID
@@ -2655,7 +2729,8 @@ function Get-LabRunList {
 }
 
 # Get-LabRunState RUN: the run's state, the first that applies: rolled
-# back, kept, armed (with when the timer fires), or not kept, no timer.
+# back, kept, no revert (run with -NoRevert), armed (with when the timer
+# fires), or not kept, no timer.
 function Get-LabRunState {
     param([string] $RunId)
     $entries = @(Get-LabManifestEntry -RunId $RunId)
@@ -2665,6 +2740,7 @@ function Get-LabRunState {
         return 'undone with errors'
     }
     if (@($entries | Where-Object { $_.action -ceq 'run_kept' }).Count -gt 0) { return 'kept' }
+    if (@($entries | Where-Object { $_.action -ceq 'run_no_revert' }).Count -gt 0) { return 'no revert' }
     if (Test-LabRevertTimer -RunId $RunId) {
         $due = Get-LabRevertTimerDue -RunId $RunId
         if ($due -eq '') { return 'armed: undo time unknown' }
@@ -2789,6 +2865,9 @@ function Invoke-LabRollbackCommand {
     $script:RunRef = $env:LAB_RUN_ID
     if (-not (Test-Path -LiteralPath (Get-LabManifestPath) -PathType Leaf)) { Exit-Lab "no run $env:LAB_RUN_ID on this host" 40 "'$Self -History' lists them." }
     Write-LabPendingWarning
+    # -All asks only when it would undo more than -u alone: a module kept
+    # once verified.
+    if ($script:Given.ContainsKey('all') -and (Get-LabKeptModule -RunId $env:LAB_RUN_ID).Count -gt 0) { Confirm-LabUndoAll }
     # The revert timer must work even if a run still holds the lock, hung or
     # waiting at a prompt. That run is stopped first: rolling back beside it
     # would undo changes while it goes on making them and reports success.
@@ -2924,6 +3003,162 @@ function Write-LabProbeReport {
     exit 0
 }
 
+# Get-LabDataOption: the -Root and -Config the line gave, for a command to
+# paste.
+function Get-LabDataOption {
+    $opts = ''
+    if ($script:Given.ContainsKey('root')) { $opts += " -Root $(ConvertTo-LabShellWord $script:Given['root'])" }
+    if ($script:Given.ContainsKey('config')) { $opts += " -Config $(ConvertTo-LabShellWord $script:Given['config'])" }
+    return $opts
+}
+
+# Invoke-LabStatusCommand: what typing the name alone shows
+# (docs/Conventions.md section 3.1): the host, its group and profile, the
+# latest run of each phase, any armed revert timer, and the one command to
+# run next. It only reads, and always exits 0, even on a host with no
+# configuration yet.
+function Invoke-LabStatusCommand {
+    if (-not (Test-LabAdmin)) {
+        Show-LabHelp '' 4
+        [Console]::Out.WriteLine('')
+        [Console]::Out.WriteLine('The status of this host needs an elevated Administrator session:')
+        [Console]::Out.WriteLine("open PowerShell with 'Run as administrator', then run $Self.")
+        [Console]::Out.WriteLine("'$Self -h' lists every action.")
+        exit 0
+    }
+    $opts = Get-LabDataOption
+    $hostName = Get-LabHostName
+    $hostsFile = Join-Path $env:LAB_CONFIG_DIR 'hosts'
+    $why = ''
+    $entry = $null
+    [Console]::Out.WriteLine("labyrinth ${LabVersion}: status of host $hostName")
+    if (-not (Test-Path -LiteralPath $hostsFile -PathType Leaf)) {
+        $why = 'missing'
+        [Console]::Out.WriteLine("Group:    unknown: there is no $hostsFile yet")
+    } else {
+        try { $entry = Find-LabHost -Name $hostName } catch { $why = 'malformed' }
+        if ($why -ceq 'malformed') {
+            [Console]::Out.WriteLine("Group:    unknown: $hostsFile is malformed")
+        } elseif ($null -eq $entry) {
+            $why = 'unlisted'
+            [Console]::Out.WriteLine("Group:    unknown: this host is not in $hostsFile")
+        } else {
+            [Console]::Out.WriteLine("Group:    $($entry.Group), profile $($entry.Profile)")
+        }
+    }
+    $latest = @{}
+    foreach ($id in @(Get-LabRunList)) { $latest[(Get-LabRunPhase $id)] = $id }
+    foreach ($p in $Phases) {
+        if ($latest.ContainsKey($p)) {
+            $id = $latest[$p]
+            $start = '{0}-{1}-{2} {3}:{4}' -f $id.Substring(0, 4), $id.Substring(4, 2), $id.Substring(6, 2), $id.Substring(9, 2), $id.Substring(11, 2)
+            [Console]::Out.WriteLine(('{0,-9} {1} (run {2}, {3} UTC)' -f $p, (Get-LabRunState $id), $id.Substring($id.Length - 4), $start))
+        } else {
+            [Console]::Out.WriteLine(('{0,-9} not run' -f $p))
+        }
+    }
+    $armed = @(Get-LabArmedRun)
+    if ($armed.Count -eq 0) { [Console]::Out.WriteLine('Timer:    none armed') }
+    foreach ($id in $armed) {
+        $when = Get-LabDueWord $id
+        if ($when -eq '') { $when = 'at a time not known' }
+        [Console]::Out.WriteLine("Timer:    run $($id.Substring($id.Length - 4)) is undone $when")
+    }
+    # The next step: the first that applies.
+    $next = ''
+    if ($why -ceq 'missing' -or $why -ceq 'unlisted') { $next = "list this host in $hostsFile, then run $Self$opts again." }
+    elseif ($why -ceq 'malformed') { $next = "correct $hostsFile, then run $Self$opts again." }
+    if ($next -eq '' -and $armed.Count -gt 0) {
+        $next = "check you can log in from a NEW session, then $Self -k $(Get-LabShortId $armed[-1])$opts."
+    }
+    if ($next -eq '' -and $null -ne $entry -and $entry.Group -ceq 'manual') {
+        $next = 'none: this host is in the manual group; configure it by hand, from its runbook.'
+    }
+    if ($next -eq '') {
+        foreach ($p in $Phases) {
+            if (-not $latest.ContainsKey($p) -or (Get-LabRunState $latest[$p]) -like 'undone*') {
+                $next = "preview ${p}: $Self $p$opts"
+                break
+            }
+        }
+    }
+    if ($next -eq '') { $next = "test the scored services: $Self -Probe$opts" }
+    [Console]::Out.WriteLine("Next: $next")
+    exit 0
+}
+
+# ConvertFrom-LabManualSource LINES: the Windows text of the manual's
+# Markdown source, as tools/manual/split.sh makes it: Linux blocks and
+# comment blocks dropped, the placeholders filled in.
+function ConvertFrom-LabManualSource {
+    param([string[]] $Lines)
+    $block = ''
+    $note = $false
+    foreach ($l in $Lines) {
+        if ($note) { if ($l -ceq '-->') { $note = $false }; continue }
+        if ($l -ceq '<!--') { $note = $true; continue }
+        if ($l -cmatch '^<!-- (linux|windows) -->$') { $block = $Matches[1]; continue }
+        if ($l -ceq '<!-- end -->') { $block = ''; continue }
+        if ($block -ceq 'linux') { continue }
+        $l.Replace('@CMD@', '.\labyrinth.ps1').Replace('@ROOT@', 'C:\ProgramData\Labyrinth').Replace('@ADMIN@', 'an Administrator').Replace('@MANUAL@', 'for Windows')
+    }
+}
+
+# Show-LabManual: the full manual, one screen at a time (docs/Conventions.md
+# section 3.1): the help topic from this copy's manual folder, else the
+# installed one, else the Markdown source; printed when the output is not a
+# console. It changes nothing and needs no Administrator; it exits 0, or 40
+# when this copy has no manual at all.
+function Show-LabManual {
+    $candidates = @(Join-Path $PSScriptRoot 'manual\about_Labyrinth.help.txt')
+    if ("$env:ProgramFiles" -ne '') {
+        $candidates += Join-Path $env:ProgramFiles 'WindowsPowerShell\Modules\Labyrinth\en-US\about_Labyrinth.help.txt'
+    }
+    $candidates += Join-Path $PSScriptRoot 'docs\manual\labyrinth.md'
+    $file = ''
+    foreach ($c in $candidates) {
+        if (Test-Path -LiteralPath $c -PathType Leaf) { $file = $c; break }
+    }
+    if ($file -eq '') { Exit-Lab "this copy has no manual: there is no $($candidates[0])" 40 "Copy Labyrinth here again from the team's copy, which has it." }
+    $lines = [IO.File]::ReadAllLines($file)
+    if ($file -like '*.md') { $lines = ConvertFrom-LabManualSource $lines }
+    if (-not [Console]::IsOutputRedirected) {
+        # A host with no paging, such as the ISE, prints the manual instead;
+        # quitting the pager part way ends here, without printing it again.
+        try {
+            $lines | Out-Host -Paging
+        } catch [System.Management.Automation.PipelineStoppedException], [System.Management.Automation.HaltCommandException] {
+            exit 0
+        } catch {
+            foreach ($l in $lines) { [Console]::Out.WriteLine($l) }
+        }
+        exit 0
+    }
+    foreach ($l in $lines) { [Console]::Out.WriteLine($l) }
+    exit 0
+}
+
+# Confirm-LabUndoAll: the question before -u ID -All, which also undoes
+# changes kept once verified (docs/Conventions.md section 3.1). The default
+# is no; -y answers yes. Without a terminal and without -y, nothing is
+# undone (40).
+function Confirm-LabUndoAll {
+    if ($script:Given.ContainsKey('yes')) { return }
+    $short = Get-LabShortId $env:LAB_RUN_ID
+    if (-not (Test-LabTerminal)) {
+        Write-LabErrorLine 'labyrinth: -u -All asks first, and there is no terminal to ask on'
+        Write-LabErrorLine "Nothing was undone. To answer yes, add -y: $Self -u $short -All -y"
+        exit 40
+    }
+    Write-LabTerminal "Undo run $($env:LAB_RUN_ID.Substring($env:LAB_RUN_ID.Length - 4)) with -All? It also undoes changes kept once verified,`n"
+    Write-LabTerminal 'such as a new password, which can give an intruder access back. [y/N] '
+    $answer = Read-LabTerminal
+    if ($null -eq $answer -or $answer.Trim() -notmatch '^(y|yes)$') {
+        [Console]::Out.WriteLine('Nothing was undone.')
+        exit 0
+    }
+}
+
 try {
     # The release check (design 21, section 5) comes before any of the
     # core is loaded, so a changed core file never runs. A file that
@@ -2935,9 +3170,8 @@ try {
     if ($script:Release.Status -eq 'problem') { Exit-LabRelease }
     Read-LabArgument
     # Help never runs anything: it comes before every other check and read,
-    # whatever else the line says. Typing nothing is the same page.
+    # whatever else the line says.
     if ($script:HelpAsked) { Show-LabAskedHelp; exit 0 }
-    if ($script:Arguments.Count -eq 0) { Show-LabHelp ''; exit 0 }
     Select-LabTryTopic
     if ($script:ParseError -ne '') { Exit-LabUsage $script:ParseError }
     if ($script:Actions.Count -gt 1) {
@@ -2946,16 +3180,34 @@ try {
     $action = ''
     if ($script:Actions.Count -gt 0) { $action = $script:Actions[0] }
     $words = @($script:Words)
+    # No action and no phase is the status (docs/Conventions.md section
+    # 3.1), unless the line gives an option only a preview or -r uses.
+    if ($action -ceq '' -and $words.Count -eq 0 -and
+        @('profile', 'break-glass', 'confirm-group', 'approve' | Where-Object { $script:Given.ContainsKey($_) }).Count -eq 0) {
+        $action = 'status'
+    }
+    $label = Get-LabShow $action
+    if ($action -ceq '') { $label = 'a preview' } elseif ($action -ceq 'status') { $label = 'the status' }
     if ($script:Given.ContainsKey('all') -and $action -cne 'undo') {
-        if ($action -ceq '') { Exit-LabUsage '-All is only for -u, not a preview' }
-        Exit-LabUsage "-All is only for -u, not $(Get-LabShow $action)"
+        Exit-LabUsage "-All is only for -u, not $label"
+    }
+    # -y and -NoRevert are refused where they would do nothing, so no one
+    # believes they took effect.
+    if ($script:Given.ContainsKey('yes') -and $action -ceq 'undo' -and -not $script:Given.ContainsKey('all')) {
+        Exit-LabUsage '-y is only for -u ID -All: add -All, or leave out -y'
+    } elseif ($script:Given.ContainsKey('yes') -and $action -cne 'undo') {
+        Exit-LabUsage "-y is only for -u ID -All, not $label"
+    }
+    if ($script:Given.ContainsKey('no-revert') -and $action -cne 'run') {
+        Exit-LabUsage "-NoRevert is only for -r, not $label"
     }
 
     $used = @()
     $phase = ''
     $word = ''
-    $label = ''
-    if ($action -ceq '' -or $action -ceq 'run') {
+    if ($action -ceq 'status') {
+        # Nothing more to check: the status takes no word.
+    } elseif ($action -ceq '' -or $action -ceq 'run') {
         if ($words.Count -eq 0) {
             if ($action -ceq '') {
                 Exit-LabUsage 'no phase or action given' 'Give a phase to preview, such as observe, or an action such as -r PHASE.'
@@ -2993,6 +3245,10 @@ try {
         $label = Get-LabShow $action
     }
     if ($action -ceq 'version') { Write-LabVersion; exit 0 }
+    # Like help and -V, the manual reads no configuration and needs no
+    # Administrator.
+    if ($action -ceq 'manual') { Show-LabManual }
+    $script:NoRevert = ($action -ceq 'run' -and $script:Given.ContainsKey('no-revert'))
 
     $profileName = ''
     if ($script:Given.ContainsKey('profile')) { $profileName = $script:Given['profile'] }
@@ -3034,6 +3290,7 @@ try {
     $script:Command = $cmd
     if ($cmd -in 'plan', 'apply', 'probe') { Assert-LabThisHost $config }
     switch ($cmd) {
+        'status' { Invoke-LabStatusCommand }
         'plan' { Invoke-LabPlanCommand $phase }
         'apply' { Invoke-LabApplyCommand $phase }
         'keep' { Invoke-LabKeepCommand $word }

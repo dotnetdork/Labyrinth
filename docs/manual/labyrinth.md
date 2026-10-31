@@ -18,14 +18,7 @@ This is the operator manual for Labyrinth, @MANUAL@. It explains how to run Laby
 
 **Who this is for:** the person at the keyboard during the event, who knows what a server and a command line are but has not used Labyrinth under pressure before. [How Labyrinth Works](../Overview.md) explains the ideas behind the tool; this manual explains how to use it.
 
-**Status:** Labyrinth is being built. This manual describes the command line as it is specified in [the conventions](../Conventions.md#3-how-a-module-is-run). A status page (what has run on this host and the next step), shown when `@CMD@` is typed alone, is planned; until then, typing nothing prints the help, and
-<!-- linux -->
-`--history`
-<!-- end -->
-<!-- windows -->
-`-History`
-<!-- end -->
-lists what has run.
+**Status:** Labyrinth is being built. This manual describes the command line as it is specified in [the conventions](../Conventions.md#3-how-a-module-is-run).
 
 # 1. What Labyrinth does
 
@@ -158,25 +151,29 @@ Labyrinth does **one action per line**. A phase on its own is a preview. Every o
 <!-- linux -->
 | To | Type | Ends with |
 |---|---|---|
+| See this host's status and what to do next | `@CMD@` | 0 |
 | Preview a phase | `@CMD@ PHASE` | 0, 10, 20 or 40 |
 | Run a phase | `@CMD@ -r PHASE` | 0, 10, 20, 30 or 40 |
 | Keep a run | `@CMD@ -k ID` | 0, 20 or 40 |
-| Undo a run | `@CMD@ -u ID [--all]` | 0, 20 or 40 |
+| Undo a run | `@CMD@ -u ID [--all [-y]]` | 0, 20 or 40 |
 | List the runs | `@CMD@ --history` | 0, 20 or 40 |
 | Test the scored services | `@CMD@ --probe` | 0, 20, 30 or 40 |
 | Show the version | `@CMD@ -V` | 0 |
+| Read this manual | `@CMD@ --manual` | 0 or 40 |
 | Get help | `@CMD@ -h [TOPIC]` | 0 |
 <!-- end -->
 <!-- windows -->
 | To | Type | Ends with |
 |---|---|---|
+| See this host's status and what to do next | `@CMD@` | 0 |
 | Preview a phase | `@CMD@ PHASE` | 0, 10, 20 or 40 |
 | Run a phase | `@CMD@ -r PHASE` | 0, 10, 20, 30 or 40 |
 | Keep a run | `@CMD@ -k ID` | 0, 20 or 40 |
-| Undo a run | `@CMD@ -u ID [-All]` | 0, 20 or 40 |
+| Undo a run | `@CMD@ -u ID [-All [-y]]` | 0, 20 or 40 |
 | List the runs | `@CMD@ -History` | 0, 20 or 40 |
 | Test the scored services | `@CMD@ -Probe` | 0, 20, 30 or 40 |
 | Show the version | `@CMD@ -V` | 0 |
+| Read this manual | `@CMD@ -Manual` | 0 or 40 |
 | Get help | `@CMD@ -h [TOPIC]` | 0 |
 <!-- end -->
 
@@ -184,7 +181,7 @@ Labyrinth does **one action per line**. A phase on its own is a preview. Every o
 
 This manual writes the program's name as `laby`. The installer (section 2) puts `laby`, and the longer name `labyrinth`, on the path, and the program's own help and hints then write the name you typed. Without the installer, type `@CMD@` instead; the help and hints write the name you started it with.
 
-Phases, long option names and run IDs can be typed in any mix of upper and lower case. The short letters are the exception: `-P` and `-V` are capitals, and `-r`, `-k`, `-u` and `-h` are lower case. `-p` and `-v` are errors, and Labyrinth says which letter you meant.
+Phases, long option names and run IDs can be typed in any mix of upper and lower case. The short letters are the exception: `-P` and `-V` are capitals, and `-r`, `-k`, `-u`, `-y` and `-h` are lower case. `-p` and `-v` are errors, and Labyrinth says which letter you meant.
 
 When a line is wrong, Labyrinth ends with 40 and prints, on the error output, the name it was started by, one line saying what is wrong, sometimes a line saying how to fix it, and a pointer to the help of the action on the line:
 
@@ -202,6 +199,45 @@ The phases are lockout, observe, deceive and sustain.
 Try '.\labyrinth.ps1 -h'.
 ```
 <!-- end -->
+
+## status
+
+Type `@CMD@` alone to see where this host stands and the one command to run next:
+
+<!-- linux -->
+```
+labyrinth 0.1.0-dev: status of host web1
+Group:    ring1, profile linux-web
+lockout   kept (run 4f2a, 2026-10-02 14:03 UTC)
+observe   armed: undo at 14:41 UTC (run 7c19, 2026-10-02 14:26 UTC)
+deceive   not run
+sustain   not run
+Timer:    run 7c19 is undone at 14:41 UTC, in 12 minutes
+Next: check you can log in from a NEW session, then 'sudo ./labyrinth.sh -k 7c19'.
+```
+<!-- end -->
+<!-- windows -->
+```
+labyrinth 0.1.0-dev: status of host web1
+Group:    ring1, profile windows-member
+lockout   kept (run 4f2a, 2026-10-02 14:03 UTC)
+observe   armed: undo at 14:41 UTC (run 7c19, 2026-10-02 14:26 UTC)
+deceive   not run
+sustain   not run
+Timer:    run 7c19 is undone at 14:41 UTC, in 12 minutes
+Next: check you can log in from a NEW session, then .\labyrinth.ps1 -k '7c19'.
+```
+<!-- end -->
+
+Each phase shows the state of its latest run, in the words of the history (below), or `not run`. The `Next:` line gives the first of these that applies:
+
+1. The `hosts` file is missing, does not list this host, or is malformed: fix it, then type the name again.
+2. A revert timer is armed: check that you can still log in, then keep the run.
+3. The host is in the `manual` group: Labyrinth does nothing here; configure it by hand, from its runbook.
+4. A phase has not run, or its latest run was undone: preview the first such phase.
+5. Otherwise: test the scored services.
+
+The status changes nothing and writes nothing. Run it as @ADMIN@: otherwise it shows the first lines of the help and how to run it as @ADMIN@. It always ends with 0, even on a host that is not set up yet.
 
 ## preview *phase*
 
@@ -232,7 +268,29 @@ Changes that were kept once verified stay: undo lists them first and leaves them
 <!-- windows -->
 `-All`.
 <!-- end -->
-If that undoes a password change, the old password is back: change it again and correct the offline record.
+If that undoes a password change, the old password is back: change it again and correct the offline record. Because of that, Labyrinth asks first:
+
+<!-- linux -->
+```
+Undo run 4f2a with --all? It also undoes changes kept once verified,
+such as a new password, which can give an intruder access back. [y/N]
+```
+<!-- end -->
+<!-- windows -->
+```
+Undo run 4f2a with -All? It also undoes changes kept once verified,
+such as a new password, which can give an intruder access back. [y/N]
+```
+<!-- end -->
+
+Type `y` to go ahead; anything else undoes nothing. To answer yes without being asked, add `-y`. With no terminal to ask on, such as from a script, it undoes nothing and ends with 40 unless `-y` is given. Undo without
+<!-- linux -->
+`--all`,
+<!-- end -->
+<!-- windows -->
+`-All`,
+<!-- end -->
+which is what the revert timer runs, never asks, and neither does a run with nothing kept once verified.
 
 When an undo undoes anything, it also shows a short notice on every terminal logged in to the host, so the team knows, even when nobody was watching the revert timer.
 
@@ -253,6 +311,12 @@ this host's runs, oldest first, with the run ID, phase, start time (UTC) and sta
 - `armed: timer lost`: the run is still armed, but systemd no longer has its revert timer, because its unit files were removed or damaged. Nothing will undo the run by itself. Keep it or undo it now;
 <!-- end -->
 - `kept`: someone kept the run;
+<!-- linux -->
+- `no revert`: the run was made with `--no-revert`, so no timer will undo it;
+<!-- end -->
+<!-- windows -->
+- `no revert`: the run was made with `-NoRevert`, so no timer will undo it;
+<!-- end -->
 - `undone`: the run was undone;
 - `undone with errors`: the run was undone, but some of it could not be; section 11 explains what to do;
 - `not kept, no timer`: the run changed nothing that needed a timer.
@@ -276,7 +340,7 @@ Prints help for the whole program, or for one topic. A topic is an action (`run`
 - `@CMD@ -h basics` explains phases, modules, previews and runs, the history, the revert timer, keep, undo and scored services, in plain words, on one screen.
 - `@CMD@ -h <module-id>`, such as `@CMD@ -h lockout.firewall`, explains one module: its name, its phase and order, what it may change in plain words, whether it can affect a scored service, the platforms it runs on, its folder, and then its own page: what it checks and changes, why, what can go wrong, how to undo it, and what to do when it fails. Every warning, block, failure and error in the output names the page to read.
 
-`-h` can also follow the action (`@CMD@ -r -h`) or a phase (`@CMD@ lockout -h`) and shows that page. Typing nothing prints the main help too.
+`-h` can also follow the action (`@CMD@ -r -h`) or a phase (`@CMD@ lockout -h`) and shows that page. Typing nothing shows the status, not the help.
 <!-- linux -->
 `--help`, `/?` and `-?` do the same as `-h`.
 <!-- end -->
@@ -294,14 +358,7 @@ the path you typed, such as `./labyrinth.sh` or `/opt/labyrinth/bin/labyrinth.sh
 `.\labyrinth.ps1` when you are in Labyrinth's folder, and its full path otherwise.
 <!-- end -->
 
-The main help ends with where to find this manual: `docs/manual/labyrinth.md` in the release, the
-<!-- linux -->
-Linux
-<!-- end -->
-<!-- windows -->
-Windows
-<!-- end -->
-parts of it.
+The main help ends with how to open this manual (below).
 
 ## version (-V)
 
@@ -312,6 +369,16 @@ Prints Labyrinth's version, which program printed it, and the release hash on a 
 <!-- windows -->
 `-Version` does the same.
 <!-- end -->
+
+## manual
+
+<!-- linux -->
+`--manual` opens this manual, one screen at a time, from the release's `manual` folder. When nothing can page it, it is printed. Once installed, `man laby` shows it too.
+<!-- end -->
+<!-- windows -->
+`-Manual` opens this manual, one screen at a time: the copy in the release's `manual` folder, otherwise the one the installer put where `Get-Help about_Labyrinth` finds it. When the output is not a window, such as a file, it is printed.
+<!-- end -->
+It changes nothing and needs no @ADMIN@. Ends with 0, or 40 when this copy of Labyrinth has no manual.
 
 # 6. Options
 
@@ -338,9 +405,12 @@ all work. A word that starts with a dash and holds a long name (even with one da
 | `--break-glass NAME` | Answers the break-glass prompt without typing. | run |
 | `--confirm-group GROUP` | Answers the group-name prompt without typing. | run |
 | `--approve LIST` | Approves items without the approval prompt; see section 7. | run |
-| `--all` | Also undoes the changes that were kept once verified. | undo |
+| `--all` | Also undoes the changes that were kept once verified. Asks first. | undo |
+| `-y`, `--yes` | Answers yes to the question before `-u ID --all`. Refused anywhere else. | undo with `--all` |
+| `--no-revert` | Arms no revert timer and asks nothing at the end: the changes stay until you undo them. For test machines only. Refused anywhere else. | run |
 | `-h`, `-?`, `--help` | Show help. | all |
 | `-V`, `--version` | Show the version. | all |
+| `--manual` | Open this manual. | action |
 
 Example: `sudo ./labyrinth.sh -r lockout --root /srv/labyrinth`
 <!-- end -->
@@ -358,9 +428,12 @@ Example: `sudo ./labyrinth.sh -r lockout --root /srv/labyrinth`
 | `-BreakGlass NAME` | Answers the break-glass prompt without typing. | run |
 | `-ConfirmGroup GROUP` | Answers the group-name prompt without typing. | run |
 | `-Approve LIST` | Approves items without the approval prompt; see section 7. | run |
-| `-All` | Also undoes the changes that were kept once verified. | undo |
+| `-All` | Also undoes the changes that were kept once verified. Asks first. | undo |
+| `-y`, `-Yes` | Answers yes to the question before `-u ID -All`. Refused anywhere else. | undo with `-All` |
+| `-NoRevert` | Arms no revert timer and asks nothing at the end: the changes stay until you undo them. For test machines only. Refused anywhere else. | run |
 | `-h`, `-Help` | Show help. | all |
 | `-V`, `-Version` | Show the version. | all |
+| `-Manual` | Open this manual. | action |
 
 Example: `.\labyrinth.ps1 -r lockout -Root D:\Labyrinth`
 
@@ -371,7 +444,7 @@ A run ID that PowerShell can read as a number must be put in quotes, or PowerShe
 
 An option given twice, an option with no value, or a word Labyrinth does not know is an error (exit 40). Labyrinth says which word is wrong and, for a near miss, suggests the right one. An option that the action does not use, such as a break-glass answer on a preview, only earns a warning.
 
-**Planned, not built yet.** These are not accepted: a status page when `@CMD@` is typed alone; `-q`, `-a` and `-d` (queue the run, no questions in the middle of it, and the login check); `-v` (short output); `init` and `harden`; `-y`; `--no-revert`; and `--manual`. Typing one of the flags is a usage error (exit 40) that says it is planned and not built yet; the rest is an ordinary mistake.
+**Planned, not built yet.** These are not accepted: `-q`, `-a` and `-d` (queue the run, no questions in the middle of it, and the login check); `-v` (short output); and `init` and `harden`. Typing one of the flags is a usage error (exit 40) that says it is planned and not built yet; the rest is an ordinary mistake.
 
 # 7. What happens during a run
 

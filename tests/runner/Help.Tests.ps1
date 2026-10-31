@@ -11,8 +11,8 @@ BeforeAll {
     . (Join-Path $PSScriptRoot 'LabTestHelper.ps1')
     $t = Initialize-TestLab
     # Every topic with a page of its own; the basics page is longer.
-    $topics = @('run', 'keep', 'undo', 'history', 'probe', 'version',
-        'profile', 'root', 'config', 'break-glass', 'confirm-group', 'approve', 'all',
+    $topics = @('run', 'keep', 'undo', 'history', 'probe', 'version', 'manual',
+        'profile', 'root', 'config', 'break-glass', 'confirm-group', 'approve', 'all', 'yes', 'no-revert',
         'lockout', 'observe', 'deceive', 'sustain')
     $mainFirst = 'Usage: laby PHASE                preview a phase: nothing changes'
 
@@ -40,7 +40,8 @@ Describe 'labyrinth.ps1 help' {
         $lines -ccontains 'Options:' | Should -BeTrue
         @($lines | Where-Object { $_ -like 'Exit: *' }).Count | Should -Be 1
         $r.Out | Should -Match 'an action, option, phase or basics'
-        $lines[-1] | Should -BeExactly 'Full manual: docs/manual/labyrinth.md in the release'
+        $lines[-1] | Should -BeExactly 'Full manual: .\labyrinth.ps1 --manual   (Linux also: man laby)'
+        $lines -ccontains "       .\labyrinth.ps1                      this host's status and next step" | Should -BeTrue
     }
 
     It 'every topic is short, fits 78 columns, and has one Usage, one Exit, an Example and See also' {
@@ -64,7 +65,7 @@ Describe 'labyrinth.ps1 help' {
     It 'the help names the command the way the runner was started, as hints do' {
         $out = (Get-TestHelp $t @('-h') $t.Self).Out
         $out | Should -Match ([regex]::Escape("$($t.Self) -r PHASE"))
-        $out | Should -Not -Match '(?<![\w.\-])laby(?![\w.-])'
+        $out.Replace('man laby', '') | Should -Not -Match '(?<![\w.\-])laby(?![\w.-])'
         $out | Should -Not -Match '@CMD@'
         $out = (Get-TestHelp $t @('-h', 'run') $t.Self).Out
         $out | Should -Match ([regex]::Escape("Example: $($t.Self) -r lockout"))
@@ -89,16 +90,17 @@ Describe 'labyrinth.ps1 help' {
         }
     }
 
-    It '-h, -Help, --help and /? print the main help, and so does typing nothing' {
+    It '-h, -Help, --help and /? print the main help; typing nothing is the status, not the help' {
         $want = (Get-TestHelp $t @('-h')).Out
         foreach ($a in @('-Help', '--help', '/?')) {
             $r = Get-TestHelp $t @($a)
             $r.Code | Should -Be 0 -Because $a
             $r.Out | Should -BeExactly $want -Because $a
         }
-        $r = Get-TestHelp $t @()
+        $r = Get-TestHelp $t @('-Root', $t.Root, '-Config', $t.Etc)
         $r.Code | Should -Be 0
-        $r.Out | Should -BeExactly $want
+        $r.Out | Should -Not -BeExactly $want
+        @($r.Out -split "`r?`n")[0] | Should -BeLike 'labyrinth *: status of host *'
     }
 
     It 'help wins over everything else on the line, even a mistake' {
@@ -119,7 +121,8 @@ Describe 'labyrinth.ps1 help' {
         New-Item -ItemType File -Path (Join-Path $t.Lab 'NOT_ADMIN') -Force | Out-Null
         try {
             foreach ($f in @(@('-h'), @('-h', 'run'), @('-r', '-h'), @('-u', '-h'), @('-History', '-Help'),
-                    @('-h', 'basics'), @('-h', 'bogus'), @('-h', 'observe.sample'))) {
+                    @('-h', 'basics'), @('-h', 'bogus'), @('-h', 'observe.sample'), @('-Manual', '-h'),
+                    @('-h', 'yes'), @('-h', 'no-revert'), @('-y', '-h'), @('-NoRevert', '-h'))) {
                 $r = Get-TestHelp $t (@('-Root', $t.Root, '-Config', $t.Etc) + $f)
                 $r.Code | Should -Be 0 -Because ($f -join ' ')
                 $t.Root | Should -Not -Exist -Because ($f -join ' ')
@@ -172,7 +175,7 @@ Describe 'labyrinth.ps1 help' {
             (Get-TestHelp $t @('-h', $topic)).Out | Should -Match 'Administrator' -Because "-h $topic"
         }
         $out = (Get-TestHelp $t @('-h', 'history')).Out
-        foreach ($s in @('armed', 'kept', 'undone', 'undone with errors', 'not kept, no timer', 'armed: timer lost')) {
+        foreach ($s in @('armed', 'kept', 'undone', 'undone with errors', 'not kept, no timer', 'armed: timer lost', 'no revert')) {
             $out.Contains($s) | Should -BeTrue -Because "-h history: $s"
         }
     }
@@ -186,9 +189,21 @@ Describe 'labyrinth.ps1 help' {
         (Get-TestHelp $t @('-h', 'undo')).Out | Should -Match '(?m)^Blocked: not an Administrator, or a file another account can change\.\r?$'
     }
 
-    It '-h undo explains --all, and -h keep says an ID is always needed' {
-        (Get-TestHelp $t @('-h', 'undo')).Out | Should -Match ([regex]::Escape('--all                  also undo changes kept once they verified'))
+    It '-h undo explains --all and -y, and -h keep says an ID is always needed' {
+        $out = (Get-TestHelp $t @('-h', 'undo')).Out
+        $out | Should -Match ([regex]::Escape('--all                  also undo changes kept once they verified'))
+        @($out -split "`r?`n")[0] | Should -BeExactly 'Usage: laby -u ID [--all [-y]] [--root DIR] [--config DIR]'
+        $out | Should -Match ([regex]::Escape('-y, --yes'))
         (Get-TestHelp $t @('-h', 'keep')).Out | Should -Match 'ID is always needed'
+    }
+
+    It '-y and -NoRevert have their own pages, and -h run names --no-revert' {
+        @((Get-TestHelp $t @('-h', 'yes')).Out -split "`r?`n")[0] | Should -BeExactly 'Usage: laby -u ID --all -y'
+        @((Get-TestHelp $t @('-y', '-h')).Out -split "`r?`n")[0] | Should -BeExactly 'Usage: laby -u ID --all -y'
+        @((Get-TestHelp $t @('-h', 'no-revert')).Out -split "`r?`n")[0] | Should -BeExactly 'Usage: laby -r PHASE --no-revert'
+        @((Get-TestHelp $t @('-NoRevert', '-h')).Out -split "`r?`n")[0] | Should -BeExactly 'Usage: laby -r PHASE --no-revert'
+        (Get-TestHelp $t @('-h', 'run')).Out | Should -Match '--no-revert'
+        @((Get-TestHelp $t @('-h', 'manual')).Out -split "`r?`n")[0] | Should -BeExactly 'Usage: laby --manual'
     }
 
     It '-V names the runner, and -V -h is its help' {
@@ -259,7 +274,8 @@ Describe 'labyrinth.ps1 help' {
     It 'Get-Help lists every option the runner accepts' {
         $h = Get-Help (Join-Path $script:Repo 'labyrinth.ps1') -Full
         $text = (($h.Description | ForEach-Object { $_.Text }) -join ' ')
-        foreach ($o in @('-Profile', '-Root', '-Config', '-BreakGlass', '-ConfirmGroup', '-Approve', '-All', '-History', '-Probe', '-Help', '-Version')) {
+        foreach ($o in @('-Profile', '-Root', '-Config', '-BreakGlass', '-ConfirmGroup', '-Approve', '-All', '-History', '-Probe', '-Help', '-Version',
+                '-Manual', '-Yes', '-NoRevert')) {
             $text | Should -Match ('(^|\s){0}\b' -f [regex]::Escape($o)) -Because "Get-Help: $o"
         }
     }
