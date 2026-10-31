@@ -574,7 +574,7 @@ Describe 'the installer screen (core\banner\Banner.ps1)' {
         $s[9] | Should -BeExactly ' Rapid first-minute hardening tool for Linux & Windows,'
         $s[10] | Should -BeExactly ' with traps that log every attacker move as a tripwire.'
         $s[11] | Should -BeExactly ''
-        $s[12] | Should -BeExactly '      Copyright (c) 2026 Jay Sausa. See LICENSE.'
+        $s[12] | Should -BeExactly '       Copyright (c) 2026 Jay Sausa. See LICENSE.'
         $s[13] | Should -BeExactly ''
         # The box: 51 wide, indented 2 under the maze; thin rules, double sides.
         @($box.TL, $box.TR, $box.BL, $box.BR, $box.ML, $box.MR, $box.H, $box.V | ForEach-Object { [int][char]$_ }) |

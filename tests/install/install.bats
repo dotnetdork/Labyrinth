@@ -85,7 +85,7 @@ about() {
   [ "${SCREEN[9]}" = ' Rapid first-minute hardening tool for Linux & Windows,' ]
   [ "${SCREEN[10]}" = ' with traps that log every attacker move as a tripwire.' ]
   [ "${SCREEN[11]}" = '' ]
-  [ "${SCREEN[12]}" = '      Copyright (c) 2026 Jay Sausa. See LICENSE.' ]
+  [ "${SCREEN[12]}" = '       Copyright (c) 2026 Jay Sausa. See LICENSE.' ]
   [ "${SCREEN[13]}" = '' ]
 }
 
