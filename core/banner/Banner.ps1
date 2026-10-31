@@ -60,7 +60,7 @@ function Test-LabBannerUnicode {
 # Get-LabBannerCenter TEXT: TEXT centred in the box's inner width.
 function Get-LabBannerCenter {
     param([string] $Text)
-    $left = [int][Math]::Floor(($LabBannerInner - $Text.Length) / 2)
+    $left = [int][Math]::Ceiling(($LabBannerInner - $Text.Length) / 2)
     return (' ' * $left) + $Text + (' ' * ($LabBannerInner - $Text.Length - $left))
 }
 
@@ -80,14 +80,17 @@ function Get-LabBanner {
     }
     $rule = $b.H * $LabBannerInner
     $lines += $b.TL + $rule + $b.TR
-    $lines += $b.V + (Get-LabBannerCenter 'WARNING') + $b.V
-    $lines += $b.ML + $rule + $b.MR
+    # With no hash, the same box with ? in place of each digit.
     if ($Sha) {
         $g = Get-LabReleaseGroup -Sha $Sha
-        $body = @("If this SHA-256 doesn't match your", 'offline record, it was tampered with.', '', $g[0], $g[1])
+        $head = 'WARNING: COMPARE WITH YOUR OFFLINE SHA-256'
+        $body = @($g[0], $g[1])
     } else {
-        $body = @('This copy has no release.sha256,', 'so nothing proves that it is genuine.')
+        $head = 'WARNING: THIS COPY HAS NO release.sha256, ABORT'
+        $body = @(, (@('????') * 8 -join ' ')) * 2
     }
+    $lines += $b.V + (Get-LabBannerCenter $head) + $b.V
+    $lines += $b.ML + $rule + $b.MR
     foreach ($t in $body) { $lines += $b.V + (Get-LabBannerCenter $t) + $b.V }
     $lines += $b.BL + $rule + $b.BR
     return $lines

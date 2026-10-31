@@ -402,8 +402,8 @@ Describe 'install.ps1 installs' -Skip:(-not $elevated) {
         Remove-Item -LiteralPath (Join-Path $r.Rel 'release.sha256')
         $x = Invoke-TestInstall $r @('-Yes')
         $x.Code | Should -Be 0
-        (ConvertTo-TestFlat $x.Output) | Should -Match ([regex]::Escape(' This copy has no release.sha256, '))
-        (ConvertTo-TestFlat $x.Output) | Should -Match ([regex]::Escape(' so nothing proves that it is genuine. '))
+        (ConvertTo-TestFlat $x.Output) | Should -Match ([regex]::Escape(' WARNING: THIS COPY HAS NO release.sha256, ABORT '))
+        (ConvertTo-TestFlat $x.Output) | Should -Match ([regex]::Escape(' ???? ???? ???? ???? ???? ???? ???? ???? '))
         Join-Path $r.Code 'labyrinth.ps1' | Should -Exist
         Join-Path $r.Code 'release.sha256' | Should -Not -Exist
     }
@@ -576,18 +576,15 @@ Describe 'the installer screen (core\banner\Banner.ps1)' {
         $s[11] | Should -BeExactly ''
         $s[12] | Should -BeExactly '      Copyright (c) 2026 Jay Sausa. See LICENSE.'
         $s[13] | Should -BeExactly ''
-        for ($i = 14; $i -lt 23; $i++) { $s[$i].Length | Should -Be 55 }
+        for ($i = 14; $i -lt 20; $i++) { $s[$i].Length | Should -Be 55 }
         $v = $box.V
         $s[14] | Should -BeExactly ($box.TL + ($box.H * 53) + $box.TR)
-        $s[15] | Should -BeExactly ($v + (' ' * 23) + 'WARNING' + (' ' * 23) + $v)
+        $s[15] | Should -BeExactly ($v + (' ' * 6) + 'WARNING: COMPARE WITH YOUR OFFLINE SHA-256' + (' ' * 5) + $v)
         $s[16] | Should -BeExactly ($box.ML + ($box.H * 53) + $box.MR)
-        $s[17] | Should -BeExactly ($v + (' ' * 9) + "If this SHA-256 doesn't match your" + (' ' * 10) + $v)
-        $s[18] | Should -BeExactly ($v + (' ' * 8) + 'offline record, it was tampered with.' + (' ' * 8) + $v)
-        $s[19] | Should -BeExactly ($v + (' ' * 53) + $v)
-        $s[20] | Should -BeExactly ($v + '       3f9a 1c2b 8e4d 0a77 5b19 c3e2 9d04 6f8a       ' + $v)
-        $s[21] | Should -BeExactly ($v + '       2b6e 71c0 d95a 4e3f 08b2 a6c1 5e97 c21e       ' + $v)
-        $s[22] | Should -BeExactly ($box.BL + ($box.H * 53) + $box.BR)
-        $s.Count | Should -Be 23
+        $s[17] | Should -BeExactly ($v + '       3f9a 1c2b 8e4d 0a77 5b19 c3e2 9d04 6f8a       ' + $v)
+        $s[18] | Should -BeExactly ($v + '       2b6e 71c0 d95a 4e3f 08b2 a6c1 5e97 c21e       ' + $v)
+        $s[19] | Should -BeExactly ($box.BL + ($box.H * 53) + $box.BR)
+        $s.Count | Should -Be 20
         foreach ($l in $s) { $l.Length | Should -BeLessOrEqual 79 }
     }
 
@@ -602,15 +599,16 @@ Describe 'the installer screen (core\banner\Banner.ps1)' {
         $s[0] | Should -BeLike '+ IN -*'
         $s[6] | Should -BeLike '*+ OUT +'
         $s[14] | Should -BeExactly ('+' + ('-' * 53) + '+')
-        $s[15] | Should -BeExactly ('|' + (' ' * 23) + 'WARNING' + (' ' * 23) + '|')
+        $s[15] | Should -BeExactly ('|' + (' ' * 6) + 'WARNING: COMPARE WITH YOUR OFFLINE SHA-256' + (' ' * 5) + '|')
         $s[16] | Should -BeExactly ('+' + ('-' * 53) + '+')
-        $s[20] | Should -BeExactly '|       3f9a 1c2b 8e4d 0a77 5b19 c3e2 9d04 6f8a       |'
+        $s[17] | Should -BeExactly '|       3f9a 1c2b 8e4d 0a77 5b19 c3e2 9d04 6f8a       |'
     }
 
-    It 'with no release list, the box says nothing proves the copy is genuine' {
+    It 'with no release list, the box says to abort and shows ? for the hash' {
         $s = @(Get-LabBanner -Unicode $false -Version '0.1.0' -Sha '')
-        $s[17] | Should -BeExactly ('|' + (' ' * 10) + 'This copy has no release.sha256,' + (' ' * 11) + '|')
-        $s[18] | Should -BeExactly ('|' + (' ' * 8) + 'so nothing proves that it is genuine.' + (' ' * 8) + '|')
+        $s[15] | Should -BeExactly '|   WARNING: THIS COPY HAS NO release.sha256, ABORT   |'
+        $s[17] | Should -BeExactly '|       ???? ???? ???? ???? ???? ???? ???? ????       |'
+        $s[18] | Should -BeExactly $s[17]
         $s[19] | Should -BeExactly ('+' + ('-' * 53) + '+')
         ($s -join "`n") | Should -Not -Match '[0-9a-f]{4} [0-9a-f]{4}'
     }

@@ -106,20 +106,18 @@ about() {
   [ "${SCREEN[7]}" = "VERSION $ver (https://dotnetdork.github.io/Labyrinth/)" ]
   about
   # The box: every line as wide as the maze, the warning centred over a rule.
-  for ((i = 14; i < 23; i++)); do [ "${#SCREEN[i]}" -eq 55 ]; done
+  for ((i = 14; i < 20; i++)); do [ "${#SCREEN[i]}" -eq 55 ]; done
   [ "${SCREEN[14]}" = "╔$(printf '%53s' '' | sed 's/ /═/g')╗" ]
-  [ "${SCREEN[15]}" = '║                       WARNING                       ║' ]
+  [ "${SCREEN[15]}" = '║      WARNING: COMPARE WITH YOUR OFFLINE SHA-256     ║' ]
   [ "${SCREEN[16]}" = "╠$(printf '%53s' '' | sed 's/ /═/g')╣" ]
-  [ "${SCREEN[17]}" = "║         If this SHA-256 doesn't match your          ║" ]
-  [ "${SCREEN[18]}" = '║        offline record, it was tampered with.        ║' ]
   # The hash: two lines of eight groups of four that join into the SHA-256.
-  for i in 20 21; do
+  for i in 17 18; do
     [[ "${SCREEN[i]}" =~ ^'║       '([0-9a-f]{4}( [0-9a-f]{4}){7})'       ║'$ ]]
     joined+="${BASH_REMATCH[1]}"
   done
   [ "${joined// /}" = "$sum" ]
-  [ "${SCREEN[22]}" = "╚$(printf '%53s' '' | sed 's/ /═/g')╝" ]
-  [ "${SCREEN[24]}" = '  CHANGES TO THIS HOST' ]
+  [ "${SCREEN[19]}" = "╚$(printf '%53s' '' | sed 's/ /═/g')╝" ]
+  [ "${SCREEN[21]}" = '  CHANGES TO THIS HOST' ]
   # No line of the art is wider than 79 columns.
   for l in "${SCREEN[@]}"; do [ "${#l}" -le 79 ]; done
   # The tree, with the arrow.
@@ -137,9 +135,9 @@ about() {
   for i in "${!maze[@]}"; do [ "${SCREEN[i]}" = "${maze[i]}" ]; done
   about
   [ "${SCREEN[14]}" = "+$(printf '%53s' '' | tr ' ' -)+" ]
-  [ "${SCREEN[15]}" = '|                       WARNING                       |' ]
+  [ "${SCREEN[15]}" = '|      WARNING: COMPARE WITH YOUR OFFLINE SHA-256     |' ]
   [ "${SCREEN[16]}" = "+$(printf '%53s' '' | tr ' ' -)+" ]
-  [[ "${SCREEN[20]}" =~ ^'|       '[0-9a-f]{4}( [0-9a-f]{4}){7}'       |'$ ]]
+  [[ "${SCREEN[17]}" =~ ^'|       '[0-9a-f]{4}( [0-9a-f]{4}){7}'       |'$ ]]
   [[ "$output" == *"   |-- Program   $ROOT/bin (new)"* ]]
   [[ "$output" == *'   `-- Config    8 templates -> '"$ROOT/etc"* ]]
   if LC_ALL=C grep -q '[^ -~]' <<< "$output"; then return 1; fi
@@ -382,8 +380,8 @@ something else
   rm "$REL/release.sha256"
   LC_ALL=C install_sh -y
   [ "$status" -eq 0 ]
-  [[ "$(tr -s " " <<< "$output")" == *'| This copy has no release.sha256, |'* ]]
-  [[ "$(tr -s " " <<< "$output")" == *'| so nothing proves that it is genuine. |'* ]]
+  [[ "$output" == *'|   WARNING: THIS COPY HAS NO release.sha256, ABORT   |'* ]]
+  [[ "$output" == *'|       ???? ???? ???? ???? ???? ???? ???? ????       |'* ]]
   [ -f "$ROOT/bin/labyrinth.sh" ]
   [ ! -e "$ROOT/bin/release.sha256" ]
 }

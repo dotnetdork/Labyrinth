@@ -30,7 +30,7 @@ lab_banner_unicode() {
 
 # lab_banner_center TEXT: TEXT centred in the box's inner width.
 lab_banner_center() {
-  local left=$(( (LAB_BANNER_INNER - ${#1}) / 2 ))
+  local left=$(( (LAB_BANNER_INNER - ${#1} + 1) / 2 ))
   printf '%*s%s%*s' "$left" '' "$1" $(( LAB_BANNER_INNER - ${#1} - left )) ''
 }
 
@@ -39,7 +39,7 @@ lab_banner_center() {
 # box lines, 0 for plain ASCII. SHA empty means the copy has no
 # release.sha256.
 lab_banner_print() {
-  local uni="$1" ver="$2" sha="$3" line one two left
+  local uni="$1" ver="$2" sha="$3" line one two left head
   local tl tr bl br h v ml mr maze
   if (( uni )); then
     tl='╔' tr='╗' bl='╚' br='╝' h='═' v='║' ml='╠' mr='╣'
@@ -59,17 +59,17 @@ lab_banner_print() {
   printf -v rule '%*s' "$LAB_BANNER_INNER" ''
   rule="${rule// /$h}"
   printf '%s%s%s\n' "$tl" "$rule" "$tr"
-  printf '%s%s%s\n' "$v" "$(lab_banner_center WARNING)" "$v"
-  printf '%s%s%s\n' "$ml" "$rule" "$mr"
-  {
-    if [[ -n "$sha" ]]; then
-      { read -r one; read -r two; } < <(lab_release_groups "$sha")
-      printf "If this SHA-256 doesn't match your\noffline record, it was tampered with.\n\n%s\n%s\n" "$one" "$two"
-    else
-      printf 'This copy has no release.sha256,\nso nothing proves that it is genuine.\n'
-    fi
-  } | while IFS= read -r line; do
-    printf '%s%s%s\n' "$v" "$(lab_banner_center "$line")" "$v"
+  # With no hash, the same box with ? in place of each digit.
+  if [[ -n "$sha" ]]; then
+    { read -r one; read -r two; } < <(lab_release_groups "$sha")
+    head='WARNING: COMPARE WITH YOUR OFFLINE SHA-256'
+  else
+    one='???? ???? ???? ???? ???? ???? ???? ????' two="$one"
+    head='WARNING: THIS COPY HAS NO release.sha256, ABORT'
+  fi
+  for line in "$head" "$rule" "$one" "$two"; do
+    if [[ "$line" == "$rule" ]]; then printf '%s%s%s\n' "$ml" "$rule" "$mr"
+    else printf '%s%s%s\n' "$v" "$(lab_banner_center "$line")" "$v"; fi
   done
   printf '%s%s%s\n' "$bl" "$rule" "$br"
 }
