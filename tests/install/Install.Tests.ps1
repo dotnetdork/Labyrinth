@@ -130,7 +130,7 @@ Describe 'install.ps1 refuses, or asks, before it changes anything' {
         $flat | Should -Match ([regex]::Escape('Config 8 templates '))
         # The release hash, in two lines of eight groups of four, before the tree.
         $sum = (Get-FileHash -LiteralPath (Join-Path $r.Rel 'release.sha256') -Algorithm SHA256).Hash.ToLowerInvariant()
-        $hash = @([regex]::Matches($x.Output, '(?m)^.{3} {5}([0-9a-f]{4}(?: [0-9a-f]{4}){7}) {5}.{3}\r?$') | ForEach-Object { $_.Groups[1].Value })
+        $hash = @([regex]::Matches($x.Output, '(?m)^  . {5}([0-9a-f]{4}(?: [0-9a-f]{4}){7}) {5}.\r?$') | ForEach-Object { $_.Groups[1].Value })
         $hash.Count | Should -Be 2
         ($hash -join '').Replace(' ', '') | Should -BeExactly $sum
         $x.Output.IndexOf('WARNING') | Should -BeLessThan $x.Output.IndexOf('CHANGES TO THIS HOST')
