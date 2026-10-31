@@ -13,8 +13,8 @@
 # file without a byte order mark as ANSI.
 
 $LabBannerUrl = 'https://dotnetdork.github.io/Labyrinth/'
-$LabBannerWidth = 55   # columns of the maze and the warning box
-$LabBannerInner = 53   # columns inside the warning box's walls
+$LabBannerWidth = 55   # columns of the maze
+$LabBannerInner = 49   # columns inside the warning box's walls; the box is indented 2
 # What Labyrinth is, and the copyright notice, centred under the version.
 $LabBannerAbout = @('Rapid first-minute hardening tool for Linux & Windows,',
     'with traps that log every attacker move as a tripwire.')
@@ -23,8 +23,8 @@ $LabBannerNotice = 'Copyright (c) 2026 Jay Sausa. See LICENSE.'
 # The box lines, by name.
 $LabBox = @{}
 foreach ($pair in @(
-        @('TL', 0x2554), @('TR', 0x2557), @('BL', 0x255A), @('BR', 0x255D), @('H', 0x2550), @('V', 0x2551),
-        @('ML', 0x2560), @('MR', 0x2563), @('IH', 0x2500), @('VI', 0x2502),
+        @('TL', 0x2553), @('TR', 0x2556), @('BL', 0x2559), @('BR', 0x255C), @('H', 0x2500), @('V', 0x2551),
+        @('ML', 0x255F), @('MR', 0x2562), @('IH', 0x2500), @('VI', 0x2502),
         @('Mid', 0x251C), @('Last', 0x2514), @('Arrow', 0x2192))) {
     $LabBox[$pair[0]] = [string][char]$pair[1]
 }
@@ -79,7 +79,6 @@ function Get-LabBanner {
         $lines += $t
     }
     $rule = $b.H * $LabBannerInner
-    $lines += $b.TL + $rule + $b.TR
     # With no hash, the same box with ? in place of each digit.
     if ($Sha) {
         $g = Get-LabReleaseGroup -Sha $Sha
@@ -89,10 +88,12 @@ function Get-LabBanner {
         $head = 'WARNING: THIS COPY HAS NO release.sha256, ABORT'
         $body = @(, (@('????') * 8 -join ' ')) * 2
     }
-    $lines += $b.V + (Get-LabBannerCenter $head) + $b.V
-    $lines += $b.ML + $rule + $b.MR
-    foreach ($t in $body) { $lines += $b.V + (Get-LabBannerCenter $t) + $b.V }
-    $lines += $b.BL + $rule + $b.BR
+    # The box is indented 2, so it sits centred under the maze.
+    $lines += '  ' + $b.TL + $rule + $b.TR
+    $lines += '  ' + $b.V + (Get-LabBannerCenter $head) + $b.V
+    $lines += '  ' + $b.ML + $rule + $b.MR
+    foreach ($t in $body) { $lines += '  ' + $b.V + (Get-LabBannerCenter $t) + $b.V }
+    $lines += '  ' + $b.BL + $rule + $b.BR
     return $lines
 }
 

@@ -12,8 +12,8 @@
 
 LAB_BANNER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 LAB_BANNER_URL='https://dotnetdork.github.io/Labyrinth/'
-LAB_BANNER_WIDTH=55   # columns of the maze and the warning box
-LAB_BANNER_INNER=53   # columns inside the warning box's walls
+LAB_BANNER_WIDTH=55   # columns of the maze
+LAB_BANNER_INNER=49   # columns inside the warning box's walls; the box is indented 2
 # What Labyrinth is, and the copyright notice, centred under the version.
 LAB_BANNER_ABOUT=('Rapid first-minute hardening tool for Linux & Windows,'
   'with traps that log every attacker move as a tripwire.')
@@ -42,7 +42,7 @@ lab_banner_print() {
   local uni="$1" ver="$2" sha="$3" line one two left head
   local tl tr bl br h v ml mr maze
   if (( uni )); then
-    tl='╔' tr='╗' bl='╚' br='╝' h='═' v='║' ml='╠' mr='╣'
+    tl='╓' tr='╖' bl='╙' br='╜' h='─' v='║' ml='╟' mr='╢'
     maze="$LAB_BANNER_DIR/maze.txt"
   else
     tl='+' tr='+' bl='+' br='+' h='-' v='|' ml='+' mr='+'
@@ -58,7 +58,6 @@ lab_banner_print() {
   local rule
   printf -v rule '%*s' "$LAB_BANNER_INNER" ''
   rule="${rule// /$h}"
-  printf '%s%s%s\n' "$tl" "$rule" "$tr"
   # With no hash, the same box with ? in place of each digit.
   if [[ -n "$sha" ]]; then
     { read -r one; read -r two; } < <(lab_release_groups "$sha")
@@ -67,11 +66,13 @@ lab_banner_print() {
     one='???? ???? ???? ???? ???? ???? ???? ????' two="$one"
     head='WARNING: THIS COPY HAS NO release.sha256, ABORT'
   fi
-  for line in "$head" "$rule" "$one" "$two"; do
-    if [[ "$line" == "$rule" ]]; then printf '%s%s%s\n' "$ml" "$rule" "$mr"
-    else printf '%s%s%s\n' "$v" "$(lab_banner_center "$line")" "$v"; fi
-  done
-  printf '%s%s%s\n' "$bl" "$rule" "$br"
+  # The box is indented 2, so it sits centred under the maze.
+  printf '  %s%s%s\n' "$tl" "$rule" "$tr"
+  printf '  %s%s%s\n' "$v" "$(lab_banner_center "$head")" "$v"
+  printf '  %s%s%s\n' "$ml" "$rule" "$mr"
+  printf '  %s%s%s\n' "$v" "$(lab_banner_center "$one")" "$v"
+  printf '  %s%s%s\n' "$v" "$(lab_banner_center "$two")" "$v"
+  printf '  %s%s%s\n' "$bl" "$rule" "$br"
 }
 
 # lab_banner_tree UNICODE ROW...: the tree of changes to this host. Each ROW

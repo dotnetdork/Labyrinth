@@ -576,14 +576,17 @@ Describe 'the installer screen (core\banner\Banner.ps1)' {
         $s[11] | Should -BeExactly ''
         $s[12] | Should -BeExactly '      Copyright (c) 2026 Jay Sausa. See LICENSE.'
         $s[13] | Should -BeExactly ''
-        for ($i = 14; $i -lt 20; $i++) { $s[$i].Length | Should -Be 55 }
+        # The box: 51 wide, indented 2 under the maze; thin rules, double sides.
+        @($box.TL, $box.TR, $box.BL, $box.BR, $box.ML, $box.MR, $box.H, $box.V | ForEach-Object { [int][char]$_ }) |
+            Should -Be @(0x2553, 0x2556, 0x2559, 0x255C, 0x255F, 0x2562, 0x2500, 0x2551)
+        for ($i = 14; $i -lt 20; $i++) { $s[$i].Length | Should -Be 53 }
         $v = $box.V
-        $s[14] | Should -BeExactly ($box.TL + ($box.H * 53) + $box.TR)
-        $s[15] | Should -BeExactly ($v + (' ' * 6) + 'WARNING: COMPARE WITH YOUR OFFLINE SHA-256' + (' ' * 5) + $v)
-        $s[16] | Should -BeExactly ($box.ML + ($box.H * 53) + $box.MR)
-        $s[17] | Should -BeExactly ($v + '       3f9a 1c2b 8e4d 0a77 5b19 c3e2 9d04 6f8a       ' + $v)
-        $s[18] | Should -BeExactly ($v + '       2b6e 71c0 d95a 4e3f 08b2 a6c1 5e97 c21e       ' + $v)
-        $s[19] | Should -BeExactly ($box.BL + ($box.H * 53) + $box.BR)
+        $s[14] | Should -BeExactly ('  ' + $box.TL + ($box.H * 49) + $box.TR)
+        $s[15] | Should -BeExactly ('  ' + $v + (' ' * 4) + 'WARNING: COMPARE WITH YOUR OFFLINE SHA-256' + (' ' * 3) + $v)
+        $s[16] | Should -BeExactly ('  ' + $box.ML + ($box.H * 49) + $box.MR)
+        $s[17] | Should -BeExactly ('  ' + $v + '     3f9a 1c2b 8e4d 0a77 5b19 c3e2 9d04 6f8a     ' + $v)
+        $s[18] | Should -BeExactly ('  ' + $v + '     2b6e 71c0 d95a 4e3f 08b2 a6c1 5e97 c21e     ' + $v)
+        $s[19] | Should -BeExactly ('  ' + $box.BL + ($box.H * 49) + $box.BR)
         $s.Count | Should -Be 20
         foreach ($l in $s) { $l.Length | Should -BeLessOrEqual 79 }
     }
@@ -598,18 +601,18 @@ Describe 'the installer screen (core\banner\Banner.ps1)' {
         }
         $s[0] | Should -BeLike '+ IN -*'
         $s[6] | Should -BeLike '*+ OUT +'
-        $s[14] | Should -BeExactly ('+' + ('-' * 53) + '+')
-        $s[15] | Should -BeExactly ('|' + (' ' * 6) + 'WARNING: COMPARE WITH YOUR OFFLINE SHA-256' + (' ' * 5) + '|')
-        $s[16] | Should -BeExactly ('+' + ('-' * 53) + '+')
-        $s[17] | Should -BeExactly '|       3f9a 1c2b 8e4d 0a77 5b19 c3e2 9d04 6f8a       |'
+        $s[14] | Should -BeExactly ('  +' + ('-' * 49) + '+')
+        $s[15] | Should -BeExactly ('  |' + (' ' * 4) + 'WARNING: COMPARE WITH YOUR OFFLINE SHA-256' + (' ' * 3) + '|')
+        $s[16] | Should -BeExactly ('  +' + ('-' * 49) + '+')
+        $s[17] | Should -BeExactly '  |     3f9a 1c2b 8e4d 0a77 5b19 c3e2 9d04 6f8a     |'
     }
 
     It 'with no release list, the box says to abort and shows ? for the hash' {
         $s = @(Get-LabBanner -Unicode $false -Version '0.1.0' -Sha '')
-        $s[15] | Should -BeExactly '|   WARNING: THIS COPY HAS NO release.sha256, ABORT   |'
-        $s[17] | Should -BeExactly '|       ???? ???? ???? ???? ???? ???? ???? ????       |'
+        $s[15] | Should -BeExactly '  | WARNING: THIS COPY HAS NO release.sha256, ABORT |'
+        $s[17] | Should -BeExactly '  |     ???? ???? ???? ???? ???? ???? ???? ????     |'
         $s[18] | Should -BeExactly $s[17]
-        $s[19] | Should -BeExactly ('+' + ('-' * 53) + '+')
+        $s[19] | Should -BeExactly ('  +' + ('-' * 49) + '+')
         ($s -join "`n") | Should -Not -Match '[0-9a-f]{4} [0-9a-f]{4}'
     }
 
