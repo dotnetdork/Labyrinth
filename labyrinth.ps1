@@ -2867,7 +2867,7 @@ function Invoke-LabRollbackCommand {
     Write-LabPendingWarning
     # -All asks only when it would undo more than -u alone: a module kept
     # once verified.
-    if ($script:Given.ContainsKey('all') -and @(Get-LabKeptModule -RunId $env:LAB_RUN_ID).Count -gt 0) { Confirm-LabUndoAll }
+    if ($script:Given.ContainsKey('all') -and (Get-LabKeptModule -RunId $env:LAB_RUN_ID).Count -gt 0) { Confirm-LabUndoAll }
     # The revert timer must work even if a run still holds the lock, hung or
     # waiting at a prompt. That run is stopped first: rolling back beside it
     # would undo changes while it goes on making them and reports success.

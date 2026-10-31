@@ -2878,20 +2878,20 @@ cmd_status() {
 # when the splitter is there. It changes nothing and needs no root; it
 # exits 0, or 40 when this copy has no manual at all.
 cmd_manual() {
-  local page="$LAB_ROOT/manual/labyrinth.1" src="$LAB_ROOT/docs/manual/labyrinth.md" text=''
+  local manpage="$LAB_ROOT/manual/labyrinth.1" src="$LAB_ROOT/docs/manual/labyrinth.md" text=''
   local split="$LAB_ROOT/tools/manual/split.sh"
-  if [[ -f "$page" ]] && command -v man > /dev/null 2>&1 && man -l "$page"; then exit 0; fi
-  if [[ -f "$page" ]]; then
+  if [[ -f "$manpage" ]] && command -v man > /dev/null 2>&1 && man -l "$manpage"; then exit 0; fi
+  if [[ -f "$manpage" ]]; then
     # Formatted when nroff is there, without its overstrike for bold.
     if command -v nroff > /dev/null 2>&1; then
-      text="$(GROFF_NO_SGR=1 nroff -man "$page" 2> /dev/null | sed 's/.\x08//g')" || text=''
+      text="$(GROFF_NO_SGR=1 nroff -man "$manpage" 2> /dev/null | sed 's/.\x08//g')" || text=''
     fi
-    if [[ -z "$text" ]]; then text="$(cat -- "$page")"; fi
+    if [[ -z "$text" ]]; then text="$(cat -- "$manpage")"; fi
   elif [[ -f "$src" ]]; then
     if [[ -f "$split" ]]; then text="$(bash "$split" linux "$src" 2> /dev/null)" || text=''; fi
     if [[ -z "$text" ]]; then text="$(cat -- "$src")"; fi
   else
-    die "this copy has no manual: there is no $page" 40 \
+    die "this copy has no manual: there is no $manpage" 40 \
       "Copy Labyrinth here again from the team's copy, which has it."
   fi
   if command -v less > /dev/null 2>&1 && printf '%s\n' "$text" | less; then exit 0; fi
