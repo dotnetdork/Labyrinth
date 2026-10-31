@@ -63,16 +63,11 @@
 40|err|is planned and not built yet|-a observe
 40|err|'-d' (|-d observe
 40|err|is planned and not built yet|-d observe
-40|err|'-y' (|-y observe
-40|err|is planned and not built yet|-y observe
 40|err|'-v' (|-rv observe
 40|err|'--verbose' is planned and not built yet|--verbose observe
 40|err|'-Verbose' is planned and not built yet|observe -Verbose
 40|err|'--queue' is planned and not built yet|--queue
 40|err|'--decline' is planned and not built yet|--decline 1
-40|err|'--yes' is planned and not built yet|-r observe --yes
-40|err|'--no-revert' is planned and not built yet|-r observe --no-revert
-40|err|'--manual' is planned and not built yet|--manual
 40|err|unknown option '-Q'|-Q
 #
 # One action per line.
@@ -82,6 +77,17 @@
 40|err|two actions on one line: -k and -V|-k ../x -V
 40|err|is only for -u, not -k|-k 4f2a --all
 40|err|is only for -u, not a preview|observe --all
+40|err|is only for -u, not the status|--all
+#
+# -y and --no-revert are refused where they would do nothing.
+40|err|-y is only for -u ID|-y observe
+40|err|-y is only for -u ID|-r observe --yes
+40|err|-y is only for -u ID|-y
+40|err|-y is only for -u ID|-k 4f2a -y
+40|err|or leave out -y|-u 4f2a -y
+40|err|is only for -r, not a preview|observe --no-revert
+40|err|is only for -r, not -k|-k 4f2a --no-revert
+40|err|is only for -r, not the status|--no-revert
 #
 # An option error points to the help of the action the line names.
 40|err|Try '@SELF@ -k -h'.|-k 4f2a --bogus
@@ -116,22 +122,21 @@
 10|err|is not used by a preview|observe --profile test --root @ROOT@ --config @ETC@ --break-glass root
 10|err|is not used by a preview|observe --profile test --root @ROOT@ --config @ETC@ --approve observe.ask:item-a@2a2c17aaaf66
 #
-# Help and version: stdout, exit 0. Typing nothing is the main help.
-0|out|Usage: @SELF@ PHASE|
+# Help and version: stdout, exit 0.
 0|out|Usage: @SELF@ PHASE|-h
 0|out|Usage: @SELF@ PHASE|--help
 0|out|Usage: @SELF@ PHASE|/?
-0|out|Full manual: docs/manual/labyrinth.md in the release|-h
+0|out|Full manual: @SELF@ --manual|-h
 0|out|Usage: @SELF@ -r PHASE|-r -h
 0|out|Usage: @SELF@ -r PHASE|-h -r
 0|out|Usage: @SELF@ -r PHASE|--run --help
 0|out|Usage: @SELF@ -r PHASE|-h run
 0|out|Usage: @SELF@ -k ID|-k --help
-0|out|Usage: @SELF@ -u ID [--all]|-u -h
-0|out|Usage: @SELF@ -u ID [--all]|-h -u
-0|out|Usage: @SELF@ -u ID [--all]|--undo --help
-0|out|Usage: @SELF@ -u ID [--all]|-h undo
-0|out|Usage: @SELF@ -u ID [--all]|-h Undo
+0|out|Usage: @SELF@ -u ID [--all [-y]]|-u -h
+0|out|Usage: @SELF@ -u ID [--all [-y]]|-h -u
+0|out|Usage: @SELF@ -u ID [--all [-y]]|--undo --help
+0|out|Usage: @SELF@ -u ID [--all [-y]]|-h undo
+0|out|Usage: @SELF@ -u ID [--all [-y]]|-h Undo
 0|out|Usage: @SELF@ -V|-V -h
 0|out|Usage: @SELF@ observe|observe -h
 0|out|Usage: @SELF@ observe|-h observe
@@ -142,9 +147,20 @@
 0|out|labyrinth |--version
 0|out|labyrinth |-Version
 #
+# Typing nothing is the status of this host, which always exits 0.
+0|out|Next: |
+0|out|status of host |--root @ROOT@ --config @ETC@
+0|out|Group:    ring1, profile test|--root @ROOT@ --config @ETC@
+0|out|Timer:    none armed|--root @ROOT@ --config @ETC@
+0|out|Next: preview lockout: |--root @ROOT@ --config @ETC@
+0|out|Group:    unknown: there is no |--root @ROOT@ --config @ROOT@
+#
+# The manual: a copy without one says so.
+40|err|this copy has no manual|--manual
+#
 # Help never runs anything: it wins over every other part of the line.
 0|out|Usage: @SELF@ observe|observe bogus -h
-0|out|Usage: @SELF@ -u ID [--all]|-u 4f2a -k 4f2a --bogus -h
+0|out|Usage: @SELF@ -u ID [--all [-y]]|-u 4f2a -k 4f2a --bogus -h
 0|out|Usage: @SELF@ -k ID|-k ../x -h
 0|out|Usage: @SELF@ PHASE|--bogus -h
 0|out|Usage: @SELF@ PHASE|--profile -h

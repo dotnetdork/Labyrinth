@@ -9,8 +9,8 @@ setup() { lab_setup; }
 
 # Every topic with a page of its own: the actions, the options and the
 # phases. Basics is the one screen that is longer.
-ACTIONS='run keep undo history probe version'
-OPTIONS='profile root config break-glass confirm-group approve all'
+ACTIONS='run keep undo history probe version manual'
+OPTIONS='profile root config break-glass confirm-group approve all yes no-revert'
 PHASES='lockout observe deceive sustain'
 TOPICS="$ACTIONS $OPTIONS $PHASES"
 
@@ -42,7 +42,8 @@ here() { cd "$LAB" && run bash ./labyrinth.sh "$@" < /dev/null; }
   grep -q '^Options:' <<< "$output"
   [ "$(grep -c '^Exit: ' <<< "$output")" -eq 1 ]
   grep -q 'an action, option, phase or basics' <<< "$output"
-  [ "$(tail -n 1 <<< "$output")" = 'Full manual: docs/manual/labyrinth.md in the release' ]
+  [ "$(tail -n 1 <<< "$output")" = 'Full manual: laby --manual   (Linux also: man laby)' ]
+  grep -q "^       laby                      this host's status and next step$" <<< "$output"
 }
 
 @test "every topic is short, fits 78 columns, and has one Usage, one Exit, an Example and See also" {
@@ -66,7 +67,8 @@ here() { cd "$LAB" && run bash ./labyrinth.sh "$@" < /dev/null; }
 @test "the help names the command the way the runner was started, as hints do" {
   here -h
   [[ "$output" == *'./labyrinth.sh -r PHASE'* ]]
-  ! grep -qw laby <<< "$output"
+  [ "$(tail -n 1 <<< "$output")" = 'Full manual: ./labyrinth.sh --manual   (Linux also: man laby)' ]
+  ! grep -v 'man laby' <<< "$output" | grep -qw laby
   [[ "$output" != *@CMD@* ]]
   here -h run
   [[ "$output" == *'Example: ./labyrinth.sh -r lockout'* ]]
@@ -111,16 +113,17 @@ here() { cd "$LAB" && run bash ./labyrinth.sh "$@" < /dev/null; }
   done
 }
 
-@test "-h, --help, /? and -? print the main help, and so does typing nothing" {
+@test "-h, --help, /? and -? print the main help; typing nothing is the status, not the help" {
   local a want
   ask -h; want="$output"
   for a in --help /? '-?'; do
     ask "$a"
     [ "$status" -eq 0 ] && [ "$output" = "$want" ] || { echo "$a"; return 1; }
   done
-  ask
+  ask --root "$ROOT" --config "$ETC"
   [ "$status" -eq 0 ]
-  [ "$output" = "$want" ]
+  [ "$output" != "$want" ]
+  [[ "${lines[0]}" == 'labyrinth '*': status of host '* ]]
 }
 
 @test "help wins over everything else on the line, even a mistake" {
@@ -140,7 +143,8 @@ here() { cd "$LAB" && run bash ./labyrinth.sh "$@" < /dev/null; }
   local f
   rm -rf "$ETC"
   touch "$LAB/NOT_ADMIN"
-  for f in -h '-h run' '-r -h' '-u -h' '--history --help' '-h basics' '-h bogus' '-h observe.sample'; do
+  for f in -h '-h run' '-r -h' '-u -h' '--history --help' '-h basics' '-h bogus' '-h observe.sample' \
+      '--manual -h' '-h yes' '-h no-revert' '-y -h' '--no-revert -h'; do
     # shellcheck disable=SC2086 # the words are split on purpose
     ask --root "$ROOT" --config "$ETC" $f
     [ "$status" -eq 0 ] || { echo "$f: exit $status"; return 1; }
@@ -187,7 +191,7 @@ here() { cd "$LAB" && run bash ./labyrinth.sh "$@" < /dev/null; }
   for p in linux windows; do
     run bash "$REPO/tools/manual/split.sh" "$p"
     [ "$status" -eq 0 ]
-    for c in preview run keep undo history probe version help; do
+    for c in status preview run keep undo history probe version manual help; do
       grep -Eq "^## $c( |\$)" <<< "$output" || { echo "$p manual: no section for $c"; return 1; }
     done
   done
@@ -200,7 +204,7 @@ here() { cd "$LAB" && run bash ./labyrinth.sh "$@" < /dev/null; }
     grep -qi 'needs root' <<< "$output" || { echo "-h $t: no root note"; return 1; }
   done
   ask -h history
-  for s in armed kept undone 'undone with errors' 'not kept, no timer' 'armed: timer lost'; do
+  for s in armed kept undone 'undone with errors' 'not kept, no timer' 'armed: timer lost' 'no revert'; do
     [[ "$output" == *"$s"* ]] || { echo "-h history: no '$s'"; return 1; }
   done
 }
@@ -217,11 +221,26 @@ here() { cd "$LAB" && run bash ./labyrinth.sh "$@" < /dev/null; }
   grep -q '^Blocked: not root, or a file another account can change\.$' <<< "$output"
 }
 
-@test "-h undo explains --all, and -h keep says an ID is always needed" {
+@test "-h undo explains --all and -y, and -h keep says an ID is always needed" {
   ask -h undo
   [[ "$output" == *"--all                  also undo changes kept once they verified"* ]]
+  [ "$(head -n 1 <<< "$output")" = 'Usage: laby -u ID [--all [-y]] [--root DIR] [--config DIR]' ]
+  [[ "$output" == *'-y, --yes'* ]]
   ask -h keep
   [[ "$output" == *'ID is always needed'* ]]
+}
+
+@test "-y and --no-revert have their own pages, and -h run names --no-revert" {
+  ask -h yes
+  [ "$(head -n 1 <<< "$output")" = 'Usage: laby -u ID --all -y' ]
+  ask -y -h
+  [ "$(head -n 1 <<< "$output")" = 'Usage: laby -u ID --all -y' ]
+  ask -h no-revert
+  [ "$(head -n 1 <<< "$output")" = 'Usage: laby -r PHASE --no-revert' ]
+  ask -h run
+  [[ "$output" == *'--no-revert'* ]]
+  ask -h manual
+  [ "$(head -n 1 <<< "$output")" = 'Usage: laby --manual' ]
 }
 
 @test "-V names the runner, and -V -h is its help" {

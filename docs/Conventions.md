@@ -95,23 +95,26 @@ Both runners share one vocabulary. In this section `laby` stands for the install
 ```
 laby [PHASE] [options]          preview a phase
 laby -r PHASE [options]         run a phase
-laby ACTION [ID] [options]      keep, undo, history, probe, version, help
+laby [options]                  this host's status and the next step
+laby ACTION [ID] [options]      keep, undo, history, probe, version, manual, help
 ```
 
 #### Commands
 
-A line holds one **action**, or only a phase.
+A line holds one **action**, or only a phase, or neither: then it is the status.
 
 | Form | Does |
 |---|---|
+| `laby` | The status of this host and the one command to run next (Status, below). Changes nothing |
 | `laby PHASE` | Every module of the phase reports what it would change. Nothing is written, not even logs |
 | `laby -r PHASE` / `--run` | Preview, then run the phase behind the gates below. `-r` may come before or after the phase |
 | `laby -k ID` / `--keep ID` | Keep a run's changes: cancel its revert timer, then record the keep. The ID is always needed: `-k` alone is a usage error (`40`) that lists the armed runs and their IDs |
-| `laby -u ID` / `--undo ID` | Undo what a run applied, newest module first, except the modules kept once they verified (`keep_on_verify`, below); `--all` (only with `-u`) undoes those too. The revert timer runs exactly this form. The ID is always needed: without it, the runs are listed (`40`). When it undid anything, it writes a notice to every terminal or session logged in on the host (`wall` on Linux, `msg` on Windows; best effort), so the team learns of an undo no one was watching |
-| `laby --history` | List this host's runs, oldest first: ID, phase, start time (UTC) and state, which is `armed` (with the time it is undone; on Linux, `armed: timer lost` when systemd no longer has the timer, because its unit files are missing or broken), `kept`, `undone`, `undone with errors`, or `not kept, no timer`. Changes nothing; needs root or Administrator (`20`) |
+| `laby -u ID` / `--undo ID` | Undo what a run applied, newest module first, except the modules kept once they verified (`keep_on_verify`, below); `--all` (only with `-u`) undoes those too, after a question (Questions, below). The revert timer runs exactly this form, which never asks. The ID is always needed: without it, the runs are listed (`40`). When it undid anything, it writes a notice to every terminal or session logged in on the host (`wall` on Linux, `msg` on Windows; best effort), so the team learns of an undo no one was watching |
+| `laby --history` | List this host's runs, oldest first: ID, phase, start time (UTC) and state, which is `armed` (with the time it is undone; on Linux, `armed: timer lost` when systemd no longer has the timer, because its unit files are missing or broken), `kept`, `no revert` (run with `--no-revert`), `undone`, `undone with errors`, or `not kept, no timer`. Changes nothing; needs root or Administrator (`20`) |
 | `laby --probe` | Probe every scored service once; exit `30` if one fails. Changes nothing |
 | `laby -h [TOPIC]` / `--help` / `-?` / `/?` | Help for every action, or for one. The topic `basics` explains the ideas in plain words, and a module ID prints that module's help page (design 00, section 4) |
 | `laby -V` / `--version` | Print the version, the runner, and the release hash (`Release: <sha256>`, or `not checked`) |
+| `laby --manual` | Open the full manual, one screen at a time (The manual, below) |
 
 `PHASE` is `lockout`, `observe`, `deceive` or `sustain`. The Harden phase, `harden`, sits between `lockout` and `observe` and is specified and planned (Roadmap); until the runner has it, its modules run in the phases they are in now (section 3.3). An ID is a run ID (`20261002T140301Z-4f2a`) or its last four characters (`4f2a`), in any case. A run that does not exist, or four characters that match more than one run, is an error (`40`) that points to `--history`. Phases, option names and run IDs ignore case; other values do not.
 
@@ -123,6 +126,8 @@ A line holds one **action**, or only a phase.
 | `-k` | `--keep` | `-Keep` | ID | action |
 | `-u` | `--undo` | `-Undo` | ID | action |
 | | `--all` | `-All` | none: also undo the modules kept once they verified | `-u` only |
+| `-y` | `--yes` | `-Yes` | none: yes to the question before `-u ID --all` (Questions, below) | `-u ID --all` only |
+| | `--no-revert` | `-NoRevert` | none: arm no revert timer and ask nothing at the end, for test machines (No revert timer, below) | `-r` only |
 | | `--probe` | `-Probe` | none | action |
 | | `--history` | `-History` | none | action |
 | `-P` | `--profile` | `-Profile` | NAME, `[a-z0-9-]+` | a phase |
@@ -133,12 +138,13 @@ A line holds one **action**, or only a phase.
 | | `--approve` | `-Approve` | LIST: approves items without the approval prompt (Approval items, below); entries are `<module-id>:<item-id>@<fingerprint>`, pasted from a preview | `-r` |
 | `-h`, `-?`, `/?` | `--help` | `-Help` | none | all |
 | `-V` | `--version` | `-Version` | none | action |
+| | `--manual` | `-Manual` | none | action |
 
 `--root`, `--config`, `--break-glass`, `--confirm-group` and `--approve` stay until section 3.3 removes the prompts they answer. PowerShell avoids the name `-Confirm`, which it reserves.
 
 #### How the line is read
 
-- **One action per line:** `-r`, `-k`, `-u`, `--probe`, `--history` or `-V`. Two actions are a usage error (`40`). A phase word alone previews it. Options may come before or after the action and its word.
+- **One action per line:** `-r`, `-k`, `-u`, `--probe`, `--history`, `-V` or `--manual`. Two actions are a usage error (`40`). A phase word alone previews it. A line with neither an action nor a phase is the status, unless it gives `-P`, `--break-glass`, `--confirm-group` or `--approve`, which only a preview or a run uses: that line is a preview with its phase missing (`40`). Options may come before or after the action and its word.
 - **Case.** Short letters are case-sensitive: `-P` is the profile and `-V` the version, and `-p` and `-v` are errors with a near-miss suggestion. Long names ignore case and dashes, so PowerShell's `-Run`, `-Undo`, `-Profile`, `-BreakGlass` and `-Root` work, and each option has one name in both runners.
 - **Stacking.** Short letters may be joined, such as `-rv` once `-v` is built (section 3.3); today only `-r` and `-P` can share a stack (`-rP NAME`). A letter that takes a value comes last. A single dash before a word is read as a long name when the word is a long name (`-Undo`), and otherwise as a stack of letters, where a letter that is not a short flag is a usage error.
 - **Values** are given as `-k 7f3a`, `--keep 7f3a`, `--keep=7f3a` or `-Name:value`, and `--` ends the options. A run is never kept or undone by guess. PowerShell may hand `-k 0123` over as a number; the runner takes the raw text, never a number.
@@ -151,17 +157,49 @@ A line holds one **action**, or only a phase.
 
 - an option given twice;
 - an option whose value is missing, or looks like another option (`--profile needs a value, but got '--root'`);
-- an option that does not fit the action, such as `--all` without `-u`, or two actions.
+- an option that does not fit the action, such as `--all` without `-u`, or two actions;
+- `-y` anywhere but `-u ID --all` (`laby: -y is only for -u ID --all: add --all, or leave out -y`), and `--no-revert` anywhere but `-r`. They are refused rather than ignored, so no one believes they took effect.
 
 A value option that the action does not use, such as `--profile` with `--probe`, gives a warning, not an error. The warning is printed once the action has passed its own checks, so it never comes before an error.
 
 #### Help
 
-- **Typing nothing** prints the short main help and exits `0`.
-- **`laby -h`** is written by hand and fits one screen: at most 24 lines and 78 columns, plain text, no color, the same on both platforms, with the name written as `laby`. Its groups are headed `Usage:`, `Actions:` and `Options:`, and it ends with `Full manual: docs/manual/labyrinth.md in the release`.
+- **Typing nothing** shows the status (below), not the help.
+- **`laby -h`** is written by hand and fits one screen: at most 24 lines and 78 columns, plain text, no color, the same on both platforms, with the name written as `laby`. Its groups are headed `Usage:`, `Actions:` and `Options:`, and it ends with `Full manual: laby --manual   (Linux also: man laby)`.
 - **Help for one action:** add `-h` to what you would type, before or after it: `laby -u -h`, `laby -h -u`, `laby --undo --help`, `laby observe -h`. The action's value is not needed. Inside help only, the long name as a word works too: `laby -h undo`. A topic is an action's or option's long name, a phase, `basics`, or a module ID (design 00, section 4).
-- **Each topic** is at most 18 lines (`basics` 24) and starts with the real form, such as `Usage: laby -u ID [--all]`, then one `Exit:` line, examples and a `See also:` line.
+- **Each topic** is at most 18 lines (`basics` 24) and starts with the real form, such as `Usage: laby -u ID [--all [-y]]`, then one `Exit:` line, examples and a `See also:` line.
 - **Help never runs anything.** If `-h`, `--help`, `-?` or `/?` appears anywhere on the line before `--`, other than as an option's value, the runner prints help and nothing else, whatever the rest of the line says, even if it holds an error. Help takes no lock, writes no log, makes no run ID, reads no configuration or state, needs no root or Administrator, and exits `0`. An unknown topic prints a one-line hint, then the main help, and still exits `0`. The one exception is a tampered release, which still exits `20` (Trusted code, below).
+
+#### Status
+
+`laby` alone shows, one line each: the host; its group and profile from the `hosts` file (or why they are unknown: no `hosts` file, the host not in it, or the file malformed); each phase as `not run` or the state of its latest run, as `--history` words it, with the run's last four characters and start time; each armed revert timer and when it fires (or `Timer:    none armed`); and a `Next:` line with the one command to run next, the first of these that applies:
+
+1. No `hosts` file, or this host not in it: list it there, then run `laby` again. A malformed file: correct it, then run `laby` again.
+2. A revert timer is armed: check a new login, then `laby -k ID` for the latest armed run.
+3. The host is in the `manual` group: none; configure it by hand, from its runbook.
+4. The first phase, in order, that has not run, or whose latest run was undone: preview it (`laby PHASE`).
+5. Otherwise: `laby --probe`.
+
+Commands on the `Next:` line carry the line's `--root` and `--config`, so they can be pasted. The status only reads: no lock, no log, no run ID, nothing created. Like `--history`, it needs root or Administrator; without, it prints the main help's usage lines and how to run it as root (or from an elevated session). It always exits `0`, even on a host with no configuration. The queue count joins it when the queue is built (section 3.3).
+
+#### The manual
+
+`laby --manual` opens the full manual, one screen at a time. On Linux it opens the release's own `manual/labyrinth.1` with `man -l`, then formatted (with `nroff`, when the host has it) through `less`, then prints it; it never runs `man laby`, as another program can own that name. On Windows it shows the help topic, from the release's `manual` folder or the installed module, one screen at a time (`Out-Host -Paging`), or prints it when the output is not a console. A copy with no built manual, such as a plain git checkout, shows `docs/manual/labyrinth.md` the same way, split for its platform as the build does; a copy with neither is an error (`40`). Like help and `-V`, it changes nothing: no lock, no log, no run ID, no configuration read, no root needed; it exits `0`.
+
+#### Questions
+
+The one question outside a run's own prompts comes before `laby -u ID --all`, because that also undoes the changes kept once verified, such as a rotated password, which can hand an intruder their access back:
+
+```
+Undo run 4f2a with --all? It also undoes changes kept once verified,
+such as a new password, which can give an intruder access back. [y/N]
+```
+
+It is asked on the terminal, not on standard input. The default is no: anything but `y` or `yes` prints `Nothing was undone.` and exits `0`. `-y` answers yes without asking. Without a terminal and without `-y`, nothing is undone (`40`), and a line gives the command with `-y` added. There is no question when the run has no module kept once verified, as `--all` then undoes nothing more. `-u ID` without `--all`, which the revert timer runs, never asks.
+
+#### No revert timer
+
+`laby -r PHASE --no-revert` arms no revert timer and ends without asking to keep the run. It is for test machines only: a change that locks the team out is not undone by itself. Nothing is kept once verified, as there is no timer to keep it from. The manifest records `run_no_revert` after `breakglass_verified`; `--history` and the status show the run as `no revert`; and the end of the run says there is no timer and gives the `-u` command that undoes it. `laby -k ID` on such a run records nothing and says there is no timer to cancel (`0`).
 
 #### Host checks
 
@@ -295,7 +333,7 @@ Every run, keep and undo writes `<state>/runs/<run>/output.log`, readable by roo
 
 ### 3.3 Automatic runs and the rest of the command line (specified, planned)
 
-Section 3.1 describes the command line as built. This section holds the installer, which is built, and what is still planned (Roadmap): the status and queue, automatic runs, short output, the Harden phase and the options listed below. None of these is accepted yet; typing a flag of the list below is a usage error, `<name>: '-v' (--verbose) is planned and not built yet`, until its stage is built. When one is built, its rows move into section 3.1.
+Section 3.1 describes the command line as built. This section holds the installer, which is built, and what is still planned (Roadmap): the queue, automatic runs, short output, the Harden phase and the options listed below. None of these is accepted yet; typing a flag of the list below is a usage error, `<name>: '-v' (--verbose) is planned and not built yet`, until its stage is built. When one is built, its rows move into section 3.1.
 
 #### The command
 
@@ -325,7 +363,6 @@ The links are in `/usr/bin` so that `sudo laby` works: sudo searches only its ow
 It is safe to run again: when nothing differs, it says so and changes nothing. If the built manual is absent, as in a plain git checkout, it skips the manual with one line. Everything here works with either name, and with `labyrinth.sh` / `labyrinth.ps1` run directly. The options `--code-dir`, `--link-dir` and `--man-dir` (Linux) and `-CodeDir`, `-ModuleDir` and `-NoPath` (Windows) exist for the tests only: they point the installer at throwaway folders.
 
 ```
-laby                    this host's status and the next step
 laby init               Lock out, then Harden, as one run (preview)
 laby -r init            run it
 ```
@@ -340,9 +377,8 @@ laby -r init            run it
 | `-a` | `--approve` | LIST | With `-q` only: apply the chosen items in a new run, with the same backups, manifest, revert timer and probes as any run |
 | `-d` | `--decline` | LIST | With `-q` only: take the chosen items out of the queue, recorded, changing nothing |
 | `-v` | `--verbose` | none | The full Found/Fix/More block for every module |
-| `-y` | `--yes` | none | Yes to the ordinary questions (below); never to the login check |
-| | `--no-revert` | none | Arm no revert timer and ask no login check: for test machines, and remote runs whose risk the team accepts. Recorded in the manifest and shown in the summary |
-| | `--manual` | none | The full manual, scrollable (below) |
+
+`-y` and `--no-revert` are built (section 3.1). `-y` will also answer the ordinary questions below, never the login check; `--no-revert` will also skip the login check, for remote runs whose risk the team accepts as well as for test machines.
 
 A LIST is item numbers from the queue, separated by commas, with ranges: `1,3`, `1-4,7` or `all`. It may also name `category:<name>` for every queued item of that category on this host, as the approval prompt allows today. Once `-a` exists, `--approve LIST` with `-r` is replaced by it (below). `-p` is left free for a possible port option.
 
@@ -355,9 +391,8 @@ The planned commands of design 00, section 5 (`seal`, `reseal`, `checkpoint`, `b
 
 #### How the line is read
 
-- **Actions.** `-q` (alone, or with `-a` or `-d`) and `--manual` join the one-action rule of section 3.1. `-a` or `-d` without `-q` is refused with the right form: `laby: -a needs -q, as in: laby -q -a 1,3`. `--manual` and `-V` change nothing, like help: no lock, no log, no run ID, no root needed, exit `0`.
+- **Actions.** `-q` (alone, or with `-a` or `-d`) joins the one-action rule of section 3.1. `-a` or `-d` without `-q` is refused with the right form: `laby: -a needs -q, as in: laby -q -a 1,3`.
 - **Stacking.** `-rv` and `-qa 1,3` work as in section 3.1.
-- **Bare `laby`.** Typing nothing shows the status (below) instead of the main help; `laby -h` is the help.
 
 #### No prompts during a run
 
@@ -387,7 +422,7 @@ Keep the changes? [y/N]
 - `-k` keeps a run's changes after a missed question, before the timer fires; after it fired, keeping is refused as too late (`20`), as today.
 - `--no-revert` arms nothing and asks nothing.
 
-**Ordinary questions** are asked only before an action that is hard to take back in bulk: `-u ID --all`, which also undoes changes such as rotated passwords and can hand an intruder their access back, and `-a all` or `-d all`, which show the item count first. The default is no. `-y` answers yes. Without a terminal and without `-y`, the action is refused (`40`) with a line saying to add `-y`.
+**Ordinary questions** are asked only before an action that is hard to take back in bulk. The one before `-u ID --all` is built (section 3.1, Questions); `-a all` and `-d all` will ask the same way, showing the item count first. The default is no. `-y` answers yes. Without a terminal and without `-y`, the action is refused (`40`) with a line saying to add `-y`.
 
 #### The queue
 
@@ -399,17 +434,17 @@ Keep the changes? [y/N]
 
 #### Status
 
-`laby` alone shows the host, its group and profile; each phase as not run, run (ID and time) or kept; any armed timer and when it fires; the number of queued items; and a `Next:` line with the one command to run next. Like `--history`, it needs root or Administrator; without, it prints the usage lines and how to run it as root. It exits `0`.
+The status (section 3.1) gains the number of queued items, and a `Next:` step for them, when the queue is built.
 
 #### Help for the planned actions
 
-Each planned action and option gets a help topic under the rules of section 3.1, such as `laby -q -a -h`. Tests check, for every action and phase, that the line with `-h` added leaves the host and the data root unchanged. Once `--manual` exists, the last line of the main help becomes `Full manual: laby --manual   (Linux also: man laby)`.
+Each planned action and option gets a help topic under the rules of section 3.1, such as `laby -q -a -h`. Tests check, for every action and phase, that the line with `-h` added leaves the host and the data root unchanged.
 
 #### The manual
 
 - It is built from `docs/manual/labyrinth.md` as today (section 9): the man page `labyrinth.1` and the Windows help topic `about_Labyrinth.help.txt`. Both keep upper-case section headings, as man pages and help topics do.
 - **Installed** where the system looks: on Linux, `labyrinth.1.gz` in `/usr/local/share/man/man1/` with `laby.1` pointing to it, then `mandb` where present, so `man laby` and `man labyrinth` work; on Windows, the help topic where `Get-Help about_Labyrinth` finds it.
-- **`laby --manual`** opens it scrollable. On Linux it runs `man laby`; if `man` or the installed page is missing, it opens the release's own `labyrinth.1` with `man -l`, then with `less`, then prints it. On Windows it shows the help topic one screen at a time (`Out-Host -Paging`), or prints it when the output is not a console.
+- **`laby --manual`** opens it (section 3.1, The manual).
 
 #### Output and phases
 

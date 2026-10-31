@@ -176,4 +176,22 @@ Describe 'labyrinth.ps1 command line' {
         $r.Err | Should -Match ([regex]::Escape("Try '$($t.Self) -h'."))
         $r.Err | Should -Not -Match 'did you mean|At line:|Exception|CategoryInfo'
     }
+
+    It '-y and -NoRevert are refused where they would do nothing, by name' {
+        $r = Invoke-TestLabCapture $t @('-u', '4f2a', '-y', '-Root', $t.Root, '-Config', $t.Etc)
+        $r.Code | Should -Be 40
+        $r.Out | Should -BeNullOrEmpty
+        @($r.Err -split "`r?`n") | Should -Be @("$($t.Name): -y is only for -u ID -All: add -All, or leave out -y", "Try '$($t.Self) -u -h'.")
+        $r = Invoke-TestLabCapture $t @('-y', 'observe')
+        $r.Err | Should -Match ([regex]::Escape('-y is only for -u ID -All, not a preview'))
+        $r = Invoke-TestLabCapture $t @('-Yes')
+        $r.Err | Should -Match ([regex]::Escape('-y is only for -u ID -All, not the status'))
+        $r = Invoke-TestLabCapture $t @('-r', 'observe', '-NoRevert', '-y')
+        $r.Err | Should -Match ([regex]::Escape('-y is only for -u ID -All, not -r'))
+        $r = Invoke-TestLabCapture $t @('-NoRevert', '-Probe')
+        $r.Code | Should -Be 40
+        $r.Err | Should -Match ([regex]::Escape('-NoRevert is only for -r, not -Probe'))
+        $r.Err | Should -Not -Match 'At line:|Exception|CategoryInfo'
+        $t.Root | Should -Not -Exist
+    }
 }

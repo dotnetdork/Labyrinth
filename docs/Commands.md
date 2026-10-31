@@ -3,7 +3,7 @@
 This page shows the commands a person types to run Labyrinth, with what each one does and when to use it. It is written for teammates learning the tool, not for the people building it.
 
 > [!NOTE]
-> **Working now and planned.** Preview, run, keep, undo, history, probe, help and the version work now. Parts marked **Planned** are not built yet; each names its stage (Roadmap). The installer (`sudo ./install.sh` on Linux, `.\install.ps1` as Administrator on Windows) adds the commands `laby` and `labyrinth`; without it, `laby` means `./labyrinth.sh` on Linux or `.\labyrinth.ps1` on Windows, run from the release folder. The status page (`laby` on its own) and `--manual` are still planned. The exact rules, including every flag and every edge case, are in [Conventions, section 3.1](Conventions.md#31-commands-options-gates-and-the-order-of-an-apply) for what works now and [section 3.3](Conventions.md#33-automatic-runs-and-the-rest-of-the-command-line-specified-planned) for what is planned; if this page and Conventions ever disagree, Conventions wins.
+> **Working now and planned.** The status, preview, run, keep, undo, history, probe, help, the manual and the version work now. Parts marked **Planned** are not built yet; each names its stage (Roadmap). The installer (`sudo ./install.sh` on Linux, `.\install.ps1` as Administrator on Windows) adds the commands `laby` and `labyrinth`; without it, `laby` means `./labyrinth.sh` on Linux or `.\labyrinth.ps1` on Windows, run from the release folder. The exact rules, including every flag and every edge case, are in [Conventions, section 3.1](Conventions.md#31-commands-options-gates-and-the-order-of-an-apply) for what works now and [section 3.3](Conventions.md#33-automatic-runs-and-the-rest-of-the-command-line-specified-planned) for what is planned; if this page and Conventions ever disagree, Conventions wins.
 
 ## The idea in one paragraph
 
@@ -11,13 +11,13 @@ Naming a phase on its own only **previews** it: nothing changes. Adding `-r` **r
 
 The five phases, in the order they run: **Lock out** (take control back), **Harden** (shrink what can be attacked), **Observe** (see what happens), **Deceive** (plant traps) and **Sustain** (keep everything running). The phase words that work now are `lockout`, `observe`, `deceive` and `sustain`. **Planned** (with the Harden phase): `harden`, and `init`, which means Lock out and then Harden in one run.
 
-## Where am I? (Planned)
+## Where am I?
 
 ```
 laby
 ```
 
-Planned (first usable release). Today, typing nothing prints the short help. The status will show this host's status: its group and profile, which phases have been run or kept, any revert timer still counting down, how many items wait in the queue, and a `Next:` line with the one command to run next. It changes nothing. When in doubt, start here.
+Shows this host's status: its group and profile, the latest run of each phase (not run, kept, undone, or armed with the time its revert timer fires), any revert timer still counting down, and a `Next:` line with the one command to run next. It changes nothing. When in doubt, start here. **Planned** (with the queue): how many items wait in the queue.
 
 ## The first minutes
 
@@ -100,7 +100,7 @@ laby -u 7f3a --all
 laby --undo 7f3a --all
 ```
 
-Undo **everything** from that run, including new passwords and removed keys. It asks first, because it can hand an intruder their access back. After it, change those passwords again and correct the offline record.
+Undo **everything** from that run, including new passwords and removed keys. It asks first (`[y/N]`), because it can hand an intruder their access back; add `-y` to answer yes without being asked, for example from a script. After it, change those passwords again and correct the offline record.
 
 ```
 laby --history
@@ -122,6 +122,7 @@ Test every scored service on this host once, the same way the runs do. It change
 laby -h                 the main help, one screen (also --help)
 laby -h undo            help for one command or phase (also --help undo)
 laby -V                 the version and the release's hash (also --version)
+laby --manual           the full manual, one screen at a time (Linux also: man laby)
 ```
 
 Adding `-h` to any command shows that command's help instead of running it: `laby -u 7f3a -h` shows the help for undo, and `laby -r lockout -h` changes nothing. So it is always safe to add `-h` to a command you are unsure of.
@@ -132,15 +133,15 @@ Adding `-h` to any command shows that command's help instead of running it: `lab
 |---|---|---|
 | `-P NAME` | `--profile NAME` | Use this profile; it must match the host's line in the `hosts` file |
 | `-v` | `--verbose` | **Planned** (first usable release). Show the full detail for every module, not one line each |
-| `-y` | `--yes` | **Planned** (first usable release). Answer yes to "are you sure?" questions. It never answers the login check |
-| | `--no-revert` | **Planned** (first usable release). No revert timer and no login check. For test machines only |
-| | `--manual` | **Planned** (first usable release). The full manual, scrollable (Linux also: `man laby`) |
+| `-y` | `--yes` | Answer yes to the question before `laby -u ID --all`. **Planned** (first usable release): also the queue's "are you sure?" questions. It never answers the login check |
+| | `--no-revert` | With `-r`: no revert timer and no keep question; the changes stay until you undo them with `-u`. For test machines only |
 
 ## A typical host, start to finish
 
 Working now:
 
 ```
+laby                     check where the host stands
 laby lockout             preview the lockdown
 laby -r lockout          run it; open a new login, check it, type keep
 laby observe             preview the next phase
@@ -152,7 +153,6 @@ laby --probe             re-check the scored services at any time
 Planned (stages 4b and later):
 
 ```
-laby                     check where the host stands
 laby init                preview the first minutes (Lock out, then Harden)
 laby -r init             run them; open a new login, check it, answer y
 laby -q                  look at what is waiting for a person
