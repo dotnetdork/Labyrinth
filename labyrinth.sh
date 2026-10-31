@@ -9,6 +9,8 @@
 #   laby -u ID [--all]       undo a run, newest change first
 #   laby --history           list this host's runs and their state
 #   laby --probe             test every scored service once
+#   laby --new-seed          make this host's decoy seed
+#   laby --seed-check        check a seed typed at a prompt
 #   laby --manual            the full manual, scrollable
 #   laby -V                  the version; also --version
 #   laby -h [TOPIC]          help; also --help, -? and /?
@@ -122,11 +124,11 @@ NAME="${SELF#sudo }"   # the name as typed, for the start of a usage error
 # name, the key its long name is matched by (lower case, no dashes), whether
 # it takes a value, its short letter, if it has one, and whether it is an
 # action. Short letters are case-sensitive; long names are not.
-readonly -a OPT_NAMES=(run keep undo probe history version manual all profile root config break-glass confirm-group approve yes no-revert help)
-readonly -a OPT_KEYS=(run keep undo probe history version manual all profile root config breakglass confirmgroup approve yes norevert help)
-readonly -a OPT_VALUE=(0 1 1 0 0 0 0 0 1 1 1 1 1 1 0 0 0)
-readonly -a OPT_SHORT=(r k u '' '' V '' '' P '' '' '' '' '' y '' h)
-readonly -a OPT_ACTION=(1 1 1 1 1 1 1 0 0 0 0 0 0 0 0 0 0)
+readonly -a OPT_NAMES=(run keep undo probe history new-seed seed-check version manual all profile root config break-glass confirm-group approve yes no-revert help)
+readonly -a OPT_KEYS=(run keep undo probe history newseed seedcheck version manual all profile root config breakglass confirmgroup approve yes norevert help)
+readonly -a OPT_VALUE=(0 1 1 0 0 0 0 0 0 0 1 1 1 1 1 1 0 0 0)
+readonly -a OPT_SHORT=(r k u '' '' '' '' V '' '' P '' '' '' '' '' y '' h)
+readonly -a OPT_ACTION=(1 1 1 1 1 1 1 1 1 0 0 0 0 0 0 0 0 0 0)
 # The flags that docs/Conventions.md section 3.3 plans and nothing builds yet,
 # one row each: the short letter, the long name's match key ('' when the name
 # is already an option) and how a message shows it. Typing one is a usage
@@ -192,14 +194,14 @@ Actions (one per line):
   -r, --run               run a phase: plan, confirm, change
   -k, --keep ID           keep a run: cancel its revert timer
   -u, --undo ID [--all]   undo a run, newest change first
-      --history           list this host's runs and their IDs
-      --probe             test every scored service once
+      --history           list this host's runs  --probe   test every service
+      --new-seed          make a decoy seed      --seed-check   check a seed
   -V, --version           print the version      --manual   the full manual
 
 Options:
   -P, --profile NAME      profile to use, if not this host's line in hosts
   --root DIR              data root         --config DIR   configuration
-  -y, --yes               yes to the question before -u ID --all
+  -y, --yes               yes to the question before -u ID --all or --new-seed
   --no-revert             with -r: no revert timer, for test machines
   --break-glass NAME, --confirm-group GROUP, --approve LIST: see -h run
   -h, --help [TOPIC]      help; TOPIC: an action, option, phase or basics
@@ -294,6 +296,39 @@ Example: @CMD@ --probe
 See also: @CMD@ -h basics, @CMD@ --history
 EOF
     ;;
+    new-seed) cat <<'EOF'
+Usage: @CMD@ --new-seed [-y] [--root DIR] [--config DIR]
+
+Make this host's decoy seed: the code its decoys are worked out from.
+It is saved in seed.conf, in the configuration folder, for root only,
+and shown once on the terminal until you type 'recorded'; then the
+screen is cleared. Put it in the offline record, and post it in the
+team chat with this host's name. If the host already has one, it asks
+before replacing it; -y answers yes. Needs root or an Administrator
+and a terminal.
+
+Exit: 0 saved or not replaced, 20 blocked, 40 error.
+Blocked: not root, no terminal, or the terminal went before 'recorded'
+(the new seed is then not saved).
+Example: @CMD@ --new-seed
+See also: @CMD@ -h seed-check, @CMD@ -h yes
+EOF
+    ;;
+    seed-check) cat <<'EOF'
+Usage: @CMD@ --seed-check
+
+Ask for a seed at a prompt on the terminal and say whether it is a
+valid seed: its last group must match the rest, which catches a typo.
+Case, spaces and dashes do not matter. The seed is typed, never given
+on the command line, and is not saved or logged. Reads no
+configuration and needs no root, so it works on any machine with
+Labyrinth.
+
+Exit: 0 valid, 20 no terminal, 30 not valid.
+Example: @CMD@ --seed-check
+See also: @CMD@ -h new-seed
+EOF
+    ;;
     version) cat <<'EOF'
 Usage: @CMD@ -V
 
@@ -320,12 +355,14 @@ EOF
     ;;
     yes) cat <<'EOF'
 Usage: @CMD@ -u ID --all -y
+       @CMD@ --new-seed -y
 
 Answer yes to the question asked before -u ID --all, which also
 undoes changes kept once verified, such as a new password. Without a
 terminal to ask on, -u ID --all is refused unless -y is given.
+--new-seed -y replaces this host's decoy seed without asking.
 -y never keeps a run: the login check after -r is always yours.
-Used by: -u with --all only.
+Used by: -u with --all, and --new-seed.
 
 Exit: 40 if given with anything else.
 Example: @CMD@ -u 4f2a --all -y
@@ -377,7 +414,7 @@ Usage: @CMD@ ACTION --config DIR
 
 The configuration folder, if it is not <root>/etc: the hosts file, the
 protected set and the event's other files. DIR must be a full path.
-For a preview, -r and --probe it must exist.
+For a preview, -r, --probe and --new-seed it must exist.
 Used by: every action.
 
 Exit: 40 if DIR is not a full path or does not exist.
@@ -682,6 +719,7 @@ run_recovery() {
       else
         printf 'Nothing was kept.\n'
       fi ;;
+    newseed) printf 'The decoy seed may or may not be saved; run --new-seed again to be sure.\n' ;;
     *) printf 'Nothing was changed.\n' ;;
   esac
 }
@@ -2911,6 +2949,90 @@ cmd_manual() {
   exit 0
 }
 
+# new_seed_undo FILE OLD: put DECOY_SEED back as it was before --new-seed
+# saved one (none when OLD is empty).
+new_seed_undo() {
+  lab_seed_store DECOY_SEED "$2" \
+    || printf 'labyrinth: %s could not be put back as it was; check its DECOY_SEED\n' "$1" >&2
+}
+
+# cmd_new_seed: make this host's decoy seed (design 16, section 4.1). It
+# needs root and a terminal, and checks both before it makes or saves
+# anything. The seed is saved as DECOY_SEED in seed.conf, then shown once on
+# the terminal until the operator types 'recorded'. If the terminal goes
+# first, or the run is stopped, nobody recorded it, so the file goes back as
+# it was. The seed reaches only the terminal and the file: never standard
+# output or the log.
+cmd_new_seed() {
+  local old='' seed='' answer='' file host rc=0
+  lab_is_admin || die '--new-seed needs root' 20 "$FIX_ADMIN"
+  lab_tty_ok || die '--new-seed needs a terminal to show the seed on' 20 \
+    'Run it from a terminal, such as the console or an SSH session.'
+  [[ -d "$LAB_CONFIG_DIR" ]] || die "the configuration folder does not exist: $LAB_CONFIG_DIR" 40 \
+    'Check --root, or give the folder with --config.'
+  flush_warnings
+  file="$(lab_seed_file)"
+  old="$(lab_seed_read DECOY_SEED 2> /dev/null)" \
+    || die "$file cannot be read, or its DECOY_SEED is not a valid seed" 40 \
+      'Correct or remove that file, then run the same command again.'
+  if [[ -n "$old" && -z "${GIVEN[yes]+set}" ]]; then
+    lab_tty_write 'This host already has a decoy seed. Replace it? The decoys made from the'$'\n'
+    lab_tty_write 'old one must be made again. [y/N] '
+    answer="$(lab_tty_read)" || answer=''
+    case "${answer,,}" in
+      y | yes) ;;
+      *) printf 'Nothing was changed.\n'; exit 0 ;;
+    esac
+  fi
+  host="$(lab_host)"
+  # A seed that could not be made must stop here: an empty one would remove
+  # DECOY_SEED from the file instead of saving one.
+  if ! seed="$(lab_seed_new)" || ! seed="$(lab_seed_normalize "$seed")" || [[ -z "$seed" ]]; then
+    die 'a new seed could not be made' 40 'Check that /dev/urandom can be read, then run the same command again.'
+  fi
+  # Ctrl-C or a dropped session before 'recorded' undoes the save as well:
+  # nobody recorded that seed. The trap sees this function's old and file.
+  trap 'trap - INT HUP TERM; new_seed_undo "$file" "$old"; old=""
+    die "stopped before the seed was recorded, so it was not saved" 20 "Run the same command again from a terminal."' INT HUP TERM
+  lab_seed_store DECOY_SEED "$seed" || { trap - INT HUP TERM; seed=''; die "the seed could not be saved in $file" 40 "$FIX_DATA"; }
+  lab_seed_show "$host" "$(lab_seed_format "$seed")" || rc=$?
+  trap - INT HUP TERM
+  seed=''
+  if (( rc != 0 )); then
+    new_seed_undo "$file" "$old"
+    old=''
+    die 'the seed was not recorded, so it was not saved' 20 \
+      'Run the same command again from a terminal.'
+  fi
+  old=''
+  printf "Saved this host's decoy seed in %s.\n" "$file"
+  printf "Post it in the team chat with this host's name: %s.\n" "$host"
+}
+
+# cmd_seed_check: say whether a seed typed at a visible prompt is valid.
+# It reads no configuration and needs no root, so it works on any machine
+# with Labyrinth. The seed is never taken from the command line or standard
+# input, and the message about a bad one never repeats it.
+cmd_seed_check() {
+  local typed='' msg
+  lab_tty_ok || die '--seed-check needs a terminal to type the seed at' 20 \
+    'Run it from a terminal, such as the console or an SSH session.'
+  lab_tty_write 'Seed to check: '
+  if ! typed="$(lab_tty_read)"; then
+    lab_tty_write $'\n'
+    die 'the terminal went before a seed was typed' 20
+  fi
+  if msg="$(lab_seed_normalize "$typed" 2>&1 > /dev/null)"; then
+    typed=''
+    printf 'Valid seed: the check group matches.\n'
+    exit 0
+  fi
+  typed=''
+  printf '%s\n' "$msg"
+  printf 'Check it against the offline record and type it again.\n'
+  exit 30
+}
+
 # confirm_all: the question before -u ID --all, which also undoes changes
 # kept once verified (docs/Conventions.md section 3.1). The default is no;
 # -y answers yes. Without a terminal and without -y, nothing is undone (40).
@@ -2990,6 +3112,8 @@ bad_word() {
     undo) hint="$SELF -u ID" ;;
     history) hint="$SELF --history" ;;
     probe) hint="$SELF --probe" ;;
+    newseed) hint="$SELF --new-seed" ;;
+    seedcheck) hint="$SELF --seed-check" ;;
     version) hint="$SELF -V" ;;
     manual) hint="$SELF --manual" ;;
     *) hint="$(suggest "$lc" $PHASES)" ;;
@@ -3031,8 +3155,8 @@ main() {
   # believes they took effect.
   if [[ -n "${GIVEN[yes]+set}" && "$action" == undo && -z "${GIVEN[all]+set}" ]]; then
     usage_error '-y is only for -u ID --all: add --all, or leave out -y'
-  elif [[ -n "${GIVEN[yes]+set}" && "$action" != undo ]]; then
-    usage_error "-y is only for -u ID --all, not $label"
+  elif [[ -n "${GIVEN[yes]+set}" && "$action" != undo && "$action" != new-seed ]]; then
+    usage_error "-y is only for -u ID --all or --new-seed, not $label"
   fi
   if [[ -n "${GIVEN[no-revert]+set}" && "$action" != run ]]; then
     usage_error "--no-revert is only for -r, not $label"
@@ -3066,6 +3190,11 @@ main() {
         usage_error "not a run ID: '$word' (give the ID or its last 4 characters)"
       fi
       label="$(show_opt "$action")" ;;
+    new-seed | seed-check)
+      # A word here may be a seed: never repeat it.
+      (( $# == 0 )) || usage_error "$(show_opt "$action") takes no seed on the command line: it asks for one" \
+        'A seed typed on a command line stays in the shell history; clear it there.'
+      label="$(show_opt "$action")" ;;
     probe | history | version | manual)
       (( $# == 0 )) || usage_error "unexpected word '$1' after '$(show_opt "$action")'"
       label="$(show_opt "$action")" ;;
@@ -3073,6 +3202,8 @@ main() {
   if [[ "$action" == version ]]; then cmd_version; exit 0; fi
   # Like help and -V, the manual reads no configuration and needs no root.
   if [[ "$action" == manual ]]; then cmd_manual; fi
+  # So does --seed-check: it asks for a seed and reads nothing else.
+  if [[ "$action" == seed-check ]]; then cmd_seed_check; fi
   if [[ "$action" == run && -n "${GIVEN[no-revert]+set}" ]]; then NO_REVERT=1; fi
 
   OPT_PROFILE="${GIVEN[profile]:-}"
@@ -3103,6 +3234,7 @@ main() {
     run) CMD=apply ;;
     undo) CMD=rollback ;;
     history) CMD=runs ;;
+    new-seed) CMD=newseed ;;
     *) CMD="$action" ;;
   esac
   case "$CMD" in plan | apply | probe) check_host ;; esac
@@ -3114,6 +3246,7 @@ main() {
     rollback) cmd_rollback "$word" ;;
     probe) cmd_probe ;;
     runs) cmd_runs ;;
+    newseed) cmd_new_seed ;;
   esac
 }
 

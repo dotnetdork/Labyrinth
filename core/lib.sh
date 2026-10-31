@@ -24,6 +24,8 @@ if [[ -z "${LAB_CORE_LOADED:-}" ]]; then
   source "$LAB_ROOT/core/quarantine/quarantine.sh"
   # shellcheck source=core/secret/secret.sh
   source "$LAB_ROOT/core/secret/secret.sh"
+  # shellcheck source=core/seed/seed.sh
+  source "$LAB_ROOT/core/seed/seed.sh"
   # shellcheck source=core/platform/platform.sh
   source "$LAB_ROOT/core/platform/platform.sh"
   # shellcheck source=core/probe/probe.sh

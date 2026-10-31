@@ -12,6 +12,8 @@
       .\labyrinth.ps1 -u ID [-All]     undo a run, newest change first
       .\labyrinth.ps1 -History         list this host's runs and their state
       .\labyrinth.ps1 -Probe           test every scored service once
+      .\labyrinth.ps1 -NewSeed         make this host's decoy seed
+      .\labyrinth.ps1 -SeedCheck       check a seed typed at a prompt
       .\labyrinth.ps1 -Manual          the full manual, one screen at a time
       .\labyrinth.ps1 -V               the version; also -Version
       .\labyrinth.ps1 -h [TOPIC]       help; also -Help and /?
@@ -27,7 +29,7 @@
       -ConfirmGroup GROUP     answer the group-name prompt (-r only)
       -Approve LIST           approve items without the prompt (-r only)
       -All                    with -u: also undo changes kept once verified
-      -y, -Yes                with -u ID -All: yes to its question
+      -y, -Yes                with -u ID -All or -NewSeed: yes to its question
       -NoRevert               with -r: no revert timer, for test machines
 
     Short letters are case-sensitive: -P and -V are capitals. Long names
@@ -65,7 +67,7 @@
     Keeps the run whose ID ends in 4f2a: its revert timer is cancelled.
 
 .NOTES
-    -r, -k, -u and -History need PowerShell opened with 'Run as
+    -r, -k, -u, -History and -NewSeed need PowerShell opened with 'Run as
     administrator'. Use -h for help: PowerShell takes -? for itself. The
     common parameters, such as -Verbose and -ErrorAction, are not
     supported.
@@ -117,6 +119,8 @@ $script:LabOptions = @(
     @{ Name = 'undo'; Show = '-u'; Long = '-Undo'; Key = 'undo'; Short = 'u'; Value = $true; Action = $true }
     @{ Name = 'probe'; Show = '-Probe'; Long = '-Probe'; Key = 'probe'; Short = ''; Value = $false; Action = $true }
     @{ Name = 'history'; Show = '-History'; Long = '-History'; Key = 'history'; Short = ''; Value = $false; Action = $true }
+    @{ Name = 'new-seed'; Show = '-NewSeed'; Long = '-NewSeed'; Key = 'newseed'; Short = ''; Value = $false; Action = $true }
+    @{ Name = 'seed-check'; Show = '-SeedCheck'; Long = '-SeedCheck'; Key = 'seedcheck'; Short = ''; Value = $false; Action = $true }
     @{ Name = 'version'; Show = '-V'; Long = '-Version'; Key = 'version'; Short = 'V'; Value = $false; Action = $true }
     @{ Name = 'manual'; Show = '-Manual'; Long = '-Manual'; Key = 'manual'; Short = ''; Value = $false; Action = $true }
     @{ Name = 'all'; Show = '-All'; Long = '-All'; Key = 'all'; Short = ''; Value = $false; Action = $false }
@@ -214,14 +218,14 @@ Actions (one per line):
   -r, --run               run a phase: plan, confirm, change
   -k, --keep ID           keep a run: cancel its revert timer
   -u, --undo ID [--all]   undo a run, newest change first
-      --history           list this host's runs and their IDs
-      --probe             test every scored service once
+      --history           list this host's runs  --probe   test every service
+      --new-seed          make a decoy seed      --seed-check   check a seed
   -V, --version           print the version      --manual   the full manual
 
 Options:
   -P, --profile NAME      profile to use, if not this host's line in hosts
   --root DIR              data root         --config DIR   configuration
-  -y, --yes               yes to the question before -u ID --all
+  -y, --yes               yes to the question before -u ID --all or --new-seed
   --no-revert             with -r: no revert timer, for test machines
   --break-glass NAME, --confirm-group GROUP, --approve LIST: see -h run
   -h, --help [TOPIC]      help; TOPIC: an action, option, phase or basics
@@ -310,6 +314,37 @@ Exit: 0 all pass, 20 no service list, 30 a service failed, 40 error.
 Example: @CMD@ --probe
 See also: @CMD@ -h basics, @CMD@ --history
 '@ }
+        'new-seed' { @'
+Usage: @CMD@ --new-seed [-y] [--root DIR] [--config DIR]
+
+Make this host's decoy seed: the code its decoys are worked out from.
+It is saved in seed.conf, in the configuration folder, for root only,
+and shown once on the terminal until you type 'recorded'; then the
+screen is cleared. Put it in the offline record, and post it in the
+team chat with this host's name. If the host already has one, it asks
+before replacing it; -y answers yes. Needs root or an Administrator
+and a terminal.
+
+Exit: 0 saved or not replaced, 20 blocked, 40 error.
+Blocked: not root, no terminal, or the terminal went before 'recorded'
+(the new seed is then not saved).
+Example: @CMD@ --new-seed
+See also: @CMD@ -h seed-check, @CMD@ -h yes
+'@ }
+        'seed-check' { @'
+Usage: @CMD@ --seed-check
+
+Ask for a seed at a prompt on the terminal and say whether it is a
+valid seed: its last group must match the rest, which catches a typo.
+Case, spaces and dashes do not matter. The seed is typed, never given
+on the command line, and is not saved or logged. Reads no
+configuration and needs no root, so it works on any machine with
+Labyrinth.
+
+Exit: 0 valid, 20 no terminal, 30 not valid.
+Example: @CMD@ --seed-check
+See also: @CMD@ -h new-seed
+'@ }
         'version' { @'
 Usage: @CMD@ -V
 
@@ -334,12 +369,14 @@ See also: @CMD@ -h, @CMD@ -h basics
 '@ }
         'yes' { @'
 Usage: @CMD@ -u ID --all -y
+       @CMD@ --new-seed -y
 
 Answer yes to the question asked before -u ID --all, which also
 undoes changes kept once verified, such as a new password. Without a
 terminal to ask on, -u ID --all is refused unless -y is given.
+--new-seed -y replaces this host's decoy seed without asking.
 -y never keeps a run: the login check after -r is always yours.
-Used by: -u with --all only.
+Used by: -u with --all, and --new-seed.
 
 Exit: 40 if given with anything else.
 Example: @CMD@ -u 4f2a --all -y
@@ -387,7 +424,7 @@ Usage: @CMD@ ACTION --config DIR
 
 The configuration folder, if it is not <root>/etc: the hosts file, the
 protected set and the event's other files. DIR must be a full path.
-For a preview, -r and --probe it must exist.
+For a preview, -r, --probe and --new-seed it must exist.
 Used by: every action.
 
 Exit: 40 if DIR is not a full path or does not exist.
@@ -975,6 +1012,8 @@ function Exit-LabBadWord {
     elseif ($lc -ceq 'undo') { $hint = "$Self -u ID" }
     elseif ($lc -ceq 'history') { $hint = "$Self -History" }
     elseif ($lc -ceq 'probe') { $hint = "$Self -Probe" }
+    elseif ($lc -ceq 'newseed') { $hint = "$Self -NewSeed" }
+    elseif ($lc -ceq 'seedcheck') { $hint = "$Self -SeedCheck" }
     elseif ($lc -ceq 'version') { $hint = "$Self -V" }
     elseif ($lc -ceq 'manual') { $hint = "$Self -Manual" }
     else { $hint = Get-LabSuggestion $Word.ToLowerInvariant() $Phases }
@@ -1463,6 +1502,7 @@ function Get-LabRecovery {
             if ($short -ne '') { return @("The run may not be kept; '$Self -History' shows its state.", "Retry: $Self -k $short") }
             return 'Nothing was kept.'
         }
+        'newseed' { return 'The decoy seed may or may not be saved; run -NewSeed again to be sure.' }
     }
     return 'Nothing was changed.'
 }
@@ -3148,6 +3188,97 @@ function Show-LabManual {
     exit 0
 }
 
+# Invoke-LabNewSeedCommand: make this host's decoy seed (design 16, section
+# 4.1). It needs an Administrator and a console, and checks both before it
+# makes or saves anything. The seed is saved as DECOY_SEED in seed.conf, then
+# shown once on the console until the operator types 'recorded'. If the
+# console goes first, nobody recorded it, so the file goes back as it was.
+# The seed reaches only the console and the file: never standard output or
+# the log.
+function Invoke-LabNewSeedCommand {
+    if (-not (Test-LabAdmin)) { Exit-Lab '-NewSeed needs an elevated Administrator session' 20 $FixAdmin }
+    if (-not (Test-LabTerminal)) {
+        Exit-Lab '-NewSeed needs a terminal to show the seed on' 20 'Run it from a terminal, such as the console or a remote session.'
+    }
+    if (-not (Test-Path -LiteralPath $env:LAB_CONFIG_DIR -PathType Container)) {
+        Exit-Lab "the configuration folder does not exist: $env:LAB_CONFIG_DIR" 40 'Check -Root, or give the folder with -Config.'
+    }
+    Write-LabPendingWarning
+    $file = Get-LabSeedFile
+    $old = $null
+    try {
+        $old = Read-LabSeed -Key 'DECOY_SEED'
+    } catch {
+        Exit-Lab "$file cannot be read, or its DECOY_SEED is not a valid seed" 40 'Correct or remove that file, then run the same command again.'
+    }
+    if ($old -and -not $script:Given.ContainsKey('yes')) {
+        Write-LabTerminal "This host already has a decoy seed. Replace it? The decoys made from the`n"
+        Write-LabTerminal 'old one must be made again. [y/N] '
+        $answer = Read-LabTerminal
+        if ($null -eq $answer -or $answer.Trim() -notmatch '^(y|yes)$') {
+            [Console]::Out.WriteLine('Nothing was changed.')
+            exit 0
+        }
+    }
+    $hostName = Get-LabHostName
+    $seed = Get-LabRandomSeed
+    try {
+        Save-LabSeed -Key 'DECOY_SEED' -Seed (ConvertTo-LabSeed $seed)
+    } catch {
+        $seed = $null
+        Exit-Lab "the seed could not be saved in $file" 40 $FixData
+    }
+    # Ctrl+C or a dropped session before 'recorded' undoes the save as well,
+    # through the finally block: nobody recorded that seed.
+    $recorded = $false
+    try {
+        $recorded = ((Show-LabSeed -Label $hostName -Seed $seed) -eq 0)
+    } finally {
+        $seed = $null
+        if (-not $recorded) {
+            try {
+                Save-LabSeed -Key 'DECOY_SEED' -Seed $(if ($old) { $old } else { '' })
+            } catch {
+                [Console]::Error.WriteLine("labyrinth: $file could not be put back as it was; check its DECOY_SEED")
+            }
+            $old = $null
+        }
+    }
+    if (-not $recorded) {
+        Exit-Lab 'the seed was not recorded, so it was not saved' 20 'Run the same command again from a terminal.'
+    }
+    $old = $null
+    [Console]::Out.WriteLine("Saved this host's decoy seed in $file.")
+    [Console]::Out.WriteLine("Post it in the team chat with this host's name: $hostName.")
+}
+
+# Invoke-LabSeedCheckCommand: say whether a seed typed at a visible prompt is
+# valid. It reads no configuration and needs no Administrator, so it works on
+# any machine with Labyrinth. The seed is never taken from the command line
+# or standard input, and the message about a bad one never repeats it.
+function Invoke-LabSeedCheckCommand {
+    if (-not (Test-LabTerminal)) {
+        Exit-Lab '-SeedCheck needs a terminal to type the seed at' 20 'Run it from a terminal, such as the console or a remote session.'
+    }
+    Write-LabTerminal 'Seed to check: '
+    $typed = Read-LabTerminal
+    if ($null -eq $typed) {
+        Write-LabTerminal "`n"
+        Exit-Lab 'the terminal went before a seed was typed' 20
+    }
+    try {
+        [void](ConvertTo-LabSeed $typed)
+    } catch {
+        $typed = $null
+        [Console]::Out.WriteLine($_.Exception.Message)
+        [Console]::Out.WriteLine('Check it against the offline record and type it again.')
+        exit 30
+    }
+    $typed = $null
+    [Console]::Out.WriteLine('Valid seed: the check group matches.')
+    exit 0
+}
+
 # Confirm-LabUndoAll: the question before -u ID -All, which also undoes
 # changes kept once verified (docs/Conventions.md section 3.1). The default
 # is no; -y answers yes. Without a terminal and without -y, nothing is
@@ -3205,8 +3336,8 @@ try {
     # believes they took effect.
     if ($script:Given.ContainsKey('yes') -and $action -ceq 'undo' -and -not $script:Given.ContainsKey('all')) {
         Exit-LabUsage '-y is only for -u ID -All: add -All, or leave out -y'
-    } elseif ($script:Given.ContainsKey('yes') -and $action -cne 'undo') {
-        Exit-LabUsage "-y is only for -u ID -All, not $label"
+    } elseif ($script:Given.ContainsKey('yes') -and $action -cne 'undo' -and $action -cne 'new-seed') {
+        Exit-LabUsage "-y is only for -u ID -All or -NewSeed, not $label"
     }
     if ($script:Given.ContainsKey('no-revert') -and $action -cne 'run') {
         Exit-LabUsage "-NoRevert is only for -r, not $label"
@@ -3250,6 +3381,12 @@ try {
             Exit-LabUsage "not a run ID: '$word' (give the ID or its last 4 characters)"
         }
         $label = Get-LabShow $action
+    } elseif ($action -ceq 'new-seed' -or $action -ceq 'seed-check') {
+        # A word here may be a seed: never repeat it.
+        if ($words.Count -gt 0) {
+            Exit-LabUsage "$(Get-LabShow $action) takes no seed on the command line: it asks for one" 'A seed typed on a command line stays in the shell history; clear it there.'
+        }
+        $label = Get-LabShow $action
     } else {
         if ($words.Count -gt 0) { Exit-LabUsage "unexpected word '$($words[0])' after '$(Get-LabShow $action)'" }
         $label = Get-LabShow $action
@@ -3258,6 +3395,12 @@ try {
     # Like help and -V, the manual reads no configuration and needs no
     # Administrator.
     if ($action -ceq 'manual') { Show-LabManual }
+    # So does -SeedCheck: it asks for a seed and reads nothing else.
+    if ($action -ceq 'seed-check') {
+        $env:LAB_ROOT = $PSScriptRoot
+        . (Join-Path $PSScriptRoot 'core\Lab.ps1')
+        Invoke-LabSeedCheckCommand
+    }
     $script:NoRevert = ($action -ceq 'run' -and $script:Given.ContainsKey('no-revert'))
 
     $profileName = ''
@@ -3297,6 +3440,7 @@ try {
     elseif ($action -ceq 'run') { $cmd = 'apply' }
     elseif ($action -ceq 'undo') { $cmd = 'rollback' }
     elseif ($action -ceq 'history') { $cmd = 'runs' }
+    elseif ($action -ceq 'new-seed') { $cmd = 'newseed' }
     $script:Command = $cmd
     if ($cmd -in 'plan', 'apply', 'probe') { Assert-LabThisHost $config }
     switch ($cmd) {
@@ -3307,6 +3451,7 @@ try {
         'rollback' { Invoke-LabRollbackCommand $word }
         'probe' { Invoke-LabProbeCommand }
         'runs' { Invoke-LabRunsCommand }
+        'newseed' { Invoke-LabNewSeedCommand }
     }
 } catch {
     # An unexpected failure (docs/Conventions.md section 4): say what is

@@ -49,6 +49,7 @@ Configuration is **data, never code**. It is never `source`d in bash or dot-sour
 | `services` | `name proto host port expect` per line; no value begins with `-` except an `expect` of `-` alone, meaning no expected text | Scored services and what their probe expects. Planned: an `http` path, and the probe kinds that log in (design 19, section 3.1) |
 | `own-ranges` | one address or CIDR per line | Planned: the team's own networks; `probe` run from outside refuses any address not in them (design 19, section 3) |
 | `hosts` | `host group profile platform` per line | Which hosts exist, and each one's group (its ring, design 03), profile and platform |
+| `seed.conf` | `KEY=value`, one per line | This host's seeds: `DECOY_SEED`, made by `laby --new-seed`, and, planned, `TEAM_SEED` (design 04). Written by Labyrinth, root-only (mode 600 on Linux; Administrators and SYSTEM on Windows), for this host only and never copied between hosts (design 16, section 4) |
 | `profiles/<name>.profile` | one module id per line | Optional override of a shipped profile |
 | `pre-approved` | `module-id category item` per line; `item` is an item id, or `*` for every item of the category | Approval items the team approved before the event (section 3.1). Optional: when it is missing, nothing is approved in advance |
 
@@ -96,7 +97,7 @@ Both runners share one vocabulary. In this section `laby` stands for the install
 laby [PHASE] [options]          preview a phase
 laby -r PHASE [options]         run a phase
 laby [options]                  this host's status and the next step
-laby ACTION [ID] [options]      keep, undo, history, probe, version, manual, help
+laby ACTION [ID] [options]      keep, undo, history, probe, new-seed, seed-check, version, manual, help
 ```
 
 #### Commands
@@ -112,6 +113,8 @@ A line holds one **action**, or only a phase, or neither: then it is the status.
 | `laby -u ID` / `--undo ID` | Undo what a run applied, newest module first, except the modules kept once they verified (`keep_on_verify`, below); `--all` (only with `-u`) undoes those too, after a question (Questions, below). The revert timer runs exactly this form, which never asks. The ID is always needed: without it, the runs are listed (`40`). When it undid anything, it writes a notice to every terminal or session logged in on the host (`wall` on Linux, `msg` on Windows; best effort), so the team learns of an undo no one was watching |
 | `laby --history` | List this host's runs, oldest first: ID, phase, start time (UTC) and state, which is `armed` (with the time it is undone; on Linux, `armed: timer lost` when systemd no longer has the timer, because its unit files are missing or broken), `kept`, `no revert` (run with `--no-revert`), `undone`, `undone with errors`, or `not kept, no timer`. Changes nothing; needs root or Administrator (`20`) |
 | `laby --probe` | Probe every scored service once; exit `30` if one fails. Changes nothing |
+| `laby --new-seed` | Make this host's decoy seed, save it as `DECOY_SEED` in `seed.conf` and show it once on the terminal until the operator types `recorded` (design 16, section 4.1). Needs root or Administrator and a terminal, and checks both (`20`) before it makes or saves anything. If the host already has a decoy seed, it asks first (Questions, below); `-y` answers yes. If the terminal goes before `recorded`, it puts `seed.conf` back as it was (`20`). The seed is never printed to standard output or logged. A `seed.conf` that cannot be read, or holds an invalid `DECOY_SEED`, is an error (`40`) |
+| `laby --seed-check` | Ask for a seed at a visible prompt on the terminal and say whether it is valid (exit `0`; not valid `30`; no terminal `20`). The seed is never taken from the command line or standard input. Reads no configuration, needs no root, and writes nothing |
 | `laby -h [TOPIC]` / `--help` / `-?` / `/?` | Help for every action, or for one. The topic `basics` explains the ideas in plain words, and a module ID prints that module's help page (design 00, section 4) |
 | `laby -V` / `--version` | Print the version and the site, the runner, and the release hash on a `SHA-256:` line, as two lines of eight groups of four, or `not checked (no release.sha256)`. Plain ASCII, no art |
 | `laby --manual` | Open the full manual, one screen at a time (The manual, below) |
@@ -126,10 +129,12 @@ A line holds one **action**, or only a phase, or neither: then it is the status.
 | `-k` | `--keep` | `-Keep` | ID | action |
 | `-u` | `--undo` | `-Undo` | ID | action |
 | | `--all` | `-All` | none: also undo the modules kept once they verified | `-u` only |
-| `-y` | `--yes` | `-Yes` | none: yes to the question before `-u ID --all` (Questions, below) | `-u ID --all` only |
+| `-y` | `--yes` | `-Yes` | none: yes to the question before `-u ID --all`, or before `--new-seed` replaces a seed (Questions, below) | `-u ID --all` and `--new-seed` only |
 | | `--no-revert` | `-NoRevert` | none: arm no revert timer and ask nothing at the end, for test machines (No revert timer, below) | `-r` only |
 | | `--probe` | `-Probe` | none | action |
 | | `--history` | `-History` | none | action |
+| | `--new-seed` | `-NewSeed` | none | action |
+| | `--seed-check` | `-SeedCheck` | none | action |
 | `-P` | `--profile` | `-Profile` | NAME, `[a-z0-9-]+` | a phase |
 | | `--root` | `-Root` | absolute folder: the data root (default `/opt/labyrinth`; `C:\ProgramData\Labyrinth`) | all |
 | | `--config` | `-Config` | absolute folder: run-time configuration (default `<root>/etc`) | all |
@@ -144,7 +149,7 @@ A line holds one **action**, or only a phase, or neither: then it is the status.
 
 #### How the line is read
 
-- **One action per line:** `-r`, `-k`, `-u`, `--probe`, `--history`, `-V` or `--manual`. Two actions are a usage error (`40`). A phase word alone previews it. A line with neither an action nor a phase is the status, unless it gives `-P`, `--break-glass`, `--confirm-group` or `--approve`, which only a preview or a run uses: that line is a preview with its phase missing (`40`). Options may come before or after the action and its word.
+- **One action per line:** `-r`, `-k`, `-u`, `--probe`, `--history`, `--new-seed`, `--seed-check`, `-V` or `--manual`. Two actions are a usage error (`40`). A phase word alone previews it. A line with neither an action nor a phase is the status, unless it gives `-P`, `--break-glass`, `--confirm-group` or `--approve`, which only a preview or a run uses: that line is a preview with its phase missing (`40`). Options may come before or after the action and its word.
 - **Case.** Short letters are case-sensitive: `-P` is the profile and `-V` the version, and `-p` and `-v` are errors with a near-miss suggestion. Long names ignore case and dashes, so PowerShell's `-Run`, `-Undo`, `-Profile`, `-BreakGlass` and `-Root` work, and each option has one name in both runners.
 - **Stacking.** Short letters may be joined, such as `-rv` once `-v` is built (section 3.3); today only `-r` and `-P` can share a stack (`-rP NAME`). A letter that takes a value comes last. A single dash before a word is read as a long name when the word is a long name (`-Undo`), and otherwise as a stack of letters, where a letter that is not a short flag is a usage error.
 - **Values** are given as `-k 7f3a`, `--keep 7f3a`, `--keep=7f3a` or `-Name:value`, and `--` ends the options. A run is never kept or undone by guess. PowerShell may hand `-k 0123` over as a number; the runner takes the raw text, never a number.
@@ -158,7 +163,7 @@ A line holds one **action**, or only a phase, or neither: then it is the status.
 - an option given twice;
 - an option whose value is missing, or looks like another option (`--profile needs a value, but got '--root'`);
 - an option that does not fit the action, such as `--all` without `-u`, or two actions;
-- `-y` anywhere but `-u ID --all` (`laby: -y is only for -u ID --all: add --all, or leave out -y`), and `--no-revert` anywhere but `-r`. They are refused rather than ignored, so no one believes they took effect.
+- `-y` anywhere but `-u ID --all` and `--new-seed` (`laby: -y is only for -u ID --all: add --all, or leave out -y`, and `laby: -y is only for -u ID --all or --new-seed, not a preview`), and `--no-revert` anywhere but `-r`. They are refused rather than ignored, so no one believes they took effect.
 
 A value option that the action does not use, such as `--profile` with `--probe`, gives a warning, not an error. The warning is printed once the action has passed its own checks, so it never comes before an error.
 
@@ -188,7 +193,7 @@ Commands on the `Next:` line carry the line's `--root` and `--config`, so they c
 
 #### Questions
 
-The one question outside a run's own prompts comes before `laby -u ID --all`, because that also undoes the changes kept once verified, such as a rotated password, which can hand an intruder their access back:
+A question outside a run's own prompts comes before `laby -u ID --all`, because that also undoes the changes kept once verified, such as a rotated password, which can hand an intruder their access back:
 
 ```
 Undo run 4f2a with --all? It also undoes changes kept once verified,
@@ -196,6 +201,15 @@ such as a new password, which can give an intruder access back. [y/N]
 ```
 
 It is asked on the terminal, not on standard input. The default is no: anything but `y` or `yes` prints `Nothing was undone.` and exits `0`. `-y` answers yes without asking. Without a terminal and without `-y`, nothing is undone (`40`), and a line gives the command with `-y` added. There is no question when the run has no module kept once verified, as `--all` then undoes nothing more. `-u ID` without `--all`, which the revert timer runs, never asks.
+
+`laby --new-seed` asks the same way, on the terminal and not on standard input, when the host already has a decoy seed, because the decoys made from the old seed must be made again:
+
+```
+This host already has a decoy seed. Replace it? The decoys made from the
+old one must be made again. [y/N]
+```
+
+The default is no: anything but `y` or `yes` prints `Nothing was changed.` and exits `0`. `-y` answers yes. There is no question when the host has no decoy seed.
 
 #### No revert timer
 

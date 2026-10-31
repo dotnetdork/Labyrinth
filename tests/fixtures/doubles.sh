@@ -71,6 +71,6 @@ lab_tty_read() {
   if [[ -f "$LAB_ROOT/tty.pos" ]]; then pos="$(cat "$LAB_ROOT/tty.pos")"; fi
   pos=$((pos + 1))
   echo "$pos" > "$LAB_ROOT/tty.pos"
-  if [[ ! -f "$LAB_ROOT/tty.in" ]] || (( $(wc -l < "$LAB_ROOT/tty.in") < pos )); then return 1; fi
+  if [[ ! -e "$LAB_ROOT/tty.in" ]] || (( $(wc -l < "$LAB_ROOT/tty.in") < pos )); then return 1; fi
   sed -n "${pos}p" "$LAB_ROOT/tty.in"
 }
