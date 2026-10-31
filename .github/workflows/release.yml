@@ -44,7 +44,9 @@ jobs:
           google-chrome --version
 
       - name: Build the archives
+        shell: bash
         run: |
+          set -o pipefail
           mkdir -p build/release
           bash tools/release/archive.sh "$TAG" build/release | tee build/archive.out
 

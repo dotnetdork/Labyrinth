@@ -40,13 +40,17 @@ stage="$work/$name"
 mkdir -p "$stage"
 
 # The files and folders the release list covers; keep in step with
-# LAB_RELEASE_FILES and LAB_RELEASE_DIRS in core/safety/release.sh.
-for f in labyrinth.sh labyrinth.ps1 install.sh install.ps1 laby.cmd labyrinth.cmd; do
-  if [[ -f "$repo/$f" ]]; then cp -- "$repo/$f" "$stage/$f"; fi
-done
-for d in core phases platform profiles vendor config; do
-  if [[ -d "$repo/$d" ]]; then cp -R -- "$repo/$d" "$stage/$d"; fi
-done
+# LAB_RELEASE_FILES and LAB_RELEASE_DIRS in core/safety/release.sh. Only
+# files git tracks are staged, so stray local files never ship.
+git -C "$repo" rev-parse --is-inside-work-tree > /dev/null 2>&1 \
+  || { echo "archive.sh: $repo is not a git checkout" >&2; exit 1; }
+tracked="$(git -C "$repo" ls-files -z -- labyrinth.sh labyrinth.ps1 install.sh install.ps1 \
+  laby.cmd labyrinth.cmd core phases platform profiles vendor config | tr '\0' '\n')"
+while IFS= read -r f; do
+  [[ -n "$f" && -f "$repo/$f" ]] || continue
+  mkdir -p "$stage/$(dirname -- "$f")"
+  cp -- "$repo/$f" "$stage/$f"
+done <<< "$tracked"
 
 # The built manual: the man page and the help topic go in the manual folder.
 mkdir -p "$work/manual-out" "$stage/manual"
@@ -60,6 +64,8 @@ done
 chmod -R u+rwX,go+rX,go-w "$stage"
 
 bash "$here/manifest.sh" "$stage" > /dev/null
+# release.sha256 is new, and its mode follows the umask.
+chmod -R u+rwX,go+rX,go-w "$stage"
 list_line="$(cd "$stage" && sha256sum release.sha256)"
 
 # Date everything with the tagged commit, so the same commit gives the same
@@ -72,10 +78,12 @@ find "$stage" -exec touch -h -d "@$stamp" {} +
 
 (
   cd "$work"
-  tar --owner=0 --group=0 --numeric-owner --sort=name --mtime="@$stamp" \
+  LC_ALL=C tar --owner=0 --group=0 --numeric-owner --sort=name --mtime="@$stamp" \
     -cf - "$name" | gzip -n -9 > "$outdir/$name.tar.gz"
   rm -f -- "$outdir/$name.zip"
-  zip -X -r -q "$outdir/$name.zip" "$name"
+  # zip keeps the order it is given and stores local time, so sort the list
+  # and fix the time zone.
+  find "$name" | LC_ALL=C sort | TZ=UTC zip -X -q -@ "$outdir/$name.zip"
 )
 
 (
