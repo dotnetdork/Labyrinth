@@ -45,7 +45,7 @@ mkdir -p "$stage"
 git -C "$repo" rev-parse --is-inside-work-tree > /dev/null 2>&1 \
   || { echo "archive.sh: $repo is not a git checkout" >&2; exit 1; }
 tracked="$(git -C "$repo" ls-files -z -- labyrinth.sh labyrinth.ps1 install.sh install.ps1 \
-  laby.cmd labyrinth.cmd core phases platform profiles vendor config | tr '\0' '\n')"
+  laby.cmd labyrinth.cmd LICENSE core phases platform profiles vendor config | tr '\0' '\n')"
 while IFS= read -r f; do
   [[ -n "$f" && -f "$repo/$f" ]] || continue
   mkdir -p "$stage/$(dirname -- "$f")"

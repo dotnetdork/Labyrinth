@@ -47,7 +47,7 @@ function Test-LabReleasePlain {
 # manual.
 function Get-LabReleaseFile {
     param([Parameter(Mandatory)] [string] $Root)
-    $LabReleaseFiles = @('labyrinth.sh', 'labyrinth.ps1', 'install.sh', 'install.ps1', 'laby.cmd', 'labyrinth.cmd')
+    $LabReleaseFiles = @('labyrinth.sh', 'labyrinth.ps1', 'install.sh', 'install.ps1', 'laby.cmd', 'labyrinth.cmd', 'LICENSE')
     $LabReleaseDirs = @('core', 'phases', 'platform', 'profiles', 'vendor', 'config', 'manual')
     $full = (Get-Item -LiteralPath $Root -Force).FullName.TrimEnd('\')
     $paths = New-Object System.Collections.Generic.List[string]
