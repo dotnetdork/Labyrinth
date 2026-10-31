@@ -240,6 +240,20 @@ about() {
   [ "$(snapshot)" = "$before" ]
 }
 
+@test "installing a new version names the version it replaces" {
+  inst_setup
+  install_sh -y
+  [ "$status" -eq 0 ]
+  local old
+  old="$(sed -n "s/^readonly LAB_VERSION='\([^']*\)'.*/\1/p" "$REPO/labyrinth.sh")"
+  sed -i "s/^readonly LAB_VERSION='[^']*'/readonly LAB_VERSION='9.9.9'/" "$REL/labyrinth.sh"
+  seal
+  install_sh -y
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Program   $ROOT/bin (replaced: $old "*" 9.9.9)"* ]]
+  grep -q "^readonly LAB_VERSION='9.9.9'" "$ROOT/bin/labyrinth.sh"
+}
+
 @test "configuration files that are already there are kept" {
   inst_setup
   mkdir -p "$ROOT/etc"

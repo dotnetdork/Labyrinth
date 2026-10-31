@@ -385,7 +385,18 @@ try {
     $sha = ''
     if ($release.Status -eq 'ok') { $sha = $release.Hash }
     $state = @{ new = 'new'; replace = 'replaced'; same = 'unchanged' }[$codeState]
-    $rows = @(, @('Program', "$CodeDir ($state)"))
+    $program = $state
+    if ($codeState -eq 'replace') {
+        # The version being replaced, when it differs from this one.
+        $installed = Join-Path $CodeDir 'labyrinth.ps1'
+        if (Test-Path -LiteralPath $installed -PathType Leaf) {
+            $o = [regex]::Match([IO.File]::ReadAllText($installed), "(?m)^\`$LabVersion = '([^']+)'")
+            if ($o.Success -and $version -ne 'unknown' -and $o.Groups[1].Value -cne $version) {
+                $program = "replaced: $($o.Groups[1].Value) -> $version"
+            }
+        }
+    }
+    $rows = @(, @('Program', "$CodeDir ($program)"))
     if ($rootNew) { $rows += , @('Data', "$Root (new, private)") }
     elseif ($rootLocked) { $rows += , @('Data', "$Root (kept)") }
     else { $rows += , @('Data', "$Root (kept, made private)") }

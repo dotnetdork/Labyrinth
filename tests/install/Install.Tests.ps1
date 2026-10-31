@@ -323,6 +323,18 @@ Describe 'install.ps1 installs' -Skip:(-not $elevated) {
         Get-TestSnapshot $r.Sys | Should -Be $before
     }
 
+    It 'installing a new version names the version it replaces' {
+        (Invoke-TestInstall $r @('-Yes')).Code | Should -Be 0
+        $file = Join-Path $r.Rel 'labyrinth.ps1'
+        $text = [IO.File]::ReadAllText($file)
+        $old = [regex]::Match($text, "(?m)^\`$LabVersion = '([^']+)'").Groups[1].Value
+        [IO.File]::WriteAllText($file, [regex]::Replace($text, "(?m)^\`$LabVersion = '[^']+'", "`$LabVersion = '9.9.9'"))
+        Write-TestSeal $r
+        $x = Invoke-TestInstall $r @('-Yes')
+        $x.Code | Should -Be 0
+        $x.Output | Should -Match ([regex]::Escape("(replaced: $old") + ' (->|' + [char]0x2192 + ') ' + [regex]::Escape('9.9.9)'))
+    }
+
     It 'configuration files that are already there are kept' {
         New-Item -ItemType Directory -Path (Join-Path $r.Root 'etc') -Force | Out-Null
         [IO.File]::WriteAllText((Join-Path $r.Root 'etc\hosts'), "my own hosts`n")

@@ -335,7 +335,14 @@ printf '\n'
 rows=()
 case "$CODE_STATE" in
   new) rows+=("Program|$CODE (new)") ;;
-  replace) rows+=("Program|$CODE (replaced)") ;;
+  replace)
+    # The version being replaced, when it differs from this one.
+    old="$(sed -n "s/^readonly LAB_VERSION='\([^']*\)'.*/\1/p" "$CODE/labyrinth.sh" 2> /dev/null || true)"
+    if [[ -n "$old" && -n "$version" && "$old" != "$version" ]]; then
+      rows+=("Program|$CODE (replaced: $old -> $version)")
+    else
+      rows+=("Program|$CODE (replaced)")
+    fi ;;
   same) rows+=("Program|$CODE (unchanged)") ;;
 esac
 if (( ROOT_NEW )); then rows+=("Data|$ROOT (new, root only)"); else rows+=("Data|$ROOT (kept)"); fi
