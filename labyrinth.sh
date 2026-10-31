@@ -2977,7 +2977,11 @@ cmd_new_seed() {
     esac
   fi
   host="$(lab_host)"
-  seed="$(lab_seed_normalize "$(lab_seed_new)")"
+  # A seed that could not be made must stop here: an empty one would remove
+  # DECOY_SEED from the file instead of saving one.
+  if ! seed="$(lab_seed_new)" || ! seed="$(lab_seed_normalize "$seed")" || [[ -z "$seed" ]]; then
+    die 'a new seed could not be made' 40 'Check that /dev/urandom can be read, then run the same command again.'
+  fi
   lab_seed_store DECOY_SEED "$seed" || { seed=''; die "the seed could not be saved in $file" 40 "$FIX_DATA"; }
   lab_seed_show "$host" "$(lab_seed_format "$seed")" || rc=$?
   seed=''
@@ -3174,7 +3178,12 @@ main() {
         usage_error "not a run ID: '$word' (give the ID or its last 4 characters)"
       fi
       label="$(show_opt "$action")" ;;
-    probe | history | new-seed | seed-check | version | manual)
+    new-seed | seed-check)
+      # A word here may be a seed: never repeat it.
+      (( $# == 0 )) || usage_error "$(show_opt "$action") takes no seed on the command line: it asks for one" \
+        'A seed typed on a command line stays in the shell history; clear it there.'
+      label="$(show_opt "$action")" ;;
+    probe | history | version | manual)
       (( $# == 0 )) || usage_error "unexpected word '$1' after '$(show_opt "$action")'"
       label="$(show_opt "$action")" ;;
   esac

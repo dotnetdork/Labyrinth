@@ -210,10 +210,15 @@ Describe 'labyrinth.ps1 -NewSeed' {
         $r.Err | Should -Match ([regex]::Escape($seedFile))
     }
 
-    It 'takes no word, and -y is refused with other actions' {
-        $r = Invoke-TestSeed $t @('-NewSeed', 'extra')
-        $r.Code | Should -Be 40
-        $r.Err | Should -Match ([regex]::Escape("unexpected word 'extra' after '-NewSeed'"))
+    It 'takes no seed word, never repeats it, and -y is refused with other actions' {
+        $word = 'K7QM-2XRP-9D4V-HT3N-B8WC-6FJZ-QM2E-L92G'
+        foreach ($a in '-NewSeed', '-SeedCheck') {
+            $r = Invoke-TestSeed $t @($a, $word)
+            $r.Code | Should -Be 40
+            $r.Err | Should -Match ([regex]::Escape('takes no seed on the command line: it asks for one'))
+            $r.Err | Should -Match 'shell history'
+            "$($r.Out)$($r.Err)" | Should -Not -Match 'K7QM'
+        }
         $r = Invoke-TestSeed $t @('-SeedCheck', '-y')
         $r.Code | Should -Be 40
         $r.Err | Should -Match ([regex]::Escape('-y is only for -u ID -All or -NewSeed, not -SeedCheck'))

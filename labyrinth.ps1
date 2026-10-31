@@ -3373,6 +3373,12 @@ try {
             Exit-LabUsage "not a run ID: '$word' (give the ID or its last 4 characters)"
         }
         $label = Get-LabShow $action
+    } elseif ($action -ceq 'new-seed' -or $action -ceq 'seed-check') {
+        # A word here may be a seed: never repeat it.
+        if ($words.Count -gt 0) {
+            Exit-LabUsage "$(Get-LabShow $action) takes no seed on the command line: it asks for one" 'A seed typed on a command line stays in the shell history; clear it there.'
+        }
+        $label = Get-LabShow $action
     } else {
         if ($words.Count -gt 0) { Exit-LabUsage "unexpected word '$($words[0])' after '$(Get-LabShow $action)'" }
         $label = Get-LabShow $action

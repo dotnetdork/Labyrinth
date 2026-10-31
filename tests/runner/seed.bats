@@ -191,10 +191,17 @@ stored() { sed -n "s/^$1=//p" "$ETC/seed.conf" 2> /dev/null || true; }
   [[ "$ERR" == *"$ETC/seed.conf"* ]]
 }
 
-@test "--new-seed takes no word, and -y is refused with other actions" {
-  streams --new-seed extra
+@test "--new-seed and --seed-check take no seed word, never repeat it, and -y is refused with other actions" {
+  local word='K7QM-2XRP-9D4V-HT3N-B8WC-6FJZ-QM2E-L92G'
+  streams --new-seed "$word"
   [ "$CODE" -eq 40 ]
-  [[ "$ERR" == *"unexpected word 'extra' after '--new-seed'"* ]]
+  [[ "$ERR" == *'--new-seed takes no seed on the command line: it asks for one'* ]]
+  [[ "$OUT$ERR" != *K7QM* ]]
+  streams --seed-check "$word"
+  [ "$CODE" -eq 40 ]
+  [[ "$ERR" == *'takes no seed on the command line: it asks for one'* ]]
+  [[ "$ERR" == *'shell history'* ]]
+  [[ "$OUT$ERR" != *K7QM* ]]
   streams --seed-check -y
   [ "$CODE" -eq 40 ]
   [[ "$ERR" == *'-y is only for -u ID --all or --new-seed, not --seed-check'* ]]
