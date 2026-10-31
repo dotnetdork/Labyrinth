@@ -28,7 +28,7 @@ Never push to `main`, force-push, rewrite published history, or delete a branch 
 
 ## Tests
 
-CI runs on every push: ShellCheck, the guard (`tests/lint/guard.sh`), bats, PSScriptAnalyzer, Pester under Windows PowerShell 5.1, and the manual build. All must pass. A branch that changes only documentation (outside `docs/manual/`) skips these tests, and they show as skipped, which counts as passing. You may run the suites locally if you already have the tools, but nobody needs to install anything: pushing the branch and reading the CI results is enough.
+CI runs on every push: ShellCheck, the guard (`tests/lint/guard.sh`), bats, PSScriptAnalyzer, Pester under Windows PowerShell 5.1, and the manual build. All must pass. A branch that changes only documentation (outside `docs/manual/`) skips these tests, and they show as skipped, which counts as passing. A branch that changes only the manual skips the Windows tests, which do not read it. You may run the suites locally if you already have the tools, but nobody needs to install anything: pushing the branch and reading the CI results is enough.
 
 ## Issues, labels and milestones
 
