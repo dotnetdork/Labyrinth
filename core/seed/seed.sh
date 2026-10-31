@@ -28,7 +28,9 @@ lab_hex() {
 # lab_sha256_hex HEX: the SHA-256 of the bytes HEX spells, as hex.
 lab_sha256_hex() {
   local h
-  h="$(printf '%b' "$(sed 's/../\\x&/g' <<< "$1")" | sha256sum)" || return 1
+  # A pipe, not <<<: bash before 5.1 puts a here-string in a temp file, and
+  # this text can be derived from a seed.
+  h="$(printf '%b' "$(printf '%s\n' "$1" | sed 's/../\\x&/g')" | sha256sum)" || return 1
   printf '%s\n' "${h%% *}"
 }
 

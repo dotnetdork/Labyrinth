@@ -169,6 +169,17 @@ function Save-LabSeed {
     if ($Seed) { $lines.Add("$Key=$(Format-LabSeed $Seed)") }
     $tmp = "$file.$([Guid]::NewGuid().ToString('N').Substring(0, 8))"
     try {
+        # Made empty and given an access list for the trusted accounts only
+        # (Get-LabTrustedSid) before the seed is written, whatever the folder
+        # passes down, as chmod 600 does on Linux. Writing and moving keep it.
+        $sec = New-Object Security.AccessControl.FileSecurity
+        $sec.SetAccessRuleProtection($true, $false)
+        foreach ($sid in @(Get-LabTrustedSid)) {
+            $sec.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule(
+                        (New-Object Security.Principal.SecurityIdentifier $sid), 'FullControl', 'Allow')))
+        }
+        [IO.File]::WriteAllText($tmp, '')
+        (Get-Item -LiteralPath $tmp -Force).SetAccessControl($sec)
         [IO.File]::WriteAllText($tmp, (($lines -join "`r`n") + "`r`n"), (New-Object Text.UTF8Encoding $false))
         Move-Item -LiteralPath $tmp -Destination $file -Force
     } finally {

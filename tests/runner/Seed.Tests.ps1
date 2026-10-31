@@ -97,6 +97,14 @@ Describe 'labyrinth.ps1 -NewSeed' {
         $r.Code | Should -Be 0
         $seed = Get-TestStored $t 'DECOY_SEED'
         $seed | Should -Match $seedShape
+        # Only the trusted accounts can read it, whatever the folder passes down.
+        $acl = Get-Acl -LiteralPath $seedFile
+        $acl.AreAccessRulesProtected | Should -BeTrue
+        $sids = @($acl.Access | ForEach-Object { $_.IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value })
+        # Administrators, SYSTEM and the account running it (Get-LabTrustedSid).
+        $trusted = @('S-1-5-32-544', 'S-1-5-18', [Security.Principal.WindowsIdentity]::GetCurrent().User.Value)
+        $sids.Count | Should -BeGreaterThan 0
+        foreach ($sid in $sids) { $trusted | Should -Contain $sid }
         @($r.Out -split "`r?`n") | Should -Be @("Saved this host's decoy seed in $seedFile.", "Post it in the team chat with this host's name: $thisHost.")
         ($r.Out + $r.Err).Contains($seed) | Should -BeFalse
         ($r.Out + $r.Err).Contains($seed.Replace('-', '')) | Should -BeFalse

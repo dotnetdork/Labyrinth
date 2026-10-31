@@ -3228,15 +3228,23 @@ function Invoke-LabNewSeedCommand {
         $seed = $null
         Exit-Lab "the seed could not be saved in $file" 40 $FixData
     }
-    $rc = Show-LabSeed -Label $hostName -Seed $seed
-    $seed = $null
-    if ($rc -ne 0) {
-        try {
-            Save-LabSeed -Key 'DECOY_SEED' -Seed $(if ($old) { $old } else { '' })
-        } catch {
-            [Console]::Error.WriteLine("labyrinth: $file could not be put back as it was; check its DECOY_SEED")
+    # Ctrl+C or a dropped session before 'recorded' undoes the save as well,
+    # through the finally block: nobody recorded that seed.
+    $recorded = $false
+    try {
+        $recorded = ((Show-LabSeed -Label $hostName -Seed $seed) -eq 0)
+    } finally {
+        $seed = $null
+        if (-not $recorded) {
+            try {
+                Save-LabSeed -Key 'DECOY_SEED' -Seed $(if ($old) { $old } else { '' })
+            } catch {
+                [Console]::Error.WriteLine("labyrinth: $file could not be put back as it was; check its DECOY_SEED")
+            }
+            $old = $null
         }
-        $old = $null
+    }
+    if (-not $recorded) {
         Exit-Lab 'the seed was not recorded, so it was not saved' 20 'Run the same command again from a terminal.'
     }
     $old = $null

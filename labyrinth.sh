@@ -2949,12 +2949,20 @@ cmd_manual() {
   exit 0
 }
 
+# new_seed_undo FILE OLD: put DECOY_SEED back as it was before --new-seed
+# saved one (none when OLD is empty).
+new_seed_undo() {
+  lab_seed_store DECOY_SEED "$2" \
+    || printf 'labyrinth: %s could not be put back as it was; check its DECOY_SEED\n' "$1" >&2
+}
+
 # cmd_new_seed: make this host's decoy seed (design 16, section 4.1). It
 # needs root and a terminal, and checks both before it makes or saves
 # anything. The seed is saved as DECOY_SEED in seed.conf, then shown once on
 # the terminal until the operator types 'recorded'. If the terminal goes
-# first, nobody recorded it, so the file goes back as it was. The seed
-# reaches only the terminal and the file: never standard output or the log.
+# first, or the run is stopped, nobody recorded it, so the file goes back as
+# it was. The seed reaches only the terminal and the file: never standard
+# output or the log.
 cmd_new_seed() {
   local old='' seed='' answer='' file host rc=0
   lab_is_admin || die '--new-seed needs root' 20 "$FIX_ADMIN"
@@ -2982,12 +2990,16 @@ cmd_new_seed() {
   if ! seed="$(lab_seed_new)" || ! seed="$(lab_seed_normalize "$seed")" || [[ -z "$seed" ]]; then
     die 'a new seed could not be made' 40 'Check that /dev/urandom can be read, then run the same command again.'
   fi
-  lab_seed_store DECOY_SEED "$seed" || { seed=''; die "the seed could not be saved in $file" 40 "$FIX_DATA"; }
+  # Ctrl-C or a dropped session before 'recorded' undoes the save as well:
+  # nobody recorded that seed. The trap sees this function's old and file.
+  trap 'trap - INT HUP TERM; new_seed_undo "$file" "$old"; old=""
+    die "stopped before the seed was recorded, so it was not saved" 20 "Run the same command again from a terminal."' INT HUP TERM
+  lab_seed_store DECOY_SEED "$seed" || { trap - INT HUP TERM; seed=''; die "the seed could not be saved in $file" 40 "$FIX_DATA"; }
   lab_seed_show "$host" "$(lab_seed_format "$seed")" || rc=$?
+  trap - INT HUP TERM
   seed=''
   if (( rc != 0 )); then
-    lab_seed_store DECOY_SEED "$old" \
-      || printf 'labyrinth: %s could not be put back as it was; check its DECOY_SEED\n' "$file" >&2
+    new_seed_undo "$file" "$old"
     old=''
     die 'the seed was not recorded, so it was not saved' 20 \
       'Run the same command again from a terminal.'

@@ -177,6 +177,28 @@ stored() { sed -n "s/^$1=//p" "$ETC/seed.conf" 2> /dev/null || true; }
   [ "$(stored DECOY_SEED)" = "$GOOD" ]
 }
 
+@test "--new-seed stopped at the 'recorded' prompt puts the old seed back" {
+  printf 'DECOY_SEED=%s\nTEAM_SEED=%s\n' "$GOOD" "$OTHER" > "$ETC/seed.conf"
+  # A pipe as the terminal's input: the prompt waits on it until it is opened.
+  mkfifo "$LAB/tty.in"
+  bash "$LAB/labyrinth.sh" --root "$ROOT" --config "$ETC" --new-seed -y \
+    > /dev/null 2> "$BATS_TEST_TMPDIR/err" < /dev/null &
+  local pid=$! i code=0
+  for ((i = 0; i < 100; i++)); do
+    if grep -q "Type 'recorded'" "$LAB/tty.out" 2> /dev/null; then break; fi
+    sleep 0.1
+  done
+  [ "$(stored DECOY_SEED)" != "$GOOD" ]
+  kill -TERM "$pid"
+  # Opening the pipe ends the wait, and the stopped run then undoes its save.
+  timeout 5 sh -c ': > "$1"' _ "$LAB/tty.in" || true
+  wait "$pid" || code=$?
+  [ "$code" -eq 20 ]
+  [[ "$(cat "$BATS_TEST_TMPDIR/err")" == *'stopped before the seed was recorded, so it was not saved'* ]]
+  [ "$(stored DECOY_SEED)" = "$GOOD" ]
+  [ "$(stored TEAM_SEED)" = "$OTHER" ]
+}
+
 @test "a seed.conf that is not valid is an error that names the file and never the seed" {
   printf 'DECOY_SEED=%s\n' "$TYPO" > "$ETC/seed.conf"
   typed y recorded
