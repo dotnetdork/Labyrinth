@@ -28,6 +28,7 @@ jobs:
     runs-on: ubuntu-24.04
     outputs:
       code: ${{ steps.diff.outputs.code }}
+      windows: ${{ steps.diff.outputs.windows }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
@@ -38,11 +39,14 @@ jobs:
         # The whole branch is compared with main, not only the last push, so
         # every commit of a branch that touches code is tested. Only the
         # paths listed here are skipped; anything else, including a new
-        # folder, runs the tests. The manual is checked, so docs/manual counts.
+        # folder, runs the tests. The manual is checked on Linux only (bats
+        # and the manual build), so docs/manual alone skips the Windows tests.
         run: |
           code=false
+          windows=false
           if [ "$GITHUB_REF" = refs/heads/main ]; then
             code=true
+            windows=true
           else
             base="$(git merge-base origin/main HEAD)"
             while IFS= read -r f; do
@@ -50,12 +54,13 @@ jobs:
               case "$f" in
                 docs/manual/*) code=true ;;
                 docs/* | *.md | LICENSE | .gitignore | mkdocs.yml | .claude/* | .github/ISSUE_TEMPLATE/* | .github/workflows/docs.yml) ;;
-                *) code=true ;;
+                *) code=true; windows=true ;;
               esac
             done < <(git diff --name-only "$base" HEAD)
           fi
           echo "code=$code" >> "$GITHUB_OUTPUT"
-          echo "Tests needed: $code"
+          echo "windows=$windows" >> "$GITHUB_OUTPUT"
+          echo "Tests needed: $code (Windows: $windows)"
 
   linux:
     name: Linux (bash, ShellCheck, guard, bats)
@@ -122,29 +127,62 @@ jobs:
           path: build/manual/
           if-no-files-found: error
 
-  windows:
-    name: Windows (PowerShell 5.1, PSScriptAnalyzer, Pester)
+  # The Pester files run in four parallel shards, balanced by their CI times.
+  # Shards 1 to 3 list their files; shard 4 runs every test file the others
+  # do not list, so a new file is always run. Shard 4, the lightest, also runs
+  # PSScriptAnalyzer.
+  windows-tests:
+    name: Windows (${{ matrix.label }})
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: needs.changes.outputs.windows == 'true'
     runs-on: windows-latest
+    strategy:
+      # Every shard finishes, so one failing shard does not hide another's.
+      fail-fast: false
+      matrix:
+        include:
+          - shard: 1
+            label: Pester 1 of 4
+          - shard: 2
+            label: Pester 2 of 4
+          - shard: 3
+            label: Pester 3 of 4
+          - shard: 4
+            label: Pester 4 of 4, PSScriptAnalyzer
+    env:
+      SHARD_1: tests/runner/apply.Tests.ps1 tests/runner/Status.Tests.ps1 tests/runner/HostCheck.Tests.ps1 tests/runner/Hints.Tests.ps1
+      SHARD_2: tests/runner/Args.Tests.ps1 tests/runner/Help.Tests.ps1 tests/runner/Failures.Tests.ps1
+      SHARD_3: tests/install/Install.Tests.ps1 tests/runner/Output.Tests.ps1 tests/runner/labyrinth.Tests.ps1
     defaults:
       run:
         shell: powershell
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
+      - name: Restore Pester 5 and PSScriptAnalyzer from the cache
+        # The key names the exact versions installed below; change both together.
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: ~\Documents\WindowsPowerShell\Modules
+          key: windows-ps51-modules-pester-5.7.1-pssa-1.24.0
+
       - name: Install Pester 5 and PSScriptAnalyzer
         run: |
           $PSVersionTable.PSVersion
           # Exact versions, so a new release cannot change what CI runs.
-          if (-not (Get-Module -ListAvailable Pester | Where-Object { $_.Version -eq [version]'5.7.1' })) {
+          if (Get-Module -ListAvailable Pester | Where-Object { $_.Version -eq [version]'5.7.1' }) {
+            'Pester 5.7.1 is already installed (restored from the cache).'
+          } else {
             Install-Module Pester -RequiredVersion 5.7.1 -Force -Scope CurrentUser -SkipPublisherCheck
           }
-          if (-not (Get-Module -ListAvailable PSScriptAnalyzer | Where-Object { $_.Version -eq [version]'1.24.0' })) {
+          if (Get-Module -ListAvailable PSScriptAnalyzer | Where-Object { $_.Version -eq [version]'1.24.0' }) {
+            'PSScriptAnalyzer 1.24.0 is already installed (restored from the cache).'
+          } else {
             Install-Module PSScriptAnalyzer -RequiredVersion 1.24.0 -Force -Scope CurrentUser
           }
 
       - name: PSScriptAnalyzer
+        if: matrix.shard == 4
         # The guard fixtures are deliberately bad code, so they are skipped.
         run: |
           Import-Module PSScriptAnalyzer -RequiredVersion 1.24.0
@@ -162,10 +200,54 @@ jobs:
         # tasks, elevated): only on these disposable runners.
         env:
           LAB_REALSYSTEM: 1
+          SHARD: ${{ matrix.shard }}
         run: |
+          $full = { param($p) [IO.Path]::GetFullPath((Join-Path $PWD $p)).ToLowerInvariant() }
+          $lists = @{ 1 = $env:SHARD_1; 2 = $env:SHARD_2; 3 = $env:SHARD_3 }
+          $listed = @()
+          foreach ($n in 1..3) {
+            foreach ($p in ($lists[$n] -split '\s+' | Where-Object { $_ })) {
+              # A renamed or deleted file must be taken off its list, not silently skipped.
+              if (-not (Test-Path -LiteralPath $p -PathType Leaf)) { "Shard $n lists a missing file: $p"; exit 1 }
+              $listed += [pscustomobject]@{ Shard = $n; Path = $p; Full = (& $full $p) }
+            }
+          }
+          $twice = @($listed | Group-Object Full | Where-Object { $_.Count -gt 1 })
+          if ($twice.Count -gt 0) { "A file is listed in more than one shard: $($twice[0].Group[0].Path)"; exit 1 }
+          if ([int]$env:SHARD -le 3) {
+            $paths = @($listed | Where-Object { $_.Shard -eq [int]$env:SHARD } | ForEach-Object { $_.Path })
+          } else {
+            $taken = @($listed | ForEach-Object { $_.Full })
+            $paths = @(Get-ChildItem tests -Recurse -File -Filter *.Tests.ps1 |
+              Where-Object { $taken -notcontains $_.FullName.ToLowerInvariant() } | ForEach-Object { $_.FullName })
+          }
+          "Shard $env:SHARD runs $($paths.Count) file(s):"
+          $paths
           Import-Module Pester -RequiredVersion 5.7.1
           $config = New-PesterConfiguration
-          $config.Run.Path = 'tests'
+          $config.Run.Path = [string[]]$paths
           $config.Run.Exit = $true
           $config.Output.Verbosity = 'Detailed'
           Invoke-Pester -Configuration $config
+
+  # The required check for main. It passes when every Windows shard passed,
+  # or when the branch needs no Windows tests (#128), and fails otherwise.
+  windows:
+    name: Windows (PowerShell 5.1, PSScriptAnalyzer, Pester)
+    needs: [changes, windows-tests]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Did every Windows job pass?
+        env:
+          CHANGES: ${{ needs.changes.result }}
+          NEEDED: ${{ needs.changes.outputs.windows }}
+          TESTS: ${{ needs.windows-tests.result }}
+        run: |
+          echo "What changed: $CHANGES. Windows tests needed: $NEEDED. Windows tests: $TESTS."
+          [ "$CHANGES" = success ] || exit 1
+          if [ "$NEEDED" = true ]; then
+            [ "$TESTS" = success ]
+          else
+            [ "$TESTS" = skipped ]
+          fi
