@@ -5,6 +5,7 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 if ($env:LAB_DRY_RUN -ne '0') {
+    if (Test-Path -LiteralPath (Join-Path $env:LAB_ROOT 'CHECK_TEN')) { Write-Output 'will do: write the marker'; exit 10 }
     Write-Output 'found: would write the marker'
     exit 0
 }

@@ -169,6 +169,7 @@ $script:YmlErr = @()             # module.yml errors, printed under the ERROR li
 $script:EntryOut = @()           # the output of an entry point run with -Capture
 $script:Stopped = $false         # true when an apply stopped partway
 $script:Applied = $false         # true once apply starts changing things
+$script:Recorded = $false        # true once the recording pass has run
 $script:Run = @()            # the modules of this run, in run order
 $script:Protected = @{}
 $script:Settings = @{}
@@ -1428,14 +1429,15 @@ function Exit-LabRun {
     elseif ($Code -eq 20) { $what = 'blocked' }
     elseif ($Code -eq 30) { $what = 'a check failed; that change was undone' }
     Write-LabLine ''
-    if ($Mode -ceq 'plan' -or -not $script:Applied) {
+    if ($Mode -ceq 'plan' -or (-not $script:Applied -and -not $script:Recorded)) {
         Write-LabSummary 'plan'
         Write-LabLine 'Nothing on this host was changed.'
     } else {
         Write-LabSummary 'apply'
         $problems = $script:Stopped -or @($script:Run | Where-Object { $_.State -ceq 'failed' -or $_.State -ceq 'error' }).Count -gt 0
         if ($problems) { Add-LabProblemMark }
-        if ($script:NoRevert) { Write-LabLine 'Revert timer: none (-NoRevert).' }
+        if (-not $script:Applied) { Write-LabLine 'Nothing on this host was changed.' }
+        if ($script:NoRevert -and $script:Applied) { Write-LabLine 'Revert timer: none (-NoRevert).' }
     }
     if ($script:LogFile -ne '') { Write-LabLine "Log: $($script:LogFile)" }
     Write-LabNextStep $Mode $Code $Phase
@@ -2272,6 +2274,7 @@ function Assert-LabApprove {
 # exit code.
 function Invoke-LabRecordPass {
     $worst = 0
+    $script:Recorded = $true
     foreach ($m in $script:Run) {
         if ($m.Risk -ne 'read-only') { continue }
         if ($m.Rc -ne 0 -and $m.Rc -ne 10) { continue }
@@ -2308,6 +2311,18 @@ function Invoke-LabRecordPass {
         }
     }
     return $worst
+}
+
+# Set-LabSettledState: after a run that only recorded, give every module its
+# final state from its plan result, so the summary counts what happened.
+function Set-LabSettledState {
+    foreach ($m in $script:Run) {
+        if ($m.State -cne 'planned') { continue }
+        if ($m.Rc -eq 0) { $m.State = 'done' }
+        elseif ($m.Rc -eq 10) { $m.State = 'manual' }
+        elseif ($m.Rc -eq 20) { $m.State = 'blocked' }
+        else { $m.State = 'error' }
+    }
 }
 
 function Invoke-LabApplyOne {
@@ -2684,7 +2699,7 @@ function Invoke-LabApplyCommand {
             Exit-LabRun 'apply' $worst $Phase
         }
         if ($script:Given.ContainsKey('approve')) { Write-LabApproveUnmatched }
-        $todo = @($script:Run | Where-Object { $_.Rc -eq 10 -and $_.Risk -ne 'manual-only' }).Count
+        $todo = @($script:Run | Where-Object { $_.Rc -eq 10 -and $_.Risk -ne 'manual-only' -and $_.Risk -ne 'read-only' }).Count
         $record = @($script:Run | Where-Object { $_.Risk -eq 'read-only' -and ($_.Rc -eq 0 -or $_.Rc -eq 10) }).Count
         if ($todo -eq 0 -and $record -eq 0) {
             Write-LabLine ''
@@ -2726,7 +2741,7 @@ function Invoke-LabApplyCommand {
         if ($todo -eq 0) {
             Write-LabLine ''
             Write-LabLine 'There is nothing to apply: no module needs a change Labyrinth can make.'
-            if ($recordWorst -ge 40) { Add-LabProblemMark }
+            Set-LabSettledState
             Exit-LabRun 'apply' $worst $Phase
         }
         $services = $null
@@ -2747,6 +2762,8 @@ function Invoke-LabApplyCommand {
         $stopped = $false
         foreach ($m in $script:Run) {
             if ($m.Rc -eq 20) { $worst = [Math]::Max($worst, 20); $m.State = 'blocked'; continue }
+            # A read-only module's state was settled by the recording pass.
+            if ($m.Risk -eq 'read-only' -and ($m.Rc -eq 0 -or $m.Rc -eq 10)) { continue }
             if ($m.Rc -ne 10) {
                 if ($m.State -ceq 'planned') { $m.State = 'done' }
                 continue

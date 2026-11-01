@@ -2,8 +2,10 @@
 # Test fixture: the recording pass (design 00, section 4). In a preview
 # (LAB_DRY_RUN=1) it writes nothing; in a run (0) it writes a marker under the
 # state folder, noting the toggle.conf it saw, or fails when FAIL_RECORD exists.
+# With CHECK_TEN present its preview exits 10, as a module that has work to do.
 set -Eeuo pipefail
 if [[ "$LAB_DRY_RUN" != 0 ]]; then
+  if [[ -e "$LAB_ROOT/CHECK_TEN" ]]; then echo 'will do: write the marker'; exit 10; fi
   echo 'found: would write the marker'
   exit 0
 fi

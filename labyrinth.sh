@@ -97,6 +97,7 @@ LOAD_ERRORS=0              # modules of the phase that could not be loaded
 LOAD_SKIPPED=0             # modules skipped: no entry points for this platform
 STOPPED=0                  # 1 when an apply stopped partway
 APPLIED=0                  # 1 once apply starts changing things
+RECORDED=0                 # 1 once the recording pass has run
 DATA_ROOT=''               # the data root (--root)
 OPT_PROFILE='' OPT_BREAKGLASS='' OPT_CONFIRM=''
 RUN_REF=''                 # the run keep or rollback acts on
@@ -1031,7 +1032,7 @@ finish() {
     *) what='error' ;;
   esac
   out ''
-  if [[ "$mode" == plan ]] || (( ! APPLIED )); then
+  if [[ "$mode" == plan ]] || (( ! APPLIED && ! RECORDED )); then
     summary plan
     out 'Nothing on this host was changed.'
   else
@@ -1040,7 +1041,8 @@ finish() {
       case "${RUN_STATE[i]}" in failed | error) problems=1 ;; esac
     done
     if (( problems )); then mark_problems; fi
-    if (( NO_REVERT )); then out 'Revert timer: none (--no-revert).'; fi
+    if (( ! APPLIED )); then out 'Nothing on this host was changed.'; fi
+    if (( NO_REVERT && APPLIED )); then out 'Revert timer: none (--no-revert).'; fi
   fi
   if [[ -n "$LOG_FILE" ]]; then out "Log: $LOG_FILE"; fi
   next_step "$mode" "$code" "$3"
@@ -2078,6 +2080,7 @@ RECORD_RC=0
 record_pass() {
   local i id dir name rc
   RECORD_RC=0
+  RECORDED=1
   for ((i = 0; i < ${#RUN_IDS[@]}; i++)); do
     if [[ "${RUN_RISK[i]}" != read-only ]]; then continue; fi
     if [[ "${RUN_RC[i]}" != 0 && "${RUN_RC[i]}" != 10 ]]; then continue; fi
@@ -2108,6 +2111,21 @@ record_pass() {
         detail Fix 'report the module to its author; the others still ran'
         more "$id"
         RUN_STATE[i]=error; RECORD_RC=40 ;;
+    esac
+  done
+}
+
+# settle_states: after a run that only recorded, give every module its final
+# state from its plan result, so the summary counts what happened.
+settle_states() {
+  local i
+  for ((i = 0; i < ${#RUN_IDS[@]}; i++)); do
+    if [[ "${RUN_STATE[i]}" != planned ]]; then continue; fi
+    case "${RUN_RC[i]}" in
+      0) RUN_STATE[i]='done' ;;
+      10) RUN_STATE[i]=manual ;;
+      20) RUN_STATE[i]=blocked ;;
+      *) RUN_STATE[i]=error ;;
     esac
   done
 }
@@ -2454,7 +2472,7 @@ cmd_apply() {
   fi
   if [[ -n "${GIVEN[approve]+set}" ]]; then approve_unmatched; fi
   for ((i = 0; i < ${#RUN_IDS[@]}; i++)); do
-    if [[ "${RUN_RC[i]}" == 10 && "${RUN_RISK[i]}" != manual-only ]]; then todo=$((todo + 1)); fi
+    if [[ "${RUN_RC[i]}" == 10 && "${RUN_RISK[i]}" != manual-only && "${RUN_RISK[i]}" != read-only ]]; then todo=$((todo + 1)); fi
     if [[ "${RUN_RISK[i]}" == read-only && ( "${RUN_RC[i]}" == 0 || "${RUN_RC[i]}" == 10 ) ]]; then
       record=$((record + 1))
     fi
@@ -2495,7 +2513,7 @@ cmd_apply() {
   if (( todo == 0 )); then
     out ''
     out 'There is nothing to apply: no module needs a change Labyrinth can make.'
-    if (( RECORD_RC >= 40 )); then mark_problems; fi
+    settle_states
     lab_lock_release
     finish apply "$worst" "$phase"
   fi
@@ -2516,7 +2534,12 @@ cmd_apply() {
 
   worst="$RECORD_RC"
   for ((i = 0; i < ${#RUN_IDS[@]}; i++)); do
-    if [[ "${RUN_RC[i]}" == 20 ]]; then worst=20; RUN_STATE[i]=blocked; continue; fi
+    if [[ "${RUN_RC[i]}" == 20 ]]; then
+      if (( worst < 20 )); then worst=20; fi
+      RUN_STATE[i]=blocked; continue
+    fi
+    # A read-only module's state was settled by the recording pass.
+    if [[ "${RUN_RISK[i]}" == read-only && ( "${RUN_RC[i]}" == 0 || "${RUN_RC[i]}" == 10 ) ]]; then continue; fi
     if [[ "${RUN_RC[i]}" != 10 ]]; then
       if [[ "${RUN_STATE[i]}" == planned ]]; then RUN_STATE[i]='done'; fi
       continue

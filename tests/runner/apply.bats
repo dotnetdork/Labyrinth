@@ -190,6 +190,19 @@ setup() {
   [[ "$(manifest)" != *breakglass_verified* ]]
 }
 
+@test "nothing to apply and nothing to record: nothing is written at all" {
+  profile observe.toggle
+  printf 'setting=on
+' > "$LAB/toggle.conf"
+  answers
+  apply
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"nothing to apply"* ]]
+  [[ "$output" != *"Type the group name"* ]]
+  [ ! -e "$ROOT/state/runs" ]
+  [ ! -e "$ROOT/backup" ]
+}
+
 @test "a preview never runs a read-only module with LAB_DRY_RUN=0, so it writes nothing" {
   profile observe.recorder observe.toggle
   plan
@@ -234,6 +247,44 @@ setup() {
   [[ "$output" == *"the marker could not be written"* ]]
   [ ! -e "$ROOT/state/recorder" ]
   grep -qx 'setting=on' "$LAB/toggle.conf"
+}
+
+@test "a failed recording is not lowered by a module blocked at plan time: exit 40" {
+  profile observe.recorder observe.toggle observe.blocked
+  touch "$LAB/FAIL_RECORD"
+  apply
+  [ "$status" -eq 40 ]
+}
+
+@test "a read-only module that wants a change is recorded, not applied: it asks nothing" {
+  profile observe.recorder
+  touch "$LAB/CHECK_TEN"
+  answers
+  apply
+  [ "$status" -eq 0 ]
+  grep -qx 'dry=0' "$ROOT/state/recorder/marker"
+  [[ "$output" != *"Type the group name"* ]]
+  [[ "$output" != *"breakglass"* ]]
+}
+
+@test "a read-only module that wants a change and fails to record blocks the module that requires it" {
+  profile observe.recorder observe.dependent
+  touch "$LAB/CHECK_TEN" "$LAB/FAIL_RECORD"
+  apply
+  [ "$status" -eq 40 ]
+  grep -qx 'ERROR    Recording sample (observe.recorder)' <<< "$output"
+  [[ "$output" == *"it needs Recording sample (observe.recorder) to finish first"* ]]
+  [ ! -e "$LAB/dependent.conf" ]
+}
+
+@test "a record-only run that fails to record says so in its summary and exits 40" {
+  profile observe.recorder
+  touch "$LAB/FAIL_RECORD"
+  answers
+  apply
+  [ "$status" -eq 40 ]
+  [[ "$output" == *"Summary: 1 module: 1 ERROR."* ]]
+  [[ "$output" != *"1 OK"* ]]
 }
 
 @test "a plan with errors applies nothing" {
