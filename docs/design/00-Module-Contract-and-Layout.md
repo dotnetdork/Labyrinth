@@ -151,7 +151,7 @@ Entry points:
 | `rollback` | Undo `apply` from the manifest | Safe to run repeatedly |
 | `cleanup` | Remove temporary files this module created | Safe to run repeatedly |
 
-A module of risk `reversible`, `service-affecting` or `approval` must have `check`, `apply`, `verify` and `rollback`. A module of risk `read-only` or `manual-only` never changes anything, so it must not have `apply`, `rollback` or `cleanup`. The runner refuses to load a module that breaks either rule (`40`), in plan mode too, so its risk can be trusted.
+A module of risk `reversible`, `service-affecting` or `approval` must have `check`, `apply`, `verify` and `rollback`. A module of risk `read-only` or `manual-only` never changes anything, so it must not have `apply`, `rollback` or `cleanup`. A `read-only` module may still record: in a run, after every module is planned and before the first change, the runner calls its `check` once more with `LAB_DRY_RUN=0` (Conventions, section 3.1, step 6), and only in that call may `check` write its own files under the state folder (`LAB_STATE_DIR`), as the inventory does (design 08, section 3.1). In a preview, and in the plan stage of a run, `LAB_DRY_RUN` is `1` and `check` and `plan` write nothing. Recording is the only exception to "never changes anything", and it adds nothing to the run manifest's list of changes. A module that only observed exits `0`. The runner refuses to load a module that breaks either rule (`40`), in plan mode too, so its risk can be trusted.
 
 Exit codes:
 

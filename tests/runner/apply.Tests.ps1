@@ -164,12 +164,58 @@ Describe 'labyrinth.ps1 -r' {
         (Get-Content -LiteralPath $toggle) | Should -Be 'setting=on'
     }
 
-    It 'nothing to apply: no gates are asked and nothing is written' {
+    It 'nothing to apply: no gates are asked and no backup folder is made' {
         Write-TestProfile $t 'observe.clean'
         $r = Invoke-TestApply $t @()
         $r.Code | Should -Be 0
         $r.Output | Should -Match 'nothing to apply'
-        Join-Path $t.Root 'state\runs' | Should -Not -Exist
+        $r.Output | Should -Not -Match 'Type the group name'
+        Join-Path $t.Root 'backup' | Should -Not -Exist
+        (Get-TestManifest $t (Get-TestRunId $r.Output)) | Should -Not -Match 'breakglass_verified'
+    }
+
+    It 'a preview never runs a read-only module with LAB_DRY_RUN=0, so it writes nothing' {
+        Write-TestProfile $t @('observe.recorder', 'observe.toggle')
+        $r = Invoke-TestPlan $t
+        $r.Output | Should -Match 'would write the marker'
+        Join-Path $t.Root 'state\recorder' | Should -Not -Exist
+    }
+
+    It 'a run records before the first change: a read-only module writes under the state folder' {
+        Write-TestProfile $t @('observe.recorder', 'observe.toggle')
+        Set-Content -LiteralPath $toggle -Value 'setting=off' -Encoding Ascii
+        $r = Invoke-TestApply $t $answers
+        $r.Code | Should -Be 0
+        $marker = Get-Content -LiteralPath (Join-Path $t.Root 'state\recorder\marker')
+        $marker | Should -Contain 'dry=0'
+        $marker | Should -Contain 'toggle=setting=off'
+        (Get-Content -LiteralPath $toggle) | Should -Be 'setting=on'
+        $m = @((Get-TestManifest $t (Get-TestRunId $r.Output)) -split "`n")
+        $a = ($m | Select-String -SimpleMatch 'record_start' | Select-Object -First 1).LineNumber
+        $b = ($m | Select-String -SimpleMatch 'apply_start' | Select-Object -First 1).LineNumber
+        $a | Should -BeLessThan $b
+        ($m -join "`n") | Should -Match '"action":"recorded"'
+    }
+
+    It 'a run with nothing else to apply still records, and asks nothing' {
+        Write-TestProfile $t 'observe.recorder'
+        $r = Invoke-TestApply $t @()
+        $r.Code | Should -Be 0
+        (Get-Content -LiteralPath (Join-Path $t.Root 'state\recorder\marker')) | Should -Contain 'dry=0'
+        $r.Output | Should -Match 'nothing to apply'
+        $r.Output | Should -Not -Match 'Type the group name'
+        $r.Output | Should -Match 'Nothing on this host was changed\.'
+    }
+
+    It 'a recording that fails is reported, but the run''s changes still go ahead' {
+        Write-TestProfile $t @('observe.recorder', 'observe.toggle')
+        New-Item -ItemType File -Path (Join-Path $lab 'FAIL_RECORD') | Out-Null
+        $r = Invoke-TestApply $t $answers
+        $r.Code | Should -Be 40
+        (@($r.Output -split "`r?`n") -ccontains 'ERROR    Recording sample (observe.recorder)') | Should -BeTrue
+        $r.Output | Should -Match 'the marker could not be written'
+        Join-Path $t.Root 'state\recorder' | Should -Not -Exist
+        (Get-Content -LiteralPath $toggle) | Should -Be 'setting=on'
     }
 
     It 'a plan with errors applies nothing' {
