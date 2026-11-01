@@ -224,7 +224,7 @@ function Merge-InvMap {
         $have[$key] = $true
         $new += "$l".Trim()
     }
-    if ($Path -ne '' -and $new.Count -gt 0) {
+    if ($Path -ne '') {
         if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
             Add-LabTextLine $Path '# service  address  proto  port  process'
             Add-LabTextLine $Path '# Written by lockout.inventory; same columns as outbound-allow. Lines are only ever added.'
