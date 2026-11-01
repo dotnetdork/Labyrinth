@@ -100,7 +100,7 @@ inv_parse_shadow() {
     case "$field" in
       '') INV_PWSTATE[$name]=none ;;
       '!'* | '*'*) INV_PWSTATE[$name]=locked ;;
-      *) INV_PWSTATE[$name]=set ;;
+      *) INV_PWSTATE[$name]='set' ;;
     esac
   done <<< "$1"
 }
