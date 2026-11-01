@@ -185,6 +185,7 @@ PS_TEXT='1 0
 run_check() {
   LAB_DRY_RUN="$1" run bash "$MOD/check.sh"
   echo "$output"
+  if [ "$status" -ne 0 ]; then LAB_DRY_RUN="$1" bash -x "$MOD/check.sh" 2>&1 | tail -30; fi
 }
 
 @test "a preview prints what it found and writes nothing" {

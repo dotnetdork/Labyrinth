@@ -457,7 +457,7 @@ inv_record_sockets() {
       if [[ "$seen" == *" $key "* ]]; then continue; fi
       seen+="$key "
       inv_rec listener protocol "$proto" address "$(inv_norm_addr "$lh")" port "$lp" \
-        process "$name" pid "$pid" unit "${units[$pid]:-}"
+        process "$name" pid "$pid" unit "${pid:+${units[$pid]:-}}"
     else
       inv_rec connection protocol "$proto" state "$state" local_address "$(inv_norm_addr "$lh")" \
         local_port "$lp" remote_address "$(inv_norm_addr "$rh")" remote_port "$rp" process "$name" pid "$pid"
