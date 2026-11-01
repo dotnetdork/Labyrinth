@@ -458,7 +458,7 @@ Describe 'labyrinth.ps1 -r' {
         $shown = [IO.File]::ReadAllText((Join-Path $lab 'tty.out'))
         $shown | Should -Match '(?m)^      ([A-Za-z0-9_.+=-]{20})\r?$'
         $pw = ([regex]::Match($shown, '(?m)^      ([A-Za-z0-9_.+=-]{20})\r?$')).Groups[1].Value
-        $shown | Should -Match 'cleared from row'
+        $shown | Should -Match '\[cleared 6 rows\]'
         $r.Output.Contains($pw) | Should -BeFalse
         foreach ($f in (Get-ChildItem -LiteralPath $t.Root -Recurse -File)) {
             [IO.File]::ReadAllText($f.FullName).Contains($pw) | Should -BeFalse -Because $f.FullName

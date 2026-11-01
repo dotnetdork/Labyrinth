@@ -198,17 +198,20 @@ function Show-LabSeed {
         [Console]::Error.WriteLine('seed: no terminal to show the seed on')
         return 20
     }
-    $row = Get-LabTerminalRow
-    Write-LabTerminal ("`r`n  Decoy seed for $Label, shown once:`r`n`r`n      $Seed`r`n`r`n")
+    $shown = "`r`n  Decoy seed for $Label, shown once:`r`n`r`n      $Seed`r`n`r`n"
+    Write-LabTerminal $shown
     while ($true) {
-        Write-LabTerminal "  Type 'recorded' once it is in the offline record and the team chat: "
+        $prompt = "  Type 'recorded' once it is in the offline record and the team chat: "
+        Write-LabTerminal $prompt
         $answer = Read-LabTerminal
         if ($null -eq $answer) {
             Write-LabTerminal "`r`n"
             return 1
         }
+        # The console echoed the answer and the Enter that ended it.
+        $shown += $prompt + $answer + "`r`n"
         if ($answer.Trim() -eq 'recorded') { break }
     }
-    Clear-LabTerminal -Row $row
+    Clear-LabTerminal -Text $shown
     return 0
 }
