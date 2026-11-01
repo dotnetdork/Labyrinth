@@ -9,7 +9,10 @@ name: CI
 # of the same commit: its branch's push run is the one to read. On a working
 # branch, the tests run only when the branch changes something they check
 # (the 'changes' job); a branch that only edits documentation skips them.
-# Every push to main runs them all.
+# A push to main runs them all, except a merge commit whose tree is exactly
+# the tree of the branch it merged, when that branch's own run passed: the
+# same files were already tested, so the run on main names that run and
+# skips the tests.
 on:
   push:
 
@@ -26,6 +29,10 @@ jobs:
   changes:
     name: What changed
     runs-on: ubuntu-24.04
+    # actions: read lets it look up the merged branch's CI run on main.
+    permissions:
+      contents: read
+      actions: read
     outputs:
       code: ${{ steps.diff.outputs.code }}
       windows: ${{ steps.diff.outputs.windows }}
@@ -41,12 +48,35 @@ jobs:
         # paths listed here are skipped; anything else, including a new
         # folder, runs the tests. The manual is checked on Linux only (bats
         # and the manual build), so docs/manual alone skips the Windows tests.
+        # On main, a merge commit with the same tree as the branch it merged
+        # (the branch was up to date with main) skips the tests when that
+        # branch head's CI run passed. Anything else on main, including a
+        # failed lookup, runs them all.
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           code=false
           windows=false
           if [ "$GITHUB_REF" = refs/heads/main ]; then
             code=true
             windows=true
+            merged="$(git rev-parse -q --verify 'HEAD^2' || true)"
+            if [ -z "$merged" ]; then
+              echo "Not a merge commit: testing everything."
+            elif ! git diff --quiet "$merged" HEAD; then
+              echo "The merged tree differs from the branch head $merged: testing everything."
+            elif ! run="$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$merged&status=success&per_page=1" \
+                --jq '.workflow_runs[0].id // empty')"; then
+              echo "Could not look up the CI run of $merged: testing everything."
+            elif [ -z "$run" ]; then
+              echo "No passing CI run of $merged: testing everything."
+            else
+              code=false
+              windows=false
+              url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$run"
+              echo "Same tree as $merged, which passed in run $run: skipping the tests."
+              echo "Tests skipped: this merge has the same tree as $merged, which passed in [run $run]($url)." >> "$GITHUB_STEP_SUMMARY"
+            fi
           else
             base="$(git merge-base origin/main HEAD)"
             while IFS= read -r f; do
