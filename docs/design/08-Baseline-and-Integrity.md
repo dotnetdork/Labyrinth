@@ -48,7 +48,7 @@ The baseline is stored under the state path (design 00). Baselines are compared,
 
 ### 3.1 The inventory and the dependency map
 
-The inventory module (`observe.inventory`, Tier 0) records what the host has, read-only and with the operating system's own tools only (design 22, section 4.1). It runs before the lockout and again after it.
+The inventory module (`lockout.inventory`, Tier 0) records what the host has, read-only and with the operating system's own tools only (design 22, section 4.1). It is the first module of the Lock out phase, so it runs before any change: the map must see the scored services' connections before the default deny cuts them. A runner picks a phase's modules by the start of their ID, so a module in another phase would run only after the lockdown. It writes its files only in a run (`-r`); a preview prints what it found and writes nothing. Later inventories, taken by the drift check (design 19, section 4.1), are compared with the first.
 
 - **The inventory.** One JSON-lines file per run, `<root>/state/inventory/<UTC time>.jsonl`, one record per line with a `kind` field: `user`, `group`, `sudoers`, `key` (an authorized key, by fingerprint), `listener` (protocol, address, port, process, PID and its systemd unit or Windows service), `service`, `task` (cron, timers, scheduled tasks), `startup`, `package`, `firewall` and `connection`. It is for people to read and for the drift check (design 19, section 4.1) to compare; no module changes anything because of it alone.
 - **The dependency map** is `<root>/state/inventory/deps`, one line per outbound connection a scored service had open, in the same column order as `outbound-allow`, so the firewall reads both with one parser:

@@ -23,7 +23,7 @@ Ideas and techniques are not covered by copyright, which is why writing from a s
 
 | Source (reference only) | Idea | Labyrinth spec it feeds |
 |---|---|---|
-| CCDCScripts25 (UMass Cybersecurity) | Per-OS script layout; quick inventory of users, ports, services; baseline before hardening | Profiles and the observe inventory module (designs 00, 08) |
+| CCDCScripts25 (UMass Cybersecurity) | Per-OS script layout; quick inventory of users, ports, services; baseline before hardening | Profiles and the inventory module (designs 00, 08) |
 | BYU CCDC scripts (GPL-3.0) | Ordering of a first-hour checklist; separate Linux and Windows tracks | Phase order (Blueprint §1) |
 | SwiftOnSecurity sysmon-config (stale since 2021; no license file) | Which Windows events carry high signal | Logging baseline for design 14 (event list only, written by us) |
 | ansible-lockdown (MIT, active) | Benchmark-style control lists with IDs and a check/apply split | The module contract, one control per module or per module section (design 00) |
@@ -31,11 +31,11 @@ Ideas and techniques are not covered by copyright, which is why writing from a s
 
 ## 4. Specs distilled from the mining
 
-### 4.1 Inventory module (observe, P0)
+### 4.1 Inventory module (lockout, P0)
 
 - Output: users and groups, sudoers, authorized keys, listeners with process, services, scheduled execution, startup items, firewall state, installed packages.
 - Native tools only. One JSON-lines output file. Read-only.
-- Runs before any lockout change and again after.
+- The first module of the Lock out phase, so it runs before any change; the drift check takes it again later (design 08, section 3.1).
 
 ### 4.2 Control catalog (all phases)
 

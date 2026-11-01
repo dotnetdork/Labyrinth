@@ -59,7 +59,7 @@ Module IDs are `phase.name`, so the ID shows where the module runs. The IDs belo
 | 05 | Network appliance runbooks | `lockout.appliance_runbooks` (manual-only) | Any time | — | S | Next; good first issue (templates, no code) |
 | 06 | Persistence sweep | `harden.persistence_sweep` | 1 | 01, 07 | L | Next; the quarantine helper is built |
 | 07 | Backup and recovery | `harden.restore_points` | 1 | 00 | M | Next |
-| 08 | Baseline and integrity | `observe.inventory`, `harden.package_verify`, `observe.integrity` | 1, 3 | 00, 02 | L | Next |
+| 08 | Baseline and integrity | `lockout.inventory`, `harden.package_verify`, `observe.integrity` | 1, 3 | 00, 02 | L | Next |
 | 09 | Vulnerability tracker and mitigations | `harden.vuln_check`, `harden.mitigations` | 1, 4 | 02, 08 | L | Next (the read-only check); the tracker is waiting |
 | 10 | Patching and service reduction | `harden.service_reduction`, `harden.patching` | 1, 4 | 07, 09 | M | Waiting |
 | 11 | Service packs and config library | `harden.pack_web`, `harden.pack_mail_dns`, `harden.pack_data` | 1 | 07, 19 | L | Waiting |

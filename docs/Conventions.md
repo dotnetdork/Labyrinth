@@ -28,7 +28,7 @@ priority: P0
 platforms: [ubuntu, rhel-family, windows]
 risk: service-affecting
 touches_scored: true
-requires: [observe.inventory]
+requires: [lockout.inventory]
 outputs: [/etc/ufw/user.rules, firewall-backup]
 spec: 03
 ```
