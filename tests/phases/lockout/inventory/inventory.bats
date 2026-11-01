@@ -184,6 +184,7 @@ PS_TEXT='1 0
 # run_check DRY_RUN: the module's check on this host.
 run_check() {
   LAB_DRY_RUN="$1" run bash "$MOD/check.sh"
+  echo "$output"
 }
 
 @test "a preview prints what it found and writes nothing" {
