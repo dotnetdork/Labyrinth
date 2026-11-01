@@ -410,7 +410,8 @@ inv_read_proc_table() {
   local f stat rest pid ppid
   for f in /proc/[0-9]*/stat; do
     pid="${f#/proc/}"; pid="${pid%/stat}"
-    { stat="$(< "$f")"; } 2> /dev/null || continue
+    stat=''
+    IFS= read -r -d '' stat 2> /dev/null < "$f" || [[ -n "$stat" ]] || continue
     rest="${stat##*) }"
     read -r _ ppid _ <<< "$rest"
     printf '%s %s\n' "$pid" "${ppid:-0}"
@@ -422,7 +423,8 @@ inv_read_unit_map() {
   local f cg pid
   for f in /proc/[0-9]*/cgroup; do
     pid="${f#/proc/}"; pid="${pid%/cgroup}"
-    { cg="$(< "$f")"; } 2> /dev/null || continue
+    cg=''
+    IFS= read -r -d '' cg 2> /dev/null < "$f" || [[ -n "$cg" ]] || continue
     inv_cgroup_unit "$cg"
     if [[ -n "$INV_UNIT" ]]; then printf '%s%s%s\n' "$pid" "$INV_SEP" "$INV_UNIT"; fi
   done
@@ -484,7 +486,7 @@ inv_collect_sudoers() {
   for f in /etc/sudoers /etc/sudoers.d/*; do
     if [[ ! -f "$f" ]]; then continue; fi
     found=1
-    if { txt="$(< "$f")"; } 2> /dev/null; then inv_parse_sudoers "$f" "$txt"; else inv_note "$f cannot be read"; fi
+    if txt="$(cat -- "$f" 2> /dev/null)"; then inv_parse_sudoers "$f" "$txt"; else inv_note "$f cannot be read"; fi
   done
   if (( ! found )); then inv_note 'no sudoers file was found'; fi
 }
@@ -495,7 +497,7 @@ inv_collect_keys() {
     if [[ -z "$home" || ! -d "$home/.ssh" ]]; then continue; fi
     for f in "$home/.ssh/authorized_keys" "$home/.ssh/authorized_keys2"; do
       if [[ ! -f "$f" ]]; then continue; fi
-      if { txt="$(< "$f")"; } 2> /dev/null; then inv_parse_authkeys "$name" "$f" "$txt"; else inv_note "$f cannot be read"; fi
+      if txt="$(cat -- "$f" 2> /dev/null)"; then inv_parse_authkeys "$name" "$f" "$txt"; else inv_note "$f cannot be read"; fi
     done
   done <<< "$INV_PASSWD"
 }
@@ -515,12 +517,12 @@ inv_collect_services() {
 
 inv_collect_tasks() {
   local f u txt h
-  if [[ -r /etc/crontab ]] && { txt="$(< /etc/crontab)"; } 2> /dev/null; then inv_parse_cron cron /etc/crontab 1 "$txt"; fi
+  if [[ -r /etc/crontab ]] && txt="$(cat -- /etc/crontab 2> /dev/null)"; then inv_parse_cron cron /etc/crontab 1 "$txt"; fi
   for f in /etc/cron.d/*; do
-    if [[ -f "$f" ]] && { txt="$(< "$f")"; } 2> /dev/null; then inv_parse_cron cron "$f" 1 "$txt"; fi
+    if [[ -f "$f" ]] && txt="$(cat -- "$f" 2> /dev/null)"; then inv_parse_cron cron "$f" 1 "$txt"; fi
   done
   for f in /var/spool/cron/crontabs/* /var/spool/cron/*; do
-    if [[ -f "$f" ]] && { txt="$(< "$f")"; } 2> /dev/null; then inv_parse_cron user-cron "$f" 0 "$txt"; fi
+    if [[ -f "$f" ]] && txt="$(cat -- "$f" 2> /dev/null)"; then inv_parse_cron user-cron "$f" 0 "$txt"; fi
   done
   for u in hourly daily weekly monthly; do
     for f in /etc/cron."$u"/*; do
