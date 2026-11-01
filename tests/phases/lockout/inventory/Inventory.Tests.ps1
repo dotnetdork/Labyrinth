@@ -80,7 +80,9 @@ Describe 'lockout.inventory' {
                 [pscustomobject]@{ ProcessId = 200; ParentProcessId = 1; Name = 'dns.exe' }
                 [pscustomobject]@{ ProcessId = 300; ParentProcessId = 1; Name = 'ssh.exe' }
                 [pscustomobject]@{ ProcessId = 400; ParentProcessId = 101; Name = 'helper.exe' }
-                [pscustomobject]@{ ProcessId = 500; ParentProcessId = 4; Name = 'w3wp.exe' }
+                [pscustomobject]@{ ProcessId = 500; ParentProcessId = 4; Name = 'w3wp.exe'; CommandLine = 'c:\windows\system32\inetsrv\w3wp.exe -ap "PoolA" -v "v4.0" -l "webengine4.dll"' }
+                [pscustomobject]@{ ProcessId = 600; ParentProcessId = 4; Name = 'w3wp.exe'; CommandLine = 'c:\windows\system32\inetsrv\w3wp.exe -ap "PoolAB" -v "v4.0"' }
+                [pscustomobject]@{ ProcessId = 601; ParentProcessId = 600; Name = 'child2.exe'; CommandLine = '' }
                 [pscustomobject]@{ ProcessId = 501; ParentProcessId = 500; Name = 'child.exe' }
             )
         }
@@ -98,9 +100,29 @@ Describe 'lockout.inventory' {
             @(Get-InvServiceProcessId $script:Sockets 53 @('tcp') $script:Procs).Count | Should -Be 0
         }
 
-        It 'a site served by the System process (id 4) means the w3wp.exe workers and their children' {
-            $socks = @(Get-TestSocket tcp LISTEN '0.0.0.0' 8443 '0.0.0.0' 0 4)
-            (@(Get-InvServiceProcessId $socks 8443 @('tcp') $script:Procs) -join ',') | Should -Be '500,501'
+        It 'a site served by the System process (id 4) means only the workers of its own pool, and their children' {
+            $config = '<configuration><system.applicationHost><sites>' +
+            '<site name="A" id="1"><application path="/" applicationPool="PoolA"><virtualDirectory path="/" /></application><bindings><binding protocol="http" bindingInformation="*:8080:" /></bindings></site>' +
+            '<site name="B" id="2"><application path="/" applicationPool="PoolAB" /><bindings><binding protocol="https" bindingInformation="[::1]:8443:www.example.test" /><binding protocol="net.tcp" bindingInformation="808:*" /></bindings></site>' +
+            '</sites></system.applicationHost></configuration>'
+            $iis = @(Read-InvIisBinding $config)
+            $iis.Count | Should -Be 2
+            $socks = @(
+                (Get-TestSocket tcp LISTEN '0.0.0.0' 8080 '0.0.0.0' 0 4)
+                (Get-TestSocket tcp LISTEN '::' 8443 '::' 0 4)
+            )
+            (@(Get-InvServiceProcessId $socks 8080 @('tcp') $script:Procs $iis) -join ',') | Should -Be '500,501'
+            (@(Get-InvServiceProcessId $socks 8443 @('tcp') $script:Procs $iis) -join ',') | Should -Be '600,601'
+        }
+
+        It 'a System process listener that is not an IIS binding (445) maps no process, with a note' {
+            $iis = @([pscustomobject]@{ Site = 'A'; Port = 8080; Pool = 'PoolA' })
+            $socks = @(Get-TestSocket tcp LISTEN '0.0.0.0' 445 '0.0.0.0' 0 4)
+            @(Get-InvServiceProcessId $socks 445 @('tcp') $script:Procs $iis).Count | Should -Be 0
+            @(Get-InvServiceProcessId $socks 445 @('tcp') $script:Procs $null).Count | Should -Be 0
+            $svc = @([pscustomobject]@{ Name = 'smb'; Proto = 'smb'; Port = 445 })
+            @(Get-InvMapLine $svc $socks $script:Procs $iis).Count | Should -Be 0
+            ($script:InvNote -join '|') | Should -Match 'scored service smb \(port 445\) is held by the System process'
         }
 
         It 'outbound: a scored service connection is in, an inbound client is not' {
@@ -140,6 +162,16 @@ Describe 'lockout.inventory' {
             [IO.File]::ReadAllText($f) | Should -Be $before
         }
 
+        It 'a map file with no final newline gets one before the first new line' {
+            $f = Join-Path $script:Work 'deps'
+            [IO.File]::WriteAllText($f, "# header`nweb 192.0.2.99 tcp 389 ldap")
+            Merge-InvMap $f @('web 198.51.100.5 tcp 5432 php') | Out-Null
+            $text = @(Get-Content -LiteralPath $f)
+            $text | Should -Contain 'web 192.0.2.99 tcp 389 ldap'
+            $text | Should -Contain 'web 198.51.100.5 tcp 5432 php'
+            $text.Count | Should -Be 3
+        }
+
         It 'the map columns 2 to 4 are address, protocol and port, as in outbound-allow' {
             $f = Join-Path $script:Work 'deps'
             Merge-InvMap $f @('web 198.51.100.5 tcp 5432 php') | Out-Null
@@ -156,6 +188,21 @@ Describe 'lockout.inventory' {
             $out | Should -Match '"fingerprint":"SHA256:IZO8V5UocbGYVwglouCMXzRBM68lWPPjxWEnkyZ1uNc"'
             $out | Should -Not -Match 'dGVzdGtleWJsb2I'
             $script:InvCount['key'] | Should -Be 1
+        }
+
+        It 'keys: quoted options with spaces and words like ssh-agent do not confuse the type' {
+            Read-InvAuthorizedKey 'alice' 'k' ('command="exec ssh-agent bash" ssh-ed25519 dGVzdGtleWJsb2I= c' + "`n" + 'from="10.0.0.0/8",no-pty,environment="X=a b" sk-ssh-ed25519@openssh.com dGVzdGtleWJsb2I= second key')
+            $script:InvCount['key'] | Should -Be 2
+            $out = $script:InvOut.ToString()
+            $out | Should -Match '"type":"ssh-ed25519","fingerprint":"SHA256:IZO8V5UocbGYVwglouCMXzRBM68lWPPjxWEnkyZ1uNc","comment":"c"'
+            $out | Should -Match '"type":"sk-ssh-ed25519@openssh.com".*"comment":"second key"'
+            $out | Should -Not -Match 'dGVzdGtleWJsb2I'
+            $out | Should -Not -Match 'ssh-agent'
+        }
+
+        It 'a program is kept without its arguments, and an unquoted one stops at the executable' {
+            Get-InvExecutable 'C:\Tools\backup.exe /password s3cret' | Should -Be 'C:\Tools\backup.exe'
+            Get-InvExecutable 'C:\Tools\backup.exe /password s3cret' | Should -Not -Match 's3cret'
         }
 
         It 'a program is kept without its arguments' {
@@ -208,8 +255,15 @@ Describe 'lockout.inventory' {
         }
 
         It 'a run changes no startup entry in the registry, and records no secret' {
-            $keys = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run', 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run'
-            $snap = { foreach ($k in $keys) { if (Test-Path $k) { (Get-ItemProperty $k | ConvertTo-Json -Compress) } } }
+            $keys = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run', 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\RunOnce',
+            'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Run', 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run',
+            'HKLM:\SYSTEM\CurrentControlSet\Control\Lsa', 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System'
+            $snap = {
+                foreach ($k in $keys) { if (Test-Path $k) { (Get-ItemProperty $k | ConvertTo-Json -Compress) } }
+                # Every service's start type, and every local account's state.
+                (Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Services\*' -ErrorAction SilentlyContinue | ForEach-Object { "$($_.PSChildName)=$($_.Start)" } | Sort-Object) -join ';'
+                (Get-LocalUser -ErrorAction SilentlyContinue | ForEach-Object { "$($_.Name)=$($_.Enabled)" } | Sort-Object) -join ';'
+            }
             $before = @(& $snap)
             Set-Content -LiteralPath (Join-Path $script:Config 'services') -Value 'web http www.example.test 80 Welcome'
             (Invoke-TestCheck '0').Code | Should -Be 0
@@ -250,19 +304,32 @@ Describe 'lockout.inventory' {
             $dep = New-Object Net.Sockets.TcpListener $any, 38102
             $out = $null
             $loop = $null
+            $inbound = $null
+            $users = (Get-LocalUser -ErrorAction SilentlyContinue | ForEach-Object { "$($_.Name)=$($_.Enabled)" } | Sort-Object) -join ';'
             try {
                 $srv.Start(); $dep.Start()
                 $out = New-Object Net.Sockets.TcpClient
                 $out.Connect($ip, 38102)
                 $loop = New-Object Net.Sockets.TcpClient
                 $loop.Connect('127.0.0.1', 38101)
+                # A client from a non-loopback address: its accepted socket has the listening port as its local port.
+                $inbound = New-Object Net.Sockets.TcpClient
+                $inbound.Connect($ip, 38101)
+                $inPort = ([Net.IPEndPoint]$inbound.Client.LocalEndPoint).Port
                 $r = Invoke-TestCheck '0'
                 $r.Code | Should -Be 0
                 $deps = Get-Content -LiteralPath (Join-Path $script:State 'inventory\deps')
                 ($deps | Where-Object { $_ -match "^svc $([regex]::Escape($ip)) tcp 38102 " }).Count | Should -BeGreaterThan 0
                 ($deps | Where-Object { $_ -match ' 127\.' }).Count | Should -Be 0
-                ($deps | Where-Object { $_ -match ' tcp 38101 ' }).Count | Should -Be 0
+                ($deps | Where-Object { $_ -match "^svc $([regex]::Escape($ip)) tcp $inPort( |$)" }).Count | Should -Be 0
+                # The service still answers, and the local accounts are untouched.
+                $again = New-Object Net.Sockets.TcpClient
+                $again.Connect($ip, 38101)
+                $again.Connected | Should -BeTrue
+                $again.Close()
+                ((Get-LocalUser -ErrorAction SilentlyContinue | ForEach-Object { "$($_.Name)=$($_.Enabled)" } | Sort-Object) -join ';') | Should -Be $users
             } finally {
+                if ($inbound) { $inbound.Close() }
                 if ($out) { $out.Close() }
                 if ($loop) { $loop.Close() }
                 $srv.Stop(); $dep.Stop()

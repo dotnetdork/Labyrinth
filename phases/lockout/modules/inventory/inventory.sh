@@ -15,6 +15,9 @@ INV_PASSWD=''
 INV_UNITS=''
 INV_SS=''
 INV_UNIT=''
+INV_J=''
+INV_ADDR=''
+INV_SOCKETS=''
 declare -gA INV_COUNT=()
 declare -gA INV_PWSTATE=()
 declare -ga INV_NOTES=()
@@ -27,21 +30,34 @@ inv_have() { command -v "$1" > /dev/null 2>&1; }
 # found: line, and one missing tool never stops the rest.
 inv_note() { INV_NOTES+=("$1"); }
 
+# inv_json VALUE: set INV_J to VALUE as a JSON string. Done with parameter
+# expansion, not a subshell: a big host has thousands of fields to write.
+inv_json() {
+  local v="$1"
+  v=${v//\\/\\\\}
+  v=${v//\"/\\\"}
+  v=${v//$'\n'/\\n}
+  v=${v//$'\r'/\\r}
+  v=${v//$'\t'/\\t}
+  v=${v//[[:cntrl:]]/}
+  INV_J="\"$v\""
+}
+
 # inv_rec KIND [KEY VALUE]...: append one JSON record to the inventory. The
 # keys port, pid, uid and gid are numbers; every other value is a string.
 inv_rec() {
-  local kind="$1" k v line js
+  local kind="$1" k v line
   shift
-  js="$(lab_json_str "$kind")"
-  line="{\"kind\":$js"
+  inv_json "$kind"
+  line="{\"kind\":$INV_J"
   while (( $# >= 2 )); do
     k="$1"; v="$2"; shift 2
     case "$k" in
       port | pid | uid | gid)
         if [[ "$v" =~ ^[0-9]+$ ]]; then line+=",\"$k\":$((10#$v))"; else line+=",\"$k\":null"; fi ;;
       *)
-        js="$(lab_json_str "$v")"
-        line+=",\"$k\":$js" ;;
+        inv_json "$v"
+        line+=",\"$k\":$INV_J" ;;
     esac
   done
   INV_OUT+="$line}"$'\n'
@@ -128,22 +144,24 @@ inv_parse_sudoers() {
 }
 
 # inv_parse_authkeys USER FILE TEXT: one record per authorized key: its type,
-# fingerprint and comment. The key's own text is dropped.
+# fingerprint and comment. The key's own text is dropped. The options before
+# the key type may hold quoted text with spaces (command="exec ssh-agent
+# bash"), so they are skipped a token at a time, a quoted string counting as
+# part of its token.
 inv_parse_authkeys() {
-  local user="$1" file="$2" line f type blob comment fp
-  local -a words
+  local user="$1" file="$2" line rest type blob comment fp
+  local tok_re='^(([^[:space:]"]|"([^"\]|\.)*")+)[[:space:]]*'
+  local key_re='^((ssh-|ecdsa-|sk-|rsa-sha2-)[^[:space:]]*)[[:space:]]+([^[:space:]]+)[[:space:]]*(.*)$'
   while IFS= read -r line; do
-    line="${line#"${line%%[![:space:]]*}"}"
-    if [[ -z "$line" || "$line" == '#'* ]]; then continue; fi
-    read -r -a words <<< "$line"
+    rest="${line#"${line%%[![:space:]]*}"}"
+    if [[ -z "$rest" || "$rest" == '#'* ]]; then continue; fi
     type='' blob='' comment=''
-    for ((f = 0; f < ${#words[@]}; f++)); do
-      if [[ "${words[f]}" =~ ^(ssh-|ecdsa-|sk-|rsa-sha2-) ]]; then
-        type="${words[f]}"
-        blob="${words[f+1]:-}"
-        comment="${words[*]:f+2}"
+    while [[ -n "$rest" ]]; do
+      if [[ "$rest" =~ $key_re ]]; then
+        type="${BASH_REMATCH[1]}" blob="${BASH_REMATCH[3]}" comment="${BASH_REMATCH[4]}"
         break
       fi
+      if [[ "$rest" =~ $tok_re ]]; then rest="${rest:${#BASH_REMATCH[0]}}"; else break; fi
     done
     if [[ -z "$type" ]]; then continue; fi
     fp="$(inv_fingerprint "$blob")"
@@ -161,6 +179,7 @@ inv_parse_ss() {
       i = length(s)
       while (i > 0 && substr(s, i, 1) != ":") i--
       h = substr(s, 1, i - 1); p = substr(s, i + 1)
+      sub(/\]%[^ ]*$/, "]", h)
       if (h ~ /^\[.*\]$/) h = substr(h, 2, length(h) - 2)
       sub(/%[^ ]*$/, "", h)
       HP_H = h; HP_P = p
@@ -192,19 +211,18 @@ inv_is_listener() {
   return 1
 }
 
-# inv_norm_addr ADDRESS: lower case, with an IPv4-mapped IPv6 address shown
+# inv_norm_addr ADDRESS: sets INV_ADDR to ADDRESS in lower case, with an IPv4-mapped IPv6 address shown
 # as plain IPv4.
 inv_norm_addr() {
   local a="${1,,}"
   if [[ "$a" =~ ^::ffff:([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)$ ]]; then a="${BASH_REMATCH[1]}"; fi
-  printf '%s' "$a"
+  INV_ADDR="$a"
 }
 
 # inv_is_local_addr ADDRESS: loopback, or no address at all (wildcard).
 inv_is_local_addr() {
-  local a
-  a="$(inv_norm_addr "$1")"
-  case "$a" in
+  inv_norm_addr "$1"
+  case "$INV_ADDR" in
     127.* | ::1 | '' | '*' | 0.0.0.0 | ::) return 0 ;;
   esac
   return 1
@@ -212,7 +230,8 @@ inv_is_local_addr() {
 
 # inv_cgroup_unit TEXT: set INV_UNIT to the systemd service a process belongs
 # to, from its /proc/PID/cgroup text: the last part of the path, when it ends
-# in .service. Empty otherwise (a login session, a container, no systemd).
+# in .service, or init.scope (systemd itself, process 1). Empty otherwise (a
+# login session, a container, no systemd).
 inv_cgroup_unit() {
   local line path=''
   INV_UNIT=''
@@ -223,7 +242,7 @@ inv_cgroup_unit() {
     esac
   done <<< "$1"
   path="${path%/}"
-  if [[ "${path##*/}" == *.service ]]; then INV_UNIT="${path##*/}"; fi
+  if [[ "${path##*/}" == *.service || "${path##*/}" == init.scope ]]; then INV_UNIT="${path##*/}"; fi
   return 0
 }
 
@@ -248,22 +267,31 @@ inv_descendants() {
     }' | sort -n
 }
 
-# inv_service_pids SSNORM PORT PROTOS PSTEXT UNITMAP: the processes of the
-# scored service that listens on PORT (design 08, section 3.1). SSNORM is the
-# output of inv_parse_ss; PROTOS is "tcp", "udp" or "tcp udp"; PSTEXT has
-# "pid ppid" per line; UNITMAP has "pid<SEP>unit" per line for the processes
-# that belong to a systemd service. For each process listening on the port:
-# its systemd unit's every process, else itself and its descendants. Prints
-# one pid per line, and nothing when nothing listens on PORT.
+# inv_service_pids SSNORM PORT PROTOS PSTEXT UNITMAP [SOCKETS]: the processes
+# of the scored service that listens on PORT (design 08, section 3.1). SSNORM
+# is the output of inv_parse_ss; PROTOS is "tcp", "udp" or "tcp udp"; PSTEXT
+# has "pid ppid" per line; UNITMAP has "pid<SEP>unit" per line for the
+# processes that belong to a systemd service (or init.scope); SOCKETS is the
+# text of `systemctl list-sockets`. For each process listening on the port:
+# its systemd unit's every process, else itself and its descendants. Process 1
+# and anything in init.scope is systemd holding a socket for a service that
+# starts on demand (ssh.socket), not the service: it is never a seed. When
+# only systemd holds the port, the service the socket activates is used.
+# Prints one pid per line, and nothing when the service cannot be found.
 inv_service_pids() {
-  local ss="$1" port="$2" protos="$3" ps="$4" map="$5"
-  local proto state lp pid seen=' ' unit upid uname lpid
+  local ss="$1" port="$2" protos="$3" ps="$4" map="$5" sockets="${6:-}"
+  local proto state lp pid seen=' ' unit upid uname lpid addr sunit sact svc sawinit=0
   local -a listeners=() out=()
   while IFS="$INV_SEP" read -r proto state _ lp _ _ pid _; do
     if [[ "$lp" != "$port" || -z "$pid" ]]; then continue; fi
     if [[ " $protos " != *" $proto "* ]] || ! inv_is_listener "$proto" "$state"; then continue; fi
     if [[ "$seen" == *" $pid "* ]]; then continue; fi
     seen+="$pid "
+    unit=''
+    while IFS="$INV_SEP" read -r upid uname; do
+      if [[ "$upid" == "$pid" ]]; then unit="$uname"; break; fi
+    done <<< "$map"
+    if [[ "$pid" == 1 || "$unit" == init.scope ]]; then sawinit=1; continue; fi
     listeners+=("$pid")
   done <<< "$ss"
   for lpid in "${listeners[@]+"${listeners[@]}"}"; do
@@ -279,6 +307,16 @@ inv_service_pids() {
       mapfile -t -O "${#out[@]}" out < <(inv_descendants "$ps" "$lpid")
     fi
   done
+  if (( ${#listeners[@]} == 0 && sawinit )); then
+    while read -r addr sunit sact _; do
+      if [[ "$addr" != *":$port" ]]; then continue; fi
+      svc="$sact"
+      if [[ "$svc" != *.service ]]; then svc="${sunit%.socket}.service"; fi
+      while IFS="$INV_SEP" read -r upid uname; do
+        if [[ "$uname" == "$svc" ]]; then out+=("$upid"); fi
+      done <<< "$map"
+    done <<< "$sockets"
+  fi
   if (( ${#out[@]} > 0 )); then printf '%s\n' "${out[@]}" | sort -un; fi
 }
 
@@ -305,7 +343,8 @@ inv_outbound() {
     if [[ "$pids" != *" $pid "* ]]; then continue; fi
     if [[ "$ports" == *" $lp "* ]]; then continue; fi
     if inv_is_local_addr "$rh" || [[ ! "$rp" =~ ^[0-9]+$ ]]; then continue; fi
-    printf '%s %s %s %s\n' "$(inv_norm_addr "$rh")" "$proto" "$((10#$rp))" "${name// /_}"
+    inv_norm_addr "$rh"
+    printf '%s %s %s %s\n' "$INV_ADDR" "$proto" "$((10#$rp))" "${name// /_}"
   done <<< "$ss" | sort -u
 }
 
@@ -333,6 +372,9 @@ inv_merge_map() {
     INV_MAP_NEW+=("$line")
   done
   if [[ -z "$file" ]]; then return 0; fi
+  # A hand-edited file may lack its final newline: add it first, or the
+  # first new line would join the last old one.
+  if [[ -s "$file" && -n "$(tail -c 1 "$file")" ]]; then printf '\n' >> "$file"; fi
   if [[ ! -f "$file" ]]; then
     printf '%s\n' '# service  address  proto  port  process' \
       '# Written by lockout.inventory; same columns as outbound-allow. Lines are only ever added.' > "$file"
@@ -376,6 +418,9 @@ inv_parse_timers() {
 # hash of the whole line is kept to see changes.
 inv_parse_cron() {
   local source="$1" file="$2" userfield="$3" line a b c d e user cmd prog schedule rest h
+  # A leading env, or NAME=value words (a quoted value may hold spaces), come
+  # before the program and may hold a secret: they are skipped.
+  local env_re='^((/usr/bin/)?env|[A-Za-z_][A-Za-z0-9_]*=([^[:space:]"'"'"']|"[^"]*"|'"'"'[^'"'"']*'"'"')*)[[:space:]]+(.*)$'
   while IFS= read -r line; do
     line="${line#"${line%%[![:space:]]*}"}"
     if [[ -z "$line" || "$line" == '#'* || "$line" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]]; then continue; fi
@@ -388,6 +433,7 @@ inv_parse_cron() {
     fi
     user="${file##*/}"
     if (( userfield )); then read -r user cmd <<< "$rest"; else cmd="$rest"; fi
+    while [[ "$cmd" =~ $env_re ]]; do cmd="${BASH_REMATCH[${#BASH_REMATCH[@]}-1]}"; done
     prog="${cmd%%[[:space:]]*}"
     h="$(inv_hash_text "$line")"
     inv_rec task source "$source" file "$file" user "$user" schedule "$schedule" command "$prog" sha256 "$h"
@@ -447,7 +493,7 @@ inv_collect_ss() {
 
 # inv_record_sockets: listener and connection records from INV_SS.
 inv_record_sockets() {
-  local proto state lh lp rh rp pid name upid uname seen=' ' key
+  local proto state lh lp rh rp pid name upid uname seen=' ' key la
   local -A units=()
   while IFS="$INV_SEP" read -r upid uname; do
     if [[ -n "$upid" ]]; then units[$upid]="$uname"; fi
@@ -458,11 +504,14 @@ inv_record_sockets() {
       key="$proto $lh $lp $pid"
       if [[ "$seen" == *" $key "* ]]; then continue; fi
       seen+="$key "
-      inv_rec listener protocol "$proto" address "$(inv_norm_addr "$lh")" port "$lp" \
+      inv_norm_addr "$lh"
+      inv_rec listener protocol "$proto" address "$INV_ADDR" port "$lp" \
         process "$name" pid "$pid" unit "${pid:+${units[$pid]:-}}"
     else
-      inv_rec connection protocol "$proto" state "$state" local_address "$(inv_norm_addr "$lh")" \
-        local_port "$lp" remote_address "$(inv_norm_addr "$rh")" remote_port "$rp" process "$name" pid "$pid"
+      inv_norm_addr "$lh"; la="$INV_ADDR"
+      inv_norm_addr "$rh"
+      inv_rec connection protocol "$proto" state "$state" local_address "$la" \
+        local_port "$lp" remote_address "$INV_ADDR" remote_port "$rp" process "$name" pid "$pid"
     fi
   done <<< "$INV_SS"
 }
@@ -586,22 +635,36 @@ inv_collect_firewall() {
   fi
 }
 
-# inv_collect_all: fill INV_OUT with the whole inventory.
-inv_collect_all() {
+# inv_collect_sockets: the part of the inventory the firewall's default deny
+# depends on, taken first: the listeners and connections, with the systemd
+# service each belongs to. Starts a new inventory.
+inv_collect_sockets() {
   INV_OUT=''
   INV_COUNT=()
   INV_NOTES=()
+  INV_UNITS="$(inv_read_unit_map)"
+  INV_SOCKETS=''
+  if inv_have systemctl; then INV_SOCKETS="$(systemctl list-sockets --all --no-legend --no-pager 2> /dev/null)" || INV_SOCKETS=''; fi
+  inv_collect_ss
+  inv_record_sockets
+}
+
+# inv_collect_rest: everything else, the slower part.
+inv_collect_rest() {
   inv_collect_accounts
   inv_collect_sudoers
   inv_collect_keys
-  INV_UNITS="$(inv_read_unit_map)"
-  inv_collect_ss
-  inv_record_sockets
   inv_collect_services
   inv_collect_tasks
   inv_collect_startup
   inv_collect_packages
   inv_collect_firewall
+}
+
+# inv_collect_all: fill INV_OUT with the whole inventory.
+inv_collect_all() {
+  inv_collect_sockets
+  inv_collect_rest
 }
 
 # inv_build_map: INV_MAP_ALL, the "service address proto port process" line
@@ -624,7 +687,7 @@ inv_build_map() {
   for ((i = 0; i < ${#LAB_SVC_NAME[@]}; i++)); do
     protos=tcp
     if [[ "${LAB_SVC_PROTO[i]}" == dns ]]; then protos='tcp udp'; fi
-    pids="$(inv_service_pids "$INV_SS" "${LAB_SVC_PORT[i]}" "$protos" "$ps" "$INV_UNITS")"
+    pids="$(inv_service_pids "$INV_SS" "${LAB_SVC_PORT[i]}" "$protos" "$ps" "$INV_UNITS" "$INV_SOCKETS")"
     if [[ -z "$pids" ]]; then continue; fi
     lines="$(inv_outbound "$INV_SS" "$pids" "$ports")"
     while IFS= read -r line; do
@@ -646,9 +709,22 @@ inv_say_found() {
   for n in "${INV_MAP_ALL[@]+"${INV_MAP_ALL[@]}"}"; do printf 'found: dependency: %s\n' "$n"; done
 }
 
-# inv_write: write the inventory file and merge the map (a run only). Prints
-# did: lines. Returns 1 when the state folder cannot be written.
-inv_write() {
+# inv_write_deps: merge the map into the dependency map file (a run only).
+# Done before the slow kinds are collected, so the file the firewall needs
+# exists even if the rest of the run is cut short. Prints a did: line.
+# Returns 1 when the state folder cannot be written.
+inv_write_deps() {
+  local dir="$LAB_STATE_DIR/inventory"
+  umask 077
+  mkdir -p -- "$dir" || return 1
+  if [[ -n "$INV_MAP_NOTE" ]]; then return 0; fi
+  inv_merge_map "$dir/deps" "${INV_MAP_ALL[@]+"${INV_MAP_ALL[@]}"}" || return 1
+  printf 'did: added %d line(s) to the dependency map %s\n' "${#INV_MAP_NEW[@]}" "$dir/deps"
+}
+
+# inv_write_inventory: write the inventory file (a run only). Prints a did:
+# line. Returns 1 when the state folder cannot be written.
+inv_write_inventory() {
   local dir="$LAB_STATE_DIR/inventory" stamp file n=1
   umask 077
   mkdir -p -- "$dir" || return 1
@@ -657,7 +733,4 @@ inv_write() {
   while [[ -e "$file" ]]; do n=$((n + 1)); file="$dir/$stamp-$n.jsonl"; done
   printf '%s' "$INV_OUT" > "$file" || return 1
   printf 'did: wrote the inventory to %s\n' "$file"
-  if [[ -n "$INV_MAP_NOTE" ]]; then return 0; fi
-  inv_merge_map "$dir/deps" "${INV_MAP_ALL[@]+"${INV_MAP_ALL[@]}"}" || return 1
-  printf 'did: added %d line(s) to the dependency map %s\n' "${#INV_MAP_NEW[@]}" "$dir/deps"
 }

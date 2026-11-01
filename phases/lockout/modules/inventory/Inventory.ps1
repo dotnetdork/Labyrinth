@@ -73,23 +73,19 @@ function Get-InvFingerprint {
 # Read-InvAuthorizedKey USER FILE TEXT: one key record per authorized key.
 function Read-InvAuthorizedKey {
     param([string] $User, [string] $File, [AllowEmptyString()] [string] $Text)
+    # Options before the key type may hold quoted text with spaces
+    # (command="exec ssh-agent bash"): they are skipped a token at a time, a
+    # quoted string counting as part of its token.
+    $keyRe = '^(?:(?:[^\s"]|"(?:[^"\\]|\\.)*")+\s+)*?(?<type>(?:ssh-|ecdsa-|sk-|rsa-sha2-)\S*)\s+(?<blob>\S+)(?:\s+(?<comment>.*))?$'
     foreach ($raw in ($Text -split "`r?`n")) {
         $line = $raw.Trim()
         if ($line -eq '' -or $line.StartsWith('#')) { continue }
-        $words = @($line -split '\s+')
-        for ($i = 0; $i -lt $words.Count; $i++) {
-            if ($words[$i] -match '^(ssh-|ecdsa-|sk-|rsa-sha2-)') {
-                $blob = ''
-                if ($i + 1 -lt $words.Count) { $blob = $words[$i + 1] }
-                $comment = ''
-                if ($i + 2 -lt $words.Count) { $comment = ($words[($i + 2)..($words.Count - 1)]) -join ' ' }
-                Add-InvRecord 'key' ([ordered]@{
-                        user = $User; file = $File; type = $words[$i]
-                        fingerprint = (Get-InvFingerprint $blob); comment = $comment
-                    })
-                break
-            }
-        }
+        $m = [regex]::Match($line, $keyRe)
+        if (-not $m.Success) { continue }
+        Add-InvRecord 'key' ([ordered]@{
+                user = $User; file = $File; type = $m.Groups['type'].Value
+                fingerprint = (Get-InvFingerprint $m.Groups['blob'].Value); comment = $m.Groups['comment'].Value.Trim()
+            })
     }
 }
 
@@ -139,19 +135,75 @@ function Get-InvDescendant {
     return @($set | Sort-Object)
 }
 
+# Read-InvIisBinding TEXT: the HTTP and HTTPS bindings of every IIS site, from
+# the text of applicationHost.config, as objects with Site, Port and Pool (the
+# site's application pool). Nothing for text with no sites.
+function Read-InvIisBinding {
+    param([AllowEmptyString()] [string] $Text)
+    $found = @()
+    if ([string]::IsNullOrWhiteSpace($Text)) { return $found }
+    $xml = New-Object System.Xml.XmlDocument
+    $xml.XmlResolver = $null
+    $xml.LoadXml($Text)
+    foreach ($site in @($xml.SelectNodes('/configuration/system.applicationHost/sites/site'))) {
+        $pool = 'DefaultAppPool'
+        $defaults = $site.SelectSingleNode('applicationDefaults')
+        if ($defaults -and $defaults.GetAttribute('applicationPool')) { $pool = $defaults.GetAttribute('applicationPool') }
+        $root = $site.SelectSingleNode("application[@path='/']")
+        if ($root -and $root.GetAttribute('applicationPool')) { $pool = $root.GetAttribute('applicationPool') }
+        foreach ($b in @($site.SelectNodes('bindings/binding'))) {
+            $proto = $b.GetAttribute('protocol')
+            if ($proto -ne 'http' -and $proto -ne 'https') { continue }
+            $m = [regex]::Match($b.GetAttribute('bindingInformation'), ':(\d+):[^:]*$')
+            if (-not $m.Success) { continue }
+            $found += [pscustomobject]@{ Site = $site.GetAttribute('name'); Port = [int]$m.Groups[1].Value; Pool = $pool }
+        }
+    }
+    return $found
+}
+
+# Get-InvIisProcessId BINDINGS PORT PROCESSES: the w3wp.exe worker processes
+# that serve the IIS site bound to PORT: the ones whose command line names
+# that site's application pool (-ap "pool"). Nothing when no site is bound to
+# PORT, or no worker for its pool is running.
+function Get-InvIisProcessId {
+    param($Binding, [int] $Port, $Process)
+    $pools = @(@($Binding) | Where-Object { $_ -and [int]$_.Port -eq $Port } | ForEach-Object { $_.Pool } | Sort-Object -Unique)
+    $seed = @()
+    foreach ($p in @($Process)) {
+        if ("$($p.Name)" -ine 'w3wp.exe') { continue }
+        foreach ($pool in $pools) {
+            if ("$($p.CommandLine)" -match ('(?i)-ap\s+"?' + [regex]::Escape($pool) + '"?(\s|$)')) { $seed += [int]$p.ProcessId; break }
+        }
+    }
+    return $seed
+}
+
+# Test-InvSystemListener SOCKETS PORT PROTOS: is the listener on PORT owned by
+# the System process (id 4), as with HTTP.sys, SMB or WinRM?
+function Test-InvSystemListener {
+    param($Socket, [int] $Port, [string[]] $Proto)
+    foreach ($s in @($Socket)) {
+        if ([int]$s.LocalPort -eq $Port -and $Proto -contains $s.Proto -and (Test-InvListener $s) -and [int]$s.ProcessId -eq 4) { return $true }
+    }
+    return $false
+}
+
 # Get-InvServiceProcessId SOCKETS PORT PROTOS PROCESSES: the processes of the
 # scored service that listens on PORT (design 08, section 3.1): the listener's
 # service process and its descendants; for a listener that is the System
-# process (id 4, where HTTP.sys serves an IIS site), the w3wp.exe worker
-# processes and their descendants. Nothing when nothing listens on PORT.
+# process (id 4, where HTTP.sys serves an IIS site), the w3wp.exe workers of
+# the site bound to PORT (IISBINDING, from Read-InvIisBinding) and their
+# descendants. Nothing when nothing listens on PORT or the System listener
+# is not an IIS site binding (SMB, WinRM).
 function Get-InvServiceProcessId {
-    param($Socket, [int] $Port, [string[]] $Proto, $Process)
+    param($Socket, [int] $Port, [string[]] $Proto, $Process, $IisBinding = $null)
     $seed = @()
     foreach ($s in @($Socket)) {
         if ([int]$s.LocalPort -ne $Port -or $Proto -notcontains $s.Proto -or -not (Test-InvListener $s)) { continue }
         $owner = [int]$s.ProcessId
         if ($owner -eq 4) {
-            foreach ($p in @($Process)) { if ("$($p.Name)" -ieq 'w3wp.exe') { $seed += [int]$p.ProcessId } }
+            $seed += @(Get-InvIisProcessId $IisBinding $Port $Process)
         } elseif ($owner -gt 0) {
             $seed += $owner
         }
@@ -188,13 +240,18 @@ function Get-InvOutbound {
 # process" line of every outbound connection a scored service has open now.
 # A service object has Name, Proto and Port; dns is looked for over tcp and udp.
 function Get-InvMapLine {
-    param($Service, $Socket, $Process)
+    param($Service, $Socket, $Process, $IisBinding = $null)
     $listenPorts = @(@($Socket) | Where-Object { Test-InvListener $_ } | ForEach-Object { [int]$_.LocalPort } | Sort-Object -Unique)
     foreach ($svc in @($Service)) {
         $protos = @('tcp')
         if ($svc.Proto -eq 'dns') { $protos = @('tcp', 'udp') }
-        $pids = @(Get-InvServiceProcessId $Socket ([int]$svc.Port) $protos $Process)
-        if ($pids.Count -eq 0) { continue }
+        $pids = @(Get-InvServiceProcessId $Socket ([int]$svc.Port) $protos $Process $IisBinding)
+        if ($pids.Count -eq 0) {
+            if (Test-InvSystemListener $Socket ([int]$svc.Port) $protos) {
+                Add-InvNote "scored service $($svc.Name) (port $($svc.Port)) is held by the System process, and no IIS site binding on that port could be matched to a worker, so its connections were not mapped"
+            }
+            continue
+        }
         foreach ($o in @(Get-InvOutbound $Socket $pids $listenPorts $Process | Sort-Object Address, Proto, Port)) {
             '{0} {1} {2} {3} {4}' -f $svc.Name, $o.Address, $o.Proto, $o.Port, $o.Process
         }
@@ -225,6 +282,12 @@ function Merge-InvMap {
         $new += "$l".Trim()
     }
     if ($Path -ne '') {
+        # A hand-edited file may lack its final newline: add it first, or the
+        # first new line would join the last old one.
+        if ($new.Count -gt 0 -and (Test-Path -LiteralPath $Path -PathType Leaf)) {
+            $bytes = [IO.File]::ReadAllBytes($Path)
+            if ($bytes.Length -gt 0 -and $bytes[$bytes.Length - 1] -ne 10) { [IO.File]::AppendAllText($Path, "`n") }
+        }
         if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
             Add-LabTextLine $Path '# service  address  proto  port  process'
             Add-LabTextLine $Path '# Written by lockout.inventory; same columns as outbound-allow. Lines are only ever added.'
@@ -236,10 +299,11 @@ function Merge-InvMap {
 
 # ----------------------------------------------------------- system readers
 
-# Get-InvCollectedProcess: every process, as ProcessId, ParentProcessId, Name.
+# Get-InvCollectedProcess: every process, as ProcessId, ParentProcessId, Name
+# and CommandLine (read only to tell IIS workers apart; never recorded).
 function Get-InvCollectedProcess {
     @(Get-CimInstance -ClassName Win32_Process | ForEach-Object {
-            [pscustomobject]@{ ProcessId = [int]$_.ProcessId; ParentProcessId = [int]$_.ParentProcessId; Name = "$($_.Name)" }
+            [pscustomobject]@{ ProcessId = [int]$_.ProcessId; ParentProcessId = [int]$_.ParentProcessId; Name = "$($_.Name)"; CommandLine = "$($_.CommandLine)" }
         })
 }
 
@@ -442,7 +506,12 @@ function Get-InvCollectedAll {
     Add-InvCollectedStartup
     Add-InvCollectedPackage
     Add-InvCollectedFirewall
-    return [pscustomobject]@{ Socket = $socket; Process = $process }
+    $iis = @()
+    $config = Join-Path $env:windir 'System32\inetsrv\config\applicationHost.config'
+    if (Test-Path -LiteralPath $config -PathType Leaf) {
+        try { $iis = @(Read-InvIisBinding ([IO.File]::ReadAllText($config))) } catch { Add-InvNote 'the IIS configuration could not be read, so IIS sites were not matched to their processes' }
+    }
+    return [pscustomobject]@{ Socket = $socket; Process = $process; Iis = $iis }
 }
 
 # Write-InvFound: the operator's found: lines (docs\Conventions.md section 3.2).

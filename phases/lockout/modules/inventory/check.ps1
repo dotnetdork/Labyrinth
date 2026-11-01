@@ -16,7 +16,7 @@ try {
     $script:InvMapAll = @()
     $services = Get-InvServiceList
     if ($null -ne $services) {
-        $script:InvMapAll = @(Get-InvMapLine $services $data.Socket $data.Process)
+        $script:InvMapAll = @(Get-InvMapLine $services $data.Socket $data.Process $data.Iis)
     }
     Write-InvFound
     if ($env:LAB_DRY_RUN -eq '0') {

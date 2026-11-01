@@ -290,12 +290,13 @@ run_check() {
   done
 }
 
-@test "realsystem: a scored service's real outbound connection is mapped, a loopback client is not" {
+@test "realsystem: a service's real outbound connection is mapped; a loopback or non-loopback client is not; accounts and the service are untouched" {
   [ "${LAB_REALSYSTEM:-}" = 1 ] || skip 'real-system tests run only on CI runners or lab VMs'
   command -v python3 > /dev/null || skip 'python3 is needed to hold the sockets'
   ip="$(hostname -I 2> /dev/null | awk '{print $1}')"
   [ -n "$ip" ] || skip 'this host has no non-loopback address'
   printf 'svc http host.example.test 38101 Welcome\n' > "$LAB_CONFIG_DIR/services"
+  printf 'root breakglass\n' > "$LAB_CONFIG_DIR/protected-accounts"
   cat > "$W/hold.py" <<'PY'
 import socket, sys, time
 ip = sys.argv[1]
@@ -307,19 +308,142 @@ out = socket.create_connection((ip, 38102))       # the outbound connection
 loop = socket.create_connection(("127.0.0.1", 38101))  # a loopback client
 a1, _ = dep.accept(); a2, _ = srv.accept()
 open(sys.argv[2], "w").write("ready")
+c, peer = srv.accept()                            # a non-loopback client
+open(sys.argv[3], "w").write(str(peer[1]))
 time.sleep(60)
 PY
-  python3 "$W/hold.py" "$ip" "$W/ready" &
+  python3 "$W/hold.py" "$ip" "$W/ready" "$W/peer" &
   holder=$!
   for _ in $(seq 1 50); do [ -e "$W/ready" ] && break; sleep 0.2; done
   [ -e "$W/ready" ]
+  python3 -c 'import socket, sys, time; s = socket.create_connection((sys.argv[1], 38101)); time.sleep(60)' "$ip" &
+  client=$!
+  for _ in $(seq 1 50); do [ -e "$W/peer" ] && break; sleep 0.2; done
+  [ -e "$W/peer" ]
+  accounts_before="$(getent passwd; getent group)"
+  config_before="$(cat "$LAB_CONFIG_DIR/protected-accounts" "$LAB_CONFIG_DIR/services")"
   run_check 0
-  kill "$holder" 2> /dev/null || true
+  kill "$client" 2> /dev/null || true
   [ "$status" -eq 0 ]
+  # The service is still serving, and nothing it was given was changed.
+  python3 -c 'import socket, sys; socket.create_connection((sys.argv[1], 38101), 3)' "$ip"
+  kill "$holder" 2> /dev/null || true
+  [ "$(getent passwd; getent group)" = "$accounts_before" ]
+  [ "$(cat "$LAB_CONFIG_DIR/protected-accounts" "$LAB_CONFIG_DIR/services")" = "$config_before" ]
   grep -E "^svc $ip tcp 38102 python" "$W/state/inventory/deps"
   run grep -q ' 127\.' "$W/state/inventory/deps"
   [ "$status" -ne 0 ]
-  # Its own listening ports are not dependencies.
+  # Its own listening port is not a dependency, and neither is the address
+  # that connected in (its port is the client's, not one the service uses).
   run grep -qE ' tcp 38101 ' "$W/state/inventory/deps"
   [ "$status" -ne 0 ]
+  run grep -qE " tcp $(cat "$W/peer")( |\$)" "$W/state/inventory/deps"
+  [ "$status" -ne 0 ]
+}
+
+# ------------------------------------------------ review fixes
+
+@test "systemd holding a socket (pid 1) is never a seed: the other owners are the service" {
+  ss="$(inv_parse_ss 'tcp   LISTEN 0 128 0.0.0.0:22 0.0.0.0:* users:(("systemd",pid=1,fd=40),("sshd",pid=800,fd=3))')"
+  ps=$'1 0\n800 1\n801 800\n900 1\n901 900'
+  map="1${SEP}init.scope"$'\n'"800${SEP}ssh.service"$'\n'"801${SEP}ssh.service"$'\n'"900${SEP}cron.service"
+  run inv_service_pids "$ss" 22 tcp "$ps" "$map" ''
+  [ "$output" = $'800\n801' ]
+  # With no unit map, the seed is still sshd (800) and its children, never process 1's tree.
+  run inv_service_pids "$ss" 22 tcp "$ps" '' ''
+  [ "$output" = $'800\n801' ]
+}
+
+@test "only pid 1 owns the port: the service its socket unit starts, never every process" {
+  ss="$(inv_parse_ss 'tcp   LISTEN 0 4096 *:22 *:* users:(("systemd",pid=1,fd=40))')"
+  ps=$'1 0\n800 1\n801 800\n900 1\n901 900'
+  map="1${SEP}init.scope"$'\n'"800${SEP}ssh.service"$'\n'"801${SEP}ssh.service"$'\n'"900${SEP}cron.service"
+  socks=$'0.0.0.0:22   ssh.socket   ssh.service\n[::]:22   ssh.socket   ssh.service\n/run/dbus/system_bus_socket dbus.socket dbus.service'
+  run inv_service_pids "$ss" 22 tcp "$ps" "$map" "$socks"
+  [ "$output" = $'800\n801' ]
+  # Its Activates column may be missing: the socket's name with .service is used.
+  run inv_service_pids "$ss" 22 tcp "$ps" "$map" '0.0.0.0:22   ssh.socket'
+  [ "$output" = $'800\n801' ]
+  # No socket information: nothing, not the whole process tree.
+  run inv_service_pids "$ss" 22 tcp "$ps" "$map" ''
+  [ -z "$output" ]
+  # A socket for another port does not match.
+  run inv_service_pids "$ss" 22 tcp "$ps" "$map" '0.0.0.0:80 nginx.socket nginx.service'
+  [ -z "$output" ]
+  # A process in init.scope other than pid 1 is also skipped.
+  ss2="$(inv_parse_ss 'tcp   LISTEN 0 4096 *:22 *:* users:(("init",pid=2,fd=4))')"
+  run inv_service_pids "$ss2" 22 tcp "$ps" "2${SEP}init.scope" ''
+  [ -z "$output" ]
+}
+
+@test "the init scope is read from the cgroup text" {
+  inv_cgroup_unit '0::/init.scope'
+  [ "$INV_UNIT" = init.scope ]
+}
+
+@test "cron: a secret in NAME=value words before the program is never kept" {
+  inv_parse_cron cron /etc/cron.d/db 1 $'0 3 * * * root PGPASSWORD=s3cret pg_dump db\n0 4 * * * root FOO="a b c" /usr/bin/env X=s3cret2 /usr/local/bin/backup --now\n'
+  [[ "$INV_OUT" == *'"command":"pg_dump"'* ]]
+  [[ "$INV_OUT" == *'"command":"/usr/local/bin/backup"'* ]]
+  [[ "$INV_OUT" != *s3cret* ]]
+  [[ "$INV_OUT" != *'a b c'* ]]
+}
+
+@test "the map: a file with no final newline gets one before the first new line" {
+  f="$W/deps"
+  printf '# header\nweb 192.0.2.99 tcp 389 ldap' > "$f"
+  inv_merge_map "$f" 'web 198.51.100.5 tcp 5432 php-fpm'
+  grep -qx 'web 192.0.2.99 tcp 389 ldap' "$f"
+  grep -qx 'web 198.51.100.5 tcp 5432 php-fpm' "$f"
+  [ "$(wc -l < "$f")" -eq 3 ]
+  # Nothing new: a file without its newline is left alone.
+  printf 'web 192.0.2.98 tcp 389 ldap' > "$W/deps2"
+  inv_merge_map "$W/deps2"
+  [ "$(cat "$W/deps2")" = 'web 192.0.2.98 tcp 389 ldap' ]
+  [ "$(wc -l < "$W/deps2")" -eq 0 ]
+}
+
+@test "keys: quoted options with spaces and words like ssh-agent do not confuse the type" {
+  inv_parse_authkeys alice /home/alice/.ssh/authorized_keys $'command="exec ssh-agent bash" ssh-ed25519 dGVzdGtleWJsb2I= c\nfrom="10.0.0.0/8",no-pty,environment="X=a b" sk-ssh-ed25519@openssh.com dGVzdGtleWJsb2I= second key\n'
+  [ "${INV_COUNT[key]}" -eq 2 ]
+  [[ "$INV_OUT" == *'"type":"ssh-ed25519","fingerprint":"SHA256:IZO8V5UocbGYVwglouCMXzRBM68lWPPjxWEnkyZ1uNc","comment":"c"'* ]]
+  [[ "$INV_OUT" == *'"type":"sk-ssh-ed25519@openssh.com"'*'"comment":"second key"'* ]]
+  [[ "$INV_OUT" != *dGVzdGtleWJsb2I* ]]
+  [[ "$INV_OUT" != *ssh-agent* ]]
+}
+
+@test "ss: a zone id after the brackets is dropped" {
+  run inv_parse_ss 'udp   UNCONN 0 0 [fe80::1]%eth0:546 [::]:* users:(("dhclient",pid=900,fd=5))
+udp   UNCONN 0 0 fe80::2%eth1:547 [::]:* users:(("dhcpd",pid=901,fd=5))'
+  [[ "${lines[0]}" == "udp${SEP}UNCONN${SEP}fe80::1${SEP}546${SEP}::${SEP}*${SEP}900${SEP}dhclient" ]]
+  [[ "${lines[1]}" == "udp${SEP}UNCONN${SEP}fe80::2${SEP}547${SEP}::${SEP}*${SEP}901${SEP}dhcpd" ]]
+}
+
+@test "a few thousand sockets are recorded in seconds" {
+  ss="$(awk 'BEGIN { for (n = 1; n <= 4000; n++) printf "tcp ESTAB 0 0 192.0.2.10:%d 198.51.100.%d:443 users:((\"proc%d\",pid=%d,fd=5))\n", 10000 + n, n % 250 + 1, n % 50, 1000 + n % 300
+    print "tcp LISTEN 0 128 0.0.0.0:80 0.0.0.0:* users:((\"web\",pid=1000,fd=6))" }')"
+  start="$(date +%s%N)"
+  INV_SS="$(inv_parse_ss "$ss")"
+  INV_UNITS=''
+  inv_record_sockets
+  ports="$(inv_listen_ports "$INV_SS")"
+  out="$(inv_outbound "$INV_SS" "$(seq 1000 1299)" "$ports")"
+  end="$(date +%s%N)"
+  ms=$(( (end - start) / 1000000 ))
+  echo "# 4001 sockets: parsed, recorded and mapped in ${ms} ms" >&3
+  [ "${INV_COUNT[connection]}" -eq 4000 ]
+  [ "${INV_COUNT[listener]}" -eq 1 ]
+  [ "$(printf '%s\n' "$out" | wc -l)" -eq 250 ]
+  [ "$ms" -lt 20000 ]
+}
+
+@test "the dependency map is written before the slow kinds are collected" {
+  printf 'web http www.example.test 80 Welcome\n' > "$LAB_CONFIG_DIR/services"
+  mkdir -p "$W/stub"
+  printf '#!/bin/sh\nif [ -f "$LAB_STATE_DIR/inventory/deps" ]; then echo yes > "%s"; fi\nexit 0\n' "$W/seen" > "$W/stub/dpkg-query"
+  chmod +x "$W/stub/dpkg-query"
+  PATH="$W/stub:$PATH" run_check 0
+  [ "$status" -eq 0 ]
+  [ "$(cat "$W/seen")" = yes ]
+  [ "$(find "$W/state/inventory" -name '*.jsonl' | wc -l)" -eq 1 ]
 }
