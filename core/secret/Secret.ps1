@@ -132,14 +132,14 @@ function Clear-LabTerminal {
     $end = [LabConsole]::Row()
     $width = [LabConsole]::Width()
     if ($end -lt 0 -or $width -lt 1) { return }
-    [LabConsole]::ClearFrom((Get-LabClearRow -End $end -Lines (Get-LabTerminalLines -Text $Text -Width $width)))
+    [LabConsole]::ClearFrom((Get-LabClearRow -End $end -Lines (Get-LabTerminalRowCount -Text $Text -Width $width)))
 }
 
-# Get-LabTerminalLines -Text T -Width W: how many rows down the cursor moved
+# Get-LabTerminalRowCount -Text T -Width W: how many rows down the cursor moved
 # while T was written from the start of a row on a console W columns wide,
 # counting long lines that wrap. A line that exactly fills the width counts
 # one row more than it may take, so a clear never falls short.
-function Get-LabTerminalLines {
+function Get-LabTerminalRowCount {
     param([string] $Text, [int] $Width)
     $parts = @(($Text -replace "`r", '') -split "`n")
     $rows = 0

@@ -81,14 +81,14 @@ Describe 'showing a new password' {
         $block = "`r`n  New password for testuser, shown once:`r`n`r`n      Ab3-secretvalue`r`n`r`n"
         $prompt = "  Type 'recorded' once it is in the offline record: "
         # Five line ends in the block, one per answer: as the bash version counts.
-        Get-LabTerminalLines -Text ($block + $prompt + "recorded`r`n") -Width 120 | Should -Be 6
-        Get-LabTerminalLines -Text ($block + $prompt + "done`r`n" + $prompt + "recorded`r`n") -Width 120 | Should -Be 7
+        Get-LabTerminalRowCount -Text ($block + $prompt + "recorded`r`n") -Width 120 | Should -Be 6
+        Get-LabTerminalRowCount -Text ($block + $prompt + "done`r`n" + $prompt + "recorded`r`n") -Width 120 | Should -Be 7
         # On a 25-column console the 40-character title and the prompt with its
         # answer (60 characters) wrap, taking 2 and 3 rows; the rest take 1.
-        Get-LabTerminalLines -Text ($block + $prompt + "recorded`r`n") -Width 25 | Should -Be 9
+        Get-LabTerminalRowCount -Text ($block + $prompt + "recorded`r`n") -Width 25 | Should -Be 9
         # A line that exactly fills the width counts one row more, never less.
-        Get-LabTerminalLines -Text (('x' * 20) + "`r`n") -Width 20 | Should -Be 2
-        Get-LabTerminalLines -Text '' -Width 80 | Should -Be 0
+        Get-LabTerminalRowCount -Text (('x' * 20) + "`r`n") -Width 20 | Should -Be 2
+        Get-LabTerminalRowCount -Text '' -Width 80 | Should -Be 0
     }
 
     It 'clear: covers the secret when printing it scrolled a full window' {
