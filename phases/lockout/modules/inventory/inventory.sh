@@ -374,7 +374,7 @@ inv_merge_map() {
   if [[ -z "$file" ]]; then return 0; fi
   # A hand-edited file may lack its final newline: add it first, or the
   # first new line would join the last old one.
-  if [[ -s "$file" && -n "$(tail -c 1 "$file")" ]]; then printf '\n' >> "$file"; fi
+  if (( ${#INV_MAP_NEW[@]} > 0 )) && [[ -s "$file" && -n "$(tail -c 1 "$file")" ]]; then printf '\n' >> "$file"; fi
   if [[ ! -f "$file" ]]; then
     printf '%s\n' '# service  address  proto  port  process' \
       '# Written by lockout.inventory; same columns as outbound-allow. Lines are only ever added.' > "$file"
