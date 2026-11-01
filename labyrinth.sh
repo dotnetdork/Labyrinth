@@ -2116,16 +2116,25 @@ record_pass() {
 }
 
 # settle_states: after a run that only recorded, give every module its final
-# state from its plan result, so the summary counts what happened.
+# state from its plan result, so the summary counts what happened. Sets
+# SETTLED_RC to the exit code those final states give (a recorded read-only
+# module is done, whatever its preview said).
 settle_states() {
   local i
+  SETTLED_RC=0
   for ((i = 0; i < ${#RUN_IDS[@]}; i++)); do
-    if [[ "${RUN_STATE[i]}" != planned ]]; then continue; fi
-    case "${RUN_RC[i]}" in
-      0) RUN_STATE[i]='done' ;;
-      10) RUN_STATE[i]=manual ;;
-      20) RUN_STATE[i]=blocked ;;
-      *) RUN_STATE[i]=error ;;
+    if [[ "${RUN_STATE[i]}" == planned ]]; then
+      case "${RUN_RC[i]}" in
+        0) RUN_STATE[i]='done' ;;
+        10) RUN_STATE[i]=manual ;;
+        20) RUN_STATE[i]=blocked ;;
+        *) RUN_STATE[i]=error ;;
+      esac
+    fi
+    case "${RUN_STATE[i]}" in
+      manual) if (( SETTLED_RC < 10 )); then SETTLED_RC=10; fi ;;
+      blocked) if (( SETTLED_RC < 20 )); then SETTLED_RC=20; fi ;;
+      error) SETTLED_RC=40 ;;
     esac
   done
 }
@@ -2514,6 +2523,7 @@ cmd_apply() {
     out ''
     out 'There is nothing to apply: no module needs a change Labyrinth can make.'
     settle_states
+    worst="$SETTLED_RC"
     lab_lock_release
     finish apply "$worst" "$phase"
   fi

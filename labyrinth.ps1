@@ -2314,15 +2314,22 @@ function Invoke-LabRecordPass {
 }
 
 # Resolve-LabSettledState: after a run that only recorded, give every module its
-# final state from its plan result, so the summary counts what happened.
+# final state from its plan result, so the summary counts what happened, and
+# return the exit code those final states give.
 function Resolve-LabSettledState {
+    $rc = 0
     foreach ($m in $script:Run) {
-        if ($m.State -cne 'planned') { continue }
-        if ($m.Rc -eq 0) { $m.State = 'done' }
-        elseif ($m.Rc -eq 10) { $m.State = 'manual' }
-        elseif ($m.Rc -eq 20) { $m.State = 'blocked' }
-        else { $m.State = 'error' }
+        if ($m.State -ceq 'planned') {
+            if ($m.Rc -eq 0) { $m.State = 'done' }
+            elseif ($m.Rc -eq 10) { $m.State = 'manual' }
+            elseif ($m.Rc -eq 20) { $m.State = 'blocked' }
+            else { $m.State = 'error' }
+        }
+        if ($m.State -ceq 'manual') { $rc = [Math]::Max($rc, 10) }
+        elseif ($m.State -ceq 'blocked') { $rc = [Math]::Max($rc, 20) }
+        elseif ($m.State -ceq 'error') { $rc = 40 }
     }
+    return $rc
 }
 
 function Invoke-LabApplyOne {
@@ -2741,7 +2748,7 @@ function Invoke-LabApplyCommand {
         if ($todo -eq 0) {
             Write-LabLine ''
             Write-LabLine 'There is nothing to apply: no module needs a change Labyrinth can make.'
-            Resolve-LabSettledState
+            $worst = Resolve-LabSettledState
             Exit-LabRun 'apply' $worst $Phase
         }
         $services = $null
