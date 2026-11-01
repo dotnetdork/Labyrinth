@@ -337,8 +337,8 @@ inv_merge_map() {
     printf '%s\n' '# service  address  proto  port  process' \
       '# Written by lockout.inventory; same columns as outbound-allow. Lines are only ever added.' > "$file"
   fi
-  if (( ${#INV_MAP_NEW[@]} > 0 )); then printf "%s
-" "${INV_MAP_NEW[@]}" >> "$file"; fi
+  if (( ${#INV_MAP_NEW[@]} > 0 )); then printf '%s
+' "${INV_MAP_NEW[@]}" >> "$file"; fi
 }
 
 # inv_parse_units FILES UNITS: service records from `systemctl list-unit-files`
