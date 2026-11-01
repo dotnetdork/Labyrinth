@@ -147,10 +147,13 @@ inv_parse_sudoers() {
 # fingerprint and comment. The key's own text is dropped. The options before
 # the key type may hold quoted text with spaces (command="exec ssh-agent
 # bash"), so they are skipped a token at a time, a quoted string counting as
-# part of its token.
+# part of its token. A quoted string may hold an escaped quote (\"). Inside a
+# bracket expression a backslash is a plain character, so the bracket below
+# excludes the quote and the backslash, and \\. matches a backslash and the
+# character after it.
 inv_parse_authkeys() {
   local user="$1" file="$2" line rest type blob comment fp
-  local tok_re='^(([^[:space:]"]|"([^"\]|\.)*")+)[[:space:]]*'
+  local tok_re='^(([^[:space:]"]|"([^"\]|\\.)*")+)[[:space:]]*'
   local key_re='^((ssh-|ecdsa-|sk-|rsa-sha2-)[^[:space:]]*)[[:space:]]+([^[:space:]]+)[[:space:]]*(.*)$'
   while IFS= read -r line; do
     rest="${line#"${line%%[![:space:]]*}"}"

@@ -185,7 +185,6 @@ PS_TEXT='1 0
 run_check() {
   LAB_DRY_RUN="$1" run bash "$MOD/check.sh"
   echo "$output"
-  if [ "$status" -ne 0 ]; then LAB_DRY_RUN="$1" bash -x "$MOD/check.sh" 2>&1 | tail -30; fi
 }
 
 @test "a preview prints what it found and writes nothing" {
@@ -403,8 +402,9 @@ PY
 }
 
 @test "keys: quoted options with spaces and words like ssh-agent do not confuse the type" {
-  inv_parse_authkeys alice /home/alice/.ssh/authorized_keys $'command="exec ssh-agent bash" ssh-ed25519 dGVzdGtleWJsb2I= c\nfrom="10.0.0.0/8",no-pty,environment="X=a b" sk-ssh-ed25519@openssh.com dGVzdGtleWJsb2I= second key\n'
-  [ "${INV_COUNT[key]}" -eq 2 ]
+  inv_parse_authkeys alice /home/alice/.ssh/authorized_keys $'command="exec ssh-agent bash" ssh-ed25519 dGVzdGtleWJsb2I= c\nfrom="10.0.0.0/8",no-pty,environment="X=a b" sk-ssh-ed25519@openssh.com dGVzdGtleWJsb2I= second key\ncommand="echo \\"hi there\\"" ssh-ed25519 dGVzdGtleWJsb2I= third\n'
+  [ "${INV_COUNT[key]}" -eq 3 ]
+  [[ "$INV_OUT" == *'"comment":"third"'* ]]
   [[ "$INV_OUT" == *'"type":"ssh-ed25519","fingerprint":"SHA256:IZO8V5UocbGYVwglouCMXzRBM68lWPPjxWEnkyZ1uNc","comment":"c"'* ]]
   [[ "$INV_OUT" == *'"type":"sk-ssh-ed25519@openssh.com"'*'"comment":"second key"'* ]]
   [[ "$INV_OUT" != *dGVzdGtleWJsb2I* ]]

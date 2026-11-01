@@ -191,8 +191,9 @@ Describe 'lockout.inventory' {
         }
 
         It 'keys: quoted options with spaces and words like ssh-agent do not confuse the type' {
-            Read-InvAuthorizedKey 'alice' 'k' ('command="exec ssh-agent bash" ssh-ed25519 dGVzdGtleWJsb2I= c' + "`n" + 'from="10.0.0.0/8",no-pty,environment="X=a b" sk-ssh-ed25519@openssh.com dGVzdGtleWJsb2I= second key')
-            $script:InvCount['key'] | Should -Be 2
+            Read-InvAuthorizedKey 'alice' 'k' ('command="exec ssh-agent bash" ssh-ed25519 dGVzdGtleWJsb2I= c' + "`n" + 'from="10.0.0.0/8",no-pty,environment="X=a b" sk-ssh-ed25519@openssh.com dGVzdGtleWJsb2I= second key' + "`n" + 'command="echo \"hi there\"" ssh-ed25519 dGVzdGtleWJsb2I= third')
+            $script:InvCount['key'] | Should -Be 3
+            $script:InvOut.ToString() | Should -Match '"comment":"third"'
             $out = $script:InvOut.ToString()
             $out | Should -Match '"type":"ssh-ed25519","fingerprint":"SHA256:IZO8V5UocbGYVwglouCMXzRBM68lWPPjxWEnkyZ1uNc","comment":"c"'
             $out | Should -Match '"type":"sk-ssh-ed25519@openssh.com".*"comment":"second key"'
