@@ -2313,9 +2313,9 @@ function Invoke-LabRecordPass {
     return $worst
 }
 
-# Set-LabSettledState: after a run that only recorded, give every module its
+# Resolve-LabSettledState: after a run that only recorded, give every module its
 # final state from its plan result, so the summary counts what happened.
-function Set-LabSettledState {
+function Resolve-LabSettledState {
     foreach ($m in $script:Run) {
         if ($m.State -cne 'planned') { continue }
         if ($m.Rc -eq 0) { $m.State = 'done' }
@@ -2741,7 +2741,7 @@ function Invoke-LabApplyCommand {
         if ($todo -eq 0) {
             Write-LabLine ''
             Write-LabLine 'There is nothing to apply: no module needs a change Labyrinth can make.'
-            Set-LabSettledState
+            Resolve-LabSettledState
             Exit-LabRun 'apply' $worst $Phase
         }
         $services = $null
