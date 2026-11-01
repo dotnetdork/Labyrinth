@@ -47,7 +47,7 @@ Configuration is **data, never code**. It is never `source`d in bash or dot-sour
 | `never-ban` | one address or CIDR per line | Addresses that bans must never touch (design 18) |
 | `outbound-allow` | `address proto port` per line; proto `tcp` or `udp`, port a number or `any` | Outbound destinations the first-minute default deny keeps open, beyond the scored services (design 03, section 6.1) |
 | `services` | `name proto host port expect` per line; no value begins with `-` except an `expect` of `-` alone, meaning no expected text | Scored services and what their probe expects. Planned: an `http` path, and the probe kinds that log in (design 19, section 3.1) |
-| `own-ranges` | one address or CIDR per line | Planned: the team's own networks; `probe` run from outside refuses any address not in them (design 19, section 3) |
+| `own-ranges` | one address or CIDR per line | Planned: the team's own networks. When outbound is reopened, a dependency-map address inside them is allowed automatically and any other is queued (design 08, section 3.2); `probe` run from outside refuses any address not in them (design 19, section 3) |
 | `hosts` | `host group profile platform` per line | Which hosts exist, and each one's group (its ring, design 03), profile and platform |
 | `seed.conf` | `KEY=value`, one per line | This host's seeds: `DECOY_SEED`, made by `laby --new-seed`, and, planned, `TEAM_SEED` (design 04). Written by Labyrinth, root-only (mode 600 on Linux; Administrators and SYSTEM on Windows), for this host only and never copied between hosts (design 16, section 4) |
 | `profiles/<name>.profile` | one module id per line | Optional override of a shipped profile |

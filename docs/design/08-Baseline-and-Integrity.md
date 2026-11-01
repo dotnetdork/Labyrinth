@@ -46,6 +46,32 @@ A mismatch is a finding for a person, never an automatic fix: the module does no
 
 The baseline is stored under the state path (design 00). Baselines are compared, never silently overwritten.
 
+### 3.1 The inventory and the dependency map
+
+The inventory module (`observe.inventory`, Tier 0) records what the host has, read-only and with the operating system's own tools only (design 22, section 4.1). It runs before the lockout and again after it.
+
+- **The inventory.** One JSON-lines file per run, `<root>/state/inventory/<UTC time>.jsonl`, one record per line with a `kind` field: `user`, `group`, `sudoers`, `key` (an authorized key, by fingerprint), `listener` (protocol, address, port, process, PID and its systemd unit or Windows service), `service`, `task` (cron, timers, scheduled tasks), `startup`, `package`, `firewall` and `connection`. It is for people to read and for the drift check (design 19, section 4.1) to compare; no module changes anything because of it alone.
+- **The dependency map** is `<root>/state/inventory/deps`, one line per outbound connection a scored service had open, in the same column order as `outbound-allow`, so the firewall reads both with one parser:
+
+  ```
+  # service   address      proto  port  process
+  web-main    192.0.2.15   tcp    5432  apache2
+  web-main    192.0.2.40   tcp    389   apache2
+  ```
+
+- **Which processes belong to a scored service.** For each line of `services`, the module finds the local listener on its port; a service with no local listener is not on this host. On Linux the service is that listener's whole systemd unit; with no unit, the listener and its child processes. On Windows it is the listener's Windows service and its child processes; for a site that IIS serves through HTTP.sys, where the listener is the System process, it is that site's worker processes (`w3wp.exe`).
+- **Which connections count as outbound.** An established TCP connection, or a connected UDP socket, owned by one of those processes, whose remote address is not loopback and whose local port is not one the host listens on. A connection that comes in to a listening port is a client of the service, not a dependency.
+- **The map only grows.** A later inventory adds what it newly sees and never removes a line, because after the lockout a real dependency may be blocked and so not seen. A person removes a line by hand.
+- **A snapshot, not a watch.** The inventory runs before the lockout, and Red Team acts in the first minute, so it does not wait and watch. A dependency used only now and then, such as a database a page reaches only when it is loaded, may be missed; the probes after the lockout catch the break, and the module is rolled back (design 03, section 6.1). DNS lookups seldom show as connections; the resolvers come from `outbound-allow`.
+
+### 3.2 Reopening outbound from the map
+
+The map cannot tell a real dependency from an intruder's connection back home: a web shell running inside the web server makes its connection as the web server, and Red Team can be inside a service within the first minute (design 03, section 6.1). So the Harden phase, when it reopens outbound (design 03, section 6, step 7), treats each line by where it goes:
+
+- **Inside the team's own networks** (`own-ranges`, Conventions section 2.2): reopened automatically, as a Tier 2 change with probes and the revert timer. A scored service's database, directory or mail relay is almost always here, so scoring keeps working without waiting for a person.
+- **Anywhere else:** a Tier 3 item in the approval queue, such as `web-main wants 198.51.100.7 tcp 443 (apache2)`, for a person to allow or leave blocked. An address nobody recognizes is a lead for the persistence sweep (design 06).
+- **No `own-ranges` list:** every line is queued.
+
 **A copy off the host.** An attacker with root or SYSTEM on a host can edit the baseline there, hiding a change, and can edit a hash stored next to it just as easily. So right after the baseline is taken, the control node keeps a copy, or at least its SHA-256, away from the host. Every comparison first checks the host's baseline against that copy. A mismatch is itself a high-ranked finding, and the comparison then uses the control node's copy. In local mode with no control node, the operator records the hash in the team's offline record (design 04, section 2).
 
 ## 4. Who, when, from where
@@ -112,6 +138,10 @@ Read-only observation does not affect scored services and needs no special permi
 - A `.deb` in the apt cache whose hash is not in the signed package index is reported as a finding.
 - A change made by a Labyrinth module does not raise an alert.
 - Editing the baseline file on the host is detected by the check against the control node's copy.
+- Taking the inventory changes nothing: no file under `/etc` and no registry value changes.
+- A scored service's outbound connection to a lab database appears in the dependency map with the service's name; a client connected to the service does not.
+- A later inventory never removes a line from the dependency map.
+- When outbound is reopened, a map line inside `own-ranges` is allowed automatically, a line outside it is queued, and with no `own-ranges` list every line is queued.
 - After `labyrinth seal`, a cron job planted in the lab is reported at the next checkpoint, while the changes the lockout made are not.
 - `labyrinth reseal` without `--reason` is refused, and each seal is logged.
 - Deleting `/etc/fstab` on a lab host raises a high-ranked alert before any reboot.
