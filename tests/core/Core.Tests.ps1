@@ -512,8 +512,8 @@ Describe 'core library' {
         try {
             Invoke-LabProbe -Proto imap -Target 127.0.0.1 -Port $srv.Port -Expect '-' -Timeout 5 | Should -Be 'pass banner received'
             $end = (Get-Date).AddSeconds(5)
-            while (-not (Test-Path -LiteralPath $log) -and (Get-Date) -lt $end) { Start-Sleep -Milliseconds 100 }
-            (Get-Content -LiteralPath $log -Raw).Trim() | Should -Be 'a1 LOGOUT'
+            while (-not ((Test-Path -LiteralPath $log) -and (Get-Item -LiteralPath $log).Length -gt 0) -and (Get-Date) -lt $end) { Start-Sleep -Milliseconds 100 }
+            (Get-Content -LiteralPath $log -Raw -ErrorAction SilentlyContinue | Out-String).Trim() | Should -Be 'a1 LOGOUT'
         } finally {
             Close-TestServer $srv
         }
@@ -522,8 +522,8 @@ Describe 'core library' {
         try {
             Invoke-LabProbe -Proto pop3 -Target 127.0.0.1 -Port $srv.Port -Expect '-' -Timeout 5 | Should -Be 'pass banner received'
             $end = (Get-Date).AddSeconds(5)
-            while (-not (Test-Path -LiteralPath $log) -and (Get-Date) -lt $end) { Start-Sleep -Milliseconds 100 }
-            (Get-Content -LiteralPath $log -Raw).Trim() | Should -Be 'QUIT'
+            while (-not ((Test-Path -LiteralPath $log) -and (Get-Item -LiteralPath $log).Length -gt 0) -and (Get-Date) -lt $end) { Start-Sleep -Milliseconds 100 }
+            (Get-Content -LiteralPath $log -Raw -ErrorAction SilentlyContinue | Out-String).Trim() | Should -Be 'QUIT'
         } finally {
             Close-TestServer $srv
         }
