@@ -112,6 +112,8 @@ Describe 'labyrinth.ps1 -NewSeed' {
         $shown | Should -Match ([regex]::Escape("Decoy seed for $thisHost, shown once:"))
         $shown.Contains("      $seed") | Should -BeTrue
         $shown.Contains("Type 'recorded' once it is in the offline record and the team chat: ") | Should -BeTrue
+        # Cleared by counting back over what was written (Clear-LabTerminal).
+        $shown | Should -Match '\[cleared \d+ rows\]$'
         # It needs no hosts file: it is not a preview or a run.
         (Join-Path $t.Etc 'hosts') | Should -Not -Exist
         $t.Root | Should -Not -Exist

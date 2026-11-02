@@ -72,6 +72,13 @@ public static class LabConsole {
         finally { CloseHandle(o); }
     }
 
+    public static int Width() {
+        IntPtr o = Open("CONOUT$");
+        if (o == Invalid) { return -1; }
+        try { BufferInfo b; return GetConsoleScreenBufferInfo(o, out b) ? b.Size.X : -1; }
+        finally { CloseHandle(o); }
+    }
+
     public static void ClearFrom(int row) {
         IntPtr o = Open("CONOUT$");
         if (o == Invalid) { return; }
@@ -114,18 +121,44 @@ function Read-LabTerminal {
     return [LabConsole]::ReadLine()
 }
 
-# Get-LabTerminalRow: the console's cursor row, or -1.
-function Get-LabTerminalRow {
+# Clear-LabTerminal: blank what was just written to the console, Text (the
+# shown block, then each prompt with the answer typed after it), and put the
+# cursor where Text started. It counts back from where the cursor is now,
+# not from a row saved before Text was written: when writing scrolls the
+# window, the cursor's row number stays the same while the text moves up.
+function Clear-LabTerminal {
+    param([string] $Text)
     Import-LabConsole
-    return [LabConsole]::Row()
+    $end = [LabConsole]::Row()
+    $width = [LabConsole]::Width()
+    if ($end -lt 0 -or $width -lt 1) { return }
+    [LabConsole]::ClearFrom((Get-LabClearRow -End $end -Lines (Get-LabTerminalRowCount -Text $Text -Width $width)))
 }
 
-# Clear-LabTerminal: blank the console from Row to the cursor, and put the
-# cursor at the start of Row.
-function Clear-LabTerminal {
-    param([int] $Row)
-    Import-LabConsole
-    [LabConsole]::ClearFrom($Row)
+# Get-LabTerminalRowCount -Text T -Width W: how many rows down the cursor moved
+# while T was written from the start of a row on a console W columns wide,
+# counting long lines that wrap. A line that exactly fills the width counts
+# one row more than it may take, so a clear never falls short.
+function Get-LabTerminalRowCount {
+    param([string] $Text, [int] $Width)
+    $parts = @(($Text -replace "`r", '') -split "`n")
+    $rows = 0
+    for ($i = 0; $i -lt $parts.Count; $i++) {
+        $wraps = 0
+        if ($Width -gt 0) { $wraps = [Math]::Floor($parts[$i].Length / $Width) }
+        $rows += $wraps
+        # Every line but the last ended with a newline.
+        if ($i -lt $parts.Count - 1) { $rows += 1 }
+    }
+    return [int] $rows
+}
+
+# Get-LabClearRow -End E -Lines N: the first row to clear when the cursor is
+# on row E after moving N rows down: E - N, or row 0 when the text started
+# above the top of the buffer.
+function Get-LabClearRow {
+    param([int] $End, [int] $Lines)
+    return [int] [Math]::Max(0, $End - $Lines)
 }
 
 # Get-LabRandomSecret: a new password of Length characters (14 to 64; 20 by
@@ -175,17 +208,20 @@ function Show-LabSecret {
         [Console]::Error.WriteLine('secret: no terminal to show the new password on')
         return 20
     }
-    $row = Get-LabTerminalRow
-    Write-LabTerminal ("`r`n  New password for $Label, shown once:`r`n`r`n      $Secret`r`n`r`n")
+    $shown = "`r`n  New password for $Label, shown once:`r`n`r`n      $Secret`r`n`r`n"
+    Write-LabTerminal $shown
     while ($true) {
-        Write-LabTerminal "  Type 'recorded' once it is in the offline record: "
+        $prompt = "  Type 'recorded' once it is in the offline record: "
+        Write-LabTerminal $prompt
         $answer = Read-LabTerminal
         if ($null -eq $answer) {
             Write-LabTerminal "`r`n"
             return 1
         }
+        # The console echoed the answer and the Enter that ended it.
+        $shown += $prompt + $answer + "`r`n"
         if ($answer.Trim() -eq 'recorded') { break }
     }
-    Clear-LabTerminal -Row $row
+    Clear-LabTerminal -Text $shown
     return 0
 }

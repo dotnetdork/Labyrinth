@@ -82,9 +82,8 @@ function Read-LabTerminal {
     return $lines[$pos - 1]
 }
 
-function Get-LabTerminalRow { return 0 }
-
 function Clear-LabTerminal {
-    param([int] $Row)
-    [IO.File]::AppendAllText((Join-Path $env:LAB_ROOT 'tty.out'), "[cleared from row $Row]")
+    param([string] $Text)
+    $rows = Get-LabTerminalRowCount -Text $Text -Width 80
+    [IO.File]::AppendAllText((Join-Path $env:LAB_ROOT 'tty.out'), "[cleared $rows rows]")
 }
