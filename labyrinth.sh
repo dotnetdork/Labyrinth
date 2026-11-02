@@ -1009,7 +1009,15 @@ next_step() {
   elif (( code == 10 )); then
     for ((i = 0; i < ${#RUN_IDS[@]}; i++)); do
       if [[ "${RUN_RC[i]}" != 10 ]]; then continue; fi
-      if [[ "${RUN_RISK[i]}" == manual-only ]]; then manual=$((manual + 1)); else other=$((other + 1)); fi
+      if [[ "${RUN_RISK[i]}" == manual-only ]]; then
+        manual=$((manual + 1))
+      elif [[ "$mode" == apply && "${RUN_RISK[i]}" == read-only ]]; then
+        # Settled by the run's recording pass: no change left to make,
+        # whatever its preview said.
+        continue
+      else
+        other=$((other + 1))
+      fi
     done
     if (( other == 0 )); then
       out 'Next: a person carries out the manual steps above; -r changes nothing.'

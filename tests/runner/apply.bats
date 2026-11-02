@@ -598,6 +598,16 @@ fp() { printf '%s' "$1" | sha256sum | cut -c1-12; }
   [[ "$output" == *"nothing to apply"* ]]
 }
 
+@test "a run that only records and has a manual step left does not suggest -r again" {
+  profile observe.recorder observe.manual
+  touch "$LAB/CHECK_TEN"
+  answers
+  apply
+  [ "$status" -eq 10 ]
+  [[ "$output" == *"Next: a person carries out the manual steps above; -r changes nothing."* ]]
+  [[ "$output" != *"$SELF -r observe"* ]]
+}
+
 @test "a run lock held by a live process blocks apply" {
   mkdir -p "$ROOT/state/lock"
   printf '%s\n' "$$" > "$ROOT/state/lock/pid"

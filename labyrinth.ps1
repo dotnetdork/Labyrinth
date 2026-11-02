@@ -1408,7 +1408,9 @@ function Write-LabNextStep {
     } elseif ($Code -eq 20) {
         Write-LabLine 'Next: clear what blocked it above, then run the same command again.'
     } elseif ($Code -eq 10) {
-        $other = @($script:Run | Where-Object { $_.Rc -eq 10 -and $_.Risk -ne 'manual-only' }).Count
+        # A read-only module was settled by the run's recording pass, so after
+        # a run it has no change left to make, whatever its preview said.
+        $other = @($script:Run | Where-Object { $_.Rc -eq 10 -and $_.Risk -ne 'manual-only' -and -not ($Mode -ceq 'apply' -and $_.Risk -eq 'read-only') }).Count
         $hostsFile = Join-Path $env:LAB_CONFIG_DIR 'hosts'
         if ($other -eq 0) {
             Write-LabLine 'Next: a person carries out the manual steps above; -r changes nothing.'

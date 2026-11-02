@@ -115,6 +115,19 @@ Describe 'lockout.inventory' {
             (@(Get-InvServiceProcessId $socks 8443 @('tcp') $script:Procs $iis) -join ',') | Should -Be '600,601'
         }
 
+        It 'a site with no pool of its own takes the defaults of all sites, then DefaultAppPool' {
+            $config = '<configuration><system.applicationHost><sites>' +
+            '<site name="A" id="1"><application path="/"><virtualDirectory path="/" /></application><bindings><binding protocol="http" bindingInformation="*:8080:" /></bindings></site>' +
+            '<site name="B" id="2"><application path="/" applicationPool="PoolB" /><bindings><binding protocol="http" bindingInformation="*:8081:" /></bindings></site>' +
+            '<applicationDefaults applicationPool="PoolDefault" />' +
+            '</sites></system.applicationHost></configuration>'
+            $iis = @(Read-InvIisBinding $config)
+            ($iis | Where-Object { $_.Port -eq 8080 }).Pool | Should -Be 'PoolDefault'
+            ($iis | Where-Object { $_.Port -eq 8081 }).Pool | Should -Be 'PoolB'
+            $plain = @(Read-InvIisBinding '<configuration><system.applicationHost><sites><site name="A" id="1"><application path="/" /><bindings><binding protocol="http" bindingInformation="*:8080:" /></bindings></site></sites></system.applicationHost></configuration>')
+            $plain[0].Pool | Should -Be 'DefaultAppPool'
+        }
+
         It 'a System process listener that is not an IIS binding (445) maps no process, with a note' {
             $iis = @([pscustomobject]@{ Site = 'A'; Port = 8080; Pool = 'PoolA' })
             $socks = @(Get-TestSocket tcp LISTEN '0.0.0.0' 445 '0.0.0.0' 0 4)
@@ -245,6 +258,24 @@ Describe 'lockout.inventory' {
             (Invoke-TestCheck '0').Code | Should -Be 0
             @(Get-ChildItem -LiteralPath $dir -Filter *.jsonl).Count | Should -Be 2
             [IO.File]::ReadAllText($deps).StartsWith($before) | Should -BeTrue
+        }
+
+        It 'the dependency map is written before the slow kinds are collected' {
+            Set-Content -LiteralPath (Join-Path $script:Config 'services') -Value 'web http www.example.test 80 Welcome'
+            $saved = @{ State = $env:LAB_STATE_DIR; Config = $env:LAB_CONFIG_DIR; Dry = $env:LAB_DRY_RUN }
+            try {
+                $env:LAB_STATE_DIR = $script:State
+                $env:LAB_CONFIG_DIR = $script:Config
+                $env:LAB_DRY_RUN = '0'
+                $script:DepsSeen = $false
+                Mock Add-InvCollectedPackage { $script:DepsSeen = (Test-Path -LiteralPath (Join-Path $env:LAB_STATE_DIR 'inventory\deps')) }
+                $null = @(Invoke-InvCheck)
+            } finally {
+                $env:LAB_STATE_DIR = $saved.State; $env:LAB_CONFIG_DIR = $saved.Config; $env:LAB_DRY_RUN = $saved.Dry
+            }
+            $script:InvExit | Should -Be 0
+            $script:DepsSeen | Should -BeTrue
+            @(Get-ChildItem -LiteralPath (Join-Path $script:State 'inventory') -Filter *.jsonl).Count | Should -Be 1
         }
 
         It 'with no services file the inventory is still taken, with a note and no map' {
