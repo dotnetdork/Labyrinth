@@ -4,6 +4,7 @@
 #   expect : a string the response must contain, or a record value for dns.
 #            Use - for "connection and banner only".
 # Placeholder hosts and values only.
+# Prepare it before the event and keep it private: manual, section 2, "Preparing the configuration".
 
 web-main   http   www.example.test    80   Welcome
 dns-main   dns    ns1.example.test    53   www.example.test=192.0.2.20

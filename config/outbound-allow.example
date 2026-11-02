@@ -5,6 +5,7 @@
 # NTP servers, the SIEM (the forwarder port and the TCP syslog fallback,
 # design 14), the package mirror or proxy, and anything a scored service
 # connects out to. Placeholder (documentation) ranges only.
+# Prepare it before the event and keep it private: manual, section 2, "Preparing the configuration".
 
 192.0.2.53 udp 53
 192.0.2.53 tcp 53

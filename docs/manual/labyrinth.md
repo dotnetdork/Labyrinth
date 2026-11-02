@@ -52,7 +52,7 @@ You need:
 - **Permission to run the script.** The installer's `laby` command (a file named `laby.cmd`) starts Windows PowerShell with the execution policy set aside for that one run, and never changes the policy of the host. Without the installer, if Windows refuses to run the script because of the execution policy, start it like this instead, for this window only: `powershell -ExecutionPolicy Bypass -File .\labyrinth.ps1 lockout`.
 <!-- end -->
 - **The release hash,** in the team's notes kept off the hosts. When the team makes a release, the captain records the SHA-256 of its release list, `release.sha256`. Before it runs, Labyrinth checks each of its own files against that list, and it prints the list's hash on the `SHA-256:` lines of `-V` and of every run, and in the installer's `WARNING` box, as two lines of eight groups of four. Compare it with the team's notes by eye. If they differ, stop: this copy is not the release the team checked. A copy taken straight from the repository has no list, and its `SHA-256:` line says `not checked`.
-- **The event's configuration,** in the `etc` folder under the data root (section 10). The team prepares these files before the event. The two that matter most:
+- **The event's configuration,** in the `etc` folder under the data root (section 10). The team prepares these files before the event, as **Preparing the configuration** below explains. The two that matter most:
   - `hosts` lists every host Labyrinth may act on, with its **group** (which wave of hosts it belongs to), its profile and its platform: `ubuntu` (any Debian-family system; `debian` means the same), `rhel-family`, `windows` or `appliance`.
   - `protected-accounts` is the **protected set**: accounts Labyrinth must never touch, such as the officials' accounts and the accounts the scoring engine logs in with. If this file is missing or empty, Labyrinth refuses to run.
 
@@ -152,6 +152,29 @@ It first checks that only Administrators, SYSTEM and TrustedInstaller can change
 
 The installer is safe to run again, for example to install a new release: it replaces the program completely and never touches the configuration, the run records, the backups or the logs. It refuses while any revert timer is armed, because the timer would run the code being replaced; it names the run and when its timer fires. Keep the run (`laby -k ID`) or undo it (`laby -u ID`) first.
 <!-- end -->
+
+**Preparing the configuration.** Prepare the configuration once, before the event, so that only the values you learn on the day are left to fill in. Keep the prepared folder in storage the team controls and keeps private, such as a private repository or a drive the captain holds. Never put it in Labyrinth's repository or any public place: its files name the team's accounts and, once filled in, the event's addresses.
+
+Ahead of time, fill in what you already know: tuning values such as the revert timer's minutes, every allowance with the local rule or inject that permits it, and the versions and hashes of anything Labyrinth will download. Leave out what you only learn at the event, such as addresses, host names and scored services, or keep placeholders for them that you replace on the day.
+
+These files are the same on every host, so you write them once and copy them to each one: `event.conf`, `hosts`, `protected-accounts`, `services`, `scoring-allowlist`, `never-ban`, `outbound-allow`, `pre-approved`, and any profile in the `profiles` folder.
+
+One file belongs to a single host: `seed.conf`, which Labyrinth writes itself when you make the host's decoy seed (section 5). Never copy it to another host, and never copy a host's whole `etc` folder to the others: every host would then get the same seed, so its traps would sit at the same places on every host, and a seed seen on one host would give all of them away. Copy from the prepared folder instead, which has no `seed.conf`, and make each host's seed on that host.
+
+At the event, after installing Labyrinth on a host, copy the prepared files into its `etc` folder, replacing the templates the installer put there. For example, with the prepared folder in `prepared`:
+
+<!-- linux -->
+```
+sudo cp -r prepared/. /opt/labyrinth/etc/
+```
+<!-- end -->
+<!-- windows -->
+```
+Copy-Item .\prepared\* C:\ProgramData\Labyrinth\etc -Recurse -Force
+```
+<!-- end -->
+
+Then fill in what is left, and check the result with a preview, such as `@CMD@ lockout`, which reads every file and names the file and line of any mistake, before you run anything.
 
 # 3. Words you will see
 

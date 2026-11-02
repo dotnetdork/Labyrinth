@@ -12,6 +12,7 @@
 #   service     never touched until the dependency map is known
 #   builtin     never touched
 # An empty file stops every run. Placeholder names only.
+# Prepare it before the event and keep it private: manual, section 2, "Preparing the configuration".
 
 whiteteam        official    # official account named in the event packet
 scoring_user1    scoring     # account the scoring engine logs in with

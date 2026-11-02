@@ -1,6 +1,7 @@
 # Labyrinth run-time settings. Copy to <root>/etc/event.conf at the event.
 # Format: KEY=value, one per line. This file is read as data, never executed.
 # Placeholder values only; never commit a real value.
+# Prepare it before the event and keep it private: manual, section 2, "Preparing the configuration".
 
 # Address of the SIEM that receives forwarded logs (design 14).
 SIEM_ADDRESS=192.0.2.10
