@@ -28,7 +28,7 @@ priority: P0
 platforms: [ubuntu, rhel-family, windows]
 risk: service-affecting
 touches_scored: true
-requires: [observe.inventory]
+requires: [lockout.inventory]
 outputs: [/etc/ufw/user.rules, firewall-backup]
 spec: 03
 ```
@@ -47,7 +47,7 @@ Configuration is **data, never code**. It is never `source`d in bash or dot-sour
 | `never-ban` | one address or CIDR per line | Addresses that bans must never touch (design 18) |
 | `outbound-allow` | `address proto port` per line; proto `tcp` or `udp`, port a number or `any` | Outbound destinations the first-minute default deny keeps open, beyond the scored services (design 03, section 6.1) |
 | `services` | `name proto host port expect` per line; no value begins with `-` except an `expect` of `-` alone, meaning no expected text | Scored services and what their probe expects. Planned: an `http` path, and the probe kinds that log in (design 19, section 3.1) |
-| `own-ranges` | one address or CIDR per line | Planned: the team's own networks; `probe` run from outside refuses any address not in them (design 19, section 3) |
+| `own-ranges` | one address or CIDR per line | Planned: the team's own networks. When outbound is reopened, a dependency-map address inside them is allowed automatically and any other is queued (design 08, section 3.2); `probe` run from outside refuses any address not in them (design 19, section 3) |
 | `hosts` | `host group profile platform` per line | Which hosts exist, and each one's group (its ring, design 03), profile and platform |
 | `seed.conf` | `KEY=value`, one per line | This host's seeds: `DECOY_SEED`, made by `laby --new-seed`, and, planned, `TEAM_SEED` (design 04). Written by Labyrinth, root-only (mode 600 on Linux; Administrators and SYSTEM on Windows), for this host only and never copied between hosts (design 16, section 4) |
 | `profiles/<name>.profile` | one module id per line | Optional override of a shipped profile |
@@ -81,7 +81,7 @@ The runner (`labyrinth.sh` / `labyrinth.ps1`) calls each entry point as a separa
 | `LAB_BACKUP_DIR` | Timestamped backups |
 | `LAB_RUN_ID` | Unique ID of this run, used in logs and the manifest |
 | `LAB_MODULE_ID` | The module's `id` |
-| `LAB_DRY_RUN` | `1` when the run is in plan mode |
+| `LAB_DRY_RUN` | `1` when the run is in plan mode; `0` when it makes changes, and for the recording call of a `read-only` module's `check` (step 6 of an apply) |
 | `LAB_ENTRY` | The entry point being run (`check`, `plan`, `apply`, ...); the logger records it |
 | `LAB_APPROVED` | For `approval` modules only: the items a person approved, separated by spaces, each `<id>@<fingerprint>` (section 3.1). Empty otherwise |
 
@@ -239,10 +239,10 @@ The default is no: anything but `y` or `yes` prints `Nothing was changed.` and e
 
 1. Administrator or root (`20`). On Windows the data root is then made private: only Administrators, SYSTEM and the operator's account can use it, and it does not inherit rights from its parent. A file or folder under it that another account owns is refused (`20`) and must be checked and removed by hand. Then the host's line and profile, `event.conf`, and the protected set: missing or empty is `20`, malformed is `40`. Plan mode needs the protected set too.
 2. The run lock, `<state>/lock`, holding the process id. A live holder blocks the run (`20`); a lock whose process is gone is taken over. The check is only that a process with that id exists, so if the id is reused after a crash, the lock stays held; when no Labyrinth run is going, delete `<state>/lock` by hand.
-3. Every module is planned, after the `pre-approved` file is read (a malformed one is `40`). Any `40` means nothing is applied. If nothing needs applying, the run ends with no prompts.
-4. **Break-glass** (design 03, section 7): the operator logs in at the console with a `breakglass`-class account and types its name. It is asked once per host and kept in `<state>/breakglass` as `<timestamp><TAB><account>`.
-5. **Confirmation:** the recap lists what will change and the release hash (`SHA-256:`, two lines of eight groups of four), and the operator types the host's group name.
-6. From here, changes are made and recorded: the run's manifest starts (`run_start`, `breakglass_verified`), and the scored services are probed if the `services` file lists any (otherwise a warning). A run folder or manifest that cannot be written is an error (`40`).
+3. Every module is planned, after the `pre-approved` file is read (a malformed one is `40`). Any `40` means nothing is applied. If no module needs a change and no `read-only` module is to be recorded (step 6), the run ends with no prompts.
+4. **Break-glass**, only when some module needs a change (design 03, section 7): the operator logs in at the console with a `breakglass`-class account and types its name. It is asked once per host and kept in `<state>/breakglass` as `<timestamp><TAB><account>`.
+5. **Confirmation**, only when some module needs a change: the recap lists what will change and the release hash (`SHA-256:`, two lines of eight groups of four), and the operator types the host's group name.
+6. From here, files are written and everything is recorded: the run's manifest starts (`run_start`, and `breakglass_verified` when a module needs a change). A run folder or manifest that cannot be written is an error (`40`). Then comes the **recording pass**, before any module is applied: the `check` of each `read-only` module whose plan-mode `check` exited `0` or `10` runs once more, in run order, with `LAB_DRY_RUN=0`, and may write its own files under the state folder, and only there (design 00, section 4). The manifest gets `record_start` and, when the check ends well, `recorded`; `-u` ignores both. A `20` or `40` is shown like any module result and sets the run's exit code, but the run's changes still go ahead unless a later module `requires` that module. A preview never makes this call. When no module needs a change, the run ends here: no break-glass or confirmation prompt, no backup folder, and the closing line "There is nothing to apply". Otherwise the scored services are probed if the `services` file lists any (otherwise a warning).
 7. Each module that needs a change, in order:
    - `manual-only`: never applied; its plan is the checklist.
    - `touches_scored: true`: blocked (`20`) without a `services` file, and an error (`40`) if `scoring-allowlist` is malformed; the run continues after a block. A missing or empty `scoring-allowlist` does not block (design 03, section 7).
@@ -300,7 +300,7 @@ This section is the contract for the full output block, the form the runner prin
     - `ERROR`: `40`, or a module that cannot be loaded;
     - `WARN`: a module skipped on this platform, or a manual-only module that needs steps a person carries out (`10`). A phase with no modules in the profile is one `WARN` line, `WARN     Phase observe`, with its own Found, Fix and More lines.
   - **In apply:**
-    - `OK`: applied and verified, nothing approved, no apply step (a module with only a `check` changes nothing), or undone;
+    - `OK`: applied and verified, nothing approved, no apply step (a module with only a `check` changes nothing), undone, or recorded (a `read-only` module's recording pass, section 3.1, step 6);
     - `CHANGE`: a module about to apply, or about to be undone;
     - `WARN`: manual only, or a failed cleanup;
     - `BLOCKED`: a gate blocked the module;

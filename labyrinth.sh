@@ -97,6 +97,7 @@ LOAD_ERRORS=0              # modules of the phase that could not be loaded
 LOAD_SKIPPED=0             # modules skipped: no entry points for this platform
 STOPPED=0                  # 1 when an apply stopped partway
 APPLIED=0                  # 1 once apply starts changing things
+RECORDED=0                 # 1 once the recording pass has run
 DATA_ROOT=''               # the data root (--root)
 OPT_PROFILE='' OPT_BREAKGLASS='' OPT_CONFIRM=''
 RUN_REF=''                 # the run keep or rollback acts on
@@ -1031,7 +1032,7 @@ finish() {
     *) what='error' ;;
   esac
   out ''
-  if [[ "$mode" == plan ]] || (( ! APPLIED )); then
+  if [[ "$mode" == plan ]] || (( ! APPLIED && ! RECORDED )); then
     summary plan
     out 'Nothing on this host was changed.'
   else
@@ -1040,7 +1041,8 @@ finish() {
       case "${RUN_STATE[i]}" in failed | error) problems=1 ;; esac
     done
     if (( problems )); then mark_problems; fi
-    if (( NO_REVERT )); then out 'Revert timer: none (--no-revert).'; fi
+    if (( ! APPLIED )); then out 'Nothing on this host was changed.'; fi
+    if (( NO_REVERT && APPLIED )); then out 'Revert timer: none (--no-revert).'; fi
   fi
   if [[ -n "$LOG_FILE" ]]; then out "Log: $LOG_FILE"; fi
   next_step "$mode" "$code" "$3"
@@ -1427,13 +1429,14 @@ run_entry() {
   log_line "$(date -u +%H:%M:%S) $id $entry exited $ENTRY_RC"
 }
 
-# capture_entry DIR ENTRY ID: run an entry point in plan mode, keeping its
-# output in ENTRY_OUT, because the result line that goes above it is known
-# only when it ends. Sets ENTRY_RC and GAVE_REASON like run_entry.
+# capture_entry DIR ENTRY ID [DRY_RUN]: run an entry point (in plan mode
+# unless DRY_RUN is 0), keeping its output in ENTRY_OUT, because the result
+# line that goes above it is known only when it ends. Sets ENTRY_RC and
+# GAVE_REASON like run_entry.
 capture_entry() {
-  local dir="$1" entry="$2" id="$3" line last=''
+  local dir="$1" entry="$2" id="$3" dry="${4:-1}" line last=''
   ENTRY_RC=0
-  ENTRY_OUT="$(LAB_MODULE_ID="$id" LAB_ENTRY="$entry" LAB_DRY_RUN=1 LAB_APPROVED="$APPROVED" \
+  ENTRY_OUT="$(LAB_MODULE_ID="$id" LAB_ENTRY="$entry" LAB_DRY_RUN="$dry" LAB_APPROVED="$APPROVED" \
     bash "$dir/$entry.sh" < /dev/null 2>&1)" || ENTRY_RC=$?
   while IFS= read -r line; do
     if [[ -n "${line//[[:space:]]/}" ]]; then last="$line"; fi
@@ -2066,6 +2069,76 @@ check_approve() {
   done
 }
 
+# record_pass: the recording pass of a run (design 00, section 4). Before the
+# first change, each read-only module's check runs once more, with
+# LAB_DRY_RUN=0, so that a module that only observes can write its own files
+# under the state folder (the inventory, design 08, section 3.1). A preview
+# never gets here. A module that fails is reported like any other and, with
+# its state set, blocks only the modules that require it. The worst exit code
+# is left in RECORD_RC.
+RECORD_RC=0
+record_pass() {
+  local i id dir name rc
+  RECORD_RC=0
+  RECORDED=1
+  for ((i = 0; i < ${#RUN_IDS[@]}; i++)); do
+    if [[ "${RUN_RISK[i]}" != read-only ]]; then continue; fi
+    if [[ "${RUN_RC[i]}" != 0 && "${RUN_RC[i]}" != 10 ]]; then continue; fi
+    id="${RUN_IDS[i]}"; dir="${RUN_DIR[i]}"; name="$(module_name "$id")"
+    if ! record_for "$id" record_start '' 'read-only check, run with LAB_DRY_RUN=0'; then
+      say ERROR "$name"
+      detail Problem 'not recorded: the run manifest cannot be written'
+      detail Fix "check that $LAB_STATE_DIR can be written, then run the same command again"
+      more "$id"
+      RUN_STATE[i]=error; RECORD_RC=40; continue
+    fi
+    capture_entry "$dir" check "$id" 0
+    rc="$ENTRY_RC"
+    case "$rc" in
+      0 | 10)
+        say OK "$name"
+        if [[ -n "${ENTRY_OUT//[[:space:]]/}" ]]; then show_output; else detail Found 'recorded nothing'; fi
+        RUN_STATE[i]='done'
+        record_for "$id" recorded '' 'wrote only under the state folder' || true ;;
+      20)
+        say BLOCKED "$name"; explain check 20 "$dir/check.sh"
+        detail Fix 'clear what blocked it, then run the same command again'
+        more "$id"
+        RUN_STATE[i]=blocked
+        if (( RECORD_RC < 20 )); then RECORD_RC=20; fi ;;
+      *)
+        say ERROR "$name"; explain check "$rc" "$dir/check.sh"
+        detail Fix 'report the module to its author; the others still ran'
+        more "$id"
+        RUN_STATE[i]=error; RECORD_RC=40 ;;
+    esac
+  done
+}
+
+# settle_states: after a run that only recorded, give every module its final
+# state from its plan result, so the summary counts what happened. Sets
+# SETTLED_RC to the exit code those final states give (a recorded read-only
+# module is done, whatever its preview said).
+settle_states() {
+  local i
+  SETTLED_RC=0
+  for ((i = 0; i < ${#RUN_IDS[@]}; i++)); do
+    if [[ "${RUN_STATE[i]}" == planned ]]; then
+      case "${RUN_RC[i]}" in
+        0) RUN_STATE[i]='done' ;;
+        10) RUN_STATE[i]=manual ;;
+        20) RUN_STATE[i]=blocked ;;
+        *) RUN_STATE[i]=error ;;
+      esac
+    fi
+    case "${RUN_STATE[i]}" in
+      manual) if (( SETTLED_RC < 10 )); then SETTLED_RC=10; fi ;;
+      blocked) if (( SETTLED_RC < 20 )); then SETTLED_RC=20; fi ;;
+      error) SETTLED_RC=40 ;;
+    esac
+  done
+}
+
 # apply_one INDEX: apply, verify and probe one module. Returns 0 (done or
 # nothing to do), 20 (blocked; continue), or 30/40 (rolled back; stop).
 apply_one() {
@@ -2368,7 +2441,7 @@ recap() {
 }
 
 cmd_apply() {
-  local phase="$1" host group worst=0 rc i todo=0 stopped=0 when unkept
+  local phase="$1" host group worst=0 rc i todo=0 record=0 stopped=0 when unkept
   export LAB_DRY_RUN=1
   umask 077
   host="$(lab_host)"
@@ -2408,30 +2481,52 @@ cmd_apply() {
   fi
   if [[ -n "${GIVEN[approve]+set}" ]]; then approve_unmatched; fi
   for ((i = 0; i < ${#RUN_IDS[@]}; i++)); do
-    if [[ "${RUN_RC[i]}" == 10 && "${RUN_RISK[i]}" != manual-only ]]; then todo=$((todo + 1)); fi
+    if [[ "${RUN_RC[i]}" == 10 && "${RUN_RISK[i]}" != manual-only && "${RUN_RISK[i]}" != read-only ]]; then todo=$((todo + 1)); fi
+    if [[ "${RUN_RISK[i]}" == read-only && ( "${RUN_RC[i]}" == 0 || "${RUN_RC[i]}" == 10 ) ]]; then
+      record=$((record + 1))
+    fi
   done
-  if (( todo == 0 )); then
+  if (( todo == 0 && record == 0 )); then
     out ''
     out 'There is nothing to apply: no module needs a change Labyrinth can make.'
     finish apply "$worst" "$phase"
   fi
 
-  gate_breakglass
-  recap "$host" "$group"
-  gate_confirm "$group"
+  # With changes to make the operator confirms them. A run that only records
+  # (read-only modules writing under the state folder) asks nothing.
+  if (( todo > 0 )); then
+    gate_breakglass
+    recap "$host" "$group"
+    gate_confirm "$group"
+  fi
 
-  # From here on, changes are made: everything is recorded first.
+  # From here on, files are written: everything is recorded first.
   export LAB_DRY_RUN=0
-  mkdir -p "$LAB_STATE_DIR/runs/$LAB_RUN_ID" "$LAB_BACKUP_DIR/$LAB_RUN_ID" \
+  mkdir -p "$LAB_STATE_DIR/runs/$LAB_RUN_ID" \
+    && { (( todo == 0 )) || mkdir -p "$LAB_BACKUP_DIR/$LAB_RUN_ID"; } \
     || die 'the run and backup folders cannot be created; nothing was changed' 40
   if ! record_for '' run_start "$host" "phase $phase, profile $OPT_PROFILE, group $group" \
-      || ! record_for '' breakglass_verified "$BREAKGLASS" "$BREAKGLASS_NOTE" \
-      || ! { (( ! NO_REVERT )) || record_for '' run_no_revert '' 'no revert timer: --no-revert'; }; then
+      || ! { (( todo == 0 )) || record_for '' breakglass_verified "$BREAKGLASS" "$BREAKGLASS_NOTE"; } \
+      || ! { (( ! NO_REVERT )) || (( todo == 0 )) || record_for '' run_no_revert '' 'no revert timer: --no-revert'; }; then
     die 'the run manifest cannot be written; nothing was changed' 40 "$FIX_DATA"
   fi
-  RUN_OPEN=1 APPLIED=1
+  RUN_OPEN=1
+  if (( todo > 0 )); then APPLIED=1; fi
   log_open "apply $phase, run $LAB_RUN_ID, host $host"
   lab_log_info run_start "apply $phase, profile $OPT_PROFILE, group $group"
+
+  # The recording pass runs before the first change (design 00, section 4).
+  out ''
+  record_pass
+  if (( RECORD_RC > worst )); then worst=$RECORD_RC; fi
+  if (( todo == 0 )); then
+    out ''
+    out 'There is nothing to apply: no module needs a change Labyrinth can make.'
+    settle_states
+    worst="$SETTLED_RC"
+    lab_lock_release
+    finish apply "$worst" "$phase"
+  fi
   rc=0; lab_services_load 2> /dev/null || rc=$?
   (( rc != 1 )) || die "the service list is malformed; nothing was changed: $(load_reason lab_services_load)" 40 "$FIX_LINE"
   if (( rc == 0 )); then
@@ -2447,10 +2542,18 @@ cmd_apply() {
   fi
   out ''
 
-  worst=0
+  worst="$RECORD_RC"
   for ((i = 0; i < ${#RUN_IDS[@]}; i++)); do
-    if [[ "${RUN_RC[i]}" == 20 ]]; then worst=20; RUN_STATE[i]=blocked; continue; fi
-    if [[ "${RUN_RC[i]}" != 10 ]]; then RUN_STATE[i]='done'; continue; fi
+    if [[ "${RUN_RC[i]}" == 20 ]]; then
+      if (( worst < 20 )); then worst=20; fi
+      RUN_STATE[i]=blocked; continue
+    fi
+    # A read-only module's state was settled by the recording pass.
+    if [[ "${RUN_RISK[i]}" == read-only && ( "${RUN_RC[i]}" == 0 || "${RUN_RC[i]}" == 10 ) ]]; then continue; fi
+    if [[ "${RUN_RC[i]}" != 10 ]]; then
+      if [[ "${RUN_STATE[i]}" == planned ]]; then RUN_STATE[i]='done'; fi
+      continue
+    fi
     rc=0
     apply_one "$i" || rc=$?
     if (( rc > worst )); then worst=$rc; fi

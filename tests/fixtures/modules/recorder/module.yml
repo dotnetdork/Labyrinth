@@ -1,0 +1,11 @@
+# Test fixture: a read-only module that writes a marker under the state folder only when LAB_DRY_RUN is 0
+id: observe.recorder
+title: Recording sample
+phase: observe
+priority: P0
+platforms: [ubuntu, rhel-family, windows]
+risk: read-only
+touches_scored: false
+requires: []
+outputs: [recorder/marker]
+spec: 00

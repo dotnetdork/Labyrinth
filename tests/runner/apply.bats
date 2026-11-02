@@ -178,13 +178,113 @@ setup() {
   grep -qx 'setting=on' "$LAB/toggle.conf"
 }
 
-@test "nothing to apply: no gates are asked and nothing is written" {
+@test "nothing to apply: no gates are asked and no backup folder is made" {
   profile observe.clean
   answers
   apply
   [ "$status" -eq 0 ]
   [[ "$output" == *"nothing to apply"* ]]
+  [[ "$output" != *"Type the group name"* ]]
+  [ ! -e "$ROOT/state/breakglass" ]
+  [ ! -e "$ROOT/backup" ]
+  [[ "$(manifest)" != *breakglass_verified* ]]
+}
+
+@test "nothing to apply and nothing to record: nothing is written at all" {
+  profile observe.toggle
+  printf 'setting=on
+' > "$LAB/toggle.conf"
+  answers
+  apply
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"nothing to apply"* ]]
+  [[ "$output" != *"Type the group name"* ]]
   [ ! -e "$ROOT/state/runs" ]
+  [ ! -e "$ROOT/backup" ]
+}
+
+@test "a preview never runs a read-only module with LAB_DRY_RUN=0, so it writes nothing" {
+  profile observe.recorder observe.toggle
+  plan
+  [[ "$output" == *"would write the marker"* ]]
+  [ ! -e "$ROOT/state/recorder" ]
+}
+
+@test "a run records before the first change: a read-only module writes under the state folder" {
+  profile observe.recorder observe.toggle
+  printf 'setting=off\n' > "$LAB/toggle.conf"
+  apply
+  [ "$status" -eq 0 ]
+  grep -qx 'dry=0' "$ROOT/state/recorder/marker"
+  # It saw the file as it was before toggle changed it.
+  grep -qx 'toggle=setting=off' "$ROOT/state/recorder/marker"
+  grep -qx 'setting=on' "$LAB/toggle.conf"
+  m="$(manifest)"
+  [[ "$m" == *'"action":"record_start"'* && "$m" == *'"action":"recorded"'* ]]
+  a="$(grep -n 'record_start' <<< "$m" | head -n 1 | cut -d: -f1)"
+  b="$(grep -n 'apply_start' <<< "$m" | head -n 1 | cut -d: -f1)"
+  [ "$a" -lt "$b" ]
+  grep -q 'observe.recorder check| found: wrote the marker' "$ROOT"/state/runs/*/output.log
+}
+
+@test "a run with nothing else to apply still records, and asks nothing" {
+  profile observe.recorder
+  answers
+  apply
+  [ "$status" -eq 0 ]
+  grep -qx 'dry=0' "$ROOT/state/recorder/marker"
+  [[ "$output" == *"nothing to apply"* ]]
+  [[ "$output" != *"Type the group name"* ]]
+  [[ "$output" == *"Nothing on this host was changed."* ]]
+}
+
+@test "a recording that fails is reported, but the run's changes still go ahead" {
+  profile observe.recorder observe.toggle
+  touch "$LAB/FAIL_RECORD"
+  apply
+  [ "$status" -eq 40 ]
+  grep -qx 'ERROR    Recording sample (observe.recorder)' <<< "$output"
+  [[ "$output" == *"the marker could not be written"* ]]
+  [ ! -e "$ROOT/state/recorder" ]
+  grep -qx 'setting=on' "$LAB/toggle.conf"
+}
+
+@test "a failed recording is not lowered by a module blocked at plan time: exit 40" {
+  profile observe.recorder observe.toggle observe.blocked
+  touch "$LAB/FAIL_RECORD"
+  apply
+  [ "$status" -eq 40 ]
+}
+
+@test "a read-only module that wants a change is recorded, not applied: it asks nothing" {
+  profile observe.recorder
+  touch "$LAB/CHECK_TEN"
+  answers
+  apply
+  [ "$status" -eq 0 ]
+  grep -qx 'dry=0' "$ROOT/state/recorder/marker"
+  [[ "$output" != *"Type the group name"* ]]
+  [[ "$output" != *"breakglass"* ]]
+}
+
+@test "a read-only module that wants a change and fails to record blocks the module that requires it" {
+  profile observe.recorder observe.dependent
+  touch "$LAB/CHECK_TEN" "$LAB/FAIL_RECORD"
+  apply
+  [ "$status" -eq 40 ]
+  grep -qx 'ERROR    Recording sample (observe.recorder)' <<< "$output"
+  [[ "$output" == *"it needs Recording sample (observe.recorder) to finish first"* ]]
+  [ ! -e "$LAB/dependent.conf" ]
+}
+
+@test "a record-only run that fails to record says so in its summary and exits 40" {
+  profile observe.recorder
+  touch "$LAB/FAIL_RECORD"
+  answers
+  apply
+  [ "$status" -eq 40 ]
+  [[ "$output" == *"Summary: 1 module: 1 ERROR."* ]]
+  [[ "$output" != *"1 OK"* ]]
 }
 
 @test "a plan with errors applies nothing" {

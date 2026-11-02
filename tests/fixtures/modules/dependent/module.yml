@@ -1,0 +1,11 @@
+# Test fixture: like toggle, but needs observe.recorder to finish first, and changes dependent.conf
+id: observe.dependent
+title: Dependent sample
+phase: observe
+priority: P2
+platforms: [ubuntu, rhel-family, windows]
+risk: reversible
+touches_scored: false
+requires: [observe.recorder]
+outputs: []
+spec: 00

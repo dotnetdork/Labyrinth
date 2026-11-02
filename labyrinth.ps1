@@ -169,6 +169,7 @@ $script:YmlErr = @()             # module.yml errors, printed under the ERROR li
 $script:EntryOut = @()           # the output of an entry point run with -Capture
 $script:Stopped = $false         # true when an apply stopped partway
 $script:Applied = $false         # true once apply starts changing things
+$script:Recorded = $false        # true once the recording pass has run
 $script:Run = @()            # the modules of this run, in run order
 $script:Protected = @{}
 $script:Settings = @{}
@@ -1428,14 +1429,15 @@ function Exit-LabRun {
     elseif ($Code -eq 20) { $what = 'blocked' }
     elseif ($Code -eq 30) { $what = 'a check failed; that change was undone' }
     Write-LabLine ''
-    if ($Mode -ceq 'plan' -or -not $script:Applied) {
+    if ($Mode -ceq 'plan' -or (-not $script:Applied -and -not $script:Recorded)) {
         Write-LabSummary 'plan'
         Write-LabLine 'Nothing on this host was changed.'
     } else {
         Write-LabSummary 'apply'
         $problems = $script:Stopped -or @($script:Run | Where-Object { $_.State -ceq 'failed' -or $_.State -ceq 'error' }).Count -gt 0
         if ($problems) { Add-LabProblemMark }
-        if ($script:NoRevert) { Write-LabLine 'Revert timer: none (-NoRevert).' }
+        if (-not $script:Applied) { Write-LabLine 'Nothing on this host was changed.' }
+        if ($script:NoRevert -and $script:Applied) { Write-LabLine 'Revert timer: none (-NoRevert).' }
     }
     if ($script:LogFile -ne '') { Write-LabLine "Log: $($script:LogFile)" }
     Write-LabNextStep $Mode $Code $Phase
@@ -2263,6 +2265,73 @@ function Assert-LabApprove {
     }
 }
 
+# Invoke-LabRecordPass: the recording pass of a run (design 00, section 4).
+# Before the first change, each read-only module's check runs once more, with
+# LAB_DRY_RUN=0, so that a module that only observes can write its own files
+# under the state folder (the inventory, design 08, section 3.1). A preview
+# never gets here. A module that fails is reported like any other and, with
+# its state set, blocks only the modules that require it. Returns the worst
+# exit code.
+function Invoke-LabRecordPass {
+    $worst = 0
+    $script:Recorded = $true
+    foreach ($m in $script:Run) {
+        if ($m.Risk -ne 'read-only') { continue }
+        if ($m.Rc -ne 0 -and $m.Rc -ne 10) { continue }
+        $id = $m.Id
+        $name = Get-LabModuleName $id
+        try {
+            Add-LabEntryFor $id 'record_start' '' 'read-only check, run with LAB_DRY_RUN=0'
+        } catch {
+            Write-LabStatus 'ERROR' $name
+            Write-LabDetail 'Problem' 'not recorded: the run manifest cannot be written'
+            Write-LabDetail 'Fix' "check that $($env:LAB_STATE_DIR) can be written, then run the same command again"
+            Write-LabMore $id
+            $m.State = 'error'; $worst = 40; continue
+        }
+        Invoke-LabEntry $m.Dir 'check' $id '0' -Capture
+        $rc = $script:EntryRc
+        if ($rc -eq 0 -or $rc -eq 10) {
+            Write-LabStatus 'OK' $name
+            if (@($script:EntryOut | Where-Object { $_.Trim() -ne '' }).Count -gt 0) { Show-LabOutput } else { Write-LabDetail 'Found' 'recorded nothing' }
+            $m.State = 'done'
+            try { Add-LabEntryFor $id 'recorded' '' 'wrote only under the state folder' } catch { $null = $_ }
+        } elseif ($rc -eq 20) {
+            Write-LabStatus 'BLOCKED' $name
+            Write-LabExplain 'check' 20 (Join-Path $m.Dir 'check.ps1')
+            Write-LabDetail 'Fix' 'clear what blocked it, then run the same command again'
+            Write-LabMore $id
+            $m.State = 'blocked'; $worst = [Math]::Max($worst, 20)
+        } else {
+            Write-LabStatus 'ERROR' $name
+            Write-LabExplain 'check' $rc (Join-Path $m.Dir 'check.ps1')
+            Write-LabDetail 'Fix' 'report the module to its author; the others still ran'
+            Write-LabMore $id
+            $m.State = 'error'; $worst = 40
+        }
+    }
+    return $worst
+}
+
+# Resolve-LabSettledState: after a run that only recorded, give every module its
+# final state from its plan result, so the summary counts what happened, and
+# return the exit code those final states give.
+function Resolve-LabSettledState {
+    $rc = 0
+    foreach ($m in $script:Run) {
+        if ($m.State -ceq 'planned') {
+            if ($m.Rc -eq 0) { $m.State = 'done' }
+            elseif ($m.Rc -eq 10) { $m.State = 'manual' }
+            elseif ($m.Rc -eq 20) { $m.State = 'blocked' }
+            else { $m.State = 'error' }
+        }
+        if ($m.State -ceq 'manual') { $rc = [Math]::Max($rc, 10) }
+        elseif ($m.State -ceq 'blocked') { $rc = [Math]::Max($rc, 20) }
+        elseif ($m.State -ceq 'error') { $rc = 40 }
+    }
+    return $rc
+}
+
 function Invoke-LabApplyOne {
     param($M)
     $id = $M.Id
@@ -2637,34 +2706,51 @@ function Invoke-LabApplyCommand {
             Exit-LabRun 'apply' $worst $Phase
         }
         if ($script:Given.ContainsKey('approve')) { Write-LabApproveUnmatched }
-        $todo = @($script:Run | Where-Object { $_.Rc -eq 10 -and $_.Risk -ne 'manual-only' }).Count
-        if ($todo -eq 0) {
+        $todo = @($script:Run | Where-Object { $_.Rc -eq 10 -and $_.Risk -ne 'manual-only' -and $_.Risk -ne 'read-only' }).Count
+        $record = @($script:Run | Where-Object { $_.Risk -eq 'read-only' -and ($_.Rc -eq 0 -or $_.Rc -eq 10) }).Count
+        if ($todo -eq 0 -and $record -eq 0) {
             Write-LabLine ''
             Write-LabLine 'There is nothing to apply: no module needs a change Labyrinth can make.'
             Exit-LabRun 'apply' $worst $Phase
         }
 
-        Assert-LabBreakGlass
-        Write-LabRecap $hostName $group
-        Assert-LabPlanConfirmed $group
+        # With changes to make the operator confirms them. A run that only
+        # records (read-only modules writing under the state folder) asks nothing.
+        if ($todo -gt 0) {
+            Assert-LabBreakGlass
+            Write-LabRecap $hostName $group
+            Assert-LabPlanConfirmed $group
+        }
 
-        # From here on, changes are made: everything is recorded first.
+        # From here on, files are written: everything is recorded first.
         $script:DryRun = '0'; $env:LAB_DRY_RUN = '0'
         try {
-            New-Item -ItemType Directory -Force -Path (Get-LabRunDir $env:LAB_RUN_ID), (Join-Path $env:LAB_BACKUP_DIR $env:LAB_RUN_ID) | Out-Null
+            New-Item -ItemType Directory -Force -Path (Get-LabRunDir $env:LAB_RUN_ID) | Out-Null
+            if ($todo -gt 0) { New-Item -ItemType Directory -Force -Path (Join-Path $env:LAB_BACKUP_DIR $env:LAB_RUN_ID) | Out-Null }
         } catch { Exit-Lab 'the run and backup folders cannot be created; nothing was changed' 40 }
         try {
             Add-LabEntryFor '' 'run_start' $hostName "phase $Phase, profile $($script:ProfileName), group $group"
-            Add-LabEntryFor '' 'breakglass_verified' $script:BreakGlassAccount $script:BreakGlassNote
-            if ($script:NoRevert) { Add-LabEntryFor '' 'run_no_revert' '' 'no revert timer: -NoRevert' }
+            if ($todo -gt 0) { Add-LabEntryFor '' 'breakglass_verified' $script:BreakGlassAccount $script:BreakGlassNote }
+            if ($script:NoRevert -and $todo -gt 0) { Add-LabEntryFor '' 'run_no_revert' '' 'no revert timer: -NoRevert' }
         } catch {
             Write-LabErrorLine $_.Exception.Message
             Exit-Lab 'the run manifest cannot be written; nothing was changed' 40 $FixData
         }
         $script:RunOpen = $true
-        $script:Applied = $true
+        if ($todo -gt 0) { $script:Applied = $true }
         Open-LabRunLog "apply $Phase, run $env:LAB_RUN_ID, host $hostName"
         Write-LabLog -Level info -EventName run_start -Message "apply $Phase, profile $($script:ProfileName), group $group"
+
+        # The recording pass runs before the first change (design 00, section 4).
+        Write-LabLine ''
+        $recordWorst = Invoke-LabRecordPass
+        if ($recordWorst -gt $worst) { $worst = $recordWorst }
+        if ($todo -eq 0) {
+            Write-LabLine ''
+            Write-LabLine 'There is nothing to apply: no module needs a change Labyrinth can make.'
+            $worst = Resolve-LabSettledState
+            Exit-LabRun 'apply' $worst $Phase
+        }
         $services = $null
         try { $services = Read-LabServiceList } catch { Exit-Lab "the service list is malformed; nothing was changed: $($_.Exception.Message)" 40 $FixLine }
         Write-LabLine ''
@@ -2679,11 +2765,16 @@ function Invoke-LabApplyCommand {
         }
         Write-LabLine ''
 
-        $worst = 0
+        $worst = $recordWorst
         $stopped = $false
         foreach ($m in $script:Run) {
             if ($m.Rc -eq 20) { $worst = [Math]::Max($worst, 20); $m.State = 'blocked'; continue }
-            if ($m.Rc -ne 10) { $m.State = 'done'; continue }
+            # A read-only module's state was settled by the recording pass.
+            if ($m.Risk -eq 'read-only' -and ($m.Rc -eq 0 -or $m.Rc -eq 10)) { continue }
+            if ($m.Rc -ne 10) {
+                if ($m.State -ceq 'planned') { $m.State = 'done' }
+                continue
+            }
             $rc = Invoke-LabApplyOne $m
             if ($rc -gt $worst) { $worst = $rc }
             if ($rc -ge 30) { $stopped = $true; break }

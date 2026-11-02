@@ -311,7 +311,7 @@ Ends with 0 when nothing needs changing, 10 when something does, 20 when a safet
 
 ## run (-r) *phase*
 
-Plans, then makes the changes behind the safety checks described in section 7. It must be run as @ADMIN@. Before anything changes, it asks you to name the break-glass account (the first run on a host only) and to type this host's group name.
+Plans, then makes the changes behind the safety checks described in section 7. It must be run as @ADMIN@. When a module needs a change, then before anything changes, it asks you to name the break-glass account (the first run on a host only) and to type this host's group name. Modules that only look, such as the inventory, record what they find first (section 7).
 
 Ends with 0 when every change was made and checked, 10 when only steps for a person to carry out are left, or the highest problem code otherwise: 20 blocked, 30 a check after a change failed, 40 an error. A run is blocked when it is not run as @ADMIN@, when another Labyrinth run holds the lock, when this host is not in the `hosts` file, or when a safety check fails.
 
@@ -544,18 +544,23 @@ A run goes through a fixed series of safety checks. If one fails, the run stops 
 
 1. **You are @ADMIN@,** the host is listed in `hosts`, and the protected set is loaded.
 2. **No other run is in progress** on this host. Only one run at a time may change a host.
-3. **Every module is planned.** If any plan has an error, nothing is applied. If nothing needs changing, the run ends here without asking you anything.
-4. **Break-glass check.** Log in at the host's own console with the break-glass account, then type its name at the `Break-glass account name:` prompt. Labyrinth asks this once per host. It takes your word for it, then looks for that account's session at the console. Your answer is saved only once you confirm the plan in step 5, so a run that stops before then asks again next time; the run's manifest records what the console check found. If it finds none, it warns `no session for NAME was found at this host's console` and goes on: stop there and check the login yourself if you did not just use it.
-5. **Confirmation.** Labyrinth shows what each module will do and the release hash on its `SHA-256:` lines, which you compare with the team's notes (section 2), then asks you to type the host's group name. Anything else stops the run, and nothing is changed or saved.
-6. **Changes start.** For each module that needs a change, in order:
+3. **Every module is planned.** If any plan has an error, nothing is applied. If nothing needs changing, the run goes straight to step 6 and asks you nothing.
+4. **Break-glass check,** when a module needs a change. Log in at the host's own console with the break-glass account, then type its name at the `Break-glass account name:` prompt. Labyrinth asks this once per host. It takes your word for it, then looks for that account's session at the console. Your answer is saved only once you confirm the plan in step 5, so a run that stops before then asks again next time; the run's manifest records what the console check found. If it finds none, it warns `no session for NAME was found at this host's console` and goes on: stop there and check the login yourself if you did not just use it.
+5. **Confirmation,** when a module needs a change. Labyrinth shows what each module will do and the release hash on its `SHA-256:` lines, which you compare with the team's notes (section 2), then asks you to type the host's group name. Anything else stops the run, and nothing is changed or saved.
+6. **Recording.** Before the first change, each module that only looks runs once more, this time allowed to write its own files, only inside the data root's `state` folder. The inventory is one (below). A preview never does this. If such a module fails, Labyrinth says so, the run's exit code shows it, and the changes still go ahead, unless a later module needs it.
+7. **Changes start.** For each module that needs a change, in order:
    - the revert timer is armed (or moved later), unless the module only reads;
    - the change is made;
    - the module checks its own work; if the check fails, that module is undone and the run stops;
    - the scored services are tested again; if one that worked before now fails, that module is undone and the run stops;
    - a change that only takes access away is kept now, if the scored services were tested, and the timer leaves it alone.
-7. **Keep or not.** If every change was kept once verified, the run is kept and nothing is asked. Otherwise, check that a new login works, then type `keep`. Pressing Enter, or typing anything else, leaves the timer armed.
+8. **Keep or not.** If every change was kept once verified, the run is kept and nothing is asked. Otherwise, check that a new login works, then type `keep`. Pressing Enter, or typing anything else, leaves the timer armed.
 
 Some modules never change anything on their own: they print a checklist for a person to follow, or ask you which items to change.
+
+**Modules that only look.** A module of this kind has a preview and nothing else: it never changes the host. In a run it records, as step 6 describes, and a run in which nothing else needs changing ends right after it, with no questions. If the recording fails, the summary says so and the run ends with 40.
+
+**The inventory (`lockout.inventory`).** The first module of the `lockout` phase, so it runs before anything changes. It writes down what the host has: accounts, groups, administrator rules, authorized SSH keys (by fingerprint, never the key), listening ports, services, scheduled jobs, startup items, installed packages, firewall rules and open connections. It uses only the system's own tools and never records a password or a private key. It also finds, for each service in the `services` file, the addresses that service connects out to, so that the firewall's default deny does not cut them off. A preview prints what it found and writes nothing; a run writes two files in `state/inventory`: the inventory, `<UTC time>.jsonl`, one line per item, and `deps`, the map, one line per outbound connection: the service, the address, the protocol, the port and the program. The map only grows: a later run adds lines and never removes one, and you remove a line by hand. It is a snapshot taken at one moment, so a connection a service makes only now and then can be missed; the checks after the lockout show a break, and the module can be undone. `@CMD@ -h lockout.inventory` has its help page.
 
 **Approving items.** A module that asks first lists each item it would change on an `Item:` line, such as `cron-3f1a@2a2c17aaaf66 (cron): runs from /tmp`. The first word is the item's id, then `@` and its fingerprint, a short code for how the item looks now. In brackets is its category, and last is why the module picked it. During the run, Labyrinth shows the items again and asks which to change:
 
@@ -696,7 +701,7 @@ Everything Labyrinth keeps is under one folder, the **data root**: `@ROOT@` unle
 |---|---|
 | `<root>/bin` | The program, and `release.sha256`, the hash of each of its files. The commands `laby` and `labyrinth` are links to it in `/usr/bin`. |
 | `<root>/etc` | The event's configuration: `hosts`, `protected-accounts`, `event.conf`, `services`, `scoring-allowlist`, `never-ban`, `outbound-allow`, `pre-approved`. Labyrinth itself writes `seed.conf` here: this host's decoy seed. It is for this host only: never copy it to another host. |
-| `<root>/state` | Run records: one folder per run under `state/runs`, with the run's change record (`manifest.jsonl`), its timer, and its log (`output.log`). |
+| `<root>/state` | Run records: one folder per run under `state/runs`, with the run's change record (`manifest.jsonl`), its timer, and its log (`output.log`). The inventory and the dependency map are in `state/inventory`. |
 | `<root>/logs` | Logs, one folder per kind. |
 | `<root>/backup` | Copies of every file taken before it was changed. |
 
@@ -707,7 +712,7 @@ Only root can read `etc`, `state` and `backup`. Only root may be able to change 
 |---|---|
 | `C:\Program Files\Labyrinth` | The program, its `laby.cmd` and `labyrinth.cmd` commands, and `release.sha256`, the hash of each of its files. It is not under the data root. |
 | `<root>\etc` | The event's configuration: `hosts`, `protected-accounts`, `event.conf`, `services`, `scoring-allowlist`, `never-ban`, `outbound-allow`, `pre-approved`. Labyrinth itself writes `seed.conf` here: this host's decoy seed. It is for this host only: never copy it to another host. |
-| `<root>\state` | Run records: one folder per run under `state\runs`, with the run's change record (`manifest.jsonl`), its timer, and its log (`output.log`). |
+| `<root>\state` | Run records: one folder per run under `state\runs`, with the run's change record (`manifest.jsonl`), its timer, and its log (`output.log`). The inventory and the dependency map are in `state\inventory`. |
 | `<root>\logs` | Logs, one folder per kind. |
 | `<root>\backup` | Copies of every file taken before it was changed. |
 

@@ -1,0 +1,22 @@
+What it checks: the accounts, groups, sudo rules, SSH keys (by fingerprint),
+listening ports, services, scheduled jobs, startup items, installed packages,
+firewall rules and open connections of this host. For each scored service in
+the services file it also finds the addresses the service connects out to.
+
+What it changes: nothing on the host. A preview only prints what it found.
+A run writes two files under the state folder, in inventory: a new list of
+what the host has, and deps, the map of those outbound addresses. The map only
+ever grows: a later run adds lines and never removes one.
+
+Why: it runs first, before any change, so the firewall can keep open every
+address a scored service needs. It never records a password, a hash or a key.
+
+What can go wrong: a tool is missing, or a source needs root, so part of the
+list is empty. It says so on a found line and records the rest. A connection a
+service makes only now and then can be missed, because this is one snapshot.
+The checks after the lockout show a break, and that module can be undone.
+
+How to undo it: nothing needs undoing. To drop a map line, edit deps by hand.
+
+If it fails: it says it could not write the state folder. Check the disk and
+the folder, then run the same command again.
