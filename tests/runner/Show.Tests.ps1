@@ -60,7 +60,7 @@ Describe 'labyrinth.ps1 -Show' {
         $r.Out | Should -Match '(?m)^  Started:   \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} UTC\r?$'
         $r.Out | Should -Match '(?m)^  Ended:     \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} UTC\r?$'
         $r.Out | Should -Match '(?m)^  State:     armed: undo at \d\d:\d\d UTC\r?$'
-        $r.Out | Should -Match '(?m)^Module: Toggle setting sample \(observe\.toggle\)\r?\n  Status:    applied\r?\n  Change:    file_created'
+        $r.Out | Should -Match '(?m)^Module: Toggle setting sample \(observe\.toggle\)\r?\n  Status:    applied\r?\n  Change:    file_created\b'
         # The first run created the file: nothing to back up. A second run
         # changes a file that exists, and names its backup.
         (Invoke-TestRunCommand $t 'keep' $a).Code | Should -Be 0
@@ -69,7 +69,7 @@ Describe 'labyrinth.ps1 -Show' {
         $r.Code | Should -Be 0
         $b = Get-TestRunId $r.Output
         $r = Invoke-TestLabRun $t @('-Show', $b)
-        $r.Out | Should -Match '(?m)^  Change:    file'
+        $r.Out | Should -Match '(?m)^  Change:    file\b'
         $r.Out | Should -Match '(?m)^  Backup:    .*-toggle\.conf\r?$'
         Assert-TestNarrow $r.Out $parent
     }
@@ -90,7 +90,7 @@ Describe 'labyrinth.ps1 -Show' {
         $r = Invoke-TestLabRun $t @('-Show', $a)
         $r.Code | Should -Be 0
         $r.Out | Should -Match '(?m)^  State:     undone\r?$'
-        $r.Out | Should -Match '(?m)^  Status:    undone\r?\n  Change:    file_created'
+        $r.Out | Should -Match '(?m)^  Status:    undone\r?\n  Change:    file_created\b'
         Assert-TestNarrow $r.Out $parent
     }
 
@@ -102,7 +102,7 @@ Describe 'labyrinth.ps1 -Show' {
         $r = Invoke-TestLabRun $t @('-Show', $a)
         $r.Code | Should -Be 0
         $r.Out | Should -Match '(?m)^Module: Toggle setting sample \(observe\.toggle\)\r?\n  Status:    failed \(verify exit 30\), then undone\r?$'
-        $r.Out | Should -Match '(?m)^  Change:    file_created'
+        $r.Out | Should -Match '(?m)^  Change:    file_created\b'
         Assert-TestNarrow $r.Out $parent
     }
 
@@ -137,7 +137,7 @@ Describe 'labyrinth.ps1 -Show' {
         $pw = ([regex]::Match($shown, '(?m)^      ([A-Za-z0-9_.+=-]{20})\r?$')).Groups[1].Value
         $r = Invoke-TestLabRun $t @('-Show', $a)
         $r.Code | Should -Be 0
-        $r.Out | Should -Match '(?m)^  Change:    file'
+        $r.Out | Should -Match '(?m)^  Change:    file\b'
         $r.Out.Contains($pw) | Should -BeFalse
         $r.Out.Contains('old-secret-value') | Should -BeFalse
         Assert-TestNarrow $r.Out $parent
