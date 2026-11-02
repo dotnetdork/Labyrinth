@@ -37,8 +37,8 @@ function Invoke-LabTcpExchange {
         if ($FirstLine) {
             $reader = New-Object IO.StreamReader($stream, [Text.Encoding]::ASCII)
             $line = $reader.ReadLine()
-            $quit = [Text.Encoding]::ASCII.GetBytes("$Quit`r`n")
-            try { $stream.Write($quit, 0, $quit.Length) } catch { $null = $_ }
+            $closing = [Text.Encoding]::ASCII.GetBytes("$Quit`r`n")
+            try { $stream.Write($closing, 0, $closing.Length) } catch { $null = $_ }
             return $line
         }
         $ms = New-Object IO.MemoryStream
