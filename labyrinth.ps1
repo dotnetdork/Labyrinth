@@ -3038,7 +3038,7 @@ function Invoke-LabShowCommand {
     $last = ''
     $hostName = ''
     $phase = '-'
-    $profile = '-'
+    $profileText = '-'
     $group = '-'
     $mods = @()
     foreach ($line in [IO.File]::ReadAllLines($path)) {
@@ -3054,7 +3054,7 @@ function Invoke-LabShowCommand {
         $mod = [string] $e.module
         if ($mod -ne '' -and $mods -cnotcontains $mod) { $mods += $mod }
         if ($e.action -ceq 'run_start' -and ([string] $e.note) -cmatch '^phase ([^,]*), profile ([^,]*), group (.*)$') {
-            $phase = $Matches[1]; $profile = $Matches[2]; $group = $Matches[3]
+            $phase = $Matches[1]; $profileText = $Matches[2]; $group = $Matches[3]
         }
     }
     foreach ($mod in $mods) {
@@ -3063,7 +3063,7 @@ function Invoke-LabShowCommand {
     if ($hostName -eq '') { $hostName = 'unknown' }
     Write-LabLine "Run $id"
     Write-LabDetail 'Phase' $phase
-    Write-LabDetail 'Profile' $profile
+    Write-LabDetail 'Profile' $profileText
     Write-LabDetail 'Host' $hostName
     Write-LabDetail 'Group' $group
     Write-LabDetail 'Started' (Format-LabShowTime $first)
