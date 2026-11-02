@@ -219,7 +219,7 @@ Describe 'labyrinth.ps1 -Only and -Skip' {
         Add-TestLockoutPhase $t
         $r = Invoke-TestLockout $t @('-Skip', 'lockout.inventory')
         $r.Code | Should -Be 20
-        $r.Output | Should -Match 'BLOCKED  .*\(lockout\.inventory\)'
+        $r.Output | Should -Match 'BLOCKED  lockout\.inventory'
         $r.Output | Should -Match 'Problem:   this host has no dependency map yet, and the firewall would have'
         $r.Output | Should -Match 'nothing to keep open'
         $r.Output | Should -Match 'Fix:       run lockout\.inventory first, or leave it in'
