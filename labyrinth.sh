@@ -8,6 +8,7 @@
 #   laby -k ID               keep a run: cancel its revert timer
 #   laby -u ID [--all]       undo a run, newest change first
 #   laby --history           list this host's runs and their state
+#   laby --show ID           list what one run changed
 #   laby --probe             test every scored service once
 #   laby --new-seed          make this host's decoy seed
 #   laby --seed-check        check a seed typed at a prompt
@@ -125,11 +126,11 @@ NAME="${SELF#sudo }"   # the name as typed, for the start of a usage error
 # name, the key its long name is matched by (lower case, no dashes), whether
 # it takes a value, its short letter, if it has one, and whether it is an
 # action. Short letters are case-sensitive; long names are not.
-readonly -a OPT_NAMES=(run keep undo probe history new-seed seed-check version manual all profile root config break-glass confirm-group approve yes no-revert help)
-readonly -a OPT_KEYS=(run keep undo probe history newseed seedcheck version manual all profile root config breakglass confirmgroup approve yes norevert help)
-readonly -a OPT_VALUE=(0 1 1 0 0 0 0 0 0 0 1 1 1 1 1 1 0 0 0)
-readonly -a OPT_SHORT=(r k u '' '' '' '' V '' '' P '' '' '' '' '' y '' h)
-readonly -a OPT_ACTION=(1 1 1 1 1 1 1 1 1 0 0 0 0 0 0 0 0 0 0)
+readonly -a OPT_NAMES=(run keep undo probe history show new-seed seed-check version manual all profile root config break-glass confirm-group approve yes no-revert help)
+readonly -a OPT_KEYS=(run keep undo probe history show newseed seedcheck version manual all profile root config breakglass confirmgroup approve yes norevert help)
+readonly -a OPT_VALUE=(0 1 1 0 0 1 0 0 0 0 0 1 1 1 1 1 1 0 0 0)
+readonly -a OPT_SHORT=(r k u '' '' '' '' '' V '' '' P '' '' '' '' '' y '' h)
+readonly -a OPT_ACTION=(1 1 1 1 1 1 1 1 1 1 0 0 0 0 0 0 0 0 0 0)
 # The flags that docs/Conventions.md section 3.3 plans and nothing builds yet,
 # one row each: the short letter, the long name's match key ('' when the name
 # is already an option) and how a message shows it. Typing one is a usage
@@ -196,6 +197,7 @@ Actions (one per line):
   -k, --keep ID           keep a run: cancel its revert timer
   -u, --undo ID [--all]   undo a run, newest change first
       --history           list this host's runs  --probe   test every service
+      --show ID           list what a run changed
       --new-seed          make a decoy seed      --seed-check   check a seed
   -V, --version           print the version      --manual   the full manual
 
@@ -206,7 +208,6 @@ Options:
   --no-revert             with -r: no revert timer, for test machines
   --break-glass NAME, --confirm-group GROUP, --approve LIST: see -h run
   -h, --help [TOPIC]      help; TOPIC: an action, option, phase or basics
-
 Phases: lockout, observe, deceive, sustain. ID: a run ID or its last 4.
 Exit: 0 ok, 10 change needed, 20 blocked, 30 check failed, 40 error.
 Full manual: @CMD@ --manual   (Linux also: man laby)
@@ -283,6 +284,21 @@ Administrator.
 Exit: 0 listed, 20 not root, 40 error.
 Example: @CMD@ --history
 See also: @CMD@ -h keep, @CMD@ -h undo
+EOF
+    ;;
+    show) cat <<'EOF'
+Usage: @CMD@ --show ID [--root DIR] [--config DIR]
+
+List what one run changed: its phase, profile, host, group, start and
+end, and state; then each module in run order with its status and
+every change it made, with the backup and the previous value where
+it recorded them. ID is always needed: a run ID or its last 4
+characters. Without it, the runs are listed. The last line names the
+run log. Changes nothing; needs root or an Administrator.
+
+Exit: 0 shown, 20 not root, 40 error.
+Example: @CMD@ --show 4f2a
+See also: @CMD@ --history, @CMD@ -h undo
 EOF
     ;;
     probe) cat <<'EOF'
@@ -1193,7 +1209,7 @@ stack_error() {
 # record_option ROW SEP VAL: record the option in row ROW. SEP is the
 # separator typed before VAL ('' when none); an option that takes a value
 # and has none there takes the next word, unless that word looks like an
-# option. -k and -u go without a value, and main lists the runs.
+# option. -k, -u and --show go without a value, and main lists the runs.
 record_option() {
   local row="$1" sep="$2" val="$3" name show next=''
   name="${OPT_NAMES[row]}"; show="$(show_opt "$name")"
@@ -1207,7 +1223,7 @@ record_option() {
     if [[ -z "$sep" || ( "$sep" == : && -z "$val" ) ]]; then
       if (( P_I < ${#P_ARGS[@]} )); then next="${P_ARGS[P_I]}"; fi
       if (( P_I >= ${#P_ARGS[@]} )) || [[ "$next" == -?* ]]; then
-        if [[ "$name" != keep && "$name" != undo ]]; then
+        if [[ "$name" != keep && "$name" != undo && "$name" != show ]]; then
           if (( P_I >= ${#P_ARGS[@]} )); then
             parse_fail "$show needs a value"
           else
@@ -1219,7 +1235,7 @@ record_option() {
         val="$next"; P_I=$((P_I + 1))
       fi
     fi
-    if [[ -z "$val" && "$name" != keep && "$name" != undo ]]; then parse_fail "$show needs a value"; return 0; fi
+    if [[ -z "$val" && "$name" != keep && "$name" != undo && "$name" != show ]]; then parse_fail "$show needs a value"; return 0; fi
   elif [[ -n "$sep" ]]; then
     parse_fail "$show takes no value"; return 0
   fi
@@ -2230,6 +2246,7 @@ apply_one() {
     *)
       say ERROR "$name"
       failed apply "$ENTRY_RC" "$dir/apply.sh"
+      record_for "$id" module_failed '' "apply exit $ENTRY_RC" || true
       RUN_STATE[i]=error; rollback_module "$id" inline || true
       log_ref; more "$id"
       return 40
@@ -2243,6 +2260,7 @@ apply_one() {
       say FAIL "$name"
       failed verify "$rc" "$dir/verify.sh"
       LAB_MODULE_ID="$id" lab_log_error verify_failed "verify exited $rc" 2> /dev/null
+      record_for "$id" module_failed '' "verify exit $rc" || true
       RUN_STATE[i]=failed; rollback_module "$id" inline || RUN_STATE[i]=error
       log_ref; more "$id"
       if (( rc == 30 )); then return 30; fi
@@ -2258,6 +2276,7 @@ apply_one() {
       detail Problem "a scored service stopped working after the change: ${reg//$'\n'/, }"
       probe_lines "$after" "$reg"
       LAB_MODULE_ID="$id" lab_log_error regression "scored service regressed: ${reg//$'\n'/ }" 2> /dev/null
+      record_for "$id" module_failed '' 'a scored service stopped working' || true
       RUN_STATE[i]=failed; rollback_module "$id" inline || RUN_STATE[i]=error
       log_ref; more "$id"
       return 30
@@ -2720,6 +2739,119 @@ cmd_runs() {
     for id in "${probs[@]}"; do
       printf '  %s  %s\n' "${id: -4}" "$LAB_STATE_DIR/runs/$id/output.log"
     done
+  fi
+  exit 0
+}
+
+# show_time TS: a manifest time, 2026-10-02T14:03:07Z, as 2026-10-02 14:03:07 UTC.
+show_time() {
+  if [[ "$1" =~ ^([0-9-]{10})T([0-9:]{8})Z$ ]]; then
+    printf '%s %s UTC' "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}"
+  else
+    printf '%s' "${1:-unknown}"
+  fi
+}
+
+# show_module ID MANIFEST: one module's block of --show. Its status is the
+# last of apply_start (applied), module_failed, module_kept and rolled_back
+# (docs/Conventions.md section 7); its changes are every other entry, in the
+# order they were recorded.
+show_module() {
+  local id="$1" f="$2" line action module status='' note target backup prev n=0 failed=0
+  local -a changes=() skipped=()
+  while IFS= read -r line; do
+    module="$(lab_json_get "$line" module)" || continue
+    [[ "$module" == "$id" ]] || continue
+    action="$(lab_json_get "$line" action)" || continue
+    note="$(lab_json_get "$line" note)" || note=''
+    case "$action" in
+      apply_start) status='applied'; failed=0 ;;
+      module_failed) status="failed ($note)"; failed=1 ;;
+      module_kept) status='kept once verified' ;;
+      rolled_back)
+        if [[ "$note" == 'apply blocked'* ]]; then status='blocked, nothing changed'
+        elif (( failed )); then status+=', then undone'
+        else status='undone'; fi ;;
+      approval_refused) skipped+=("$(lab_json_get "$line" target) ($note)") ;;
+      *) changes+=("$line") ;;
+    esac
+  done < "$f"
+  out ''
+  out "Module: $(safe_text "$(module_name "$id")")"
+  detail Status "${status:-recorded only}"
+  for line in "${changes[@]+"${changes[@]}"}"; do
+    n=$((n + 1))
+    action="$(lab_json_get "$line" action)" || action='?'
+    target="$(lab_json_get "$line" target)" || target=''
+    backup="$(lab_json_get "$line" backup)" || backup=''
+    prev="$(lab_json_get "$line" prev)" || prev=''
+    note="$(lab_json_get "$line" note)" || note=''
+    detail Change "$action${target:+ $target}"
+    if [[ -n "$prev" ]]; then detail Before "$prev"; fi
+    if [[ -n "$note" ]]; then detail Note "$note"; fi
+    if [[ -n "$backup" ]]; then detail Backup "$backup"; fi
+  done
+  if (( n == 0 )); then detail Changes 'none recorded'; fi
+  for line in "${skipped[@]+"${skipped[@]}"}"; do detail Skipped "$line"; done
+}
+
+# cmd_show REF: list what one run changed, from its manifest
+# (docs/Conventions.md section 3.1). It reads, and writes nothing.
+cmd_show() {
+  local list f line id first last host group profile phase note mod
+  local -a runs=() mods=()
+  if [[ -z "$1" ]]; then
+    # --show always needs a run, like -u: list them, show none.
+    if ! lab_is_admin; then
+      usage_error '--show needs a run ID, or its last 4 characters' "As root, '$SELF --history' lists them."
+    fi
+    list="$(list_runs)" || true
+    if [[ -z "$list" ]]; then
+      usage_error '--show needs a run ID, or its last 4 characters' 'There are no runs on this host.'
+    fi
+    mapfile -t runs <<< "$list"; print_runs "${runs[@]}" >&2
+    usage_error '--show needs a run ID, or its last 4 characters' 'Pick one from the list above.'
+  fi
+  lab_is_admin || die '--show needs root' 20 "$FIX_ADMIN"
+  resolve_run "$1"
+  id="$RUN_REF"
+  f="$(lab_manifest_file "$id")"
+  [[ -f "$f" ]] || die "no run $id on this host" 40 "'$SELF --history' lists them."
+  flush_warnings
+  first=''; last=''; host=''; phase='-'; profile='-'; group='-'
+  while IFS= read -r line; do
+    [[ -n "$line" ]] || continue
+    if [[ -z "$first" ]]; then first="$(lab_json_get "$line" ts)" || first=''; fi
+    last="$(lab_json_get "$line" ts)" || true
+    if [[ -z "$host" ]]; then host="$(lab_json_get "$line" host)" || host=''; fi
+    mod="$(lab_json_get "$line" module)" || mod=''
+    if [[ -n "$mod" ]] && ! lab_in_list "$mod" "${mods[*]-}"; then mods+=("$mod"); fi
+    if [[ "$(lab_json_get "$line" action)" == run_start ]]; then
+      note="$(lab_json_get "$line" note)" || note=''
+      if [[ "$note" =~ ^phase\ ([^,]*),\ profile\ ([^,]*),\ group\ (.*)$ ]]; then
+        phase="${BASH_REMATCH[1]}"; profile="${BASH_REMATCH[2]}"; group="${BASH_REMATCH[3]}"
+      fi
+    fi
+  done < "$f"
+  for mod in "${mods[@]+"${mods[@]}"}"; do
+    if [[ "$mod" =~ $RE_MODULE_ID ]]; then load_title "$mod"; fi
+  done
+  out "Run $id"
+  detail Phase "$phase"
+  detail Profile "$profile"
+  detail Host "${host:-unknown}"
+  detail Group "$group"
+  detail Started "$(show_time "$first")"
+  detail Ended "$(show_time "$last")"
+  detail State "$(run_state "$id")"
+  for mod in "${mods[@]+"${mods[@]}"}"; do show_module "$mod" "$f"; done
+  if (( ${#mods[@]} == 0 )); then
+    out ''
+    out 'This run changed no modules.'
+  fi
+  if [[ -f "$LAB_STATE_DIR/runs/$id/output.log" ]]; then
+    out ''
+    out "Log: $LAB_STATE_DIR/runs/$id/output.log"
   fi
   exit 0
 }
@@ -3214,6 +3346,7 @@ bad_word() {
     keep) hint="$SELF -k ID" ;;
     undo) hint="$SELF -u ID" ;;
     history) hint="$SELF --history" ;;
+    show) hint="$SELF --show ID" ;;
     probe) hint="$SELF --probe" ;;
     newseed) hint="$SELF --new-seed" ;;
     seedcheck) hint="$SELF --seed-check" ;;
@@ -3282,7 +3415,7 @@ main() {
       else
         label='-r'; used=(profile break-glass confirm-group approve)
       fi ;;
-    keep | undo)
+    keep | undo | show)
       word="${GIVEN[$action]}"
       (( $# == 0 )) || usage_error "unexpected word '$1' after '$(show_opt "$action")${word:+ $word}'"
       # A full run ID is accepted in any case, like its last 4 characters.
@@ -3349,6 +3482,7 @@ main() {
     rollback) cmd_rollback "$word" ;;
     probe) cmd_probe ;;
     runs) cmd_runs ;;
+    show) cmd_show "$word" ;;
     newseed) cmd_new_seed ;;
   esac
 }

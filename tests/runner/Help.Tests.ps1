@@ -11,7 +11,7 @@ BeforeAll {
     . (Join-Path $PSScriptRoot 'LabTestHelper.ps1')
     $t = Initialize-TestLab
     # Every topic with a page of its own; the basics page is longer.
-    $topics = @('run', 'keep', 'undo', 'history', 'probe', 'new-seed', 'seed-check', 'version', 'manual',
+    $topics = @('run', 'keep', 'undo', 'history', 'show', 'probe', 'new-seed', 'seed-check', 'version', 'manual',
         'profile', 'root', 'config', 'break-glass', 'confirm-group', 'approve', 'all', 'yes', 'no-revert',
         'lockout', 'observe', 'deceive', 'sustain')
     $mainFirst = 'Usage: laby PHASE                preview a phase: nothing changes'
@@ -78,6 +78,7 @@ Describe 'labyrinth.ps1 help' {
             'undo'    = @(@('-u', '-h'), @('-Undo', '-Help'), @('-u', '4f2a', '-h'), @('-h', '-u'))
             'keep'    = @(@('-k', '-h'), @('-Keep', '-Help'), @('-k=4f2a', '-h'))
             'history' = @(@('-History', '-h'), @('--history', '--help'))
+            'show'    = @(@('-Show', '-h'), @('--show', '--help'), @('-Show', '4f2a', '-h'), @('-h', '-Show'))
             'observe' = @(@('observe', '-h'), @('observe', '-Help'), @('OBSERVE', '-h'))
         }
         foreach ($topic in $forms.Keys) {
@@ -171,7 +172,7 @@ Describe 'labyrinth.ps1 help' {
     }
 
     It 'the actions that need an Administrator say so, and -h history names every state' {
-        foreach ($topic in @('run', 'keep', 'undo', 'history', 'probe', 'new-seed')) {
+        foreach ($topic in @('run', 'keep', 'undo', 'history', 'show', 'probe', 'new-seed')) {
             (Get-TestHelp $t @('-h', $topic)).Out | Should -Match 'Administrator' -Because "-h $topic"
         }
         $out = (Get-TestHelp $t @('-h', 'history')).Out
