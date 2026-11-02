@@ -52,8 +52,8 @@ function Send-LabNotice {
 }
 
 function Invoke-LabProbe {
-    param([string] $Proto, [string] $Target, [int] $Port, [string] $Expect, [int] $Timeout = 5)
-    $null = $Proto, $Port, $Expect, $Timeout
+    param([string] $Proto, [string] $Target, [int] $Port, [string] $Expect, [int] $Timeout = 5, [string] $Path = '/')
+    $null = $Proto, $Port, $Expect, $Timeout, $Path
     $state = Join-Path $env:LAB_ROOT 'probe-state'
     if ((Test-Path -LiteralPath $state) -and (@(Get-Content -LiteralPath $state) -contains "$Target fail")) { return 'fail fake probe' }
     return 'pass fake probe'

@@ -64,20 +64,23 @@ function Get-LabHttpResult {
     return "pass status $Code"
 }
 
-# Invoke-LabProbe -Proto P -Target HOST -Port N -Expect E -Timeout S: probe one service.
+# Invoke-LabProbe -Proto P -Target HOST -Port N -Expect E -Timeout S [-Path /x]:
+# probe one service. -Path (default /) only matters to http and https; a
+# redirect is never followed.
 function Invoke-LabProbe {
     param(
         [Parameter(Mandatory)] [string] $Proto,
         [Parameter(Mandatory)] [string] $Target,
         [Parameter(Mandatory)] [int] $Port,
         [Parameter(Mandatory)] [string] $Expect,
-        [int] $Timeout = 5
+        [int] $Timeout = 5,
+        [string] $Path = '/'
     )
     $hostPart = if ($Target.Contains(':')) { "[$Target]" } else { $Target }
     switch ($Proto) {
         'http' {
             $out = Invoke-LabTcpExchange -Target $Target -Port $Port -Timeout $Timeout `
-                -Send "GET / HTTP/1.0`r`nHost: $Target`r`nConnection: close`r`n`r`n"
+                -Send "GET $Path HTTP/1.0`r`nHost: $Target`r`nConnection: close`r`n`r`n"
             if (-not $out) { return 'fail no HTTP response' }
             if ($out -notmatch '^HTTP/[0-9.]+ ([0-9]{3})') { return 'fail not an HTTP response' }
             return Get-LabHttpResult $Matches[1] $out $Expect
@@ -88,7 +91,7 @@ function Invoke-LabProbe {
             $saved = $ErrorActionPreference
             $ErrorActionPreference = 'Continue'
             try {
-                $out = @(& $tool.Source -sS -k --max-time $Timeout -w '\n%{http_code}' "https://${hostPart}:$Port/" 2>$null)  # lab-guard: allow network -- probe of a listed scored service inside the event network
+                $out = @(& $tool.Source -sS -k --max-time $Timeout -w '\n%{http_code}' "https://${hostPart}:$Port$Path" 2>$null)  # lab-guard: allow network -- probe of a listed scored service inside the event network
                 $rc = $LASTEXITCODE
             } finally {
                 $ErrorActionPreference = $saved
@@ -139,7 +142,7 @@ function Get-LabProbeResult {
     $services = Read-LabServiceList
     if ($null -eq $services) { return $null }
     $lines = @(foreach ($s in $services) {
-            '{0} {1}' -f $s.Name, (Invoke-LabProbe -Proto $s.Proto -Target $s.Target -Port $s.Port -Expect $s.Expect -Timeout $Timeout)
+            '{0} {1}' -f $s.Name, (Invoke-LabProbe -Proto $s.Proto -Target $s.Target -Port $s.Port -Expect $s.Expect -Timeout $Timeout -Path $s.Path)
         })
     return , $lines
 }

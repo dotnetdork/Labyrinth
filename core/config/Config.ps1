@@ -115,9 +115,10 @@ function Read-LabPreApproved {
 }
 
 # Read-LabServiceList: the scored-service list as objects with Name, Proto,
-# Target, Port and Expect. Missing or empty: $null, because an empty list is
-# one nobody filled in, and a module that touches scored services is blocked
-# without one (docs/Conventions.md section 3.1).
+# Target, Path, Port and Expect. Only an http or https host may carry a path
+# ('host/path'); Path is '/' when there is none. Missing or empty: $null,
+# because an empty list is one nobody filled in, and a module that touches
+# scored services is blocked without one (docs/Conventions.md section 3.1).
 function Read-LabServiceList {
     $protos = @('http', 'https', 'dns', 'smtp', 'pop3', 'ftp', 'tcp')
     $file = Join-Path $env:LAB_CONFIG_DIR 'services'
@@ -125,10 +126,12 @@ function Read-LabServiceList {
     $list = @()
     foreach ($l in @(Get-LabConfigLine $file)) {
         $where = "${file}:$($l.No)"
-        if ($l.Text -cnotmatch '^([A-Za-z0-9_.-]+)\s+([a-z0-9]+)\s+([A-Za-z0-9.:_-]+)\s+([0-9]{1,5})\s+(\S+)$') {
-            throw "${where}: expected: name proto host port expect"
+        if ($l.Text -cnotmatch '^([A-Za-z0-9_.-]+)\s+([a-z0-9]+)\s+([A-Za-z0-9.:_-]+)(/\S*)?\s+([0-9]{1,5})\s+(\S+)$') {
+            throw "${where}: expected: name proto host[/path] port expect"
         }
-        $svc = [pscustomobject]@{ Name = $Matches[1]; Proto = $Matches[2]; Target = $Matches[3]; Port = [int]$Matches[4]; Expect = $Matches[5] }
+        $hasPath = [bool]$Matches[4]
+        $path = if ($hasPath) { $Matches[4] } else { '/' }
+        $svc = [pscustomobject]@{ Name = $Matches[1]; Proto = $Matches[2]; Target = $Matches[3]; Path = $path; Port = [int]$Matches[5]; Expect = $Matches[6] }
         # The probes pass these to commands, where a leading '-' reads as an
         # option; a lone '-' is the "no expected text" placeholder.
         if ($svc.Name.StartsWith('-') -or $svc.Target.StartsWith('-') -or ($svc.Expect.StartsWith('-') -and $svc.Expect -ne '-')) {
@@ -136,6 +139,14 @@ function Read-LabServiceList {
         }
         if ($protos -cnotcontains $svc.Proto) { throw "${where}: unknown protocol $($svc.Proto)" }
         if ($svc.Port -lt 1 -or $svc.Port -gt 65535) { throw "${where}: port out of range: $($svc.Port)" }
+        if ($hasPath) {
+            if ($svc.Proto -cne 'http' -and $svc.Proto -cne 'https') { throw "${where}: only an http or https service may have a path, not $($svc.Proto)" }
+            # A path is URL-safe characters and %XX escapes, then an optional query.
+            # '//' would let a scheme ('http://host') pass as a host and a path.
+            if ($path.StartsWith('//') -or $path -cnotmatch '^/([A-Za-z0-9._~/+=&-]|%[0-9A-Fa-f]{2})*(\?([A-Za-z0-9._~/+=&-]|%[0-9A-Fa-f]{2})*)?$') {
+                throw "${where}: the path must start with / and use only letters, digits, ._~/+=&- and %XX escapes, with an optional ?query"
+            }
+        }
         if ($svc.Proto -eq 'dns' -and $svc.Expect -notmatch '^.+=.+$') { throw "${where}: a dns probe expects name=answer" }
         if (@($list | Where-Object { $_.Name -ceq $svc.Name }).Count -gt 0) { throw "${where}: duplicate service name $($svc.Name)" }
         $list += $svc

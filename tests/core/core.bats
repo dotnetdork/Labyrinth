@@ -90,6 +90,29 @@ stub() {
   [ "$status" -eq 2 ]
 }
 
+@test "config: an http or https service may carry a path, and one without still loads" {
+  printf 'cart https www.example.test/shop/cart 443 Checkout\nsearch http www.example.test/find?q=a%%20b&n=1 80 -\nweb http www.example.test 80 Welcome\nv6 http ::1/x 80 -\n' > "$LAB_CONFIG_DIR/services"
+  lab_services_load
+  [ "${#LAB_SVC_NAME[@]}" -eq 4 ]
+  [ "${LAB_SVC_HOST[0]}" = www.example.test ]
+  [ "${LAB_SVC_PATH[0]}" = /shop/cart ]
+  [ "${LAB_SVC_PATH[1]}" = '/find?q=a%20b&n=1' ]
+  [ "${LAB_SVC_PATH[2]}" = / ]
+  [ "${LAB_SVC_HOST[3]}" = ::1 ]
+  [ "${LAB_SVC_PATH[3]}" = /x ]
+}
+
+@test "config: a malformed path is refused at load" {
+  for bad in 'web http h/a%2 80 -' 'web http h/a%zz 80 -' 'web http h/a<b 80 -' 'web http h/a"b 80 -' \
+    'web http h/a?b=c#d 80 -' 'web http h/a;b 80 -' 'web http http://h 80 -' 'web http h/http://x 80 -' \
+    'web http h/a b 80 -' 'web http h /a 80 -' 'web ftp h/a 21 -' 'web tcp h/a 80 -' 'web dns h/a 53 a=b'; do
+    printf '%s\n' "$bad" > "$LAB_CONFIG_DIR/services"
+    run lab_services_load
+    [ "$status" -eq 1 ] || { echo "accepted: $bad"; return 1; }
+    [[ "$output" == *"services:1"* ]]
+  done
+}
+
 @test "config: a file that cannot be read is an error, not an empty file" {
   [[ "$(id -u)" != 0 ]] || skip 'root reads every file'
   printf 'web http h 80 -\n' > "$LAB_CONFIG_DIR/services"
@@ -418,6 +441,29 @@ esac'
   [[ "$(lab_probe_service https www.example.test 443 - 5)" == 'fail status 503' ]]
   stub curl 'echo "curl: (7) Failed to connect" >&2; exit 7'
   [[ "$(lab_probe_service http www.example.test 80 - 5)" == fail* ]]
+}
+
+@test "probe: an http path is requested, and a missing content string fails while / passes" {
+  export URLS="$BATS_TEST_TMPDIR/urls"
+  stub curl 'printf "%s\n" "${@: -1}" >> "$URLS"
+case "${@: -1}" in
+  */shop/cart) printf "empty cart page\n200" ;;
+  *) printf "<h1>Welcome</h1>\n200" ;;
+esac'
+  [[ "$(lab_probe_service http www.example.test 80 Welcome 5)" == 'pass status 200' ]]
+  [[ "$(lab_probe_service http www.example.test 80 Welcome 5 /)" == 'pass status 200' ]]
+  [[ "$(lab_probe_service http www.example.test 80 Welcome 5 /shop/cart)" == 'fail status 200 but the expected text is missing' ]]
+  [[ "$(lab_probe_service https www.example.test 443 empty 5 /shop/cart)" == 'pass status 200' ]]
+  [ "$(cat "$URLS")" = "$(printf '%s\n' http://www.example.test:80/ http://www.example.test:80/ http://www.example.test:80/shop/cart https://www.example.test:443/shop/cart)" ]
+}
+
+@test "probe: lab_probe_all probes each service's own path" {
+  printf 'cart http www.example.test/shop/cart 80 Welcome\nhome http www.example.test 80 Welcome\n' > "$LAB_CONFIG_DIR/services"
+  lab_event_load
+  stub curl 'case "${@: -1}" in */shop/cart) printf "empty\n200" ;; *) printf "Welcome\n200" ;; esac'
+  out="$(lab_probe_all)"
+  [[ "$out" == *"cart fail "* ]]
+  [[ "$out" == *"home pass status 200"* ]]
 }
 
 @test "probe: dns through dig matches the expected answer" {

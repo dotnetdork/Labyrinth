@@ -21,7 +21,7 @@ declare -gA LAB_EVENT=()
 declare -gA LAB_PROTECTED=()
 declare -ga LAB_ADDRS=()
 declare -ga LAB_PRE_RULES=()
-declare -ga LAB_SVC_NAME=() LAB_SVC_PROTO=() LAB_SVC_HOST=() LAB_SVC_PORT=() LAB_SVC_EXPECT=()
+declare -ga LAB_SVC_NAME=() LAB_SVC_PROTO=() LAB_SVC_HOST=() LAB_SVC_PORT=() LAB_SVC_EXPECT=() LAB_SVC_PATH=()
 LAB_HOST_GROUP='' LAB_HOST_PROFILE='' LAB_HOST_PLATFORM=''
 
 # lab_trim STRING: print STRING without a trailing carriage return or
@@ -222,42 +222,58 @@ lab_preapproved_load() {
 }
 
 # lab_services_load: read the scored-service list into the LAB_SVC_* arrays.
-# Each line is "name proto host port expect". Missing or empty: return 2,
-# because an empty list is one nobody filled in, and a module that touches
-# scored services is blocked without one (docs/Conventions.md section 3.1).
+# Each line is "name proto host[/path] port expect"; only an http or https
+# host may carry a path, which LAB_SVC_PATH holds ('/' when there is none).
+# Missing or empty: return 2, because an empty list is one nobody filled in,
+# and a module that touches scored services is blocked without one
+# (docs/Conventions.md section 3.1).
 lab_services_load() {
-  local file="$LAB_CONFIG_DIR/services" i n line
-  local re='^([A-Za-z0-9_.-]+)[[:space:]]+([a-z0-9]+)[[:space:]]+([A-Za-z0-9.:_-]+)[[:space:]]+([0-9]{1,5})[[:space:]]+([^[:space:]]+)$'
-  LAB_SVC_NAME=() LAB_SVC_PROTO=() LAB_SVC_HOST=() LAB_SVC_PORT=() LAB_SVC_EXPECT=()
+  local file="$LAB_CONFIG_DIR/services" i n line name proto host path port expect
+  local re='^([A-Za-z0-9_.-]+)[[:space:]]+([a-z0-9]+)[[:space:]]+([A-Za-z0-9.:_-]+)(/[^[:space:]]*)?[[:space:]]+([0-9]{1,5})[[:space:]]+([^[:space:]]+)$'
+  # A path is URL-safe characters and %XX escapes, then an optional query.
+  local pathre='^/([A-Za-z0-9._~/+=&-]|%[0-9A-Fa-f]{2})*(\?([A-Za-z0-9._~/+=&-]|%[0-9A-Fa-f]{2})*)?$'
+  LAB_SVC_NAME=() LAB_SVC_PROTO=() LAB_SVC_HOST=() LAB_SVC_PORT=() LAB_SVC_EXPECT=() LAB_SVC_PATH=()
   [[ -f "$file" ]] || return 2
   lab_config_lines "$file" || return 1
   for ((i = 0; i < ${#LAB_CFG_LINES[@]}; i++)); do
     line="${LAB_CFG_LINES[i]}"
     n="${LAB_CFG_NOS[i]}"
-    [[ "$line" =~ $re ]] || { lab_cfg_error "$file" "$n" 'expected: name proto host port expect'; return 1; }
+    [[ "$line" =~ $re ]] || { lab_cfg_error "$file" "$n" 'expected: name proto host[/path] port expect'; return 1; }
+    name="${BASH_REMATCH[1]}" proto="${BASH_REMATCH[2]}" host="${BASH_REMATCH[3]}"
+    path="${BASH_REMATCH[4]}" port="${BASH_REMATCH[5]}" expect="${BASH_REMATCH[6]}"
     # The probes pass these to commands, where a leading '-' reads as an
     # option; a lone '-' is the "no expected text" placeholder.
-    if [[ "${BASH_REMATCH[1]}" == -* || "${BASH_REMATCH[3]}" == -* || "${BASH_REMATCH[5]}" == -?* ]]; then
+    if [[ "$name" == -* || "$host" == -* || "$expect" == -?* ]]; then
       lab_cfg_error "$file" "$n" "a value may not begin with '-'"
       return 1
     fi
-    lab_in_list "${BASH_REMATCH[2]}" "$LAB_PROBE_PROTOS" \
-      || { lab_cfg_error "$file" "$n" "unknown protocol ${BASH_REMATCH[2]}"; return 1; }
-    (( 10#${BASH_REMATCH[4]} >= 1 && 10#${BASH_REMATCH[4]} <= 65535 )) \
-      || { lab_cfg_error "$file" "$n" "port out of range: ${BASH_REMATCH[4]}"; return 1; }
-    if [[ "${BASH_REMATCH[2]}" == dns && "${BASH_REMATCH[5]}" != ?*=?* ]]; then
+    lab_in_list "$proto" "$LAB_PROBE_PROTOS" \
+      || { lab_cfg_error "$file" "$n" "unknown protocol $proto"; return 1; }
+    (( 10#$port >= 1 && 10#$port <= 65535 )) \
+      || { lab_cfg_error "$file" "$n" "port out of range: $port"; return 1; }
+    if [[ -n "$path" ]]; then
+      if [[ "$proto" != http && "$proto" != https ]]; then
+        lab_cfg_error "$file" "$n" "only an http or https service may have a path, not $proto"
+        return 1
+      fi
+      # '//' would let a scheme ('http://host') pass as a host and a path.
+      [[ "$path" != //* && "$path" =~ $pathre ]] \
+        || { lab_cfg_error "$file" "$n" 'the path must start with / and use only letters, digits, ._~/+=&- and %XX escapes, with an optional ?query'; return 1; }
+    fi
+    if [[ "$proto" == dns && "$expect" != ?*=?* ]]; then
       lab_cfg_error "$file" "$n" 'a dns probe expects name=answer'
       return 1
     fi
-    if lab_in_list "${BASH_REMATCH[1]}" "${LAB_SVC_NAME[*]-}"; then
-      lab_cfg_error "$file" "$n" "duplicate service name ${BASH_REMATCH[1]}"
+    if lab_in_list "$name" "${LAB_SVC_NAME[*]-}"; then
+      lab_cfg_error "$file" "$n" "duplicate service name $name"
       return 1
     fi
-    LAB_SVC_NAME+=("${BASH_REMATCH[1]}")
-    LAB_SVC_PROTO+=("${BASH_REMATCH[2]}")
-    LAB_SVC_HOST+=("${BASH_REMATCH[3]}")
-    LAB_SVC_PORT+=("$((10#${BASH_REMATCH[4]}))")
-    LAB_SVC_EXPECT+=("${BASH_REMATCH[5]}")
+    LAB_SVC_NAME+=("$name")
+    LAB_SVC_PROTO+=("$proto")
+    LAB_SVC_HOST+=("$host")
+    LAB_SVC_PATH+=("${path:-/}")
+    LAB_SVC_PORT+=("$((10#$port))")
+    LAB_SVC_EXPECT+=("$expect")
   done
   (( ${#LAB_SVC_NAME[@]} > 0 )) || return 2
 }
