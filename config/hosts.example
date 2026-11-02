@@ -4,6 +4,7 @@
 #              A host that is the only one of its kind goes in the last ring (design 03, section 6).
 #   platform : ubuntu (the whole Debian family; debian means the same) | rhel-family | windows | appliance
 # Placeholder names only.
+# Prepare it before the event and keep it private: manual, section 2, "Preparing the configuration".
 
 ws01     ring0   windows-member   windows
 util01   ring0   linux-server     ubuntu

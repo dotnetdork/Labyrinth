@@ -4,6 +4,7 @@
 # and the host's outbound dependencies (DNS resolvers, NTP servers, any proxy
 # or package mirror, and anything a scored service connects out to).
 # Placeholder (documentation) ranges only.
+# Prepare it before the event and keep it private: manual, section 2, "Preparing the configuration".
 
 198.51.100.0/28
 192.0.2.10
