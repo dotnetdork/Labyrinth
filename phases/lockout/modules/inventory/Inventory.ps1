@@ -540,11 +540,11 @@ function Write-InvFound {
     foreach ($l in $script:InvMapAll) { Write-Output "found: dependency: $l" }
 }
 
-# Write-InvDeps: merge the map into the dependency map file (a run only).
+# Write-InvMapFile: merge the map into the dependency map file (a run only).
 # Done before the slow kinds are collected, so the file the firewall needs
 # exists even if the rest of the run is cut short. Writes a did: line.
 # Throws when the state folder cannot be written.
-function Write-InvDeps {
+function Write-InvMapFile {
     $dir = Join-Path $env:LAB_STATE_DIR 'inventory'
     New-Item -ItemType Directory -Force -Path $dir | Out-Null
     if ($script:InvMapNote -ne '') { return }
@@ -581,7 +581,7 @@ function Invoke-InvCheck {
             $script:InvMapAll = @(Get-InvMapLine $services $data.Socket $data.Process $data.Iis)
         }
         if ($run) {
-            try { Write-InvDeps } catch {
+            try { Write-InvMapFile } catch {
                 Write-Output "problem: the dependency map could not be written under $(Join-Path $env:LAB_STATE_DIR 'inventory')"
                 $script:InvExit = 40
                 return
