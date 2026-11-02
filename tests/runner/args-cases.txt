@@ -26,6 +26,7 @@
 40|err|'probe' is not a phase. Did you mean '|probe
 40|err|'newseed' is not a phase. Did you mean '|newseed
 40|err|'seed-check' is not a phase. Did you mean '|seed-check
+40|err|'show' is not a phase. Did you mean '|show
 40|err|no phase or action given|-P test
 40|err|-r needs a phase|-r --root @ROOT@
 40|err|unexpected word 'extra' after 'observe'|observe extra
@@ -33,6 +34,7 @@
 40|err|unexpected word 'extra' after '-V'|-V extra
 40|err|unexpected word 'extra'|--probe extra
 40|err|unexpected word 'extra'|--history extra
+40|err|unexpected word 'extra' after|--show 4f2a extra
 40|err|takes no seed on the command line: it asks for one|--new-seed extra
 40|err|takes no seed on the command line: it asks for one|--seed-check extra
 40|err|unexpected word 'observe' after '-k'|observe -k
@@ -76,10 +78,12 @@
 #
 # One action per line.
 40|err|two actions on one line: -r and -k|-r observe -k 4f2a
+40|err|two actions on one line|-k 4f2a --show 4f2a
 40|err|two actions on one line: -k and -u|-k 4f2a -u 4f2a
 40|err|two actions on one line: -r and -V|-r observe -V
 40|err|two actions on one line: -k and -V|-k ../x -V
 40|err|is only for -u, not -k|-k 4f2a --all
+40|err|is only for -u, not |--show 4f2a --all
 40|err|is only for -u, not a preview|observe --all
 40|err|is only for -u, not the status|--all
 #
@@ -88,11 +92,13 @@
 40|err|-y is only for -u ID|-r observe --yes
 40|err|-y is only for -u ID|-y
 40|err|-y is only for -u ID|-k 4f2a -y
+40|err|-y is only for -u ID|--show 4f2a -y
 40|err|-y is only for -u ID|--seed-check -y
 40|err|-y is only for -u ID|--probe -y
 40|err|or leave out -y|-u 4f2a -y
 40|err|is only for -r, not a preview|observe --no-revert
 40|err|is only for -r, not -k|-k 4f2a --no-revert
+40|err|is only for -r, not |--show 4f2a --no-revert
 40|err|is only for -r, not the status|--no-revert
 #
 # An option error points to the help of the action the line names.
@@ -112,6 +118,9 @@
 40|err|-u needs a run ID, or its last 4 characters|-u --root @ROOT@ --config @ETC@
 40|err|not a run ID|-k ../x
 40|err|not a run ID|-u 12
+40|err|needs a run ID, or its last 4 characters|--show --root @ROOT@ --config @ETC@
+40|err|not a run ID|--show ../x
+40|err|not a run ID|--show 12
 #
 # Accepted spellings: each previews the observe phase (10).
 10|out|run |--profile test --root @ROOT@ --config @ETC@ observe

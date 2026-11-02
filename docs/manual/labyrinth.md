@@ -240,6 +240,7 @@ Labyrinth does **one action per line**. A phase on its own is a preview. Every o
 | Keep a run | `@CMD@ -k ID` | 0, 20 or 40 |
 | Undo a run | `@CMD@ -u ID [--all [-y]]` | 0, 20 or 40 |
 | List the runs | `@CMD@ --history` | 0, 20 or 40 |
+| List what a run changed | `@CMD@ --show ID` | 0, 20 or 40 |
 | Test the scored services | `@CMD@ --probe` | 0, 20, 30 or 40 |
 | Make this host's decoy seed | `@CMD@ --new-seed [-y]` | 0, 20 or 40 |
 | Check a seed you typed | `@CMD@ --seed-check` | 0, 20 or 30 |
@@ -256,6 +257,7 @@ Labyrinth does **one action per line**. A phase on its own is a preview. Every o
 | Keep a run | `@CMD@ -k ID` | 0, 20 or 40 |
 | Undo a run | `@CMD@ -u ID [-All [-y]]` | 0, 20 or 40 |
 | List the runs | `@CMD@ -History` | 0, 20 or 40 |
+| List what a run changed | `@CMD@ -Show ID` | 0, 20 or 40 |
 | Test the scored services | `@CMD@ -Probe` | 0, 20, 30 or 40 |
 | Make this host's decoy seed | `@CMD@ -NewSeed [-y]` | 0, 20 or 40 |
 | Check a seed you typed | `@CMD@ -SeedCheck` | 0, 20 or 30 |
@@ -410,6 +412,16 @@ this host's runs, oldest first, with the run ID, phase, start time (UTC) and sta
 
 Below the list, it shows how to name a run by its last four characters. Then it lists the logs of the runs that had problems (section 11). It changes nothing, but it must be run as @ADMIN@. Ends with 0, 20 when not run as @ADMIN@, and 40 on an error.
 
+## show *run*
+
+<!-- linux -->
+`--show` lists
+<!-- end -->
+<!-- windows -->
+`-Show` lists
+<!-- end -->
+what one run changed. Name the run by its ID or its last four characters; without one, it lists the runs and shows none. It shows the run's phase, profile, host, group, start and end (UTC) and state, then each module in run order with its status and every change it made. The status is `applied`, `kept once verified`, `undone`, `blocked, nothing changed`, or `failed` with what failed and whether it was undone. Each change shows what was done and to what, the previous value, and the backup folder, where Labyrinth recorded them. The last line gives the path of the run log. Passwords never appear, and the contents of backed-up files are never printed. It changes nothing, but it must be run as @ADMIN@. Ends with 0, 20 when not run as @ADMIN@, and 40 on an error.
+
 ## probe
 
 <!-- linux -->
@@ -446,7 +458,7 @@ for a seed at a prompt on the terminal and says whether it is a valid seed. Use 
 
 ## help (-h) [*topic*]
 
-Prints help for the whole program, or for one topic. A topic is an action (`run`, `keep`, `undo`, `history`, `probe`, `new-seed`, `seed-check`, `version`), an option (such as `profile` or `root`), a phase, or one of two more:
+Prints help for the whole program, or for one topic. A topic is an action (`run`, `keep`, `undo`, `history`, `show`, `probe`, `new-seed`, `seed-check`, `version`), an option (such as `profile` or `root`), a phase, or one of two more:
 
 - `@CMD@ -h basics` explains phases, modules, previews and runs, the history, the revert timer, keep, undo and scored services, in plain words, on one screen.
 - `@CMD@ -h <module-id>`, such as `@CMD@ -h lockout.firewall`, explains one module: its name, its phase and order, what it may change in plain words, whether it can affect a scored service, the platforms it runs on, its folder, and then its own page: what it checks and changes, why, what can go wrong, how to undo it, and what to do when it fails. Every warning, block, failure and error in the output names the page to read.
@@ -509,6 +521,7 @@ all work. A word that starts with a dash and holds a long name (even with one da
 | `-k`, `--keep ID` | Keep a run. The ID is always needed. | action |
 | `-u`, `--undo ID` | Undo a run. The ID is always needed. | action |
 | `--history` | List this host's runs. | action |
+| `--show ID` | List what one run changed. The ID is always needed. | action |
 | `--probe` | Test every scored service once. | action |
 | `--new-seed` | Make this host's decoy seed, show it once and save it. | action |
 | `--seed-check` | Check a seed you type at a prompt. | action |
@@ -534,6 +547,7 @@ Example: `sudo ./labyrinth.sh -r lockout --root /srv/labyrinth`
 | `-k`, `-Keep ID` | Keep a run. The ID is always needed. | action |
 | `-u`, `-Undo ID` | Undo a run. The ID is always needed. | action |
 | `-History` | List this host's runs. | action |
+| `-Show ID` | List what one run changed. The ID is always needed. | action |
 | `-Probe` | Test every scored service once. | action |
 | `-NewSeed` | Make this host's decoy seed, show it once and save it. | action |
 | `-SeedCheck` | Check a seed you type at a prompt. | action |
@@ -775,10 +789,10 @@ The run that is `armed` is the one to undo; its ID is also on the second line of
 **A module's `Problem:` line** says what stopped it. If the module gave no reason, Labyrinth says so, names the module's script on a `Script:` line, and in a preview shows the script's last lines as `It said:` lines. The `More:` line gives the command that explains the module.
 
 <!-- linux -->
-**"needs root".** `-r`, `-k`, `-u` and `--history` need full rights. Run the command again with `sudo`.
+**"needs root".** `-r`, `-k`, `-u`, `--history` and `--show` need full rights. Run the command again with `sudo`.
 <!-- end -->
 <!-- windows -->
-**"needs an elevated Administrator session".** `-r`, `-k`, `-u` and `-History` need full rights. Open PowerShell with **Run as administrator** and run the command again.
+**"needs an elevated Administrator session".** `-r`, `-k`, `-u`, `-History` and `-Show` need full rights. Open PowerShell with **Run as administrator** and run the command again.
 <!-- end -->
 
 <!-- linux -->

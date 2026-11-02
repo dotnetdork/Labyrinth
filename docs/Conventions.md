@@ -99,7 +99,7 @@ Both runners share one vocabulary. In this section `laby` stands for the install
 laby [PHASE] [options]          preview a phase
 laby -r PHASE [options]         run a phase
 laby [options]                  this host's status and the next step
-laby ACTION [ID] [options]      keep, undo, history, probe, new-seed, seed-check, version, manual, help
+laby ACTION [ID] [options]      keep, undo, history, show, probe, new-seed, seed-check, version, manual, help
 ```
 
 #### Commands
@@ -114,6 +114,7 @@ A line holds one **action**, or only a phase, or neither: then it is the status.
 | `laby -k ID` / `--keep ID` | Keep a run's changes: cancel its revert timer, then record the keep. The ID is always needed: `-k` alone is a usage error (`40`) that lists the armed runs and their IDs |
 | `laby -u ID` / `--undo ID` | Undo what a run applied, newest module first, except the modules kept once they verified (`keep_on_verify`, below); `--all` (only with `-u`) undoes those too, after a question (Questions, below). The revert timer runs exactly this form, which never asks. The ID is always needed: without it, the runs are listed (`40`). When it undid anything, it writes a notice to every terminal or session logged in on the host (`wall` on Linux, `msg` on Windows; best effort), so the team learns of an undo no one was watching |
 | `laby --history` | List this host's runs, oldest first: ID, phase, start time (UTC) and state, which is `armed` (with the time it is undone; on Linux, `armed: timer lost` when systemd no longer has the timer, because its unit files are missing or broken), `kept`, `no revert` (run with `--no-revert`), `undone`, `undone with errors`, or `not kept, no timer`. Changes nothing; needs root or Administrator (`20`) |
+| `laby --show ID` | List what one run changed, read-only: the run's phase, profile, host, group, start and end (UTC) and state, then each module in run order with its status and every change it made (action and target, the previous value, the note and the backup, where the manifest has them). A module's status is `applied`, `kept once verified`, `undone`, `blocked, nothing changed`, or `failed (apply exit N)`, `failed (verify exit N)` or `failed (a scored service stopped working)`, with `, then undone` when its changes were put back. The last line is `Log:` and the path of the run log, when it exists. The ID is always needed: without it, the runs are listed (`40`). Secrets are never shown, and no backup file is read. Needs root or Administrator (`20`). `-v` is planned (section 3.3) and not accepted with it yet |
 | `laby --probe` | Probe every scored service once; exit `30` if one fails. Changes nothing |
 | `laby --new-seed` | Make this host's decoy seed, save it as `DECOY_SEED` in `seed.conf` and show it once on the terminal until the operator types `recorded` (design 16, section 4.1). Needs root or Administrator and a terminal, and checks both (`20`) before it makes or saves anything. If the host already has a decoy seed, it asks first (Questions, below); `-y` answers yes. If the terminal goes before `recorded`, it puts `seed.conf` back as it was (`20`). The seed is never printed to standard output or logged. A `seed.conf` that cannot be read, or holds an invalid `DECOY_SEED`, is an error (`40`) |
 | `laby --seed-check` | Ask for a seed at a visible prompt on the terminal and say whether it is valid (exit `0`; not valid `30`; no terminal `20`). The seed is never taken from the command line or standard input. Reads no configuration, needs no root, and writes nothing |
@@ -135,6 +136,7 @@ A line holds one **action**, or only a phase, or neither: then it is the status.
 | | `--no-revert` | `-NoRevert` | none: arm no revert timer and ask nothing at the end, for test machines (No revert timer, below) | `-r` only |
 | | `--probe` | `-Probe` | none | action |
 | | `--history` | `-History` | none | action |
+| | `--show` | `-Show` | ID | action |
 | | `--new-seed` | `-NewSeed` | none | action |
 | | `--seed-check` | `-SeedCheck` | none | action |
 | `-P` | `--profile` | `-Profile` | NAME, `[a-z0-9-]+` | a phase |
@@ -151,7 +153,7 @@ A line holds one **action**, or only a phase, or neither: then it is the status.
 
 #### How the line is read
 
-- **One action per line:** `-r`, `-k`, `-u`, `--probe`, `--history`, `--new-seed`, `--seed-check`, `-V` or `--manual`. Two actions are a usage error (`40`). A phase word alone previews it. A line with neither an action nor a phase is the status, unless it gives `-P`, `--break-glass`, `--confirm-group` or `--approve`, which only a preview or a run uses: that line is a preview with its phase missing (`40`). Options may come before or after the action and its word.
+- **One action per line:** `-r`, `-k`, `-u`, `--probe`, `--history`, `--show`, `--new-seed`, `--seed-check`, `-V` or `--manual`. Two actions are a usage error (`40`). A phase word alone previews it. A line with neither an action nor a phase is the status, unless it gives `-P`, `--break-glass`, `--confirm-group` or `--approve`, which only a preview or a run uses: that line is a preview with its phase missing (`40`). Options may come before or after the action and its word.
 - **Case.** Short letters are case-sensitive: `-P` is the profile and `-V` the version, and `-p` and `-v` are errors with a near-miss suggestion. Long names ignore case and dashes, so PowerShell's `-Run`, `-Undo`, `-Profile`, `-BreakGlass` and `-Root` work, and each option has one name in both runners.
 - **Stacking.** Short letters may be joined, such as `-rv` once `-v` is built (section 3.3); today only `-r` and `-P` can share a stack (`-rP NAME`). A letter that takes a value comes last. A single dash before a word is read as a long name when the word is a long name (`-Undo`), and otherwise as a stack of letters, where a letter that is not a short flag is a usage error.
 - **Values** are given as `-k 7f3a`, `--keep 7f3a`, `--keep=7f3a` or `-Name:value`, and `--` ends the options. A run is never kept or undone by guess. PowerShell may hand `-k 0123` over as a number; the runner takes the raw text, never a number.
@@ -524,6 +526,7 @@ The manifest is `<state>/runs/<run>/manifest.jsonl`, one JSON object per line, e
 | `package_install` | The `packages` module installed a package; `target` is the package and `note` its version. Rollback stops and disables any service it brought and leaves the package installed (design 02, section 4) |
 | `finding_state` | A known flaw changed state in the vulnerability tracker; `target` is the flaw and host, `note` the new state and how. Nothing to undo; the change that closed it has its own entry (design 09, section 4) |
 | `approval_refused` | An approved item was left alone because it changed since the plan; `target` is the item id (section 3.1). Nothing to undo |
+| `module_failed` | The module's `apply` or `verify` failed, or a scored service got worse; `note` says which (`apply exit N`, `verify exit N`, `a scored service stopped working`). It comes before the module's `rolled_back` entry, so `--show ID` can tell a failure from an undo. Nothing to undo |
 | `module_kept` | The module verified and no scored service got worse, so it is kept: `-u ID` and the revert timer leave it alone until it is applied again; `-u ID --all` undoes it (design 00, section 4, rule 9) |
 | `rolled_back` | The module was undone |
 

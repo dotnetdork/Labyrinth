@@ -11,6 +11,7 @@
       .\labyrinth.ps1 -k ID            keep a run: cancel its revert timer
       .\labyrinth.ps1 -u ID [-All]     undo a run, newest change first
       .\labyrinth.ps1 -History         list this host's runs and their state
+      .\labyrinth.ps1 -Show ID         list what one run changed
       .\labyrinth.ps1 -Probe           test every scored service once
       .\labyrinth.ps1 -NewSeed         make this host's decoy seed
       .\labyrinth.ps1 -SeedCheck       check a seed typed at a prompt
@@ -119,6 +120,7 @@ $script:LabOptions = @(
     @{ Name = 'undo'; Show = '-u'; Long = '-Undo'; Key = 'undo'; Short = 'u'; Value = $true; Action = $true }
     @{ Name = 'probe'; Show = '-Probe'; Long = '-Probe'; Key = 'probe'; Short = ''; Value = $false; Action = $true }
     @{ Name = 'history'; Show = '-History'; Long = '-History'; Key = 'history'; Short = ''; Value = $false; Action = $true }
+    @{ Name = 'show'; Show = '-Show'; Long = '-Show'; Key = 'show'; Short = ''; Value = $true; Action = $true }
     @{ Name = 'new-seed'; Show = '-NewSeed'; Long = '-NewSeed'; Key = 'newseed'; Short = ''; Value = $false; Action = $true }
     @{ Name = 'seed-check'; Show = '-SeedCheck'; Long = '-SeedCheck'; Key = 'seedcheck'; Short = ''; Value = $false; Action = $true }
     @{ Name = 'version'; Show = '-V'; Long = '-Version'; Key = 'version'; Short = 'V'; Value = $false; Action = $true }
@@ -220,6 +222,7 @@ Actions (one per line):
   -k, --keep ID           keep a run: cancel its revert timer
   -u, --undo ID [--all]   undo a run, newest change first
       --history           list this host's runs  --probe   test every service
+      --show ID           list what a run changed
       --new-seed          make a decoy seed      --seed-check   check a seed
   -V, --version           print the version      --manual   the full manual
 
@@ -230,7 +233,6 @@ Options:
   --no-revert             with -r: no revert timer, for test machines
   --break-glass NAME, --confirm-group GROUP, --approve LIST: see -h run
   -h, --help [TOPIC]      help; TOPIC: an action, option, phase or basics
-
 Phases: lockout, observe, deceive, sustain. ID: a run ID or its last 4.
 Exit: 0 ok, 10 change needed, 20 blocked, 30 check failed, 40 error.
 Full manual: @CMD@ --manual   (Linux also: man laby)
@@ -303,6 +305,20 @@ Administrator.
 Exit: 0 listed, 20 not root, 40 error.
 Example: @CMD@ --history
 See also: @CMD@ -h keep, @CMD@ -h undo
+'@ }
+        'show' { @'
+Usage: @CMD@ --show ID [--root DIR] [--config DIR]
+
+List what one run changed: its phase, profile, host, group, start and
+end, and state; then each module in run order with its status and
+every change it made, with the backup and the previous value where
+it recorded them. ID is always needed: a run ID or its last 4
+characters. Without it, the runs are listed. The last line names the
+run log. Changes nothing; needs root or an Administrator.
+
+Exit: 0 shown, 20 not root, 40 error.
+Example: @CMD@ --show 4f2a
+See also: @CMD@ --history, @CMD@ -h undo
 '@ }
         'probe' { @'
 Usage: @CMD@ --probe [--root DIR] [--config DIR]
@@ -825,7 +841,7 @@ function Join-LabListWord {
 # Add-LabOption ROW SEP VAL: record the option in row ROW. SEP is the
 # separator typed before VAL ('' when none); an option that takes a value and
 # has none there takes the next word, unless that word looks like an option.
-# -k and -u go without a value, and main lists the runs.
+# -k, -u and -Show go without a value, and main lists the runs.
 function Add-LabOption {
     param($Row, [string] $Sep, [string] $Val)
     $name = $Row.Name
@@ -835,7 +851,7 @@ function Add-LabOption {
         $script:HelpAsked = $true
         return
     }
-    $optional = ($name -ceq 'keep' -or $name -ceq 'undo')
+    $optional = ($name -ceq 'keep' -or $name -ceq 'undo' -or $name -ceq 'show')
     if ($Row.Value) {
         # '-Name value', or a session's '-Name:' with the value as the next word.
         if ($Sep -eq '' -or ($Sep -eq ':' -and $Val -eq '')) {
@@ -1012,6 +1028,7 @@ function Exit-LabBadWord {
     elseif ($lc -ceq 'keep') { $hint = "$Self -k ID" }
     elseif ($lc -ceq 'undo') { $hint = "$Self -u ID" }
     elseif ($lc -ceq 'history') { $hint = "$Self -History" }
+    elseif ($lc -ceq 'show') { $hint = "$Self -Show ID" }
     elseif ($lc -ceq 'probe') { $hint = "$Self -Probe" }
     elseif ($lc -ceq 'newseed') { $hint = "$Self -NewSeed" }
     elseif ($lc -ceq 'seedcheck') { $hint = "$Self -SeedCheck" }
@@ -2430,6 +2447,7 @@ function Invoke-LabApplyOne {
     if ($rc -ne 0) {
         Write-LabStatus 'ERROR' $name
         Write-LabFailed 'apply' $rc $applyScript
+        try { Add-LabEntryFor $id 'module_failed' '' "apply exit $rc" } catch { $null = $_ }
         $M.State = 'error'
         [void](Undo-LabModule $id -Inline)
         Write-LabLogPath; Write-LabMore $id
@@ -2444,6 +2462,7 @@ function Invoke-LabApplyOne {
             Write-LabStatus 'FAIL' $name
             Write-LabFailed 'verify' $rc $verifyScript
             Write-LabLogFor $id 'error' 'verify_failed' "verify exited $rc"
+            try { Add-LabEntryFor $id 'module_failed' '' "verify exit $rc" } catch { $null = $_ }
             $M.State = 'failed'
             if ((Undo-LabModule $id -Inline) -ne 0) { $M.State = 'error' }
             Write-LabLogPath; Write-LabMore $id
@@ -2460,6 +2479,7 @@ function Invoke-LabApplyOne {
             Write-LabDetail 'Problem' "a scored service stopped working after the change: $($reg -join ', ')"
             Write-LabProbeLine $after $reg
             Write-LabLogFor $id 'error' 'regression' "scored service regressed: $($reg -join ' ')"
+            try { Add-LabEntryFor $id 'module_failed' '' 'a scored service stopped working' } catch { $null = $_ }
             $M.State = 'failed'
             if ((Undo-LabModule $id -Inline) -ne 0) { $M.State = 'error' }
             Write-LabLogPath; Write-LabMore $id
@@ -2943,6 +2963,123 @@ function Invoke-LabRunsCommand {
         foreach ($id in $problems) {
             Write-LabLine ('  {0}  {1}' -f (Get-LabShortId $id), (Join-Path (Get-LabRunDir $id) 'output.log'))
         }
+    }
+    exit 0
+}
+
+# Format-LabShowTime TS: a manifest time, 2026-10-02T14:03:07Z, as
+# 2026-10-02 14:03:07 UTC.
+function Format-LabShowTime {
+    param([string] $Ts)
+    if ($Ts -match '^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2}:\d{2})Z$') { return "$($Matches[1]) $($Matches[2]) UTC" }
+    if ($Ts -eq '') { return 'unknown' }
+    return $Ts
+}
+
+# Write-LabShowModule ID ENTRIES: one module's block of -Show. Its status is
+# the last of apply_start (applied), module_failed, module_kept and
+# rolled_back (docs/Conventions.md section 7); its changes are every other
+# entry, in the order they were recorded.
+function Write-LabShowModule {
+    param([string] $Id, [object[]] $Entries)
+    $status = ''
+    $failed = $false
+    $changes = @()
+    $skipped = @()
+    foreach ($e in $Entries) {
+        if ($e.module -cne $Id) { continue }
+        $action = [string] $e.action
+        $note = [string] $e.note
+        if ($action -ceq 'apply_start') { $status = 'applied'; $failed = $false }
+        elseif ($action -ceq 'module_failed') { $status = "failed ($note)"; $failed = $true }
+        elseif ($action -ceq 'module_kept') { $status = 'kept once verified' }
+        elseif ($action -ceq 'rolled_back') {
+            if ($note.StartsWith('apply blocked', [StringComparison]::Ordinal)) { $status = 'blocked, nothing changed' }
+            elseif ($failed) { $status += ', then undone' }
+            else { $status = 'undone' }
+        }
+        elseif ($action -ceq 'approval_refused') { $skipped += "$($e.target) ($note)" }
+        else { $changes += $e }
+    }
+    if ($status -eq '') { $status = 'recorded only' }
+    Write-LabLine ''
+    Write-LabLine ('Module: ' + (Get-LabSafeText (Get-LabModuleName $Id)))
+    Write-LabDetail 'Status' $status
+    foreach ($c in $changes) {
+        $what = [string] $c.action
+        if ([string] $c.target -ne '') { $what += " $($c.target)" }
+        Write-LabDetail 'Change' $what
+        if ([string] $c.prev -ne '') { Write-LabDetail 'Before' ([string] $c.prev) }
+        if ([string] $c.note -ne '') { Write-LabDetail 'Note' ([string] $c.note) }
+        if ([string] $c.backup -ne '') { Write-LabDetail 'Backup' ([string] $c.backup) }
+    }
+    if ($changes.Count -eq 0) { Write-LabDetail 'Changes' 'none recorded' }
+    foreach ($s in $skipped) { Write-LabDetail 'Skipped' $s }
+}
+
+# Invoke-LabShowCommand REF: list what one run changed, from its manifest
+# (docs/Conventions.md section 3.1). It reads, and writes nothing.
+function Invoke-LabShowCommand {
+    param([string] $Ref)
+    if ($Ref -eq '') {
+        # -Show always needs a run, like -u: list them, show none.
+        $need = '-Show needs a run ID, or its last 4 characters'
+        if (-not (Test-LabAdmin)) { Exit-LabUsage $need "As Administrator, '$Self -History' lists them." }
+        $runs = @(Get-LabRunList)
+        if ($runs.Count -eq 0) { Exit-LabUsage $need 'There are no runs on this host.' }
+        foreach ($l in (Get-LabRunTable $runs)) { [Console]::Error.WriteLine($l) }
+        Exit-LabUsage $need 'Pick one from the list above.'
+    }
+    if (-not (Test-LabAdmin)) { Exit-Lab '-Show needs an elevated Administrator session' 20 $FixAdmin }
+    $id = Resolve-LabRunId $Ref
+    $path = Get-LabManifestPath $id
+    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { Exit-Lab "no run $id on this host" 40 "'$Self -History' lists them." }
+    Write-LabPendingWarning
+    $entries = @()
+    $first = ''
+    $last = ''
+    $hostName = ''
+    $phase = '-'
+    $profileText = '-'
+    $group = '-'
+    $mods = @()
+    foreach ($line in [IO.File]::ReadAllLines($path)) {
+        if ($line.Trim() -eq '') { continue }
+        $e = $line | ConvertFrom-Json
+        $entries += $e
+        # The time is read from the line: ConvertFrom-Json turns it into a date.
+        $ts = ''
+        if ($line -match '"ts":"([^"]*)"') { $ts = $Matches[1] }
+        if ($first -eq '') { $first = $ts }
+        $last = $ts
+        if ($hostName -eq '') { $hostName = [string] $e.host }
+        $mod = [string] $e.module
+        if ($mod -ne '' -and $mods -cnotcontains $mod) { $mods += $mod }
+        if ($e.action -ceq 'run_start' -and ([string] $e.note) -cmatch '^phase ([^,]*), profile ([^,]*), group (.*)$') {
+            $phase = $Matches[1]; $profileText = $Matches[2]; $group = $Matches[3]
+        }
+    }
+    foreach ($mod in $mods) {
+        if ($mod -cmatch $ReModuleId) { Import-LabModuleTitle $mod }
+    }
+    if ($hostName -eq '') { $hostName = 'unknown' }
+    Write-LabLine "Run $id"
+    Write-LabDetail 'Phase' $phase
+    Write-LabDetail 'Profile' $profileText
+    Write-LabDetail 'Host' $hostName
+    Write-LabDetail 'Group' $group
+    Write-LabDetail 'Started' (Format-LabShowTime $first)
+    Write-LabDetail 'Ended' (Format-LabShowTime $last)
+    Write-LabDetail 'State' (Get-LabRunState $id)
+    foreach ($mod in $mods) { Write-LabShowModule $mod $entries }
+    if ($mods.Count -eq 0) {
+        Write-LabLine ''
+        Write-LabLine 'This run changed no modules.'
+    }
+    $log = Join-Path (Get-LabRunDir $id) 'output.log'
+    if (Test-Path -LiteralPath $log -PathType Leaf) {
+        Write-LabLine ''
+        Write-LabLine "Log: $log"
     }
     exit 0
 }
@@ -3460,7 +3597,7 @@ try {
             $label = '-r'
             $used = @('profile', 'break-glass', 'confirm-group', 'approve')
         }
-    } elseif ($action -ceq 'keep' -or $action -ceq 'undo') {
+    } elseif ($action -ceq 'keep' -or $action -ceq 'undo' -or $action -ceq 'show') {
         $word = [string] $script:Given[$action]
         $after = Get-LabShow $action
         if ($word -ne '') { $after += " $word" }
@@ -3544,6 +3681,7 @@ try {
         'rollback' { Invoke-LabRollbackCommand $word }
         'probe' { Invoke-LabProbeCommand }
         'runs' { Invoke-LabRunsCommand }
+        'show' { Invoke-LabShowCommand $word }
         'newseed' { Invoke-LabNewSeedCommand }
     }
 } catch {

@@ -9,7 +9,7 @@ setup() { lab_setup; }
 
 # Every topic with a page of its own: the actions, the options and the
 # phases. Basics is the one screen that is longer.
-ACTIONS='run keep undo history probe new-seed seed-check version manual'
+ACTIONS='run keep undo history show probe new-seed seed-check version manual'
 OPTIONS='profile root config break-glass confirm-group approve all yes no-revert'
 PHASES='lockout observe deceive sustain'
 TOPICS="$ACTIONS $OPTIONS $PHASES"
@@ -191,7 +191,7 @@ here() { cd "$LAB" && run bash ./labyrinth.sh "$@" < /dev/null; }
   for p in linux windows; do
     run bash "$REPO/tools/manual/split.sh" "$p"
     [ "$status" -eq 0 ]
-    for c in status preview run keep undo history probe new-seed seed-check version manual help; do
+    for c in status preview run keep undo history show probe new-seed seed-check version manual help; do
       grep -Eq "^## $c( |\$)" <<< "$output" || { echo "$p manual: no section for $c"; return 1; }
     done
   done
@@ -199,7 +199,7 @@ here() { cd "$LAB" && run bash ./labyrinth.sh "$@" < /dev/null; }
 
 @test "the actions that need root say so, and -h history names every state" {
   local t s
-  for t in run keep undo history probe new-seed; do
+  for t in run keep undo history show probe new-seed; do
     ask -h "$t"
     grep -qi 'needs root' <<< "$output" || { echo "-h $t: no root note"; return 1; }
   done

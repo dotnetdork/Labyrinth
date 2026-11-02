@@ -3,7 +3,7 @@
 This page shows the commands a person types to run Labyrinth, with what each one does and when to use it. It is written for teammates learning the tool, not for the people building it.
 
 > [!NOTE]
-> **Working now and planned.** The status, preview, run, keep, undo, history, probe, the decoy seed commands, help, the manual and the version work now. Parts marked **Planned** are not built yet; each names its stage (Roadmap). The installer (`sudo ./install.sh` on Linux, `.\install.ps1` as Administrator on Windows) adds the commands `laby` and `labyrinth`; without it, `laby` means `./labyrinth.sh` on Linux or `.\labyrinth.ps1` on Windows, run from the release folder. The exact rules, including every flag and every edge case, are in [Conventions, section 3.1](Conventions.md#31-commands-options-gates-and-the-order-of-an-apply) for what works now and [section 3.3](Conventions.md#33-automatic-runs-and-the-rest-of-the-command-line-specified-planned) for what is planned; if this page and Conventions ever disagree, Conventions wins.
+> **Working now and planned.** The status, preview, run, keep, undo, history, show, probe, the decoy seed commands, help, the manual and the version work now. Parts marked **Planned** are not built yet; each names its stage (Roadmap). The installer (`sudo ./install.sh` on Linux, `.\install.ps1` as Administrator on Windows) adds the commands `laby` and `labyrinth`; without it, `laby` means `./labyrinth.sh` on Linux or `.\labyrinth.ps1` on Windows, run from the release folder. The exact rules, including every flag and every edge case, are in [Conventions, section 3.1](Conventions.md#31-commands-options-gates-and-the-order-of-an-apply) for what works now and [section 3.3](Conventions.md#33-automatic-runs-and-the-rest-of-the-command-line-specified-planned) for what is planned; if this page and Conventions ever disagree, Conventions wins.
 
 ## The idea in one paragraph
 
@@ -108,6 +108,12 @@ laby --history
 
 List this host's runs with their IDs, to find the one to keep or undo. Every keep and undo needs an ID on purpose, so a run is never kept or undone by guesswork. The last four characters of the ID are enough.
 
+```
+laby --show 7f3a
+```
+
+List what that run changed: its phase, profile, host, group, start and end, and state, then each module with its status and every change it made, with the previous value and the backup where there is one. Use it to undo something by hand, to explain a change to a reviewer, or to see whether a run touched SSH. It changes nothing, and passwords never appear. The last line gives the run log, which holds everything the run printed.
+
 ## Checking the services
 
 ```
@@ -161,6 +167,7 @@ laby -r lockout          run it; open a new login, check it, type keep
 laby observe             preview the next phase
 laby -r observe          then the later phases, in order
 laby --history           find a run's ID
+laby --show 7f3a         see what that run changed
 laby --probe             re-check the scored services at any time
 laby --new-seed          make this host's decoy seed, once
 ```
