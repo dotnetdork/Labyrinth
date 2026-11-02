@@ -22,11 +22,11 @@ lab_probe_exchange() {
   timeout "$3" bash -c 'exec 3<>"/dev/tcp/$1/$2" || exit 1; printf "%s" "$3" >&3; head -c 65536 <&3 | tr -d "\000"' _ "$1" "$2" "$4"  # lab-guard: allow network -- probe of a listed scored service inside the event network
 }
 
-# lab_probe_banner HOST PORT TIMEOUT: connect and print the first line the
-# service sends, then say QUIT politely.
+# lab_probe_banner HOST PORT TIMEOUT [QUIT]: connect and print the first line
+# the service sends, then say QUIT (or the given closing line) politely.
 lab_probe_banner() {
   # shellcheck disable=SC2016 # the inner script expands its own arguments
-  timeout "$3" bash -c 'exec 3<>"/dev/tcp/$1/$2" || exit 1; IFS= read -r line <&3 || exit 3; printf "%s" "$line"; printf "QUIT\r\n" >&3' _ "$1" "$2"  # lab-guard: allow network -- probe of a listed scored service inside the event network
+  timeout "$3" bash -c 'exec 3<>"/dev/tcp/$1/$2" || exit 1; IFS= read -r line <&3 || exit 3; printf "%s" "$line"; printf "%s\r\n" "$3" >&3' _ "$1" "$2" "${4:-QUIT}"  # lab-guard: allow network -- probe of a listed scored service inside the event network
 }
 
 # lab_probe_connect HOST PORT TIMEOUT: can a TCP connection be opened?
@@ -102,10 +102,10 @@ lab_probe_dns() {
   printf 'fail %s did not answer %s\n' "$qname" "$answer"
 }
 
-# lab_probe_banner_check HOST PORT TIMEOUT PREFIX EXPECT
+# lab_probe_banner_check HOST PORT TIMEOUT PREFIX EXPECT [QUIT]
 lab_probe_banner_check() {
   local banner
-  banner="$(lab_probe_banner "$1" "$2" "$3")" || banner=''
+  banner="$(lab_probe_banner "$1" "$2" "$3" "${6:-QUIT}")" || banner=''
   banner="${banner%$'\r'}"
   if [[ -z "$banner" ]]; then
     printf 'fail no banner\n'
@@ -132,7 +132,7 @@ lab_probe_service() {
   case "$proto" in
     smtp) lab_probe_banner_check "$host" "$port" "$t" 220 "$expect" ;;
     pop3) lab_probe_banner_check "$host" "$port" "$t" '+OK' "$expect" ;;
-    imap) lab_probe_banner_check "$host" "$port" "$t" '* OK' "$expect" ;;
+    imap) lab_probe_banner_check "$host" "$port" "$t" '* OK' "$expect" 'a1 LOGOUT' ;;
     ftp) lab_probe_banner_check "$host" "$port" "$t" 220 "$expect" ;;
     tcp)
       if [[ "$expect" != - ]]; then

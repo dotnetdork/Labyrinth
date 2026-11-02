@@ -11,7 +11,7 @@
 # Each probe gives one line: "<result> <detail>", result pass, fail or unknown.
 
 # Invoke-LabTcpExchange: connect; optionally send text; return the first
-# line (-FirstLine, then say QUIT) or up to 64 KiB of the reply. $null when
+# line (-FirstLine, then say -Quit, QUIT by default) or up to 64 KiB of the reply. $null when
 # the connection fails.
 function Invoke-LabTcpExchange {
     param(
@@ -20,6 +20,7 @@ function Invoke-LabTcpExchange {
         [Parameter(Mandatory)] [int] $Timeout,
         [string] $Send = '',
         [switch] $FirstLine,
+        [string] $Quit = 'QUIT',
         [switch] $ConnectOnly
     )
     $client = New-Object Net.Sockets.TcpClient  # lab-guard: allow network -- probe of a listed scored service inside the event network
@@ -36,7 +37,7 @@ function Invoke-LabTcpExchange {
         if ($FirstLine) {
             $reader = New-Object IO.StreamReader($stream, [Text.Encoding]::ASCII)
             $line = $reader.ReadLine()
-            $quit = [Text.Encoding]::ASCII.GetBytes("QUIT`r`n")
+            $quit = [Text.Encoding]::ASCII.GetBytes("$Quit`r`n")
             try { $stream.Write($quit, 0, $quit.Length) } catch { $null = $_ }
             return $line
         }
@@ -127,7 +128,7 @@ function Invoke-LabProbe {
     }
     $prefix = @{ smtp = '220'; pop3 = '+OK'; imap = '* OK'; ftp = '220'; tcp = '' }
     if (-not $prefix.ContainsKey($Proto)) { return "unknown unsupported protocol $Proto" }
-    $banner = Invoke-LabTcpExchange -Target $Target -Port $Port -Timeout $Timeout -FirstLine
+    $banner = Invoke-LabTcpExchange -Target $Target -Port $Port -Timeout $Timeout -FirstLine -Quit $(if ($Proto -eq 'imap') { 'a1 LOGOUT' } else { 'QUIT' })
     if (-not $banner) { return 'fail no banner' }
     if ($prefix[$Proto] -ne '' -and -not $banner.StartsWith($prefix[$Proto])) { return 'fail unexpected banner' }
     if ($Expect -ne '-' -and -not $banner.Contains($Expect)) { return 'fail the banner lacks the expected text' }

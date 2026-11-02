@@ -19,14 +19,15 @@ BeforeAll {
     # Open-TestServer -Mode http|banner [-Reply TEXT] [-Count N]: a stand-in
     # service on a free loopback port, answering N connections from another
     # runspace. Mode http answers a GET with a page whose text depends on the
-    # path; Mode banner sends -Reply, or stays silent when it is empty.
+    # path; Mode banner sends -Reply, or stays silent when it is empty. With
+    # -Log, a banner server appends what the client sends back to that file.
     function Open-TestServer {
-        param([string] $Mode, [string] $Reply = '', [int] $Count = 1)
+        param([string] $Mode, [string] $Reply = '', [int] $Count = 1, [string] $Log = '')
         $listener = New-Object Net.Sockets.TcpListener ([Net.IPAddress]::Loopback), 0
         $listener.Start()
         $shell = [powershell]::Create()
         $null = $shell.AddScript({
-                param($Listener, $Mode, $Reply, $Count)
+                param($Listener, $Mode, $Reply, $Count, $Log)
                 for ($i = 0; $i -lt $Count; $i++) {
                     $c = $Listener.AcceptTcpClient()
                     try {
@@ -43,12 +44,19 @@ BeforeAll {
                             $b = [Text.Encoding]::ASCII.GetBytes($out)
                             $s.Write($b, 0, $b.Length)
                             $s.Flush()
+                            if ($Log) {
+                                # What the client says back, such as its closing line.
+                                $s.ReadTimeout = 2000
+                                $buf = New-Object byte[] 100
+                                try { $n = $s.Read($buf, 0, $buf.Length) } catch { $n = 0 }
+                                [IO.File]::AppendAllText($Log, [Text.Encoding]::ASCII.GetString($buf, 0, $n))
+                            }
                         } else {
                             Start-Sleep -Seconds 4
                         }
                     } catch { $null = $_ } finally { $c.Close() }
                 }
-            }).AddArgument($listener).AddArgument($Mode).AddArgument($Reply).AddArgument($Count)
+            }).AddArgument($listener).AddArgument($Mode).AddArgument($Reply).AddArgument($Count).AddArgument($Log)
         $null = $shell.BeginInvoke()
         return [pscustomobject]@{ Port = $listener.LocalEndpoint.Port; Listener = $listener; Shell = $shell }
     }
@@ -493,6 +501,29 @@ Describe 'core library' {
             Invoke-LabProbe -Proto imap -Target 127.0.0.1 -Port $srv.Port -Expect 'Dovecot' -Timeout 5 | Should -Be 'pass banner received'
             Invoke-LabProbe -Proto imap -Target 127.0.0.1 -Port $srv.Port -Expect 'Cyrus' -Timeout 5 |
                 Should -Be 'fail the banner lacks the expected text'
+        } finally {
+            Close-TestServer $srv
+        }
+    }
+
+    It 'probe: an imap probe closes with LOGOUT, and a pop3 probe still with QUIT' {
+        $log = Join-Path $TestDrive ([Guid]::NewGuid().ToString('N'))
+        $srv = Open-TestServer -Mode banner -Reply "* OK IMAP4rev1 ready`r`n" -Log $log
+        try {
+            Invoke-LabProbe -Proto imap -Target 127.0.0.1 -Port $srv.Port -Expect '-' -Timeout 5 | Should -Be 'pass banner received'
+            $end = (Get-Date).AddSeconds(5)
+            while (-not (Test-Path -LiteralPath $log) -and (Get-Date) -lt $end) { Start-Sleep -Milliseconds 100 }
+            (Get-Content -LiteralPath $log -Raw).Trim() | Should -Be 'a1 LOGOUT'
+        } finally {
+            Close-TestServer $srv
+        }
+        $log = Join-Path $TestDrive ([Guid]::NewGuid().ToString('N'))
+        $srv = Open-TestServer -Mode banner -Reply "+OK POP3 ready`r`n" -Log $log
+        try {
+            Invoke-LabProbe -Proto pop3 -Target 127.0.0.1 -Port $srv.Port -Expect '-' -Timeout 5 | Should -Be 'pass banner received'
+            $end = (Get-Date).AddSeconds(5)
+            while (-not (Test-Path -LiteralPath $log) -and (Get-Date) -lt $end) { Start-Sleep -Milliseconds 100 }
+            (Get-Content -LiteralPath $log -Raw).Trim() | Should -Be 'QUIT'
         } finally {
             Close-TestServer $srv
         }

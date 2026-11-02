@@ -468,7 +468,8 @@ esac'
 
 # serve REPLY COUNT: a stand-in service on a free loopback port that sends
 # REPLY (escapes such as \r\n allowed; empty means silence) to each of COUNT
-# connections. Sets SERVE_PORT and SERVE_PID.
+# connections, and appends what each client sends back to $BATS_TEST_TMPDIR/
+# serve.port.got. Sets SERVE_PORT and SERVE_PID.
 serve() {
   cat > "$BATS_TEST_TMPDIR/serve.py" <<'PY'
 import socket, sys, time
@@ -481,7 +482,12 @@ for _ in range(int(sys.argv[3])):
     c, _ = srv.accept()
     if reply:
         c.sendall(reply)
-        time.sleep(0.3)
+        c.settimeout(2)
+        try:
+            got = c.recv(100)
+        except socket.timeout:
+            got = b""
+        open(sys.argv[1] + ".got", "ab").write(got)
     else:
         time.sleep(5)
     c.close()
@@ -508,6 +514,23 @@ PY
   [[ "$(lab_probe_service imap 127.0.0.1 "$SERVE_PORT" - 5)" == 'pass banner received' ]]
   [[ "$(lab_probe_service imap 127.0.0.1 "$SERVE_PORT" Dovecot 5)" == 'pass banner received' ]]
   [[ "$(lab_probe_service imap 127.0.0.1 "$SERVE_PORT" Cyrus 5)" == 'fail the banner lacks the expected text' ]]
+  kill "$SERVE_PID" 2> /dev/null || true
+}
+
+@test "probe: an imap probe closes with LOGOUT, and a pop3 probe still with QUIT" {
+  command -v timeout > /dev/null || skip 'no timeout command'
+  command -v python3 > /dev/null || skip 'python3 is needed for the stand-in server'
+  rm -f "$BATS_TEST_TMPDIR/serve.port.got"
+  serve '* OK IMAP4rev1 ready\r\n' 1
+  [[ "$(lab_probe_service imap 127.0.0.1 "$SERVE_PORT" - 5)" == 'pass banner received' ]]
+  for _ in $(seq 1 30); do [ -s "$BATS_TEST_TMPDIR/serve.port.got" ] && break; sleep 0.1; done
+  [ "$(tr -d '\r' < "$BATS_TEST_TMPDIR/serve.port.got")" = 'a1 LOGOUT' ]
+  kill "$SERVE_PID" 2> /dev/null || true
+  rm -f "$BATS_TEST_TMPDIR/serve.port.got"
+  serve '+OK POP3 ready\r\n' 1
+  [[ "$(lab_probe_service pop3 127.0.0.1 "$SERVE_PORT" - 5)" == 'pass banner received' ]]
+  for _ in $(seq 1 30); do [ -s "$BATS_TEST_TMPDIR/serve.port.got" ] && break; sleep 0.1; done
+  [ "$(tr -d '\r' < "$BATS_TEST_TMPDIR/serve.port.got")" = QUIT ]
   kill "$SERVE_PID" 2> /dev/null || true
 }
 
