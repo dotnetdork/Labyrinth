@@ -12,7 +12,7 @@ BeforeAll {
     $t = Initialize-TestLab
     # Every topic with a page of its own; the basics page is longer.
     $topics = @('run', 'keep', 'undo', 'history', 'show', 'probe', 'new-seed', 'seed-check', 'version', 'manual',
-        'profile', 'root', 'config', 'break-glass', 'confirm-group', 'approve', 'all', 'yes', 'no-revert',
+        'profile', 'root', 'config', 'break-glass', 'confirm-group', 'approve', 'all', 'yes', 'no-revert', 'only', 'skip',
         'lockout', 'observe', 'deceive', 'sustain')
     $mainFirst = 'Usage: laby PHASE                preview a phase: nothing changes'
 
@@ -279,7 +279,7 @@ Describe 'labyrinth.ps1 help' {
         $h = Get-Help (Join-Path $script:Repo 'labyrinth.ps1') -Full
         $text = (($h.Description | ForEach-Object { $_.Text }) -join ' ')
         foreach ($o in @('-Profile', '-Root', '-Config', '-BreakGlass', '-ConfirmGroup', '-Approve', '-All', '-History', '-Probe', '-Help', '-Version',
-                '-Manual', '-Yes', '-NoRevert')) {
+                '-Manual', '-Yes', '-NoRevert', '-Only', '-Skip')) {
             $text | Should -Match ('(^|\s){0}\b' -f [regex]::Escape($o)) -Because "Get-Help: $o"
         }
     }

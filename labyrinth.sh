@@ -126,11 +126,11 @@ NAME="${SELF#sudo }"   # the name as typed, for the start of a usage error
 # name, the key its long name is matched by (lower case, no dashes), whether
 # it takes a value, its short letter, if it has one, and whether it is an
 # action. Short letters are case-sensitive; long names are not.
-readonly -a OPT_NAMES=(run keep undo probe history show new-seed seed-check version manual all profile root config break-glass confirm-group approve yes no-revert help)
-readonly -a OPT_KEYS=(run keep undo probe history show newseed seedcheck version manual all profile root config breakglass confirmgroup approve yes norevert help)
-readonly -a OPT_VALUE=(0 1 1 0 0 1 0 0 0 0 0 1 1 1 1 1 1 0 0 0)
-readonly -a OPT_SHORT=(r k u '' '' '' '' '' V '' '' P '' '' '' '' '' y '' h)
-readonly -a OPT_ACTION=(1 1 1 1 1 1 1 1 1 1 0 0 0 0 0 0 0 0 0 0)
+readonly -a OPT_NAMES=(run keep undo probe history show new-seed seed-check version manual all profile root config break-glass confirm-group approve yes no-revert only skip help)
+readonly -a OPT_KEYS=(run keep undo probe history show newseed seedcheck version manual all profile root config breakglass confirmgroup approve yes norevert only skip help)
+readonly -a OPT_VALUE=(0 1 1 0 0 1 0 0 0 0 0 1 1 1 1 1 1 0 0 1 1 0)
+readonly -a OPT_SHORT=(r k u '' '' '' '' '' V '' '' P '' '' '' '' '' y '' '' '' h)
+readonly -a OPT_ACTION=(1 1 1 1 1 1 1 1 1 1 0 0 0 0 0 0 0 0 0 0 0 0)
 # The flags that docs/Conventions.md section 3.3 plans and nothing builds yet,
 # one row each: the short letter, the long name's match key ('' when the name
 # is already an option) and how a message shows it. Typing one is a usage
@@ -190,7 +190,6 @@ help_page() {
 Usage: @CMD@ PHASE                preview a phase: nothing changes
        @CMD@ -r PHASE             run a phase for real
        @CMD@                      this host's status and next step
-       @CMD@ ACTION [OPTIONS]
 
 Actions (one per line):
   -r, --run               run a phase: plan, confirm, change
@@ -206,6 +205,7 @@ Options:
   --root DIR              data root         --config DIR   configuration
   -y, --yes               yes to the question before -u ID --all or --new-seed
   --no-revert             with -r: no revert timer, for test machines
+  --only LIST, --skip LIST  just these modules, or all but them: -h only
   --break-glass NAME, --confirm-group GROUP, --approve LIST: see -h run
   -h, --help [TOPIC]      help; TOPIC: an action, option, phase or basics
 Phases: lockout, observe, deceive, sustain. ID: a run ID or its last 4.
@@ -398,6 +398,37 @@ Used by: -r only.
 Exit: 40 if given with anything else.
 Example: @CMD@ -r observe --no-revert
 See also: @CMD@ -h run, @CMD@ -h undo
+EOF
+    ;;
+    only) cat <<'EOF'
+Usage: @CMD@ [-r] PHASE --only LIST
+
+Preview or run just the modules in LIST: module IDs of the phase,
+separated by commas. Everything else is as in a full run: the same
+gates, backups, revert timer and keep question. A module that needs
+one you left out is blocked (20) before anything changes. Left out
+lockout.inventory in a run needs a dependency map from an earlier run.
+The header and summary say the run is partial. Used by: a preview, -r.
+
+Exit: 40 for an unknown ID, or --only with --skip; 20 for a blocked one.
+Example: @CMD@ -r lockout --only lockout.inventory,lockout.firewall
+See also: @CMD@ -h skip, @CMD@ -h run
+EOF
+    ;;
+    skip) cat <<'EOF'
+Usage: @CMD@ [-r] PHASE --skip LIST
+
+Preview or run every module of the phase but those in LIST: module
+IDs of the phase, separated by commas. Everything else is as in a
+full run: the same gates, backups, revert timer and keep question. A
+module that needs one you left out is blocked (20) before anything
+changes. Skipping lockout.inventory in a run needs a dependency map
+from an earlier run. The header and summary say the run is partial.
+Used by: a preview, -r.
+
+Exit: 40 for an unknown ID, or --skip with --only; 20 for a blocked one.
+Example: @CMD@ lockout --skip lockout.firewall
+See also: @CMD@ -h only, @CMD@ -h run
 EOF
     ;;
     profile) cat <<'EOF'
@@ -982,6 +1013,9 @@ summary() {
   else
     out "Summary: $total modules: $out."
   fi
+  if [[ -n "$SEL_MODE" ]]; then
+    out "Partial run: $((PHASE_COUNT - ${#SEL_LEFT_OUT[@]})) of $PHASE_COUNT modules of the phase (--$SEL_MODE)."
+  fi
 }
 
 # shell_word WORD: WORD, quoted if the shell would split or expand it.
@@ -1512,10 +1546,11 @@ explain() {
 load_modules() {
   local phase="$1" id name dir worst=0 p i entry needed line
   local -a ids=() dirs=() risks=() scored=() reqs=() prios=() preok=() keeps=()
-  PHASE_COUNT=0 LOAD_ERRORS=0 LOAD_SKIPPED=0
+  PHASE_COUNT=0 LOAD_ERRORS=0 LOAD_SKIPPED=0 SEL_LEFT_OUT=()
   for id in "${PROFILE_IDS[@]+"${PROFILE_IDS[@]}"}"; do
     if [[ "${id%%.*}" != "$phase" ]]; then continue; fi
     PHASE_COUNT=$((PHASE_COUNT + 1))
+    if ! selected "$id"; then SEL_LEFT_OUT+=("$id"); continue; fi
     name="${id#*.}"
     dir="$LAB_ROOT/phases/$phase/modules/$name"
     if [[ ! -d "$dir" ]]; then
@@ -1731,10 +1766,12 @@ pre_unmatched() {
   done
 }
 
-# plan_all PHASE: load and plan the phase's modules; print the worst code.
+# plan_all PHASE MODE (plan or apply): load and plan the phase's modules; print the worst code.
 plan_all() {
-  local phase="$1" worst=0 rc=0 i
+  local phase="$1" mode="$2" worst=0 rc=0 i
   load_modules "$phase" || worst=$?
+  selection_gate "$mode" "$phase" || rc=$?
+  if (( rc )); then return "$(( worst > rc ? worst : rc ))"; fi
   for ((i = 0; i < ${#RUN_IDS[@]}; i++)); do
     rc=0
     plan_one "$i" || rc=$?
@@ -2093,6 +2130,141 @@ check_approve() {
   done
 }
 
+# The modules --only or --skip chose (docs/Conventions.md section 3.1).
+# SEL_MODE is only, skip or empty; SEL_IDS holds the listed IDs;
+# SEL_LEFT_OUT the profile's modules of the phase that this run leaves out;
+# SEL_BLOCKED how many modules the selection gate blocked.
+SEL_MODE=''
+declare -a SEL_IDS=() SEL_LEFT_OUT=()
+SEL_BLOCKED=0
+PHASE_COUNT=0
+
+# parse_selection PHASE: read the --only or --skip list: module IDs of the
+# phase, separated by commas. Usage errors (40) for an empty item, a word
+# that is not a module ID or a module of another phase.
+parse_selection() {
+  local opt='' list tok seen=' '
+  local -a words=()
+  SEL_MODE=''; SEL_IDS=()
+  if [[ -n "${GIVEN[only]+set}" ]]; then opt=only; elif [[ -n "${GIVEN[skip]+set}" ]]; then opt=skip; fi
+  if [[ -z "$opt" ]]; then return 0; fi
+  list="${GIVEN[$opt]}"
+  IFS=',' read -ra words <<< "$list,"
+  for tok in "${words[@]}"; do
+    if [[ -z "$tok" ]]; then
+      usage_error "--$opt: the list has an empty item: '$list'" \
+        'Give module IDs separated by commas, such as lockout.inventory,lockout.firewall.'
+    fi
+    [[ "$tok" =~ $RE_MODULE_ID ]] || usage_error "--$opt: not a module ID: '$tok'" \
+      'Give module IDs separated by commas, such as lockout.inventory,lockout.firewall.'
+    if [[ "${tok%%.*}" != "$1" ]]; then
+      usage_error "--$opt: '$tok' is not a module of the $1 phase" "This line is for the $1 phase."
+    fi
+    if [[ "$seen" != *" $tok "* ]]; then SEL_IDS+=("$tok"); seen+="$tok "; fi
+  done
+  SEL_MODE="$opt"
+}
+
+# check_selection PHASE: every ID the list names must be a module of this
+# phase in the profile (usage error 40, with the nearest ID if there is one).
+check_selection() {
+  local phase="$1" id hint
+  local -a here=()
+  if [[ -z "$SEL_MODE" ]]; then return 0; fi
+  for id in "${PROFILE_IDS[@]+"${PROFILE_IDS[@]}"}"; do
+    if [[ "${id%%.*}" == "$phase" ]]; then here+=("$id"); fi
+  done
+  for id in "${SEL_IDS[@]}"; do
+    if ! lab_in_list "$id" "${here[*]-}"; then
+      hint="$(suggest "$id" "${here[@]+"${here[@]}"}")"
+      usage_error "--$SEL_MODE: '$id' is not a module of the $phase phase in profile $OPT_PROFILE${hint:+ (did you mean '$hint'?)}" \
+        "'$SELF $phase' lists the modules of the phase."
+    fi
+  done
+}
+
+# selected ID: is module ID part of this run? Always, without --only or
+# --skip.
+selected() {
+  case "$SEL_MODE" in
+    only) lab_in_list "$1" "${SEL_IDS[*]}" ;;
+    skip) ! lab_in_list "$1" "${SEL_IDS[*]}" ;;
+    *) return 0 ;;
+  esac
+}
+
+# partial_note: the end of the run_start note of a partial run, or nothing:
+# ', partial --only LIST' (the manifest keeps it for --show).
+partial_note() {
+  if [[ -z "$SEL_MODE" ]]; then return 0; fi
+  printf ', partial --%s %s' "$SEL_MODE" "$(IFS=,; printf '%s' "${SEL_IDS[*]}")"
+}
+
+# partial_intro PHASE: the header lines of a partial run, which module list
+# was chosen.
+partial_intro() {
+  local id
+  if [[ -z "$SEL_MODE" ]]; then return 0; fi
+  if [[ "$SEL_MODE" == only ]]; then
+    out "Partial run: only these $1 modules (--only):"
+  else
+    out "Partial run: all $1 modules but these (--skip):"
+  fi
+  for id in "${SEL_IDS[@]}"; do out "  $id"; done
+}
+
+# selection_gate MODE PHASE: after the modules are loaded, refuse a partial
+# run in which a module needs one the run left out, or in which a real run
+# leaves out lockout.inventory on a host with no dependency map. Only the
+# modules of this run count; earlier runs do not. Prints a BLOCKED block
+# for each and returns 20 when any; nothing has been run or changed then.
+selection_gate() {
+  local mode="$1" phase="$2" i req missing id n=0 r='' list='' l
+  local -a miss=() keep=()
+  if [[ -z "$SEL_MODE" ]]; then return 0; fi
+  if [[ "$mode" == apply ]]; then r='-r '; fi
+  if lab_in_list lockout.inventory "${SEL_LEFT_OUT[*]-}" && [[ "$mode" == apply ]] \
+      && [[ ! -f "$LAB_STATE_DIR/inventory/deps" ]]; then
+    n=$((n + 1))
+    say BLOCKED "$(module_name lockout.inventory)"
+    detail Problem 'this host has no dependency map yet, and the firewall would have nothing to keep open'
+    detail Fix 'run lockout.inventory first, or leave it in'
+  fi
+  for ((i = 0; i < ${#RUN_IDS[@]}; i++)); do
+    miss=()
+    for req in ${RUN_REQUIRES[i]}; do
+      if ! lab_in_list "$req" "${SEL_LEFT_OUT[*]-}"; then continue; fi
+      # The one exception: a left-out inventory is fine in a preview, and in
+      # a run when the host already has a dependency map (checked above).
+      if [[ "$req" == lockout.inventory ]]; then continue; fi
+      miss+=("$req")
+    done
+    if (( ${#miss[@]} == 0 )); then continue; fi
+    n=$((n + 1))
+    missing="${miss[*]}"; missing="${missing// /, }"
+    say BLOCKED "$(module_name "${RUN_IDS[i]}")"
+    detail Problem "needs $missing, which this run left out"
+    # The same command with the module back in, in profile order.
+    keep=()
+    for id in "${PROFILE_IDS[@]}"; do
+      if [[ "${id%%.*}" != "$phase" ]]; then continue; fi
+      if [[ "$SEL_MODE" == only ]]; then
+        if lab_in_list "$id" "${SEL_IDS[*]} ${miss[*]}"; then keep+=("$id"); fi
+      elif lab_in_list "$id" "${SEL_IDS[*]}" && ! lab_in_list "$id" "${miss[*]}"; then
+        keep+=("$id")
+      fi
+    done
+    list="$(IFS=,; printf '%s' "${keep[*]-}")"
+    printf -v l '  %-11s%s' Fix: "$SELF $r$phase${list:+ --$SEL_MODE $list}$(data_opts)"
+    out "$l"
+  done
+  if (( n == 0 )); then return 0; fi
+  SEL_BLOCKED="$n"
+  # Nothing is planned or run: the blocked modules are the whole result.
+  RUN_IDS=() RUN_DIR=() RUN_RISK=() RUN_SCORED=() RUN_REQUIRES=() RUN_RC=() RUN_STATE=() RUN_ITEMS=() RUN_PREOK=() RUN_KEEP=()
+  return 20
+}
+
 # record_pass: the recording pass of a run (design 00, section 4). Before the
 # first change, each read-only module's check runs once more, with
 # LAB_DRY_RUN=0, so that a module that only observes can write its own files
@@ -2395,6 +2567,7 @@ cmd_plan() {
   export LAB_DRY_RUN=1
   resolve_profile
   read_profile "$OPT_PROFILE"
+  check_selection "$phase"
   lab_event_load 2>/dev/null || die "event.conf is malformed: $(load_reason lab_event_load)" 40 "$FIX_LINE"
   load_preapproved
   check_services
@@ -2403,7 +2576,7 @@ cmd_plan() {
   out "labyrinth $LAB_VERSION: plan $phase, profile $OPT_PROFILE"
   out "run $LAB_RUN_ID (plan mode: nothing is recorded)"
   plan_intro plan "$phase"
-  plan_all "$phase" || worst=$?
+  plan_all "$phase" plan || worst=$?
   finish plan "$worst" "$phase"
 }
 
@@ -2413,7 +2586,7 @@ plan_intro() {
   local host n=0 id
   host="$(lab_host)"
   for id in "${PROFILE_IDS[@]+"${PROFILE_IDS[@]}"}"; do
-    if [[ "${id%%.*}" == "$2" ]]; then n=$((n + 1)); fi
+    if [[ "${id%%.*}" == "$2" ]] && selected "$id"; then n=$((n + 1)); fi
   done
   if [[ "$1" == plan ]]; then
     out "This is a plan: Labyrinth only looks, and nothing on $host changes."
@@ -2430,6 +2603,7 @@ plan_intro() {
   else
     out "Checking $n modules of profile $OPT_PROFILE, most urgent first."
   fi
+  partial_intro "$2"
   out ''
 }
 
@@ -2486,6 +2660,7 @@ cmd_apply() {
   fi
   OPT_PROFILE="$LAB_HOST_PROFILE"
   read_profile "$OPT_PROFILE"
+  check_selection "$phase"
   lab_event_load 2>/dev/null || die "event.conf is malformed: $(load_reason lab_event_load)" 40 "$FIX_LINE"
   load_preapproved
   check_services
@@ -2500,7 +2675,12 @@ cmd_apply() {
   out "labyrinth $LAB_VERSION: APPLY $phase, profile $OPT_PROFILE"
   out "run $LAB_RUN_ID on host $host, group $group"
   plan_intro apply "$phase"
-  plan_all "$phase" || worst=$?
+  plan_all "$phase" apply || worst=$?
+  if (( SEL_BLOCKED )); then
+    out ''
+    out 'The selection is blocked, so the run stops here.'
+    finish apply "$worst" "$phase"
+  fi
   if (( worst >= 40 )); then
     out ''
     out 'The plan has errors, so the run stops here.'
@@ -2532,7 +2712,7 @@ cmd_apply() {
   mkdir -p "$LAB_STATE_DIR/runs/$LAB_RUN_ID" \
     && { (( todo == 0 )) || mkdir -p "$LAB_BACKUP_DIR/$LAB_RUN_ID"; } \
     || die 'the run and backup folders cannot be created; nothing was changed' 40
-  if ! record_for '' run_start "$host" "phase $phase, profile $OPT_PROFILE, group $group" \
+  if ! record_for '' run_start "$host" "phase $phase, profile $OPT_PROFILE, group $group$(partial_note)" \
       || ! { (( todo == 0 )) || record_for '' breakglass_verified "$BREAKGLASS" "$BREAKGLASS_NOTE"; } \
       || ! { (( ! NO_REVERT )) || (( todo == 0 )) || record_for '' run_no_revert '' 'no revert timer: --no-revert'; }; then
     die 'the run manifest cannot be written; nothing was changed' 40 "$FIX_DATA"
@@ -2806,7 +2986,7 @@ show_module() {
 # cmd_show REF: list what one run changed, from its manifest
 # (docs/Conventions.md section 3.1). It reads, and writes nothing.
 cmd_show() {
-  local list f line id first last host group profile phase note mod
+  local list f line id first last host group profile phase note mod partial=
   local -a runs=() mods=()
   if [[ -z "$1" ]]; then
     # --show always needs a run, like -u: list them, show none.
@@ -2836,8 +3016,8 @@ cmd_show() {
     if [[ -n "$mod" ]] && ! lab_in_list "$mod" "${mods[*]-}"; then mods+=("$mod"); fi
     if [[ "$(lab_json_get "$line" action)" == run_start ]]; then
       note="$(lab_json_get "$line" note)" || note=''
-      if [[ "$note" =~ ^phase\ ([^,]*),\ profile\ ([^,]*),\ group\ (.*)$ ]]; then
-        phase="${BASH_REMATCH[1]}"; profile="${BASH_REMATCH[2]}"; group="${BASH_REMATCH[3]}"
+      if [[ "$note" =~ ^phase\ ([^,]*),\ profile\ ([^,]*),\ group\ ([^,]*)(,\ partial\ (.*))?$ ]]; then
+        phase="${BASH_REMATCH[1]}"; profile="${BASH_REMATCH[2]}"; group="${BASH_REMATCH[3]}"; partial="${BASH_REMATCH[5]}"
       fi
     fi
   done < "$f"
@@ -2849,6 +3029,7 @@ cmd_show() {
   detail Profile "$profile"
   detail Host "${host:-unknown}"
   detail Group "$group"
+  if [[ -n "$partial" ]]; then detail Partial "$partial"; fi
   detail Started "$(show_time "$first")"
   detail Ended "$(show_time "$last")"
   detail State "$(run_state "$id")"
@@ -3328,7 +3509,7 @@ show_help() {
       return 0
     fi
   else
-    for name in all yes no-revert profile root config break-glass confirm-group approve; do
+    for name in all yes no-revert only skip profile root config break-glass confirm-group approve; do
       if [[ -n "${GIVEN[$name]+set}" ]]; then topic="$name"; break; fi
     done
   fi
@@ -3367,7 +3548,7 @@ bad_word() {
 }
 
 main() {
-  local action='' word='' phase='' label shown
+  local action='' word='' phase='' label shown opt
   local -a used=()
   parse_args "$@"
   # Help never runs anything: it comes before every other check and read,
@@ -3384,7 +3565,7 @@ main() {
   # No action and no phase is the status (docs/Conventions.md section 3.1),
   # unless the line gives an option only a preview or -r uses.
   if [[ -z "$action" ]] && (( $# == 0 )) \
-      && [[ -z "${GIVEN[profile]+s}${GIVEN[break-glass]+s}${GIVEN[confirm-group]+s}${GIVEN[approve]+s}" ]]; then
+      && [[ -z "${GIVEN[profile]+s}${GIVEN[break-glass]+s}${GIVEN[confirm-group]+s}${GIVEN[approve]+s}${GIVEN[only]+s}${GIVEN[skip]+s}" ]]; then
     action=status
   fi
   case "$action" in
@@ -3405,6 +3586,15 @@ main() {
   if [[ -n "${GIVEN[no-revert]+set}" && "$action" != run ]]; then
     usage_error "--no-revert is only for -r, not $label"
   fi
+  if [[ -n "${GIVEN[only]+set}" && -n "${GIVEN[skip]+set}" ]]; then
+    usage_error '--only and --skip cannot be used together' \
+      'Name the modules to run with --only, or the ones to leave out with --skip.'
+  fi
+  for opt in only skip; do
+    if [[ -n "${GIVEN[$opt]+set}" && "$action" != '' && "$action" != run ]]; then
+      usage_error "--$opt is only for a preview or -r, not $label"
+    fi
+  done
   case "$action" in
     '' | run)
       if (( $# == 0 )); then
@@ -3460,6 +3650,7 @@ main() {
   [[ "$DATA_ROOT" == /* ]] || usage_error "--root must be a full path, not '$DATA_ROOT'"
   [[ -z "${GIVEN[config]:-}" || "${GIVEN[config]}" == /* ]] || usage_error "--config must be a full path, not '${GIVEN[config]}'"
   if [[ "$action" == run && -n "${GIVEN[approve]+set}" ]]; then check_approve; fi
+  if [[ "$action" == run || -z "$action" ]]; then parse_selection "$phase"; fi
 
   # Noted now, printed by each action once its own checks pass.
   check_used "$label" "${used[@]+"${used[@]}"}"

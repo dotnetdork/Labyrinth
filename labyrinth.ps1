@@ -32,6 +32,7 @@
       -All                    with -u: also undo changes kept once verified
       -y, -Yes                with -u ID -All or -NewSeed: yes to its question
       -NoRevert               with -r: no revert timer, for test machines
+      -Only LIST, -Skip LIST  just these modules of a phase, or all but them
 
     Short letters are case-sensitive: -P and -V are capitals. Long names
     ignore case, and a double dash (--root) works too. -k and -u need an ID.
@@ -134,6 +135,8 @@ $script:LabOptions = @(
     @{ Name = 'approve'; Show = '-Approve'; Long = '-Approve'; Key = 'approve'; Short = ''; Value = $true; Action = $false }
     @{ Name = 'yes'; Show = '-y'; Long = '-Yes'; Key = 'yes'; Short = 'y'; Value = $false; Action = $false }
     @{ Name = 'no-revert'; Show = '-NoRevert'; Long = '-NoRevert'; Key = 'norevert'; Short = ''; Value = $false; Action = $false }
+    @{ Name = 'only'; Show = '-Only'; Long = '-Only'; Key = 'only'; Short = ''; Value = $true; Action = $false }
+    @{ Name = 'skip'; Show = '-Skip'; Long = '-Skip'; Key = 'skip'; Short = ''; Value = $true; Action = $false }
     @{ Name = 'help'; Show = '-h'; Long = '-Help'; Key = 'help'; Short = 'h'; Value = $false; Action = $false }
 )
 # The flags that docs/Conventions.md section 3.3 plans and nothing builds yet:
@@ -173,6 +176,10 @@ $script:Stopped = $false         # true when an apply stopped partway
 $script:Applied = $false         # true once apply starts changing things
 $script:Recorded = $false        # true once the recording pass has run
 $script:Run = @()            # the modules of this run, in run order
+$script:SelMode = ''              # only, skip or empty: -Only or -Skip
+$script:SelIds = @()             # the module IDs the list named
+$script:SelLeftOut = @()         # the phase's modules this run leaves out
+$script:SelBlocked = 0           # modules the selection gate blocked
 $script:Protected = @{}
 $script:Settings = @{}
 $script:Before = @()
@@ -215,7 +222,6 @@ function Show-LabHelp {
 Usage: @CMD@ PHASE                preview a phase: nothing changes
        @CMD@ -r PHASE             run a phase for real
        @CMD@                      this host's status and next step
-       @CMD@ ACTION [OPTIONS]
 
 Actions (one per line):
   -r, --run               run a phase: plan, confirm, change
@@ -231,6 +237,7 @@ Options:
   --root DIR              data root         --config DIR   configuration
   -y, --yes               yes to the question before -u ID --all or --new-seed
   --no-revert             with -r: no revert timer, for test machines
+  --only LIST, --skip LIST  just these modules, or all but them: -h only
   --break-glass NAME, --confirm-group GROUP, --approve LIST: see -h run
   -h, --help [TOPIC]      help; TOPIC: an action, option, phase or basics
 Phases: lockout, observe, deceive, sustain. ID: a run ID or its last 4.
@@ -411,6 +418,35 @@ Used by: -r only.
 Exit: 40 if given with anything else.
 Example: @CMD@ -r observe --no-revert
 See also: @CMD@ -h run, @CMD@ -h undo
+'@ }
+        'only' { @'
+Usage: @CMD@ [-r] PHASE --only LIST
+
+Preview or run just the modules in LIST: module IDs of the phase,
+separated by commas. Everything else is as in a full run: the same
+gates, backups, revert timer and keep question. A module that needs
+one you left out is blocked (20) before anything changes. Left out
+lockout.inventory in a run needs a dependency map from an earlier run.
+The header and summary say the run is partial. Used by: a preview, -r.
+
+Exit: 40 for an unknown ID, or --only with --skip; 20 for a blocked one.
+Example: @CMD@ -r lockout --only lockout.inventory,lockout.firewall
+See also: @CMD@ -h skip, @CMD@ -h run
+'@ }
+        'skip' { @'
+Usage: @CMD@ [-r] PHASE --skip LIST
+
+Preview or run every module of the phase but those in LIST: module
+IDs of the phase, separated by commas. Everything else is as in a
+full run: the same gates, backups, revert timer and keep question. A
+module that needs one you left out is blocked (20) before anything
+changes. Skipping lockout.inventory in a run needs a dependency map
+from an earlier run. The header and summary say the run is partial.
+Used by: a preview, -r.
+
+Exit: 40 for an unknown ID, or --skip with --only; 20 for a blocked one.
+Example: @CMD@ lockout --skip lockout.firewall
+See also: @CMD@ -h only, @CMD@ -h run
 '@ }
         'profile' { @'
 Usage: @CMD@ [-r] PHASE -P NAME
@@ -827,11 +863,11 @@ function Add-LabStackError {
 # the words after the list keep their meaning. Later list options (queue
 # numbers and ranges) add their own kind of item here.
 function Join-LabListWord {
-    param([string] $First)
+    param([string] $First, [string] $Pattern = $ReListItem)
     $list = $First
     while ($script:ArgPos -lt $script:Arguments.Count) {
         $next = $script:Arguments[$script:ArgPos]
-        if ($next -isnot [string] -or $next -cnotmatch $ReListItem) { break }
+        if ($next -isnot [string] -or $next -cnotmatch $Pattern) { break }
         $list += ',' + $next
         $script:ArgPos++
     }
@@ -887,6 +923,7 @@ function Add-LabOption {
         }
         if ($Val -eq '' -and -not $optional) { Add-LabParseError "$show needs a value"; return }
         if ($name -ceq 'approve') { $Val = Join-LabListWord $Val }
+        elseif ($name -ceq 'only' -or $name -ceq 'skip') { $Val = Join-LabListWord $Val $ReModuleId }
     } elseif ($Sep -ne '') {
         Add-LabParseError "$show takes no value"; return
     }
@@ -1000,7 +1037,7 @@ function Show-LabAskedHelp {
             }
         }
     } else {
-        foreach ($name in @('all', 'yes', 'no-revert', 'profile', 'root', 'config', 'break-glass', 'confirm-group', 'approve')) {
+        foreach ($name in @('all', 'yes', 'no-revert', 'only', 'skip', 'profile', 'root', 'config', 'break-glass', 'confirm-group', 'approve')) {
             if ($script:Given.ContainsKey($name)) { $topic = $name; break }
         }
     }
@@ -1373,6 +1410,9 @@ function Write-LabSummary {
     if ($total -eq 0) { Write-LabLine 'Summary: no modules.' }
     elseif ($total -eq 1) { Write-LabLine "Summary: 1 module: $($parts -join ', ')." }
     else { Write-LabLine "Summary: $total modules: $($parts -join ', ')." }
+    if ($script:SelMode -cne '') {
+        Write-LabLine "Partial run: $($script:PhaseCount - @($script:SelLeftOut).Count) of $($script:PhaseCount) modules of the phase ($(Get-LabShow $script:SelMode))."
+    }
 }
 
 # Get-LabShortId RUN: the last 4 characters of a run ID, in quotes. PowerShell
@@ -1702,9 +1742,11 @@ function Import-LabRunModule {
     $script:PhaseCount = 0
     $script:LoadErrors = 0
     $script:LoadSkipped = 0
+    $script:SelLeftOut = @()
     foreach ($id in $script:ProfileIds) {
         if (($id -split '\.', 2)[0] -cne $Phase) { continue }
         $script:PhaseCount++
+        if (-not (Test-LabSelected $id)) { $script:SelLeftOut += $id; continue }
         $name = ($id -split '\.', 2)[1]
         $dir = Join-Path (Join-Path (Join-Path (Join-Path $env:LAB_ROOT 'phases') $Phase) 'modules') $name
         $yml = Join-Path $dir 'module.yml'
@@ -1917,10 +1959,12 @@ function Read-LabPreRule {
     if ($null -ne $rules) { $script:PreRules = @($rules) }
 }
 
-# Load and plan the phase's modules; return the worst code.
+# Load and plan the phase's modules (MODE is plan or apply); return the worst
+# code.
 function Invoke-LabPlanAll {
-    param([string] $Phase)
+    param([string] $Phase, [string] $Mode)
     $worst = Import-LabRunModule $Phase
+    if (Test-LabSelectionBlocked $Mode $Phase) { return [Math]::Max($worst, 20) }
     foreach ($m in $script:Run) {
         Invoke-LabPlanOne $m
         if ($m.Rc -gt $worst) { $worst = $m.Rc }
@@ -2284,6 +2328,128 @@ function Assert-LabApprove {
     }
 }
 
+# The modules -Only or -Skip chose (docs/Conventions.md section 3.1).
+# $script:SelMode is only, skip or empty; $script:SelIds holds the listed IDs;
+# $script:SelLeftOut the profile's modules of the phase that this run leaves
+# out; $script:SelBlocked how many modules the selection gate blocked.
+
+# Read-LabSelection PHASE: read the -Only or -Skip list: module IDs of the
+# phase, separated by commas. Usage errors (40) for an empty item, a word
+# that is not a module ID or a module of another phase.
+function Read-LabSelection {
+    param([string] $Phase)
+    $script:SelMode = ''
+    $script:SelIds = @()
+    $opt = ''
+    if ($script:Given.ContainsKey('only')) { $opt = 'only' } elseif ($script:Given.ContainsKey('skip')) { $opt = 'skip' }
+    if ($opt -ceq '') { return }
+    $show = Get-LabShow $opt
+    $list = [string] $script:Given[$opt]
+    $fix = 'Give module IDs separated by commas, such as lockout.inventory,lockout.firewall.'
+    $ids = @()
+    foreach ($tok in $list.Split(',')) {
+        if ($tok -eq '') { Exit-LabUsage "${show}: the list has an empty item: '$list'" $fix }
+        if ($tok -cnotmatch $ReModuleId) { Exit-LabUsage "${show}: not a module ID: '$tok'" $fix }
+        if (($tok -split '\.', 2)[0] -cne $Phase) { Exit-LabUsage "${show}: '$tok' is not a module of the $Phase phase" "This line is for the $Phase phase." }
+        if ($ids -cnotcontains $tok) { $ids += $tok }
+    }
+    $script:SelIds = $ids
+    $script:SelMode = $opt
+}
+
+# Assert-LabSelection PHASE: every ID the list names must be a module of this
+# phase in the profile (usage error 40, with the nearest ID if there is one).
+function Assert-LabSelection {
+    param([string] $Phase)
+    if ($script:SelMode -ceq '') { return }
+    $here = @($script:ProfileIds | Where-Object { ($_ -split '\.', 2)[0] -ceq $Phase })
+    foreach ($id in $script:SelIds) {
+        if ($here -cnotcontains $id) {
+            $hint = Get-LabSuggestion $id $here
+            $text = "$(Get-LabShow $script:SelMode): '$id' is not a module of the $Phase phase in profile $($script:ProfileName)"
+            if ($hint -ne '') { $text += " (did you mean '$hint'?)" }
+            Exit-LabUsage $text "'$Self $Phase' lists the modules of the phase."
+        }
+    }
+}
+
+# Test-LabSelected ID: is module ID part of this run? Always, without -Only
+# or -Skip.
+function Test-LabSelected {
+    param([string] $Id)
+    if ($script:SelMode -ceq 'only') { return ($script:SelIds -ccontains $Id) }
+    if ($script:SelMode -ceq 'skip') { return ($script:SelIds -cnotcontains $Id) }
+    return $true
+}
+
+# Get-LabPartialNote: the end of the run_start note of a partial run, or
+# nothing: ', partial -Only LIST' (the manifest keeps it for -Show).
+function Get-LabPartialNote {
+    if ($script:SelMode -ceq '') { return '' }
+    return ", partial $(Get-LabShow $script:SelMode) $($script:SelIds -join ',')"
+}
+
+# Write-LabPartialIntro PHASE: the header lines of a partial run, which
+# module list was chosen.
+function Write-LabPartialIntro {
+    param([string] $Phase)
+    if ($script:SelMode -ceq '') { return }
+    if ($script:SelMode -ceq 'only') {
+        Write-LabLine "Partial run: only these $Phase modules ($(Get-LabShow $script:SelMode)):"
+    } else {
+        Write-LabLine "Partial run: all $Phase modules but these ($(Get-LabShow $script:SelMode)):"
+    }
+    foreach ($id in $script:SelIds) { Write-LabLine "  $id" }
+}
+
+# Test-LabSelectionBlocked MODE PHASE: after the modules are loaded, refuse a
+# partial run in which a module needs one the run left out, or in which a
+# real run leaves out lockout.inventory on a host with no dependency map.
+# Only the modules of this run count; earlier runs do not. Prints a BLOCKED
+# block for each and returns $true when any; nothing has been run or changed
+# then.
+function Test-LabSelectionBlocked {
+    param([string] $Mode, [string] $Phase)
+    if ($script:SelMode -ceq '') { return $false }
+    $n = 0
+    $r = ''
+    if ($Mode -ceq 'apply') { $r = '-r ' }
+    if ($script:SelLeftOut -ccontains 'lockout.inventory' -and $Mode -ceq 'apply' -and
+        -not (Test-Path -LiteralPath (Join-Path $env:LAB_STATE_DIR 'inventory\deps') -PathType Leaf)) {
+        $n++
+        Write-LabStatus 'BLOCKED' (Get-LabModuleName 'lockout.inventory')
+        Write-LabDetail 'Problem' 'this host has no dependency map yet, and the firewall would have nothing to keep open'
+        Write-LabDetail 'Fix' 'run lockout.inventory first, or leave it in'
+    }
+    foreach ($m in $script:Run) {
+        # The one exception: a left-out inventory is fine in a preview, and
+        # in a run when the host already has a dependency map (checked above).
+        $miss = @($m.Requires | Where-Object { $script:SelLeftOut -ccontains $_ -and $_ -cne 'lockout.inventory' })
+        if ($miss.Count -eq 0) { continue }
+        $n++
+        Write-LabStatus 'BLOCKED' (Get-LabModuleName $m.Id)
+        Write-LabDetail 'Problem' "needs $($miss -join ', '), which this run left out"
+        # The same command with the module put back, in profile order.
+        $keep = @()
+        foreach ($id in $script:ProfileIds) {
+            if (($id -split '\.', 2)[0] -cne $Phase) { continue }
+            if ($script:SelMode -ceq 'only') {
+                if ($script:SelIds -ccontains $id -or $miss -ccontains $id) { $keep += $id }
+            } elseif ($script:SelIds -ccontains $id -and $miss -cnotcontains $id) {
+                $keep += $id
+            }
+        }
+        $cmd = "$Self $r$Phase"
+        if ($keep.Count -gt 0) { $cmd += " $(Get-LabShow $script:SelMode) $($keep -join ',')" }
+        Write-LabLine ('  ' + 'Fix:'.PadRight(11) + $cmd + (Get-LabDataOption))
+    }
+    if ($n -eq 0) { return $false }
+    $script:SelBlocked = $n
+    # Nothing is planned or run: the blocked modules are the whole result.
+    $script:Run = @()
+    return $true
+}
+
 # Invoke-LabRecordPass: the recording pass of a run (design 00, section 4).
 # Before the first change, each read-only module's check runs once more, with
 # LAB_DRY_RUN=0, so that a module that only observes can write its own files
@@ -2613,6 +2779,7 @@ function Invoke-LabPlanCommand {
     }
     $script:HostEntry = $entry
     Read-LabProfile $script:ProfileName
+    Assert-LabSelection $Phase
     Read-LabSetting
     Read-LabPreRule
     Assert-LabServiceList
@@ -2621,7 +2788,7 @@ function Invoke-LabPlanCommand {
     Write-LabLine ('labyrinth {0}: plan {1}, profile {2}' -f $LabVersion, $Phase, $script:ProfileName)
     Write-LabLine "run $env:LAB_RUN_ID (plan mode: nothing is recorded)"
     Write-LabPlanIntro 'plan' $Phase $entry
-    $worst = Invoke-LabPlanAll $Phase
+    $worst = Invoke-LabPlanAll $Phase plan
     Exit-LabRun 'plan' $worst $Phase
 }
 
@@ -2630,7 +2797,7 @@ function Invoke-LabPlanCommand {
 function Write-LabPlanIntro {
     param([string] $Mode, [string] $Phase, $HostEntry)
     $hostName = Get-LabHostName
-    $n = @($script:ProfileIds | Where-Object { ($_ -split '\.', 2)[0] -ceq $Phase }).Count
+    $n = @($script:ProfileIds | Where-Object { ($_ -split '\.', 2)[0] -ceq $Phase -and (Test-LabSelected $_) }).Count
     if ($Mode -ceq 'plan') {
         Write-LabLine "This is a plan: Labyrinth only looks, and nothing on $hostName changes."
         if ($null -ne $HostEntry) {
@@ -2646,6 +2813,7 @@ function Write-LabPlanIntro {
     } else {
         Write-LabLine "Checking $n modules of profile $($script:ProfileName), most urgent first."
     }
+    Write-LabPartialIntro $Phase
     Write-LabLine ''
 }
 
@@ -2708,6 +2876,7 @@ function Invoke-LabApplyCommand {
     $script:HostEntry = $entry
     $script:ProfileName = $entry.Profile
     Read-LabProfile $script:ProfileName
+    Assert-LabSelection $Phase
     Read-LabSetting
     Read-LabPreRule
     Assert-LabServiceList
@@ -2721,7 +2890,12 @@ function Invoke-LabApplyCommand {
         Write-LabLine ('labyrinth {0}: APPLY {1}, profile {2}' -f $LabVersion, $Phase, $script:ProfileName)
         Write-LabLine "run $env:LAB_RUN_ID on host $hostName, group $group"
         Write-LabPlanIntro 'apply' $Phase $entry
-        $worst = Invoke-LabPlanAll $Phase
+        $worst = Invoke-LabPlanAll $Phase apply
+        if ($script:SelBlocked -gt 0) {
+            Write-LabLine ''
+            Write-LabLine 'The selection is blocked, so the run stops here.'
+            Exit-LabRun 'apply' $worst $Phase
+        }
         if ($worst -ge 40) {
             Write-LabLine ''
             Write-LabLine 'The plan has errors, so the run stops here.'
@@ -2751,7 +2925,7 @@ function Invoke-LabApplyCommand {
             if ($todo -gt 0) { New-Item -ItemType Directory -Force -Path (Join-Path $env:LAB_BACKUP_DIR $env:LAB_RUN_ID) | Out-Null }
         } catch { Exit-Lab 'the run and backup folders cannot be created; nothing was changed' 40 }
         try {
-            Add-LabEntryFor '' 'run_start' $hostName "phase $Phase, profile $($script:ProfileName), group $group"
+            Add-LabEntryFor '' 'run_start' $hostName "phase $Phase, profile $($script:ProfileName), group $group$(Get-LabPartialNote)"
             if ($todo -gt 0) { Add-LabEntryFor '' 'breakglass_verified' $script:BreakGlassAccount $script:BreakGlassNote }
             if ($script:NoRevert -and $todo -gt 0) { Add-LabEntryFor '' 'run_no_revert' '' 'no revert timer: -NoRevert' }
         } catch {
@@ -3042,6 +3216,7 @@ function Invoke-LabShowCommand {
     $phase = '-'
     $profileText = '-'
     $group = '-'
+    $partial = ''
     $mods = @()
     foreach ($line in [IO.File]::ReadAllLines($path)) {
         if ($line.Trim() -eq '') { continue }
@@ -3055,8 +3230,8 @@ function Invoke-LabShowCommand {
         if ($hostName -eq '') { $hostName = [string] $e.host }
         $mod = [string] $e.module
         if ($mod -ne '' -and $mods -cnotcontains $mod) { $mods += $mod }
-        if ($e.action -ceq 'run_start' -and ([string] $e.note) -cmatch '^phase ([^,]*), profile ([^,]*), group (.*)$') {
-            $phase = $Matches[1]; $profileText = $Matches[2]; $group = $Matches[3]
+        if ($e.action -ceq 'run_start' -and ([string] $e.note) -cmatch '^phase ([^,]*), profile ([^,]*), group ([^,]*)(, partial (.*))?$') {
+            $phase = $Matches[1]; $profileText = $Matches[2]; $group = $Matches[3]; $partial = [string] $Matches[5]
         }
     }
     foreach ($mod in $mods) {
@@ -3068,6 +3243,7 @@ function Invoke-LabShowCommand {
     Write-LabDetail 'Profile' $profileText
     Write-LabDetail 'Host' $hostName
     Write-LabDetail 'Group' $group
+    if ($partial -ne '') { Write-LabDetail 'Partial' $partial }
     Write-LabDetail 'Started' (Format-LabShowTime $first)
     Write-LabDetail 'Ended' (Format-LabShowTime $last)
     Write-LabDetail 'State' (Get-LabRunState $id)
@@ -3554,7 +3730,7 @@ try {
     # No action and no phase is the status (docs/Conventions.md section
     # 3.1), unless the line gives an option only a preview or -r uses.
     if ($action -ceq '' -and $words.Count -eq 0 -and
-        @('profile', 'break-glass', 'confirm-group', 'approve' | Where-Object { $script:Given.ContainsKey($_) }).Count -eq 0) {
+        @('profile', 'only', 'skip', 'break-glass', 'confirm-group', 'approve' | Where-Object { $script:Given.ContainsKey($_) }).Count -eq 0) {
         $action = 'status'
     }
     $label = Get-LabShow $action
@@ -3571,6 +3747,14 @@ try {
     }
     if ($script:Given.ContainsKey('no-revert') -and $action -cne 'run') {
         Exit-LabUsage "-NoRevert is only for -r, not $label"
+    }
+    if ($script:Given.ContainsKey('only') -and $script:Given.ContainsKey('skip')) {
+        Exit-LabUsage '-Only and -Skip cannot be used together' 'Name the modules to run with -Only, or the ones to leave out with -Skip.'
+    }
+    foreach ($opt in @('only', 'skip')) {
+        if ($script:Given.ContainsKey($opt) -and $action -cne '' -and $action -cne 'run') {
+            Exit-LabUsage "$(Get-LabShow $opt) is only for a preview or -r, not $label"
+        }
     }
 
     $used = @()
@@ -3650,6 +3834,7 @@ try {
     if ($script:DataRoot -notmatch '^([A-Za-z]:\\|\\\\)') { Exit-LabUsage "-Root must be a full path, not '$($script:DataRoot)'" }
     if ($config -ne '' -and $config -notmatch '^([A-Za-z]:\\|\\\\)') { Exit-LabUsage "-Config must be a full path, not '$config'" }
     if ($action -ceq 'run' -and $script:Given.ContainsKey('approve')) { Assert-LabApprove }
+    if ($action -ceq '' -or $action -ceq 'run') { Read-LabSelection $phase }
     # Noted now, printed by each action once its own checks pass.
     Test-LabOptionUse $label $used
     $script:ProfileName = $profileName

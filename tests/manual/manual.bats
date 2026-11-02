@@ -21,7 +21,7 @@ setup() {
 @test "the Windows manual has nothing from the Linux one" {
   run bash "$SPLIT" windows
   [ "$status" -eq 0 ]
-  if grep -Eq 'sudo|labyrinth\.sh|systemd|/opt/labyrinth|--(profile|root|config|break-glass|confirm-group|approve|all|yes|no-revert|history|show|probe|run|keep|undo|help|version|manual)' <<<"$output"; then return 1; fi
+  if grep -Eq 'sudo|labyrinth\.sh|systemd|/opt/labyrinth|--(profile|root|config|break-glass|confirm-group|approve|all|yes|no-revert|only|skip|history|show|probe|run|keep|undo|help|version|manual)' <<<"$output"; then return 1; fi
   [[ "$output" == *'.\labyrinth.ps1 lockout'* ]]
   [[ "$output" == *'.\labyrinth.ps1 -r lockout'* ]]
   [[ "$output" == *'C:\ProgramData\Labyrinth'* ]]
@@ -30,7 +30,7 @@ setup() {
 @test "the Linux manual has nothing from the Windows one" {
   run bash "$SPLIT" linux
   [ "$status" -eq 0 ]
-  if grep -Eq 'labyrinth\.ps1|PowerShell|ProgramData|scheduled task|Administrator|(^|[ `])-(Profile|Root|Config|BreakGlass|ConfirmGroup|Approve|All|Yes|NoRevert|History|Show|Probe|Run|Keep|Undo|Help|Version|Manual)' <<<"$output"; then return 1; fi
+  if grep -Eq 'labyrinth\.ps1|PowerShell|ProgramData|scheduled task|Administrator|(^|[ `])-(Profile|Root|Config|BreakGlass|ConfirmGroup|Approve|All|Yes|NoRevert|Only|Skip|History|Show|Probe|Run|Keep|Undo|Help|Version|Manual)' <<<"$output"; then return 1; fi
   [[ "$output" == *'sudo ./labyrinth.sh lockout'* ]]
   [[ "$output" == *'sudo ./labyrinth.sh -r lockout'* ]]
   [[ "$output" == *'/opt/labyrinth'* ]]
@@ -47,11 +47,11 @@ setup() {
     done
   done
   run bash "$SPLIT" linux
-  for o in --run --keep --undo --history --show --probe --new-seed --seed-check --profile --root --config --break-glass --confirm-group --approve --all --yes --no-revert --help --version --manual; do
+  for o in --run --keep --undo --history --show --probe --new-seed --seed-check --profile --root --config --break-glass --confirm-group --approve --all --yes --no-revert --only --skip --help --version --manual; do
     [[ "$output" == *"\`$o"* ]] || { echo "linux: $o missing"; return 1; }
   done
   run bash "$SPLIT" windows
-  for o in -Run -Keep -Undo -History -Show -Probe -NewSeed -SeedCheck -Profile -Root -Config -BreakGlass -ConfirmGroup -Approve -All -Yes -NoRevert -Help -Version -Manual; do
+  for o in -Run -Keep -Undo -History -Show -Probe -NewSeed -SeedCheck -Profile -Root -Config -BreakGlass -ConfirmGroup -Approve -All -Yes -NoRevert -Only -Skip -Help -Version -Manual; do
     [[ "$output" == *"\`$o"* ]] || { echo "windows: $o missing"; return 1; }
   done
 }

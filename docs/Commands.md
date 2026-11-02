@@ -54,6 +54,15 @@ laby -r sustain         run the Sustain phase
 
 Each works like `lockout`: the phase word alone previews, `-r` runs. Run the phases in order; each one assumes the ones before it are done.
 
+## Running some of a phase's modules
+
+```
+laby lockout --only lockout.firewall      preview just that module
+laby -r lockout --skip lockout.ssh-config run every module but that one
+```
+
+`--only LIST` keeps just the modules you name; `--skip LIST` drops them. A LIST is module IDs of the phase, separated by commas. Use them to run again the one module whose settings you just fixed, without running the whole phase again. The gates, backups, revert timer and keep question are the same as for a full run, and the run says it is partial. If a module you kept needs one you left out, it is blocked and nothing changes; the message gives the command with the module put back. `lockout.inventory` is the one you may leave out of a run, and only when the host already has a dependency map from an earlier run. The two options cannot be used together.
+
 ## The queue: changes waiting for a person (Planned)
 
 Planned (first usable release). Some changes are too risky to make on their own, such as deleting an account or changing a scored service that has no test. A run puts those in this host's queue and carries on.
@@ -155,6 +164,8 @@ Adding `-h` to any command shows that command's help instead of running it: `lab
 | `-v` | `--verbose` | **Planned** (first usable release). Show the full detail for every module, not one line each |
 | `-y` | `--yes` | Answer yes to the question before `laby -u ID --all`, or before `--new-seed` replaces a seed. **Planned** (first usable release): also the queue's "are you sure?" questions. It never answers the login check |
 | | `--no-revert` | With `-r`: no revert timer and no keep question; the changes stay until you undo them with `-u`. For test machines only |
+| | `--only LIST` | Preview or run just these modules of the phase (module IDs, separated by commas) |
+| | `--skip LIST` | Preview or run every module of the phase but these |
 
 ## A typical host, start to finish
 

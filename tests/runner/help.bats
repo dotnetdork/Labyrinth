@@ -10,7 +10,7 @@ setup() { lab_setup; }
 # Every topic with a page of its own: the actions, the options and the
 # phases. Basics is the one screen that is longer.
 ACTIONS='run keep undo history show probe new-seed seed-check version manual'
-OPTIONS='profile root config break-glass confirm-group approve all yes no-revert'
+OPTIONS='profile root config break-glass confirm-group approve all yes no-revert only skip'
 PHASES='lockout observe deceive sustain'
 TOPICS="$ACTIONS $OPTIONS $PHASES"
 
