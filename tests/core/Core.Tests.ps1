@@ -477,6 +477,51 @@ Describe 'core library' {
         }
     }
 
+    It 'config: an imap line loads' {
+        $svc = Join-Path $env:LAB_CONFIG_DIR 'services'
+        Write-TestFile $svc @('mail-imap imap mail.example.test 143 -', 'mail-imap2 imap mail.example.test 993 Dovecot')
+        $list = Read-LabServiceList
+        $list.Count | Should -Be 2
+        $list[0].Proto | Should -Be 'imap'
+        $list[1].Expect | Should -Be 'Dovecot'
+    }
+
+    It 'probe: an imap greeting that starts with * OK passes' {
+        $srv = Open-TestServer -Mode banner -Reply "* OK IMAP4rev1 Dovecot ready.`r`n" -Count 3
+        try {
+            Invoke-LabProbe -Proto imap -Target 127.0.0.1 -Port $srv.Port -Expect '-' -Timeout 5 | Should -Be 'pass banner received'
+            Invoke-LabProbe -Proto imap -Target 127.0.0.1 -Port $srv.Port -Expect 'Dovecot' -Timeout 5 | Should -Be 'pass banner received'
+            Invoke-LabProbe -Proto imap -Target 127.0.0.1 -Port $srv.Port -Expect 'Cyrus' -Timeout 5 |
+                Should -Be 'fail the banner lacks the expected text'
+        } finally {
+            Close-TestServer $srv
+        }
+    }
+
+    It 'probe: an imap * BYE greeting fails' {
+        $srv = Open-TestServer -Mode banner -Reply "* BYE server shutting down`r`n"
+        try {
+            Invoke-LabProbe -Proto imap -Target 127.0.0.1 -Port $srv.Port -Expect '-' -Timeout 5 | Should -Be 'fail unexpected banner'
+        } finally {
+            Close-TestServer $srv
+        }
+    }
+
+    It 'probe: a silent imap service fails within the timeout' {
+        $srv = Open-TestServer -Mode banner
+        try {
+            $watch = [Diagnostics.Stopwatch]::StartNew()
+            Invoke-LabProbe -Proto imap -Target 127.0.0.1 -Port $srv.Port -Expect '-' -Timeout 1 | Should -Be 'fail no banner'
+            $watch.Elapsed.TotalSeconds | Should -BeLessThan 4
+        } finally {
+            Close-TestServer $srv
+        }
+    }
+
+    It 'probe: an imap port that is closed fails' {
+        Invoke-LabProbe -Proto imap -Target 127.0.0.1 -Port 1 -Expect '-' -Timeout 2 | Should -Be 'fail no banner'
+    }
+
     It 'probe: regressions are pass before and fail after only' {
         $before = @('web pass status 200', 'mail pass banner', 'dns unknown no tool', 'ftp fail no banner')
         $after = @('web fail status 503', 'mail pass banner', 'dns fail x', 'ftp fail no banner')

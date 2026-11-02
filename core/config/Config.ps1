@@ -120,7 +120,7 @@ function Read-LabPreApproved {
 # because an empty list is one nobody filled in, and a module that touches
 # scored services is blocked without one (docs/Conventions.md section 3.1).
 function Read-LabServiceList {
-    $protos = @('http', 'https', 'dns', 'smtp', 'pop3', 'ftp', 'tcp')
+    $protos = @('http', 'https', 'dns', 'smtp', 'pop3', 'imap', 'ftp', 'tcp')
     $file = Join-Path $env:LAB_CONFIG_DIR 'services'
     if (-not (Test-Path -LiteralPath $file -PathType Leaf)) { return $null }
     $list = @()

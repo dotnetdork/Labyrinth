@@ -466,6 +466,74 @@ esac'
   [[ "$out" == *"home pass status 200"* ]]
 }
 
+# serve REPLY COUNT: a stand-in service on a free loopback port that sends
+# REPLY (escapes such as \r\n allowed; empty means silence) to each of COUNT
+# connections. Sets SERVE_PORT and SERVE_PID.
+serve() {
+  cat > "$BATS_TEST_TMPDIR/serve.py" <<'PY'
+import socket, sys, time
+srv = socket.socket()
+srv.bind(("127.0.0.1", 0))
+srv.listen(5)
+open(sys.argv[1], "w").write(str(srv.getsockname()[1]))
+reply = sys.argv[2].encode().decode("unicode_escape").encode()
+for _ in range(int(sys.argv[3])):
+    c, _ = srv.accept()
+    if reply:
+        c.sendall(reply)
+        time.sleep(0.3)
+    else:
+        time.sleep(5)
+    c.close()
+PY
+  rm -f "$BATS_TEST_TMPDIR/serve.port"
+  python3 "$BATS_TEST_TMPDIR/serve.py" "$BATS_TEST_TMPDIR/serve.port" "$1" "$2" > /dev/null 2>&1 &
+  SERVE_PID=$!
+  for _ in $(seq 1 50); do [ -s "$BATS_TEST_TMPDIR/serve.port" ] && break; sleep 0.1; done
+  SERVE_PORT="$(cat "$BATS_TEST_TMPDIR/serve.port")"
+}
+
+@test "config: an imap line loads" {
+  printf 'mail-imap imap mail.example.test 143 -\nmail-imap2 imap mail.example.test 993 Dovecot\n' > "$LAB_CONFIG_DIR/services"
+  lab_services_load
+  [ "${#LAB_SVC_NAME[@]}" -eq 2 ]
+  [ "${LAB_SVC_PROTO[0]}" = imap ]
+  [ "${LAB_SVC_EXPECT[1]}" = Dovecot ]
+}
+
+@test "probe: an imap greeting that starts with * OK passes" {
+  command -v timeout > /dev/null || skip 'no timeout command'
+  command -v python3 > /dev/null || skip 'python3 is needed for the stand-in server'
+  serve '* OK IMAP4rev1 Dovecot ready.\r\n' 3
+  [[ "$(lab_probe_service imap 127.0.0.1 "$SERVE_PORT" - 5)" == 'pass banner received' ]]
+  [[ "$(lab_probe_service imap 127.0.0.1 "$SERVE_PORT" Dovecot 5)" == 'pass banner received' ]]
+  [[ "$(lab_probe_service imap 127.0.0.1 "$SERVE_PORT" Cyrus 5)" == 'fail the banner lacks the expected text' ]]
+  kill "$SERVE_PID" 2> /dev/null || true
+}
+
+@test "probe: an imap * BYE greeting fails" {
+  command -v timeout > /dev/null || skip 'no timeout command'
+  command -v python3 > /dev/null || skip 'python3 is needed for the stand-in server'
+  serve '* BYE server shutting down\r\n' 1
+  [[ "$(lab_probe_service imap 127.0.0.1 "$SERVE_PORT" - 5)" == 'fail unexpected banner' ]]
+  kill "$SERVE_PID" 2> /dev/null || true
+}
+
+@test "probe: a silent imap service fails within the timeout" {
+  command -v timeout > /dev/null || skip 'no timeout command'
+  command -v python3 > /dev/null || skip 'python3 is needed for the stand-in server'
+  serve '' 1
+  SECONDS=0
+  [[ "$(lab_probe_service imap 127.0.0.1 "$SERVE_PORT" - 2)" == 'fail no banner' ]]
+  (( SECONDS < 5 ))
+  kill "$SERVE_PID" 2> /dev/null || true
+}
+
+@test "probe: an imap port that is closed fails" {
+  command -v timeout > /dev/null || skip 'no timeout command'
+  [[ "$(lab_probe_service imap 127.0.0.1 1 - 2)" == 'fail no banner' ]]
+}
+
 @test "probe: dns through dig matches the expected answer" {
   stub dig 'printf "www.example.test.\n192.0.2.20\n"'
   [[ "$(lab_probe_service dns ns1.example.test 53 www.example.test=192.0.2.20 5)" == pass* ]]

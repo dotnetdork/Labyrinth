@@ -1,6 +1,6 @@
 # Scored services and what a healthy probe looks like (designs 03, 19).
 # Format: name proto host[/path] port expect
-#   proto  : http | https | dns | smtp | pop3 | ftp | tcp
+#   proto  : http | https | dns | smtp | pop3 | imap | ftp | tcp
 #   host   : for http and https, a path may follow the host (host/shop/cart);
 #            the probe then requests that page and not only /.
 #   expect : a string the response must contain, or a record value for dns.
@@ -12,3 +12,4 @@ web-cart   https  www.example.test/shop/cart  443  Checkout
 dns-main   dns    ns1.example.test    53   www.example.test=192.0.2.20
 mail-smtp  smtp   mail.example.test   25   -
 mail-pop3  pop3   mail.example.test   110  -
+mail-imap  imap   mail.example.test   143  -

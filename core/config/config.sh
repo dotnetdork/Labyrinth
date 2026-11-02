@@ -13,7 +13,7 @@
 # Results are kept in globals, because bash 4.2 has no namerefs.
 
 readonly LAB_ACCOUNT_CLASSES='official scoring scored-admin employee operator breakglass service builtin'
-readonly LAB_PROBE_PROTOS='http https dns smtp pop3 ftp tcp'
+readonly LAB_PROBE_PROTOS='http https dns smtp pop3 imap ftp tcp'
 readonly LAB_HOST_PLATFORMS='ubuntu rhel-family windows appliance'
 
 declare -ga LAB_CFG_LINES=() LAB_CFG_NOS=()

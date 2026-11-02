@@ -125,7 +125,7 @@ function Invoke-LabProbe {
             }
         }
     }
-    $prefix = @{ smtp = '220'; pop3 = '+OK'; ftp = '220'; tcp = '' }
+    $prefix = @{ smtp = '220'; pop3 = '+OK'; imap = '* OK'; ftp = '220'; tcp = '' }
     if (-not $prefix.ContainsKey($Proto)) { return "unknown unsupported protocol $Proto" }
     $banner = Invoke-LabTcpExchange -Target $Target -Port $Port -Timeout $Timeout -FirstLine
     if (-not $banner) { return 'fail no banner' }

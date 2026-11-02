@@ -132,6 +132,7 @@ lab_probe_service() {
   case "$proto" in
     smtp) lab_probe_banner_check "$host" "$port" "$t" 220 "$expect" ;;
     pop3) lab_probe_banner_check "$host" "$port" "$t" '+OK' "$expect" ;;
+    imap) lab_probe_banner_check "$host" "$port" "$t" '* OK' "$expect" ;;
     ftp) lab_probe_banner_check "$host" "$port" "$t" 220 "$expect" ;;
     tcp)
       if [[ "$expect" != - ]]; then
