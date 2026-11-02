@@ -14,6 +14,7 @@ $script:InvCount = @{}
 $script:InvNote = @()
 $script:InvMapNote = ''
 $script:InvMapAll = @()
+$script:InvExit = 0
 $script:InvNumberKey = @('port', 'pid', 'uid', 'local_port', 'remote_port')
 
 # Add-InvNote TEXT: something that could not be recorded; check prints it as
@@ -147,6 +148,10 @@ function Read-InvIisBinding {
     $xml.LoadXml($Text)
     foreach ($site in @($xml.SelectNodes('/configuration/system.applicationHost/sites/site'))) {
         $pool = 'DefaultAppPool'
+        # An application with no pool of its own takes the site's defaults,
+        # else the defaults of all sites, else DefaultAppPool.
+        $all = $xml.SelectSingleNode('/configuration/system.applicationHost/sites/applicationDefaults')
+        if ($all -and $all.GetAttribute('applicationPool')) { $pool = $all.GetAttribute('applicationPool') }
         $defaults = $site.SelectSingleNode('applicationDefaults')
         if ($defaults -and $defaults.GetAttribute('applicationPool')) { $pool = $defaults.GetAttribute('applicationPool') }
         $root = $site.SelectSingleNode("application[@path='/']")
@@ -488,30 +493,37 @@ function Get-InvServiceList {
     return $list
 }
 
-# Get-InvCollectedAll: fill the inventory, and return the data the map needs.
-function Get-InvCollectedAll {
+# Get-InvCollectedSocketData: the part of the inventory the firewall's default
+# deny depends on, taken first: the listeners and connections, and what the
+# map needs to match them to a service. Starts a new inventory.
+function Get-InvCollectedSocketData {
     $script:InvOut = New-Object Text.StringBuilder
     $script:InvCount = @{}
     $script:InvNote = @()
-    Add-InvCollectedAccount
-    Add-InvCollectedKey
     $process = @()
     try { $process = @(Get-InvCollectedProcess) } catch { Add-InvNote 'Win32_Process could not be read, so process names are missing' }
     $service = @()
     try { $service = @(Get-CimInstance -ClassName Win32_Service -ErrorAction Stop) } catch { Add-InvNote 'Win32_Service could not be read, so services were not recorded' }
     $socket = @(Get-InvCollectedSocket)
     Add-InvCollectedSocketRecord $socket $process $service
-    Add-InvCollectedService $service
-    Add-InvCollectedTask
-    Add-InvCollectedStartup
-    Add-InvCollectedPackage
-    Add-InvCollectedFirewall
     $iis = @()
     $config = Join-Path $env:windir 'System32\inetsrv\config\applicationHost.config'
     if (Test-Path -LiteralPath $config -PathType Leaf) {
         try { $iis = @(Read-InvIisBinding ([IO.File]::ReadAllText($config))) } catch { Add-InvNote 'the IIS configuration could not be read, so IIS sites were not matched to their processes' }
     }
-    return [pscustomobject]@{ Socket = $socket; Process = $process; Iis = $iis }
+    return [pscustomobject]@{ Socket = $socket; Process = $process; Service = $service; Iis = $iis }
+}
+
+# Add-InvCollectedRest SERVICES: everything else, the slower part.
+function Add-InvCollectedRest {
+    param($Service)
+    Add-InvCollectedAccount
+    Add-InvCollectedKey
+    Add-InvCollectedService $Service
+    Add-InvCollectedTask
+    Add-InvCollectedStartup
+    Add-InvCollectedPackage
+    Add-InvCollectedFirewall
 }
 
 # Write-InvFound: the operator's found: lines (docs\Conventions.md section 3.2).
@@ -528,9 +540,22 @@ function Write-InvFound {
     foreach ($l in $script:InvMapAll) { Write-Output "found: dependency: $l" }
 }
 
-# Write-InvState: write the inventory file and merge the map (a run only).
-# Writes did: lines. Throws when the state folder cannot be written.
-function Write-InvState {
+# Write-InvMapFile: merge the map into the dependency map file (a run only).
+# Done before the slow kinds are collected, so the file the firewall needs
+# exists even if the rest of the run is cut short. Writes a did: line.
+# Throws when the state folder cannot be written.
+function Write-InvMapFile {
+    $dir = Join-Path $env:LAB_STATE_DIR 'inventory'
+    New-Item -ItemType Directory -Force -Path $dir | Out-Null
+    if ($script:InvMapNote -ne '') { return }
+    $deps = Join-Path $dir 'deps'
+    $added = @(Merge-InvMap $deps $script:InvMapAll)
+    Write-Output "did: added $($added.Count) line(s) to the dependency map $deps"
+}
+
+# Write-InvInventory: write the inventory file (a run only). Writes a did:
+# line. Throws when the state folder cannot be written.
+function Write-InvInventory {
     $dir = Join-Path $env:LAB_STATE_DIR 'inventory'
     New-Item -ItemType Directory -Force -Path $dir | Out-Null
     $stamp = [DateTime]::UtcNow.ToString('yyyyMMdd\THHmmss\Z')
@@ -539,8 +564,39 @@ function Write-InvState {
     while (Test-Path -LiteralPath $file) { $n++; $file = Join-Path $dir "$stamp-$n.jsonl" }
     [IO.File]::WriteAllText($file, $script:InvOut.ToString(), (New-Object Text.UTF8Encoding $false))
     Write-Output "did: wrote the inventory to $file"
-    if ($script:InvMapNote -ne '') { return }
-    $deps = Join-Path $dir 'deps'
-    $added = @(Merge-InvMap $deps $script:InvMapAll)
-    Write-Output "did: added $($added.Count) line(s) to the dependency map $deps"
+}
+
+# Invoke-InvCheck: the whole check (see check.ps1). The listeners and
+# connections are taken first and the dependency map is written before the
+# slow kinds (accounts, tasks, packages) are collected, so the map the
+# firewall needs exists even if the rest is cut short. Sets InvExit.
+function Invoke-InvCheck {
+    $script:InvExit = 0
+    try {
+        $run = ($env:LAB_DRY_RUN -eq '0')
+        $data = Get-InvCollectedSocketData
+        $script:InvMapAll = @()
+        $services = Get-InvServiceList
+        if ($null -ne $services) {
+            $script:InvMapAll = @(Get-InvMapLine $services $data.Socket $data.Process $data.Iis)
+        }
+        if ($run) {
+            try { Write-InvMapFile } catch {
+                Write-Output "problem: the dependency map could not be written under $(Join-Path $env:LAB_STATE_DIR 'inventory')"
+                $script:InvExit = 40
+                return
+            }
+        }
+        Add-InvCollectedRest $data.Service
+        Write-InvFound
+        if ($run) {
+            try { Write-InvInventory } catch {
+                Write-Output "problem: the inventory could not be written under $(Join-Path $env:LAB_STATE_DIR 'inventory')"
+                $script:InvExit = 40
+            }
+        }
+    } catch {
+        Write-Output "problem: the inventory failed: $($_.Exception.Message)"
+        $script:InvExit = 40
+    }
 }
