@@ -583,6 +583,15 @@ Describe 'labyrinth.ps1 -r' {
         $r.Output | Should -Match 'nothing to apply'
     }
 
+    It 'a run that only records and has a manual step left does not suggest -r again' {
+        Write-TestProfile $t @('observe.recorder', 'observe.manual')
+        New-Item -ItemType File -Path (Join-Path $lab 'CHECK_TEN') | Out-Null
+        $r = Invoke-TestApply $t @()
+        $r.Code | Should -Be 10
+        $r.Output | Should -Match 'Next: a person carries out the manual steps above; -r changes nothing\.'
+        $r.Output | Should -Not -Match '-r observe'
+    }
+
     It 'a run lock held by a live process blocks apply' {
         $lock = Join-Path $t.Root 'state\lock'
         New-Item -ItemType Directory -Path $lock -Force | Out-Null

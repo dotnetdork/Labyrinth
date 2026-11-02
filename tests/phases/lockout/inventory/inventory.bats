@@ -440,7 +440,10 @@ PERF
   echo "# 4001 sockets: parsed, recorded and mapped: $output" >&3
   [[ "$output" == *" connections=4000 listeners=1 mapped=250" ]]
   ms="${output#ms=}"; ms="${ms%% *}"
-  [ "$ms" -lt 20000 ]
+  # About 2.4 s measured on CI; the limit is a little over twice that, so a
+  # return of the quadratic loops the review removed (tens of seconds for
+  # 4,000 sockets) fails here, and a slow runner does not.
+  [ "$ms" -lt 6000 ]
 }
 
 @test "the dependency map is written before the slow kinds are collected" {
@@ -452,4 +455,37 @@ PERF
   [ "$status" -eq 0 ]
   [ "$(cat "$W/seen")" = yes ]
   [ "$(find "$W/state/inventory" -name '*.jsonl' | wc -l)" -eq 1 ]
+}
+
+@test "a per-connection socket (Accept=yes) maps to its running template instances" {
+  ss="$(inv_parse_ss 'tcp   LISTEN 0 4096 *:22 *:* users:(("systemd",pid=1,fd=40))')"
+  ps=$'1 0\n800 1\n801 800\n900 1'
+  map="1${SEP}init.scope"$'\n'"800${SEP}ssh@1-192.0.2.1:22-198.51.100.7:5000.service"$'\n'"801${SEP}ssh@1-192.0.2.1:22-198.51.100.7:5000.service"$'\n'"900${SEP}cron.service"
+  run inv_service_pids "$ss" 22 tcp "$ps" "$map" '0.0.0.0:22   ssh.socket   ssh@.service'
+  [ "$output" = $'800\n801' ]
+  # Its Activates column may be missing: the socket's name with @ is used.
+  run inv_service_pids "$ss" 22 tcp "$ps" "$map" '0.0.0.0:22   ssh.socket'
+  [ "$output" = $'800\n801' ]
+  # No instance running: nothing.
+  run inv_service_pids "$ss" 22 tcp "$ps" "1${SEP}init.scope"$'\n'"900${SEP}cron.service" '0.0.0.0:22   ssh.socket   ssh@.service'
+  [ -z "$output" ]
+}
+
+@test "a service held by a systemd socket with no running process gets a note, never silence" {
+  printf 'web http www.example.test 22 Welcome\n' > "$LAB_CONFIG_DIR/services"
+  INV_SS="$(inv_parse_ss 'tcp   LISTEN 0 4096 *:22 *:* users:(("systemd",pid=1,fd=40))')"
+  INV_UNITS="1${SEP}init.scope"
+  INV_SOCKETS='0.0.0.0:22   ssh.socket   ssh@.service'
+  INV_NOTES=()
+  inv_build_map
+  [ "${#INV_MAP_ALL[@]}" -eq 0 ]
+  [ "${#INV_NOTES[@]}" -eq 1 ]
+  [[ "${INV_NOTES[0]}" == *"scored service web (port 22) is held by the systemd socket ssh.socket"* ]]
+}
+
+@test "cron: an escaped space in a NAME=value word does not leave a fragment as the program" {
+  inv_parse_cron cron /etc/cron.d/x 1 $'0 3 * * * root P=a\ b /usr/local/bin/job --now\n0 4 * * * root Q="x y" R=c\ d\ e other\n'
+  [[ "$INV_OUT" == *'"command":"/usr/local/bin/job"'* ]]
+  [[ "$INV_OUT" == *'"command":"other"'* ]]
+  [[ "$INV_OUT" != *'"command":"b"'* ]]
 }

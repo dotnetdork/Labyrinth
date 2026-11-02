@@ -279,11 +279,13 @@ inv_descendants() {
 # its systemd unit's every process, else itself and its descendants. Process 1
 # and anything in init.scope is systemd holding a socket for a service that
 # starts on demand (ssh.socket), not the service: it is never a seed. When
-# only systemd holds the port, the service the socket activates is used.
+# only systemd holds the port, the service the socket activates is used; for a
+# per-connection socket (a template such as ssh@.service) it is the running
+# instances, ssh@*.service.
 # Prints one pid per line, and nothing when the service cannot be found.
 inv_service_pids() {
   local ss="$1" port="$2" protos="$3" ps="$4" map="$5" sockets="${6:-}"
-  local proto state lp pid seen=' ' unit upid uname lpid addr sunit sact svc sawinit=0
+  local proto state lp pid seen=' ' unit upid uname lpid addr sunit sact svc tmpl sawinit=0
   local -a listeners=() out=()
   while IFS="$INV_SEP" read -r proto state _ lp _ _ pid _; do
     if [[ "$lp" != "$port" || -z "$pid" ]]; then continue; fi
@@ -315,12 +317,29 @@ inv_service_pids() {
       if [[ "$addr" != *":$port" ]]; then continue; fi
       svc="$sact"
       if [[ "$svc" != *.service ]]; then svc="${sunit%.socket}.service"; fi
+      # A per-connection socket (Accept=yes) starts a template instance
+      # (ssh@1-...service) for each client: its running instances are the
+      # service, so ssh@.service, or the socket's own name with @, matches
+      # ssh@*.service.
+      tmpl="${svc%.service}"
+      tmpl="${tmpl%@}@"
       while IFS="$INV_SEP" read -r upid uname; do
-        if [[ "$uname" == "$svc" ]]; then out+=("$upid"); fi
+        if [[ "$uname" == "$svc" || ( "$uname" == "$tmpl"* && "$uname" == *.service ) ]]; then out+=("$upid"); fi
       done <<< "$map"
     done <<< "$sockets"
   fi
   if (( ${#out[@]} > 0 )); then printf '%s\n' "${out[@]}" | sort -un; fi
+}
+
+# inv_socket_for_port SOCKETS PORT: the socket unit that holds PORT for a
+# service systemd starts on demand or per connection, or nothing. SOCKETS is
+# the text of `systemctl list-sockets`.
+inv_socket_for_port() {
+  local addr sunit
+  while read -r addr sunit _; do
+    if [[ "$addr" == *":$2" && "$sunit" == *.socket ]]; then printf '%s
+' "$sunit"; return 0; fi
+  done <<< "$1"
 }
 
 # inv_listen_ports SSNORM: the local ports the host listens on, one per line.
@@ -422,8 +441,9 @@ inv_parse_timers() {
 inv_parse_cron() {
   local source="$1" file="$2" userfield="$3" line a b c d e user cmd prog schedule rest h
   # A leading env, or NAME=value words (a quoted value may hold spaces), come
-  # before the program and may hold a secret: they are skipped.
-  local env_re='^((/usr/bin/)?env|[A-Za-z_][A-Za-z0-9_]*=([^[:space:]"'"'"']|"[^"]*"|'"'"'[^'"'"']*'"'"')*)[[:space:]]+(.*)$'
+  # before the program and may hold a secret: they are skipped. A backslash
+  # escapes the next character (P=a\ b), as the shell reads it.
+  local env_re='^((/usr/bin/)?env|[A-Za-z_][A-Za-z0-9_]*=([^[:space:]"'"'"'\]|\\.|"[^"]*"|'"'"'[^'"'"']*'"'"')*)[[:space:]]+(.*)$'
   while IFS= read -r line; do
     line="${line#"${line%%[![:space:]]*}"}"
     if [[ -z "$line" || "$line" == '#'* || "$line" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]]; then continue; fi
@@ -673,7 +693,7 @@ inv_collect_all() {
 # inv_build_map: INV_MAP_ALL, the "service address proto port process" line
 # of every outbound connection a scored service has open now.
 inv_build_map() {
-  local i rc=0 protos pids lines ps ports line
+  local i rc=0 protos pids lines ps ports line tsock
   INV_MAP_ALL=()
   INV_MAP_NOTE=''
   lab_services_load 2> /dev/null || rc=$?
@@ -691,7 +711,13 @@ inv_build_map() {
     protos=tcp
     if [[ "${LAB_SVC_PROTO[i]}" == dns ]]; then protos='tcp udp'; fi
     pids="$(inv_service_pids "$INV_SS" "${LAB_SVC_PORT[i]}" "$protos" "$ps" "$INV_UNITS" "$INV_SOCKETS")"
-    if [[ -z "$pids" ]]; then continue; fi
+    if [[ -z "$pids" ]]; then
+      tsock="$(inv_socket_for_port "$INV_SOCKETS" "${LAB_SVC_PORT[i]}")"
+      if [[ -n "$tsock" ]]; then
+        inv_note "scored service ${LAB_SVC_NAME[i]} (port ${LAB_SVC_PORT[i]}) is held by the systemd socket $tsock, and no running process of its service was found (a per-connection service has one only while a client is connected), so its connections were not mapped"
+      fi
+      continue
+    fi
     lines="$(inv_outbound "$INV_SS" "$pids" "$ports")"
     while IFS= read -r line; do
       if [[ -n "$line" ]]; then INV_MAP_ALL+=("${LAB_SVC_NAME[i]} $line"); fi
