@@ -48,8 +48,8 @@ BeforeAll {
                                 # What the client says back, such as its closing line.
                                 $s.ReadTimeout = 2000
                                 $buf = New-Object byte[] 100
-                                try { $n = $s.Read($buf, 0, $buf.Length) } catch { $n = 0 }
-                                [IO.File]::AppendAllText($Log, [Text.Encoding]::ASCII.GetString($buf, 0, $n))
+                                try { $n = $s.Read($buf, 0, $buf.Length); $got = [Text.Encoding]::ASCII.GetString($buf, 0, $n) } catch { $got = "read failed: $_" }
+                                [IO.File]::AppendAllText($Log, $got)
                             }
                         } else {
                             Start-Sleep -Seconds 4
