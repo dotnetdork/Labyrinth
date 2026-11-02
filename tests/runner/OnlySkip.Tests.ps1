@@ -20,15 +20,15 @@ BeforeAll {
         $src = Join-Path $script:Repo 'tests\fixtures\modules'
         Copy-Item -LiteralPath (Join-Path $src 'recorder') -Destination (Join-Path $m 'inventory') -Recurse
         Copy-Item -LiteralPath (Join-Path $src 'dependent') -Destination (Join-Path $m 'firewall') -Recurse
-        Set-TestModuleLine (Join-Path $m 'inventory\module.yml') @{ id = 'lockout.inventory'; phase = 'lockout' }
-        Set-TestModuleLine (Join-Path $m 'firewall\module.yml') @{
+        Write-TestModuleLine (Join-Path $m 'inventory\module.yml') @{ id = 'lockout.inventory'; phase = 'lockout' }
+        Write-TestModuleLine (Join-Path $m 'firewall\module.yml') @{
             id = 'lockout.firewall'; phase = 'lockout'; requires = '[lockout.inventory]' }
         Write-TestProfile $T @('lockout.inventory', 'lockout.firewall')
     }
 
-    # Set-TestModuleLine PATH VALUES: replace the value of each named key in
+    # Write-TestModuleLine PATH VALUES: replace the value of each named key in
     # a module.yml.
-    function Set-TestModuleLine {
+    function Write-TestModuleLine {
         param([string] $Path, [hashtable] $Values)
         $lines = Get-Content -LiteralPath $Path | ForEach-Object {
             $line = $_
@@ -261,9 +261,9 @@ Describe 'labyrinth.ps1 -Only and -Skip' {
         New-Item -ItemType Directory -Path $dir -Force | Out-Null
         Set-Content -LiteralPath (Join-Path $dir 'deps') -Value '' -Encoding Ascii
         $m = Join-Path $lab 'phases\lockout\modules'
-        Set-TestModuleLine (Join-Path $m 'firewall\module.yml') @{ requires = '[lockout.inventory, lockout.other]' }
+        Write-TestModuleLine (Join-Path $m 'firewall\module.yml') @{ requires = '[lockout.inventory, lockout.other]' }
         Copy-Item -LiteralPath (Join-Path $script:Repo 'tests\fixtures\modules\toggle') -Destination (Join-Path $m 'other') -Recurse
-        Set-TestModuleLine (Join-Path $m 'other\module.yml') @{ id = 'lockout.other'; phase = 'lockout' }
+        Write-TestModuleLine (Join-Path $m 'other\module.yml') @{ id = 'lockout.other'; phase = 'lockout' }
         Write-TestProfile $t @('lockout.inventory', 'lockout.other', 'lockout.firewall')
         $r = Invoke-TestLockout $t @('-Skip', 'lockout.inventory,lockout.other')
         $r.Code | Should -Be 20

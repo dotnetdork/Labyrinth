@@ -2219,10 +2219,10 @@ partial_intro() {
 # modules of this run count; earlier runs do not. Prints a BLOCKED block
 # for each and returns 20 when any; nothing has been run or changed then.
 selection_gate() {
-  local mode="$1" phase="$2" i req missing id n=0 r='' list='' l
+  local mode="$1" phase="$2" i req missing id n=0 rflag='' list='' fixline
   local -a miss=() keep=()
   if [[ -z "$SEL_MODE" ]]; then return 0; fi
-  if [[ "$mode" == apply ]]; then r='-r '; fi
+  if [[ "$mode" == apply ]]; then rflag='-r '; fi
   if lab_in_list lockout.inventory "${SEL_LEFT_OUT[*]-}" && [[ "$mode" == apply ]] \
       && [[ ! -f "$LAB_STATE_DIR/inventory/deps" ]]; then
     n=$((n + 1))
@@ -2255,8 +2255,8 @@ selection_gate() {
       fi
     done
     list="$(IFS=,; printf '%s' "${keep[*]-}")"
-    printf -v l '  %-11s%s' Fix: "$SELF $r$phase${list:+ --$SEL_MODE $list}$(data_opts)"
-    out "$l"
+    printf -v fixline '  %-11s%s' Fix: "$SELF $rflag$phase${list:+ --$SEL_MODE $list}$(data_opts)"
+    out "$fixline"
   done
   if (( n == 0 )); then return 0; fi
   SEL_BLOCKED="$n"
