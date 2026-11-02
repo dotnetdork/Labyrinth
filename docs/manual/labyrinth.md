@@ -432,6 +432,10 @@ what one run changed. Name the run by its ID or its last four characters; withou
 <!-- end -->
 every scored service once, the way the scoring engine would, and prints the result for each. Changes nothing. Run it as @ADMIN@, so it can read the configuration. Ends with 0 when every service passes, 20 when there is no list of scored services or the list names none, 30 when any service fails, and 40 on an error.
 
+The `services` file lists one service per line: a name, the kind of probe, the host, the port and the text the answer must contain (`-` for none). An `http` or `https` host may end in a path, such as `web.example.test/shop/cart`, so the probe checks that page and not only `/`; without a path it checks `/`. A path starts with `/`, may end in a `?query`, and uses only letters, digits and `._~/+=&-`; write any other character as a `%` escape, such as `%20` for a space. A space, a scheme (`http://`), a path on any other kind of probe or an unescaped character is an error. The probe does not follow a redirect.
+
+The kinds of probe are `http`, `https`, `dns`, `smtp`, `pop3`, `imap`, `ftp` and `tcp`. The `smtp`, `pop3`, `imap` and `ftp` kinds connect and read the greeting the service sends: `220` for `smtp` and `ftp`, `+OK` for `pop3` and `* OK` for `imap`, plus the text in the last field when you give one. An `imap` service that answers `* BYE`, or says nothing before the timeout, fails. The probe logs in to nothing and reads no mailbox; it ends an `imap` connection with `a1 LOGOUT` and the others with `QUIT`.
+
 ## new-seed
 
 <!-- linux -->

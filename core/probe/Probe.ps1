@@ -11,7 +11,7 @@
 # Each probe gives one line: "<result> <detail>", result pass, fail or unknown.
 
 # Invoke-LabTcpExchange: connect; optionally send text; return the first
-# line (-FirstLine, then say QUIT) or up to 64 KiB of the reply. $null when
+# line (-FirstLine, then say -Quit, QUIT by default) or up to 64 KiB of the reply. $null when
 # the connection fails.
 function Invoke-LabTcpExchange {
     param(
@@ -20,6 +20,7 @@ function Invoke-LabTcpExchange {
         [Parameter(Mandatory)] [int] $Timeout,
         [string] $Send = '',
         [switch] $FirstLine,
+        [string] $Quit = 'QUIT',
         [switch] $ConnectOnly
     )
     $client = New-Object Net.Sockets.TcpClient  # lab-guard: allow network -- probe of a listed scored service inside the event network
@@ -36,8 +37,8 @@ function Invoke-LabTcpExchange {
         if ($FirstLine) {
             $reader = New-Object IO.StreamReader($stream, [Text.Encoding]::ASCII)
             $line = $reader.ReadLine()
-            $quit = [Text.Encoding]::ASCII.GetBytes("QUIT`r`n")
-            try { $stream.Write($quit, 0, $quit.Length) } catch { $null = $_ }
+            $closing = [Text.Encoding]::ASCII.GetBytes("$Quit`r`n")
+            try { $stream.Write($closing, 0, $closing.Length) } catch { $null = $_ }
             return $line
         }
         $ms = New-Object IO.MemoryStream
@@ -64,20 +65,23 @@ function Get-LabHttpResult {
     return "pass status $Code"
 }
 
-# Invoke-LabProbe -Proto P -Target HOST -Port N -Expect E -Timeout S: probe one service.
+# Invoke-LabProbe -Proto P -Target HOST -Port N -Expect E -Timeout S [-Path /x]:
+# probe one service. -Path (default /) only matters to http and https; a
+# redirect is never followed.
 function Invoke-LabProbe {
     param(
         [Parameter(Mandatory)] [string] $Proto,
         [Parameter(Mandatory)] [string] $Target,
         [Parameter(Mandatory)] [int] $Port,
         [Parameter(Mandatory)] [string] $Expect,
-        [int] $Timeout = 5
+        [int] $Timeout = 5,
+        [string] $Path = '/'
     )
     $hostPart = if ($Target.Contains(':')) { "[$Target]" } else { $Target }
     switch ($Proto) {
         'http' {
             $out = Invoke-LabTcpExchange -Target $Target -Port $Port -Timeout $Timeout `
-                -Send "GET / HTTP/1.0`r`nHost: $Target`r`nConnection: close`r`n`r`n"
+                -Send "GET $Path HTTP/1.0`r`nHost: $Target`r`nConnection: close`r`n`r`n"
             if (-not $out) { return 'fail no HTTP response' }
             if ($out -notmatch '^HTTP/[0-9.]+ ([0-9]{3})') { return 'fail not an HTTP response' }
             return Get-LabHttpResult $Matches[1] $out $Expect
@@ -88,7 +92,7 @@ function Invoke-LabProbe {
             $saved = $ErrorActionPreference
             $ErrorActionPreference = 'Continue'
             try {
-                $out = @(& $tool.Source -sS -k --max-time $Timeout -w '\n%{http_code}' "https://${hostPart}:$Port/" 2>$null)  # lab-guard: allow network -- probe of a listed scored service inside the event network
+                $out = @(& $tool.Source -sS -k --max-time $Timeout -w '\n%{http_code}' "https://${hostPart}:$Port$Path" 2>$null)  # lab-guard: allow network -- probe of a listed scored service inside the event network
                 $rc = $LASTEXITCODE
             } finally {
                 $ErrorActionPreference = $saved
@@ -122,9 +126,9 @@ function Invoke-LabProbe {
             }
         }
     }
-    $prefix = @{ smtp = '220'; pop3 = '+OK'; ftp = '220'; tcp = '' }
+    $prefix = @{ smtp = '220'; pop3 = '+OK'; imap = '* OK'; ftp = '220'; tcp = '' }
     if (-not $prefix.ContainsKey($Proto)) { return "unknown unsupported protocol $Proto" }
-    $banner = Invoke-LabTcpExchange -Target $Target -Port $Port -Timeout $Timeout -FirstLine
+    $banner = Invoke-LabTcpExchange -Target $Target -Port $Port -Timeout $Timeout -FirstLine -Quit $(if ($Proto -eq 'imap') { 'a1 LOGOUT' } else { 'QUIT' })
     if (-not $banner) { return 'fail no banner' }
     if ($prefix[$Proto] -ne '' -and -not $banner.StartsWith($prefix[$Proto])) { return 'fail unexpected banner' }
     if ($Expect -ne '-' -and -not $banner.Contains($Expect)) { return 'fail the banner lacks the expected text' }
@@ -139,7 +143,7 @@ function Get-LabProbeResult {
     $services = Read-LabServiceList
     if ($null -eq $services) { return $null }
     $lines = @(foreach ($s in $services) {
-            '{0} {1}' -f $s.Name, (Invoke-LabProbe -Proto $s.Proto -Target $s.Target -Port $s.Port -Expect $s.Expect -Timeout $Timeout)
+            '{0} {1}' -f $s.Name, (Invoke-LabProbe -Proto $s.Proto -Target $s.Target -Port $s.Port -Expect $s.Expect -Timeout $Timeout -Path $s.Path)
         })
     return , $lines
 }

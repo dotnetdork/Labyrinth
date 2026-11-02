@@ -15,6 +15,58 @@ BeforeAll {
         param([string] $Path, [AllowEmptyCollection()] [string[]] $Lines)
         [IO.File]::WriteAllText($Path, (($Lines | ForEach-Object { "$_`n" }) -join ''))
     }
+
+    # Open-TestServer -Mode http|banner [-Reply TEXT] [-Count N]: a stand-in
+    # service on a free loopback port, answering N connections from another
+    # runspace. Mode http answers a GET with a page whose text depends on the
+    # path; Mode banner sends -Reply, or stays silent when it is empty. With
+    # -Log, a banner server appends what the client sends back to that file.
+    function Open-TestServer {
+        param([string] $Mode, [string] $Reply = '', [int] $Count = 1, [string] $Log = '')
+        $listener = New-Object Net.Sockets.TcpListener ([Net.IPAddress]::Loopback), 0
+        $listener.Start()
+        $shell = [powershell]::Create()
+        $null = $shell.AddScript({
+                param($Listener, $Mode, $Reply, $Count, $Log)
+                for ($i = 0; $i -lt $Count; $i++) {
+                    $c = $Listener.AcceptTcpClient()
+                    try {
+                        $s = $c.GetStream()
+                        $out = $Reply
+                        if ($Mode -eq 'http') {
+                            $r = New-Object IO.StreamReader($s)
+                            $line = $r.ReadLine()
+                            while ($r.ReadLine()) { $null = $_ }
+                            $body = if ($line -like 'GET /shop/cart *') { 'empty cart page' } else { '<h1>Welcome</h1>' }
+                            $out = "HTTP/1.0 200 OK`r`n`r`n$body"
+                        }
+                        if ($out) {
+                            $b = [Text.Encoding]::ASCII.GetBytes($out)
+                            $s.Write($b, 0, $b.Length)
+                            $s.Flush()
+                            if ($Log) {
+                                # What the client says back, such as its closing line.
+                                $s.ReadTimeout = 2000
+                                $buf = New-Object byte[] 100
+                                try { $n = $s.Read($buf, 0, $buf.Length); $got = [Text.Encoding]::ASCII.GetString($buf, 0, $n) } catch { $got = "read failed: $_" }
+                                [IO.File]::AppendAllText($Log, $got)
+                            }
+                        } else {
+                            Start-Sleep -Seconds 4
+                        }
+                    } catch { $null = $_ } finally { $c.Close() }
+                }
+            }).AddArgument($listener).AddArgument($Mode).AddArgument($Reply).AddArgument($Count).AddArgument($Log)
+        $null = $shell.BeginInvoke()
+        return [pscustomobject]@{ Port = $listener.LocalEndpoint.Port; Listener = $listener; Shell = $shell }
+    }
+
+    function Close-TestServer {
+        param($Server)
+        $Server.Listener.Stop()
+        $Server.Shell.Stop()
+        $Server.Shell.Dispose()
+    }
 }
 
 Describe 'core library' {
@@ -92,6 +144,30 @@ Describe 'core library' {
         # An empty list, or one with only comments, counts as missing.
         Write-TestFile $svc @('# nothing yet')
         Read-LabServiceList | Should -Be $null
+    }
+
+    It 'config: an http or https service may carry a path, and one without still loads' {
+        $svc = Join-Path $env:LAB_CONFIG_DIR 'services'
+        Write-TestFile $svc @('cart https www.example.test/shop/cart 443 Checkout', 'search http www.example.test/find?q=a%20b&n=1 80 -',
+            'web http www.example.test 80 Welcome', 'v6 http ::1/x 80 -')
+        $list = Read-LabServiceList
+        $list.Count | Should -Be 4
+        $list[0].Target | Should -Be 'www.example.test'
+        $list[0].Path | Should -Be '/shop/cart'
+        $list[1].Path | Should -Be '/find?q=a%20b&n=1'
+        $list[2].Path | Should -Be '/'
+        $list[3].Target | Should -Be '::1'
+        $list[3].Path | Should -Be '/x'
+    }
+
+    It 'config: a malformed path is refused at load' {
+        $svc = Join-Path $env:LAB_CONFIG_DIR 'services'
+        foreach ($bad in 'web http h/a%2 80 -', 'web http h/a%zz 80 -', 'web http h/a<b 80 -', 'web http h/a"b 80 -',
+            'web http h/a;b 80 -', 'web http http://h 80 -', 'web http h/http://x 80 -', 'web http h/a b 80 -',
+            'web http h /a 80 -', 'web ftp h/a 21 -', 'web tcp h/a 80 -', 'web dns h/a 53 a=b') {
+            Write-TestFile $svc @($bad)
+            { Read-LabServiceList } | Should -Throw -ExpectedMessage '*services:1*' -Because $bad
+        }
     }
 
     It 'config: event.conf defaults and range checks' {
@@ -382,6 +458,99 @@ Describe 'core library' {
         Get-LabHttpResult '200' '<h1>Welcome</h1>' 'Welcome' | Should -Be 'pass status 200'
         Get-LabHttpResult '200' 'other' 'Welcome' | Should -Match '^fail'
         Get-LabHttpResult '503' 'oops' '-' | Should -Be 'fail status 503'
+    }
+
+    It 'probe: an http path is requested, and a missing content string fails while / passes' {
+        $srv = Open-TestServer -Mode http -Count 3
+        try {
+            Invoke-LabProbe -Proto http -Target 127.0.0.1 -Port $srv.Port -Expect Welcome -Timeout 5 | Should -Be 'pass status 200'
+            Invoke-LabProbe -Proto http -Target 127.0.0.1 -Port $srv.Port -Expect Welcome -Timeout 5 -Path /shop/cart |
+                Should -Be 'fail status 200 but the expected text is missing'
+            Invoke-LabProbe -Proto http -Target 127.0.0.1 -Port $srv.Port -Expect 'empty cart' -Timeout 5 -Path /shop/cart |
+                Should -Be 'pass status 200'
+        } finally {
+            Close-TestServer $srv
+        }
+    }
+
+    It 'probe: Get-LabProbeResult probes each service''s own path' {
+        $srv = Open-TestServer -Mode http -Count 2
+        try {
+            Write-TestFile (Join-Path $env:LAB_CONFIG_DIR 'services') @("cart http 127.0.0.1/shop/cart $($srv.Port) Welcome", "home http 127.0.0.1 $($srv.Port) Welcome")
+            $out = Get-LabProbeResult -Timeout 5
+            $out[0] | Should -Match '^cart fail'
+            $out[1] | Should -Be 'home pass status 200'
+        } finally {
+            Close-TestServer $srv
+        }
+    }
+
+    It 'config: an imap line loads' {
+        $svc = Join-Path $env:LAB_CONFIG_DIR 'services'
+        Write-TestFile $svc @('mail-imap imap mail.example.test 143 -', 'mail-imap2 imap mail.example.test 993 Dovecot')
+        $list = Read-LabServiceList
+        $list.Count | Should -Be 2
+        $list[0].Proto | Should -Be 'imap'
+        $list[1].Expect | Should -Be 'Dovecot'
+    }
+
+    It 'probe: an imap greeting that starts with * OK passes' {
+        $srv = Open-TestServer -Mode banner -Reply "* OK IMAP4rev1 Dovecot ready.`r`n" -Count 3
+        try {
+            Invoke-LabProbe -Proto imap -Target 127.0.0.1 -Port $srv.Port -Expect '-' -Timeout 5 | Should -Be 'pass banner received'
+            Invoke-LabProbe -Proto imap -Target 127.0.0.1 -Port $srv.Port -Expect 'Dovecot' -Timeout 5 | Should -Be 'pass banner received'
+            Invoke-LabProbe -Proto imap -Target 127.0.0.1 -Port $srv.Port -Expect 'Cyrus' -Timeout 5 |
+                Should -Be 'fail the banner lacks the expected text'
+        } finally {
+            Close-TestServer $srv
+        }
+    }
+
+    It 'probe: an imap probe closes with LOGOUT, and a pop3 probe still with QUIT' {
+        $log = Join-Path $TestDrive ([Guid]::NewGuid().ToString('N'))
+        $srv = Open-TestServer -Mode banner -Reply "* OK IMAP4rev1 ready`r`n" -Log $log
+        try {
+            Invoke-LabProbe -Proto imap -Target 127.0.0.1 -Port $srv.Port -Expect '-' -Timeout 5 | Should -Be 'pass banner received'
+            $end = (Get-Date).AddSeconds(5)
+            while (-not ((Test-Path -LiteralPath $log) -and (Get-Item -LiteralPath $log).Length -gt 0) -and (Get-Date) -lt $end) { Start-Sleep -Milliseconds 100 }
+            (Get-Content -LiteralPath $log -Raw -ErrorAction SilentlyContinue | Out-String).Trim() | Should -Be 'a1 LOGOUT'
+        } finally {
+            Close-TestServer $srv
+        }
+        $log = Join-Path $TestDrive ([Guid]::NewGuid().ToString('N'))
+        $srv = Open-TestServer -Mode banner -Reply "+OK POP3 ready`r`n" -Log $log
+        try {
+            Invoke-LabProbe -Proto pop3 -Target 127.0.0.1 -Port $srv.Port -Expect '-' -Timeout 5 | Should -Be 'pass banner received'
+            $end = (Get-Date).AddSeconds(5)
+            while (-not ((Test-Path -LiteralPath $log) -and (Get-Item -LiteralPath $log).Length -gt 0) -and (Get-Date) -lt $end) { Start-Sleep -Milliseconds 100 }
+            (Get-Content -LiteralPath $log -Raw -ErrorAction SilentlyContinue | Out-String).Trim() | Should -Be 'QUIT'
+        } finally {
+            Close-TestServer $srv
+        }
+    }
+
+    It 'probe: an imap * BYE greeting fails' {
+        $srv = Open-TestServer -Mode banner -Reply "* BYE server shutting down`r`n"
+        try {
+            Invoke-LabProbe -Proto imap -Target 127.0.0.1 -Port $srv.Port -Expect '-' -Timeout 5 | Should -Be 'fail unexpected banner'
+        } finally {
+            Close-TestServer $srv
+        }
+    }
+
+    It 'probe: a silent imap service fails within the timeout' {
+        $srv = Open-TestServer -Mode banner
+        try {
+            $watch = [Diagnostics.Stopwatch]::StartNew()
+            Invoke-LabProbe -Proto imap -Target 127.0.0.1 -Port $srv.Port -Expect '-' -Timeout 1 | Should -Be 'fail no banner'
+            $watch.Elapsed.TotalSeconds | Should -BeLessThan 4
+        } finally {
+            Close-TestServer $srv
+        }
+    }
+
+    It 'probe: an imap port that is closed fails' {
+        Invoke-LabProbe -Proto imap -Target 127.0.0.1 -Port 1 -Expect '-' -Timeout 2 | Should -Be 'fail no banner'
     }
 
     It 'probe: regressions are pass before and fail after only' {

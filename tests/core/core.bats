@@ -90,6 +90,29 @@ stub() {
   [ "$status" -eq 2 ]
 }
 
+@test "config: an http or https service may carry a path, and one without still loads" {
+  printf 'cart https www.example.test/shop/cart 443 Checkout\nsearch http www.example.test/find?q=a%%20b&n=1 80 -\nweb http www.example.test 80 Welcome\nv6 http ::1/x 80 -\n' > "$LAB_CONFIG_DIR/services"
+  lab_services_load
+  [ "${#LAB_SVC_NAME[@]}" -eq 4 ]
+  [ "${LAB_SVC_HOST[0]}" = www.example.test ]
+  [ "${LAB_SVC_PATH[0]}" = /shop/cart ]
+  [ "${LAB_SVC_PATH[1]}" = '/find?q=a%20b&n=1' ]
+  [ "${LAB_SVC_PATH[2]}" = / ]
+  [ "${LAB_SVC_HOST[3]}" = ::1 ]
+  [ "${LAB_SVC_PATH[3]}" = /x ]
+}
+
+@test "config: a malformed path is refused at load" {
+  for bad in 'web http h/a%2 80 -' 'web http h/a%zz 80 -' 'web http h/a<b 80 -' 'web http h/a"b 80 -' \
+    'web http h/a?b=c#d 80 -' 'web http h/a;b 80 -' 'web http http://h 80 -' 'web http h/http://x 80 -' \
+    'web http h/a b 80 -' 'web http h /a 80 -' 'web ftp h/a 21 -' 'web tcp h/a 80 -' 'web dns h/a 53 a=b'; do
+    printf '%s\n' "$bad" > "$LAB_CONFIG_DIR/services"
+    run lab_services_load
+    [ "$status" -eq 1 ] || { echo "accepted: $bad"; return 1; }
+    [[ "$output" == *"services:1"* ]]
+  done
+}
+
 @test "config: a file that cannot be read is an error, not an empty file" {
   [[ "$(id -u)" != 0 ]] || skip 'root reads every file'
   printf 'web http h 80 -\n' > "$LAB_CONFIG_DIR/services"
@@ -418,6 +441,120 @@ esac'
   [[ "$(lab_probe_service https www.example.test 443 - 5)" == 'fail status 503' ]]
   stub curl 'echo "curl: (7) Failed to connect" >&2; exit 7'
   [[ "$(lab_probe_service http www.example.test 80 - 5)" == fail* ]]
+}
+
+@test "probe: an http path is requested, and a missing content string fails while / passes" {
+  export URLS="$BATS_TEST_TMPDIR/urls"
+  stub curl 'printf "%s\n" "${@: -1}" >> "$URLS"
+case "${@: -1}" in
+  */shop/cart) printf "empty cart page\n200" ;;
+  *) printf "<h1>Welcome</h1>\n200" ;;
+esac'
+  [[ "$(lab_probe_service http www.example.test 80 Welcome 5)" == 'pass status 200' ]]
+  [[ "$(lab_probe_service http www.example.test 80 Welcome 5 /)" == 'pass status 200' ]]
+  [[ "$(lab_probe_service http www.example.test 80 Welcome 5 /shop/cart)" == 'fail status 200 but the expected text is missing' ]]
+  [[ "$(lab_probe_service https www.example.test 443 empty 5 /shop/cart)" == 'pass status 200' ]]
+  [ "$(cat "$URLS")" = "$(printf '%s\n' http://www.example.test:80/ http://www.example.test:80/ http://www.example.test:80/shop/cart https://www.example.test:443/shop/cart)" ]
+}
+
+@test "probe: lab_probe_all probes each service's own path" {
+  printf 'cart http www.example.test/shop/cart 80 Welcome\nhome http www.example.test 80 Welcome\n' > "$LAB_CONFIG_DIR/services"
+  lab_event_load
+  stub curl 'case "${@: -1}" in */shop/cart) printf "empty\n200" ;; *) printf "Welcome\n200" ;; esac'
+  out="$(lab_probe_all)"
+  [[ "$out" == *"cart fail "* ]]
+  [[ "$out" == *"home pass status 200"* ]]
+}
+
+# serve REPLY COUNT: a stand-in service on a free loopback port that sends
+# REPLY (escapes such as \r\n allowed; empty means silence) to each of COUNT
+# connections, and appends what each client sends back to $BATS_TEST_TMPDIR/
+# serve.port.got. Sets SERVE_PORT and SERVE_PID.
+serve() {
+  cat > "$BATS_TEST_TMPDIR/serve.py" <<'PY'
+import socket, sys, time
+srv = socket.socket()
+srv.bind(("127.0.0.1", 0))
+srv.listen(5)
+open(sys.argv[1], "w").write(str(srv.getsockname()[1]))
+reply = sys.argv[2].encode().decode("unicode_escape").encode()
+for _ in range(int(sys.argv[3])):
+    c, _ = srv.accept()
+    if reply:
+        c.sendall(reply)
+        c.settimeout(2)
+        try:
+            got = c.recv(100)
+        except socket.timeout:
+            got = b""
+        open(sys.argv[1] + ".got", "ab").write(got)
+    else:
+        time.sleep(5)
+    c.close()
+PY
+  rm -f "$BATS_TEST_TMPDIR/serve.port"
+  python3 "$BATS_TEST_TMPDIR/serve.py" "$BATS_TEST_TMPDIR/serve.port" "$1" "$2" > /dev/null 2>&1 &
+  SERVE_PID=$!
+  for _ in $(seq 1 50); do [ -s "$BATS_TEST_TMPDIR/serve.port" ] && break; sleep 0.1; done
+  SERVE_PORT="$(cat "$BATS_TEST_TMPDIR/serve.port")"
+}
+
+@test "config: an imap line loads" {
+  printf 'mail-imap imap mail.example.test 143 -\nmail-imap2 imap mail.example.test 993 Dovecot\n' > "$LAB_CONFIG_DIR/services"
+  lab_services_load
+  [ "${#LAB_SVC_NAME[@]}" -eq 2 ]
+  [ "${LAB_SVC_PROTO[0]}" = imap ]
+  [ "${LAB_SVC_EXPECT[1]}" = Dovecot ]
+}
+
+@test "probe: an imap greeting that starts with * OK passes" {
+  command -v timeout > /dev/null || skip 'no timeout command'
+  command -v python3 > /dev/null || skip 'python3 is needed for the stand-in server'
+  serve '* OK IMAP4rev1 Dovecot ready.\r\n' 3
+  [[ "$(lab_probe_service imap 127.0.0.1 "$SERVE_PORT" - 5)" == 'pass banner received' ]]
+  [[ "$(lab_probe_service imap 127.0.0.1 "$SERVE_PORT" Dovecot 5)" == 'pass banner received' ]]
+  [[ "$(lab_probe_service imap 127.0.0.1 "$SERVE_PORT" Cyrus 5)" == 'fail the banner lacks the expected text' ]]
+  kill "$SERVE_PID" 2> /dev/null || true
+}
+
+@test "probe: an imap probe closes with LOGOUT, and a pop3 probe still with QUIT" {
+  command -v timeout > /dev/null || skip 'no timeout command'
+  command -v python3 > /dev/null || skip 'python3 is needed for the stand-in server'
+  rm -f "$BATS_TEST_TMPDIR/serve.port.got"
+  serve '* OK IMAP4rev1 ready\r\n' 1
+  [[ "$(lab_probe_service imap 127.0.0.1 "$SERVE_PORT" - 5)" == 'pass banner received' ]]
+  for _ in $(seq 1 30); do [ -s "$BATS_TEST_TMPDIR/serve.port.got" ] && break; sleep 0.1; done
+  [ "$(tr -d '\r' < "$BATS_TEST_TMPDIR/serve.port.got")" = 'a1 LOGOUT' ]
+  kill "$SERVE_PID" 2> /dev/null || true
+  rm -f "$BATS_TEST_TMPDIR/serve.port.got"
+  serve '+OK POP3 ready\r\n' 1
+  [[ "$(lab_probe_service pop3 127.0.0.1 "$SERVE_PORT" - 5)" == 'pass banner received' ]]
+  for _ in $(seq 1 30); do [ -s "$BATS_TEST_TMPDIR/serve.port.got" ] && break; sleep 0.1; done
+  [ "$(tr -d '\r' < "$BATS_TEST_TMPDIR/serve.port.got")" = QUIT ]
+  kill "$SERVE_PID" 2> /dev/null || true
+}
+
+@test "probe: an imap * BYE greeting fails" {
+  command -v timeout > /dev/null || skip 'no timeout command'
+  command -v python3 > /dev/null || skip 'python3 is needed for the stand-in server'
+  serve '* BYE server shutting down\r\n' 1
+  [[ "$(lab_probe_service imap 127.0.0.1 "$SERVE_PORT" - 5)" == 'fail unexpected banner' ]]
+  kill "$SERVE_PID" 2> /dev/null || true
+}
+
+@test "probe: a silent imap service fails within the timeout" {
+  command -v timeout > /dev/null || skip 'no timeout command'
+  command -v python3 > /dev/null || skip 'python3 is needed for the stand-in server'
+  serve '' 1
+  SECONDS=0
+  [[ "$(lab_probe_service imap 127.0.0.1 "$SERVE_PORT" - 2)" == 'fail no banner' ]]
+  (( SECONDS < 5 ))
+  kill "$SERVE_PID" 2> /dev/null || true
+}
+
+@test "probe: an imap port that is closed fails" {
+  command -v timeout > /dev/null || skip 'no timeout command'
+  [[ "$(lab_probe_service imap 127.0.0.1 1 - 2)" == 'fail no banner' ]]
 }
 
 @test "probe: dns through dig matches the expected answer" {

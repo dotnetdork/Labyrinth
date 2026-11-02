@@ -22,11 +22,11 @@ lab_probe_exchange() {
   timeout "$3" bash -c 'exec 3<>"/dev/tcp/$1/$2" || exit 1; printf "%s" "$3" >&3; head -c 65536 <&3 | tr -d "\000"' _ "$1" "$2" "$4"  # lab-guard: allow network -- probe of a listed scored service inside the event network
 }
 
-# lab_probe_banner HOST PORT TIMEOUT: connect and print the first line the
-# service sends, then say QUIT politely.
+# lab_probe_banner HOST PORT TIMEOUT [QUIT]: connect and print the first line
+# the service sends, then say QUIT (or the given closing line) politely.
 lab_probe_banner() {
   # shellcheck disable=SC2016 # the inner script expands its own arguments
-  timeout "$3" bash -c 'exec 3<>"/dev/tcp/$1/$2" || exit 1; IFS= read -r line <&3 || exit 3; printf "%s" "$line"; printf "QUIT\r\n" >&3' _ "$1" "$2"  # lab-guard: allow network -- probe of a listed scored service inside the event network
+  timeout "$3" bash -c 'exec 3<>"/dev/tcp/$1/$2" || exit 1; IFS= read -r line <&3 || exit 3; printf "%s" "$line"; printf "%s\r\n" "$3" >&3' _ "$1" "$2" "${4:-QUIT}"  # lab-guard: allow network -- probe of a listed scored service inside the event network
 }
 
 # lab_probe_connect HOST PORT TIMEOUT: can a TCP connection be opened?
@@ -35,9 +35,11 @@ lab_probe_connect() {
   timeout "$3" bash -c 'exec 3<>"/dev/tcp/$1/$2"' _ "$1" "$2" 2> /dev/null  # lab-guard: allow network -- probe of a listed scored service inside the event network
 }
 
+# lab_probe_http PROTO HOST PORT EXPECT TIMEOUT [PATH]: PATH defaults to /. A
+# redirect is never followed, so a probe cannot be sent to another host.
 lab_probe_http() {
-  local proto="$1" host="$2" port="$3" expect="$4" t="$5" url out code body status
-  url="$proto://$(lab_probe_hostpart "$host"):$port/"
+  local proto="$1" host="$2" port="$3" expect="$4" t="$5" path="${6:-/}" url out code body status
+  url="$proto://$(lab_probe_hostpart "$host"):$port$path"
   if command -v curl > /dev/null 2>&1; then  # lab-guard: allow network -- only checks whether curl is installed
     if ! out="$(curl -sS -k --max-time "$t" -w '\n%{http_code}' -- "$url" 2>&1 | tr -d '\000')"; then  # lab-guard: allow network -- probe of a listed scored service inside the event network
       printf 'fail %s\n' "$(printf '%s' "$out" | tail -n 1)"
@@ -46,7 +48,7 @@ lab_probe_http() {
     code="${out##*$'\n'}"
     body="${out%$'\n'*}"
   elif [[ "$proto" == http ]] && command -v timeout > /dev/null 2>&1; then
-    if ! out="$(lab_probe_exchange "$host" "$port" "$t" "GET / HTTP/1.0"$'\r\n'"Host: $host"$'\r\n'"Connection: close"$'\r\n\r\n')" || [[ -z "$out" ]]; then
+    if ! out="$(lab_probe_exchange "$host" "$port" "$t" "GET $path HTTP/1.0"$'\r\n'"Host: $host"$'\r\n'"Connection: close"$'\r\n\r\n')" || [[ -z "$out" ]]; then
       printf 'fail no HTTP response\n'
       return 0
     fi
@@ -55,7 +57,7 @@ lab_probe_http() {
     code="${BASH_REMATCH[1]}"
     body="$out"
   elif [[ "$proto" == https ]] && command -v openssl > /dev/null 2>&1 && command -v timeout > /dev/null 2>&1; then
-    out="$(printf 'GET / HTTP/1.0\r\nHost: %s\r\nConnection: close\r\n\r\n' "$host" \
+    out="$(printf 'GET %s HTTP/1.0\r\nHost: %s\r\nConnection: close\r\n\r\n' "$path" "$host" \
       | timeout "$t" openssl s_client -quiet -ign_eof -connect "$(lab_probe_hostpart "$host"):$port" -servername "$host" 2> /dev/null \
       | head -c 65536 | tr -d '\000' || true)"
     [[ "$out" =~ ^HTTP/[0-9.]+\ ([0-9]{3}) ]] || { printf 'fail no HTTPS response\n'; return 0; }
@@ -100,10 +102,10 @@ lab_probe_dns() {
   printf 'fail %s did not answer %s\n' "$qname" "$answer"
 }
 
-# lab_probe_banner_check HOST PORT TIMEOUT PREFIX EXPECT
+# lab_probe_banner_check HOST PORT TIMEOUT PREFIX EXPECT [QUIT]
 lab_probe_banner_check() {
   local banner
-  banner="$(lab_probe_banner "$1" "$2" "$3")" || banner=''
+  banner="$(lab_probe_banner "$1" "$2" "$3" "${6:-QUIT}")" || banner=''
   banner="${banner%$'\r'}"
   if [[ -z "$banner" ]]; then
     printf 'fail no banner\n'
@@ -116,11 +118,11 @@ lab_probe_banner_check() {
   fi
 }
 
-# lab_probe_service PROTO HOST PORT EXPECT TIMEOUT: probe one service.
+# lab_probe_service PROTO HOST PORT EXPECT TIMEOUT [PATH]: probe one service.
 lab_probe_service() {
-  local proto="$1" host="$2" port="$3" expect="$4" t="$5"
+  local proto="$1" host="$2" port="$3" expect="$4" t="$5" path="${6:-/}"
   case "$proto" in
-    http | https) lab_probe_http "$proto" "$host" "$port" "$expect" "$t"; return 0 ;;
+    http | https) lab_probe_http "$proto" "$host" "$port" "$expect" "$t" "$path"; return 0 ;;
     dns) lab_probe_dns "$host" "$port" "$expect" "$t"; return 0 ;;
   esac
   if ! command -v timeout > /dev/null 2>&1; then
@@ -130,6 +132,7 @@ lab_probe_service() {
   case "$proto" in
     smtp) lab_probe_banner_check "$host" "$port" "$t" 220 "$expect" ;;
     pop3) lab_probe_banner_check "$host" "$port" "$t" '+OK' "$expect" ;;
+    imap) lab_probe_banner_check "$host" "$port" "$t" '* OK' "$expect" 'a1 LOGOUT' ;;
     ftp) lab_probe_banner_check "$host" "$port" "$t" 220 "$expect" ;;
     tcp)
       if [[ "$expect" != - ]]; then
@@ -153,7 +156,7 @@ lab_probe_all() {
   t="${LAB_EVENT[PROBE_TIMEOUT]:-5}"
   for ((i = 0; i < ${#LAB_SVC_NAME[@]}; i++)); do
     printf '%s %s\n' "${LAB_SVC_NAME[i]}" \
-      "$(lab_probe_service "${LAB_SVC_PROTO[i]}" "${LAB_SVC_HOST[i]}" "${LAB_SVC_PORT[i]}" "${LAB_SVC_EXPECT[i]}" "$t")"
+      "$(lab_probe_service "${LAB_SVC_PROTO[i]}" "${LAB_SVC_HOST[i]}" "${LAB_SVC_PORT[i]}" "${LAB_SVC_EXPECT[i]}" "$t" "${LAB_SVC_PATH[i]}")"
   done
 }
 
