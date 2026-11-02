@@ -202,7 +202,7 @@ no_run_made() { [ ! -d "$ROOT/state/runs" ] || [ -z "$(ls -A "$ROOT/state/runs")
   lockout_modules
   run_lockout --skip lockout.inventory
   [ "$status" -eq 20 ]
-  [[ "$output" == *"BLOCKED  "*"(lockout.inventory)"* ]]
+  [[ "$output" == *"BLOCKED  lockout.inventory"* ]]
   [[ "$output" == *"Problem:   this host has no dependency map yet, and the firewall would have"* ]]
   [[ "$output" == *"nothing to keep open"* ]]
   [[ "$output" == *"Fix:       run lockout.inventory first, or leave it in"* ]]

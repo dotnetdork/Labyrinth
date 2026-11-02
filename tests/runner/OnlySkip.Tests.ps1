@@ -275,10 +275,10 @@ Describe 'labyrinth.ps1 -Only and -Skip' {
     It 'help for -Only and -Skip prints a page and runs nothing' {
         $r = Invoke-TestLabCapture $t @('-Only', 'observe.toggle', '-h')
         $r.Code | Should -Be 0
-        $r.Out | Should -Match '^Usage: .*labyrinth\.ps1 \[-r\] PHASE -Only LIST'
+        $r.Out | Should -Match '^Usage: .*labyrinth\.ps1 \[-r\] PHASE --only LIST'
         $r = Invoke-TestLabCapture $t @('-h', 'skip')
         $r.Code | Should -Be 0
-        $r.Out | Should -Match '^Usage: .*labyrinth\.ps1 \[-r\] PHASE -Skip LIST'
+        $r.Out | Should -Match '^Usage: .*labyrinth\.ps1 \[-r\] PHASE --skip LIST'
         $r = Invoke-TestLabCapture $t @('-r', 'observe', '-Skip', 'observe.toggle', '-Bogus', '-h', '-Root', $t.Root, '-Config', $t.Etc)
         $r.Code | Should -Be 0
         Test-NoRunMade $t | Should -BeTrue

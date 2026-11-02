@@ -1384,7 +1384,7 @@ function ConvertTo-LabOutputText {
 # counted from the run's list, not from the lines printed.
 function Write-LabSummary {
     param([string] $Mode)
-    $n = @{ OK = 0; CHANGE = 0; WARN = $script:LoadSkipped; BLOCKED = 0; FAIL = 0; ERROR = $script:LoadErrors }
+    $n = @{ OK = 0; CHANGE = 0; WARN = $script:LoadSkipped; BLOCKED = $script:SelBlocked; FAIL = 0; ERROR = $script:LoadErrors }
     $notRun = 0
     foreach ($m in $script:Run) {
         $w = ''

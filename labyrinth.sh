@@ -986,7 +986,7 @@ stream() {
 # from the run's arrays, not from the lines printed.
 summary() {
   local mode="$1" i w out='' notrun=0 total=0
-  local -A count=([OK]=0 [CHANGE]=0 [WARN]="$LOAD_SKIPPED" [BLOCKED]=0 [FAIL]=0 [ERROR]="$LOAD_ERRORS")
+  local -A count=([OK]=0 [CHANGE]=0 [WARN]="$LOAD_SKIPPED" [BLOCKED]="$SEL_BLOCKED" [FAIL]=0 [ERROR]="$LOAD_ERRORS")
   for ((i = 0; i < ${#RUN_IDS[@]}; i++)); do
     if [[ "$mode" == plan ]]; then
       case "${RUN_RC[i]}" in 0) w=OK ;; 10) w=CHANGE ;; 20) w=BLOCKED ;; *) w=ERROR ;; esac
