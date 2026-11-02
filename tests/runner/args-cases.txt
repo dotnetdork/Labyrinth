@@ -101,6 +101,19 @@
 40|err|is only for -r, not |--show 4f2a --no-revert
 40|err|is only for -r, not the status|--no-revert
 #
+# --only and --skip: a list of module IDs of the phase, for a preview or -r.
+40|err|cannot be used together|observe --only observe.toggle --skip observe.toggle
+40|err|is only for a preview or -r, not -k|-k 4f2a --only observe.toggle
+40|err|is only for a preview or -r, not |-V --skip observe.toggle
+40|err|no phase or action given|--only observe.toggle
+40|err|needs a value|observe --only
+40|err|not a module ID: 'toggle'|observe --only toggle
+40|err|the list has an empty item|observe --only observe.toggle,
+40|err|is not a module of the observe phase|observe --skip lockout.inventory --root @ROOT@ --config @ETC@
+40|err|(did you mean 'observe.toggle'?)|--profile test --root @ROOT@ --config @ETC@ observe --only observe.togle
+10|out|Partial run: only these observe modules|--profile test --root @ROOT@ --config @ETC@ observe --only observe.toggle
+0|out|Partial run: 0 of 1 modules of the phase|--profile test --root @ROOT@ --config @ETC@ observe --skip observe.toggle
+#
 # An option error points to the help of the action the line names.
 40|err|Try '@SELF@ -k -h'.|-k 4f2a --bogus
 40|err|Try '@SELF@ observe -h'.|observe --root

@@ -340,6 +340,15 @@ Plans, then makes the changes behind the safety checks described in section 7. I
 
 Ends with 0 when every change was made and checked, 10 when only steps for a person to carry out are left, or the highest problem code otherwise: 20 blocked, 30 a check after a change failed, 40 an error. A run is blocked when it is not run as @ADMIN@, when another Labyrinth run holds the lock, when this host is not in the `hosts` file, or when a safety check fails.
 
+**Some modules only.**
+<!-- linux -->
+`--only LIST` keeps just the modules you name, and `--skip LIST` drops them, for a preview or a run: `sudo laby -r lockout --only lockout.inventory`. A list is module IDs of the phase, separated by commas, and the two cannot be used together.
+<!-- end -->
+<!-- windows -->
+`-Only LIST` keeps just the modules you name, and `-Skip LIST` drops them, for a preview or a run: `laby -r lockout -Only lockout.inventory`. A list is module IDs of the phase, separated by commas, and the two cannot be used together.
+<!-- end -->
+Everything else is as in a full run: the same checks, backups, revert timer and keep question, and the run says it is partial. A module that needs one you left out is blocked, and nothing changes; the message gives the command with the module put back. The inventory is the one module a run may leave out, and only when the host already has a dependency map from an earlier run. An ID that is not a module of the phase in the profile is a usage error that suggests the nearest one.
+
 ## keep (-k) *run*
 
 Keeps a run's changes: cancels its revert timer, then records that the run was kept. The run is always needed. Without one, `-k` changes nothing and ends with 40; run as @ADMIN@, it also lists the runs whose timer is armed, to choose from.
@@ -538,6 +547,8 @@ all work. A word that starts with a dash and holds a long name (even with one da
 | `--all` | Also undoes the changes that were kept once verified. Asks first. | undo |
 | `-y`, `--yes` | Answers yes to the question before `-u ID --all` or before `--new-seed` replaces a seed. Refused anywhere else. | undo with `--all`, new-seed |
 | `--no-revert` | Arms no revert timer and asks nothing at the end: the changes stay until you undo them. For test machines only. Refused anywhere else. | run |
+| `--only LIST` | Preview or run just these modules of the phase: module IDs separated by commas. Not together with `--skip`. | preview, run |
+| `--skip LIST` | Preview or run every module of the phase but these. Not together with `--only`. | preview, run |
 | `-h`, `-?`, `--help` | Show help. | all |
 | `-V`, `--version` | Show the version. | all |
 | `--manual` | Open this manual. | action |
@@ -564,6 +575,8 @@ Example: `sudo ./labyrinth.sh -r lockout --root /srv/labyrinth`
 | `-All` | Also undoes the changes that were kept once verified. Asks first. | undo |
 | `-y`, `-Yes` | Answers yes to the question before `-u ID -All` or before `-NewSeed` replaces a seed. Refused anywhere else. | undo with `-All`, new-seed |
 | `-NoRevert` | Arms no revert timer and asks nothing at the end: the changes stay until you undo them. For test machines only. Refused anywhere else. | run |
+| `-Only LIST` | Preview or run just these modules of the phase: module IDs separated by commas. Not together with `-Skip`. | preview, run |
+| `-Skip LIST` | Preview or run every module of the phase but these. Not together with `-Only`. | preview, run |
 | `-h`, `-Help` | Show help. | all |
 | `-V`, `-Version` | Show the version. | all |
 | `-Manual` | Open this manual. | action |

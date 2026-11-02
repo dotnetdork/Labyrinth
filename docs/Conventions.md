@@ -134,6 +134,8 @@ A line holds one **action**, or only a phase, or neither: then it is the status.
 | | `--all` | `-All` | none: also undo the modules kept once they verified | `-u` only |
 | `-y` | `--yes` | `-Yes` | none: yes to the question before `-u ID --all`, or before `--new-seed` replaces a seed (Questions, below) | `-u ID --all` and `--new-seed` only |
 | | `--no-revert` | `-NoRevert` | none: arm no revert timer and ask nothing at the end, for test machines (No revert timer, below) | `-r` only |
+| | `--only` | `-Only` | LIST: module IDs of the phase, separated by commas; run just these (Partial runs, below) | a phase |
+| | `--skip` | `-Skip` | LIST: module IDs of the phase, separated by commas; run all but these (Partial runs, below) | a phase |
 | | `--probe` | `-Probe` | none | action |
 | | `--history` | `-History` | none | action |
 | | `--show` | `-Show` | ID | action |
@@ -153,11 +155,11 @@ A line holds one **action**, or only a phase, or neither: then it is the status.
 
 #### How the line is read
 
-- **One action per line:** `-r`, `-k`, `-u`, `--probe`, `--history`, `--show`, `--new-seed`, `--seed-check`, `-V` or `--manual`. Two actions are a usage error (`40`). A phase word alone previews it. A line with neither an action nor a phase is the status, unless it gives `-P`, `--break-glass`, `--confirm-group` or `--approve`, which only a preview or a run uses: that line is a preview with its phase missing (`40`). Options may come before or after the action and its word.
+- **One action per line:** `-r`, `-k`, `-u`, `--probe`, `--history`, `--show`, `--new-seed`, `--seed-check`, `-V` or `--manual`. Two actions are a usage error (`40`). A phase word alone previews it. A line with neither an action nor a phase is the status, unless it gives `-P`, `--only`, `--skip`, `--break-glass`, `--confirm-group` or `--approve`, which only a preview or a run uses: that line is a preview with its phase missing (`40`). Options may come before or after the action and its word.
 - **Case.** Short letters are case-sensitive: `-P` is the profile and `-V` the version, and `-p` and `-v` are errors with a near-miss suggestion. Long names ignore case and dashes, so PowerShell's `-Run`, `-Undo`, `-Profile`, `-BreakGlass` and `-Root` work, and each option has one name in both runners.
 - **Stacking.** Short letters may be joined, such as `-rv` once `-v` is built (section 3.3); today only `-r` and `-P` can share a stack (`-rP NAME`). A letter that takes a value comes last. A single dash before a word is read as a long name when the word is a long name (`-Undo`), and otherwise as a stack of letters, where a letter that is not a short flag is a usage error.
 - **Values** are given as `-k 7f3a`, `--keep 7f3a`, `--keep=7f3a` or `-Name:value`, and `--` ends the options. A run is never kept or undone by guess. PowerShell may hand `-k 0123` over as a number; the runner takes the raw text, never a number.
-- **A list option on Windows.** PowerShell hands a native command, here the launcher `laby.cmd`, an unquoted `a,b` as the two words `a` and `b`. The Windows runner therefore joins the words that follow `-Approve` back into one comma list while each looks like a list item (`<module-id>:<item-id>@<fingerprint>`). A phase word or a run ID never looks like one. Queue numbers and ranges will join the same way.
+- **A list option on Windows.** PowerShell hands a native command, here the launcher `laby.cmd`, an unquoted `a,b` as the two words `a` and `b`. The Windows runner therefore joins the words that follow `-Approve` back into one comma list while each looks like a list item (`<module-id>:<item-id>@<fingerprint>`). A phase word or a run ID never looks like one. Queue numbers and ranges will join the same way. The same holds for `-Only` and `-Skip`, where an item looks like a module ID (`lockout.firewall`); a phase word never does.
 - **PowerShell** takes an unquoted `-?` for itself before the script runs and shows the script's comment-based help, so that help is one short page that points to `laby -h`. `/?` reaches the runner and works like `-h`.
 
 #### Usage errors
@@ -167,6 +169,7 @@ A line holds one **action**, or only a phase, or neither: then it is the status.
 - an option given twice;
 - an option whose value is missing, or looks like another option (`--profile needs a value, but got '--root'`);
 - an option that does not fit the action, such as `--all` without `-u`, or two actions;
+- `--only` and `--skip` together, or either one with an action (`laby: --only is only for a preview or -r, not -k`);
 - `-y` anywhere but `-u ID --all` and `--new-seed` (`laby: -y is only for -u ID --all: add --all, or leave out -y`, and `laby: -y is only for -u ID --all or --new-seed, not a preview`), and `--no-revert` anywhere but `-r`. They are refused rather than ignored, so no one believes they took effect.
 
 A value option that the action does not use, such as `--profile` with `--probe`, gives a warning, not an error. The warning is printed once the action has passed its own checks, so it never comes before an error.
@@ -218,6 +221,15 @@ The default is no: anything but `y` or `yes` prints `Nothing was changed.` and e
 #### No revert timer
 
 `laby -r PHASE --no-revert` arms no revert timer and ends without asking to keep the run. It is for test machines only: a change that locks the team out is not undone by itself. Nothing is kept once verified, as there is no timer to keep it from. The manifest records `run_no_revert` after `breakglass_verified`; `--history` and the status show the run as `no revert`; and the end of the run says there is no timer and gives the `-u` command that undoes it. `laby -k ID` on such a run records nothing and says there is no timer to cancel (`0`).
+
+#### Partial runs
+
+`laby PHASE --only LIST` and `laby -r PHASE --skip LIST` preview or run some of a phase's modules. A LIST is module IDs of that phase, separated by commas; `--only` keeps just those, `--skip` drops them. They cannot be combined (`40`), and an ID that is not a module of the phase in the profile is a usage error (`40`) with the nearest ID, if there is one. The list is applied after the profile is read; module order is unchanged. Everything else is as in a full run: the same gates, backups, manifest, revert timer and keep question.
+
+- **A module that needs one the run left out is blocked.** Only the modules of this same run count: earlier runs are not looked at. The result is `BLOCKED` (`20`) with the reason `needs <ID>, which this run left out` and the same command with the module put back; nothing is planned, asked or changed, in a run as in a preview.
+- **The one exception is `lockout.inventory`.** A preview may always leave it out. A run (`-r`) may leave it out only when the host already has a dependency map from an earlier run (`<root>/state/inventory/deps`, design 08, section 3.1), which the firewall then uses; with no map the run is refused (`20`) before any change, because the firewall would have nothing to keep open.
+- **The run says it is partial.** The header lists the modules chosen, the summary says how many of the phase's modules ran, and the `run_start` entry of the manifest ends with `, partial --only LIST` or `, partial --skip LIST`, which `--show` prints as a `Partial:` line.
+- **A recording pass** only covers the read-only modules that are in the run.
 
 #### Host checks
 
