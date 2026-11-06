@@ -160,6 +160,7 @@ $script:HelpAsked = $false       # true when -h, -Help, -? or /? came before '--
 $script:TryTopic = ''            # what the Try line puts before -h
 $script:ParseError = ''          # the first option error, reported by main
 $script:ErrorCount = 0           # ERROR lines in the Summary, for the Next line
+$script:WarnFailed = $false      # true when the warning before the undo could not be armed
 
 $script:Mod = @{}
 $script:ProfileIds = @()
@@ -2601,6 +2602,7 @@ function Invoke-LabApplyOne {
             Write-LabMore $id
             $M.State = 'blocked'; return 20
         }
+        Invoke-LabArmWarning -Seconds ($script:Settings['REVERT_MINUTES'] * 60)
     }
 
     # A change the manifest does not list could never be rolled back.
@@ -2619,6 +2621,10 @@ function Invoke-LabApplyOne {
     }
     Write-LabLogFor $id 'info' 'apply_start' 'applying'
     Write-LabStatus 'CHANGE' $name
+    if ($script:WarnFailed) {
+        Write-LabDetail 'Note' 'the warning before the undo was not set up; the timer is armed'
+        $script:WarnFailed = $false
+    }
     if ($script:Approved -ne '') { Write-LabChoice }
     $applyScript = Join-Path $M.Dir 'apply.ps1'
     Invoke-LabEntry $M.Dir 'apply' $id '0'
@@ -3039,6 +3045,108 @@ function Get-LabRevertArgument {
         (ConvertTo-LabCommandLineArgument $script:DataRoot), (ConvertTo-LabCommandLineArgument $env:LAB_CONFIG_DIR))
 }
 
+# Get-LabWarnName: how the warning names this command, for a command to
+# paste. Started through the installed launcher it is 'laby' (or
+# 'labyrinth'); otherwise the full path of this program, as a timer's stored
+# command has it. The operator's own relative path would not work for
+# whoever reads the warning.
+function Get-LabWarnName {
+    if ($env:LAB_SELF -ceq 'laby' -or $env:LAB_SELF -ceq 'labyrinth') { return $env:LAB_SELF }
+    $path = Join-Path $env:LAB_ROOT 'labyrinth.ps1'
+    if ($path -notmatch '^[A-Za-z0-9_.:\\/~-]+$') { $path = "& '" + $path.Replace("'", "''") + "'" }
+    return $path
+}
+
+# Get-LabWarnArgument: the command line the warning's task runs: the hidden
+# entry, like --complete, not an action and not in the help.
+function Get-LabWarnArgument {
+    return ('-NoProfile -NonInteractive -ExecutionPolicy Bypass -File {0} --warn {1} {2} {3} {4}' -f `
+            (ConvertTo-LabCommandLineArgument (Join-Path $env:LAB_ROOT 'labyrinth.ps1')), $env:LAB_RUN_ID,
+        (ConvertTo-LabCommandLineArgument $script:DataRoot), (ConvertTo-LabCommandLineArgument $env:LAB_CONFIG_DIR),
+        (ConvertTo-LabCommandLineArgument (Get-LabWarnName)))
+}
+
+# Invoke-LabArmWarning -Seconds N: arm the warning that goes to logged-in
+# sessions shortly before the run's revert timer, which was just registered
+# for N seconds, undoes it (docs\Conventions.md section 3.1). Best effort: a
+# failure sets $script:WarnFailed, so the caller prints a Note, and never
+# stops the run.
+function Invoke-LabArmWarning {
+    param([Parameter(Mandatory)] [int] $Seconds)
+    $script:WarnFailed = $false
+    try {
+        $exe = (Get-Process -Id $PID).Path
+        Register-LabRevertWarning -Seconds $Seconds -RunId $env:LAB_RUN_ID -Execute $exe -Argument (Get-LabWarnArgument)
+    } catch {
+        Write-Verbose "warning not armed: $($_.Exception.Message)"
+        $script:WarnFailed = $true
+    }
+}
+
+# Get-LabWarnDataOption: the -Root and -Config of this warning, for a command
+# to paste: only what differs from the defaults.
+function Get-LabWarnDataOption {
+    $opts = ''
+    if ($script:DataRoot -ine 'C:\ProgramData\Labyrinth') { $opts += " -Root $(ConvertTo-LabShellWord $script:DataRoot)" }
+    if ($env:LAB_CONFIG_DIR -ine (Join-Path $script:DataRoot 'etc')) { $opts += " -Config $(ConvertTo-LabShellWord $env:LAB_CONFIG_DIR)" }
+    return $opts
+}
+
+# Get-LabWarnText -RunId RUN -Name NAME -Left N: the warning for RUN, whose
+# revert timer undoes it in N seconds, with the commands written as NAME
+# (docs\Conventions.md section 3.1).
+function Get-LabWarnText {
+    param([string] $RunId, [string] $Name, [int] $Left)
+    $due = Get-LabRevertTimerDue -RunId $RunId
+    $at = $due.Substring(11, 5)
+    if ($Left -eq 1) {
+        $when = '1 second'
+    } elseif ($Left -lt 50) {
+        $when = "$Left seconds"
+    } else {
+        $mins = [int][Math]::Floor(($Left + 30) / 60)
+        if ($mins -eq 1) { $when = '1 minute' } else { $when = "$mins minutes" }
+    }
+    $more = [int]$script:Settings['REVERT_MINUTES']
+    $short = Get-LabShortId $RunId
+    $opts = Get-LabWarnDataOption
+    $lines = @(
+        "Labyrinth undoes run $($RunId.Substring($RunId.Length - 4)) on $(Get-LabHostName) at $at UTC (in $when).",
+        ('{0,-17}{1} -k {2}{3}' -f 'To keep it:', $Name, $short, $opts),
+        ('{0,-17}{1} -Extend {2}{3}' -f "To get $more more:", $Name, $short, $opts)
+    )
+    return ($lines -join "`r`n")
+}
+
+# Invoke-LabWarnCommand -Name NAME: the hidden entry the warning's task runs
+# (--warn RUN ROOT CONFIG NAME). It tells everyone logged in that the run's
+# revert timer undoes it in about a minute, and changes nothing else but the
+# run log. Best effort and silent when there is nothing to say: it sends
+# nothing if the run is no longer armed, or if the undo is not due within 90
+# seconds, as when the host was off past the warning time, or a timer's
+# earlier warning is still waiting.
+function Invoke-LabWarnCommand {
+    param([string] $Name)
+    $script:DryRun = '0'; $env:LAB_DRY_RUN = '0'
+    if (-not (Test-LabAdmin)) { exit 20 }
+    Assert-LabTrustedTree
+    $run = $env:LAB_RUN_ID
+    if (-not (Test-LabRevertTimer -RunId $run)) { exit 0 }
+    $left = Get-LabRevertTimerLeft -RunId $run
+    if ($left -le 0 -or $left -gt 90) { exit 0 }
+    try { $script:Settings = Read-LabEventConfig } catch { $script:Settings = @{ REVERT_MINUTES = 5 } }
+    $text = Get-LabWarnText -RunId $run -Name $Name -Left $left
+    Open-LabRunLog "warn run $run"
+    if (Send-LabNotice -Message $text) {
+        Write-LabLine "warned the sessions logged in that the revert timer undoes run $run in $left seconds"
+        Write-LabLog -Level info -EventName timer_warned -Message "revert timer warning sent; the undo is due in $left seconds"
+    } else {
+        Write-LabLine "could not warn the sessions logged in (no msg command): run $run is undone in $left seconds"
+        Write-LabLog -Level info -EventName timer_warned -Message 'revert timer warning not sent: msg is missing or failed'
+    }
+    exit 0
+}
+
 # Has the current run already been rolled back as a whole?
 function Test-LabRunRolledBack {
     return (@(Get-LabManifestEntry | Where-Object { $_.action -ceq 'run_rolled_back' }).Count -gt 0)
@@ -3379,6 +3487,7 @@ function Invoke-LabExtend {
             Write-LabErrorLine "Retry: $Self -Extend $short$(Get-LabDataOption)"
             return 40
         }
+        Invoke-LabArmWarning -Seconds $total
         $mins = [int][Math]::Floor(($total + 59) / 60)
         $due = Get-LabRevertTimerDue -RunId $env:LAB_RUN_ID
         if ($due -ne '') { $at = $due.Substring(11, 5) } else { $at = [DateTime]::UtcNow.AddSeconds($total).ToString('HH:mm', [Globalization.CultureInfo]::InvariantCulture) }
@@ -3395,6 +3504,10 @@ function Invoke-LabExtend {
         }
         Write-LabLog -Level info -EventName timer_extended -Message "revert timer extended by $([int]($extra / 60)) minutes; now fires $fires"
         Write-LabLine "Timer:  now fires $at UTC (in $inWords)"
+        if ($script:WarnFailed) {
+            Write-LabLine 'Note:   the warning before the undo was not set up; the timer is armed'
+            $script:WarnFailed = $false
+        }
         Write-LabLine "Next:   $Self -k $short$(Get-LabDataOption)"
         return 0
     } finally {
@@ -4106,6 +4219,25 @@ try {
     . (Join-Path $PSScriptRoot 'core\safety\Release.ps1')
     $script:Release = Test-LabRelease -Root $PSScriptRoot
     if ($script:Release.Status -eq 'problem') { Exit-LabRelease }
+    # The hidden --warn entry (the warning before the revert timer undoes a
+    # run) runs after the release check, like every action: --warn RUN ROOT
+    # CONFIG NAME.
+    if ($script:Arguments.Count -gt 0 -and $script:Arguments[0] -is [string] -and $script:Arguments[0] -ceq '--warn') {
+        $warnWord = @($script:Arguments | Select-Object -Skip 1 | ForEach-Object { [string] $_ })
+        if ($warnWord.Count -lt 3 -or $warnWord[0] -cnotmatch $ReRunId -or
+            $warnWord[1] -notmatch '^([A-Za-z]:\\|\\\\)' -or $warnWord[2] -notmatch '^([A-Za-z]:\\|\\\\)') { exit 40 }
+        $warnName = 'laby'
+        if ($warnWord.Count -ge 4) { $warnName = $warnWord[3] }
+        $script:DataRoot = $warnWord[1]
+        $env:LAB_ROOT = $PSScriptRoot
+        $env:LAB_CONFIG_DIR = $warnWord[2]
+        $env:LAB_STATE_DIR = Join-Path $script:DataRoot 'state'
+        $env:LAB_LOG_DIR = Join-Path $script:DataRoot 'logs'
+        $env:LAB_BACKUP_DIR = Join-Path $script:DataRoot 'backup'
+        $env:LAB_RUN_ID = $warnWord[0]
+        . (Join-Path $PSScriptRoot 'core\Lab.ps1')
+        Invoke-LabWarnCommand -Name $warnName
+    }
     Read-LabArgument
     # Help never runs anything: it comes before every other check and read,
     # whatever else the line says.

@@ -7,6 +7,11 @@
 # that runs as SYSTEM. Each re-arm registers a new one, with a new <n>, and
 # only then removes the last, so a failed re-arm leaves the earlier timer
 # armed. The armed timer's name is kept in $env:LAB_STATE_DIR\runs\<run>\timer.
+#
+# The warning that logged-in sessions get shortly before the undo is a second
+# one-time task, \Labyrinth\lab-warn-<run>-<n>, armed and removed with the
+# timer; its name is kept in runs\<run>\warn. It is best effort: it never
+# blocks the timer.
 
 function Test-LabAdmin {
     $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
@@ -215,6 +220,85 @@ function Unregister-LabRevertTimer {
     }
     Remove-Item -LiteralPath $f -Force
     Remove-Item -LiteralPath (Join-Path $dir 'timer-due') -Force -ErrorAction SilentlyContinue
+    # The warning goes with it. Best effort: one left behind sees that the run has
+    # no timer and sends nothing.
+    try { [void](Unregister-LabRevertWarning -RunId $RunId) } catch { Write-Verbose "warning not removed: $($_.Exception.Message)" }
+}
+
+# Get-LabWarnLead -Seconds N: how many seconds before the undo the warning is
+# sent for a revert timer of N seconds: 60, or half the time when the timer is
+# shorter than two minutes (docs\Conventions.md, section 3.1). 0 means the
+# timer is too short to warn.
+function Get-LabWarnLead {
+    param([Parameter(Mandatory)] [int] $Seconds)
+    if ($Seconds -ge 120) { return 60 }
+    return [int][Math]::Floor($Seconds / 2)
+}
+
+# Register-LabRevertWarning -Seconds N -RunId RUN -Execute EXE -Argument ARGS:
+# (re)arm the run's warning, a one-time scheduled task
+# \Labyrinth\lab-warn-<run>-<n> that runs EXE ARGS Get-LabWarnLead seconds
+# before its revert timer, which is N seconds from now, fires. Called right
+# after Register-LabRevertTimer, whose count it shares. As for the timer, the
+# new task is registered before the earlier one is removed. Throws on failure
+# after removing the earlier warning too, as it would name the wrong time; the
+# caller goes on, because the warning is best effort.
+function Register-LabRevertWarning {
+    param(
+        [Parameter(Mandatory)] [int] $Seconds,
+        [Parameter(Mandatory)] [string] $RunId,
+        [Parameter(Mandatory)] [string] $Execute,
+        [Parameter(Mandatory)] [string] $Argument
+    )
+    $dir = Get-LabRunDir $RunId
+    $warnFile = Join-Path $dir 'warn'
+    $lead = Get-LabWarnLead -Seconds $Seconds
+    if ($lead -lt 1) {
+        [void](Unregister-LabRevertWarning -RunId $RunId)
+        return
+    }
+    $old = ''
+    if (Test-Path -LiteralPath $warnFile) { $old = [IO.File]::ReadAllText($warnFile).Trim() }
+    $name = ''
+    try {
+        $n = [int]([IO.File]::ReadAllText((Join-Path $dir 'timer-count')).Trim())
+        $name = "lab-warn-$RunId-$n"
+        $at = (Get-Date).AddSeconds($Seconds - $lead)
+        $action = New-ScheduledTaskAction -Execute $Execute -Argument $Argument
+        $trigger = New-ScheduledTaskTrigger -Once -At $at
+        $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
+        $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
+        Register-ScheduledTask -TaskName $name -TaskPath '\Labyrinth\' -Action $action -Trigger $trigger `
+            -Principal $principal -Settings $settings -Force | Out-Null
+        [IO.File]::WriteAllText($warnFile, "$name`n")
+    } catch {
+        $failure = $_
+        if ($name -ne '') {
+            Unregister-ScheduledTask -TaskName $name -TaskPath '\Labyrinth\' -Confirm:$false -ErrorAction SilentlyContinue
+        }
+        [void](Unregister-LabRevertWarning -RunId $RunId)
+        throw $failure
+    }
+    if ($old -ne '' -and $old -cne $name) {
+        Unregister-ScheduledTask -TaskName $old -TaskPath '\Labyrinth\' -Confirm:$false -ErrorAction SilentlyContinue
+    }
+}
+
+# Unregister-LabRevertWarning -RunId RUN: remove the run's warning, if one is
+# armed. Returns $false, keeping the state file, if the task is still there
+# afterwards; the caller goes on, because a warning left behind sees that the
+# run has no timer and sends nothing.
+function Unregister-LabRevertWarning {
+    param([Parameter(Mandatory)] [string] $RunId)
+    $f = Join-Path (Get-LabRunDir $RunId) 'warn'
+    if (-not (Test-Path -LiteralPath $f)) { return $true }
+    $name = [IO.File]::ReadAllText($f).Trim()
+    if ($name -cmatch '^lab-warn-[A-Za-z0-9-]+$') {
+        Unregister-ScheduledTask -TaskName $name -TaskPath '\Labyrinth\' -Confirm:$false -ErrorAction SilentlyContinue
+        if (Get-ScheduledTask -TaskName $name -TaskPath '\Labyrinth\' -ErrorAction SilentlyContinue) { return $false }
+    }
+    Remove-Item -LiteralPath $f -Force
+    return $true
 }
 
 # Save-LabRevertTimerDue -RunId RUN -At TIME: record when the run's revert
