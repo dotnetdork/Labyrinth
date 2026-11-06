@@ -37,7 +37,7 @@ snapshot() {
 @test "a lone dash offers the actions and options, short and long" {
   bare -
   [ "$status" -eq 0 ]
-  for c in -r --run -k --keep -u --undo -V --version -h --help -P --profile --history --show --probe \
+  for c in -r --run -k --keep -u --undo -V --version -h --help -P --profile --history --show --doctor --probe \
       --new-seed --seed-check --manual --root --config --only --skip; do
     has "$c" || { echo "missing $c"; return 1; }
   done
@@ -228,7 +228,7 @@ finish() { printf '{"action":"%s"}\n' "$2" >> "$ROOT/state/runs/$1/manifest.json
 @test "after -h, the topics: actions, options, phases, basics and module IDs" {
   bare -h ''
   [ "$status" -eq 0 ]
-  for c in run keep undo history show probe new-seed seed-check version manual all profile root config \
+  for c in run keep undo history show doctor probe new-seed seed-check version manual all profile root config \
       break-glass confirm-group approve yes no-revert only skip basics lockout observe deceive sustain \
       observe.toggle lockout.inventory; do
     has "$c" || { echo "missing $c"; return 1; }

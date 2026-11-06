@@ -135,6 +135,8 @@ Every module is a folder containing a metadata file, a help page and up to six e
 | `touches_scored` | `true` if it can affect a scored service or account |
 | `requires` | Other modules or facts that must exist first |
 | `outputs` | Files and state it creates, so cleanup can find them |
+| `tools` | Optional, a list of command names the module cannot work without on Linux, such as `[ss]`. `laby --doctor` checks that each is on the `PATH` of a host whose profile lists the module. List only a hard need: a command the module works around when it is missing is left out. A missing field means no tools to check |
+| `tools_windows` | Optional, the same for Windows, where a name is a cmdlet or a command, such as `[Get-NetTCPConnection]` |
 | `keep_on_verify` | Optional, `true` or `false` (the default), for a module that changes something (`reversible`, `service-affecting` or `approval`). `true` means the change is kept as soon as it verifies and no scored service got worse, so the revert timer no longer undoes it (rule 9 below). It is only for a change that takes access away from someone other than the team and cannot lock the team out or cut off scoring |
 | `pre_approvable` | Optional, for an `approval` module only: the item categories a pre-approval rule may approve (Conventions, section 3.1). A category belongs here only if an item of it is safe to change without a person seeing it: the module checks the item fully, and the change can be undone or breaks nothing. Examples are a security update for a named package (design 10, section 4), a known default application password (design 04, section 2.1) and a setting that is approval-class only because the installed version was not tested in the lab (design 11, section 4) |
 

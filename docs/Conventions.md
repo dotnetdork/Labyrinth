@@ -33,7 +33,7 @@ outputs: [/etc/ufw/user.rules, firewall-backup]
 spec: 03
 ```
 
-The fields are those of design 00, section 4, plus `spec`, the design number the module implements. A loader that meets any other YAML construct fails with exit code 40.
+The fields are those of design 00, section 4, plus `spec`, the design number the module implements, and two optional lists for `laby --doctor`, `tools` (Linux) and `tools_windows` (Windows): the commands the module cannot work without, one name per item, such as `tools: [ss]`. Only a hard need is listed; a missing field means no tools to check. A name is a command on the `PATH`, or on Windows a cmdlet or a command. A loader that meets any other YAML construct fails with exit code 40.
 
 ### 2.2 Run-time configuration
 
@@ -99,7 +99,7 @@ Both runners share one vocabulary. In this section `laby` stands for the install
 laby [PHASE] [options]          preview a phase
 laby -r PHASE [options]         run a phase
 laby [options]                  this host's status and the next step
-laby ACTION [ID] [options]      keep, extend, undo, history, show, probe, new-seed, seed-check, version, manual, help
+laby ACTION [ID] [options]      keep, extend, undo, history, show, doctor, probe, new-seed, seed-check, version, manual, help
 ```
 
 #### Commands
@@ -116,6 +116,7 @@ A line holds one **action**, or only a phase, or neither: then it is the status.
 | `laby -u ID` / `--undo ID` | Undo what a run applied, newest module first, except the modules kept once they verified (`keep_on_verify`, below); `--all` (only with `-u`) undoes those too, after a question (Questions, below). The revert timer runs exactly this form, which never asks. The ID is always needed: without it, the runs are listed (`40`). When it undid anything, it writes a notice to every terminal or session logged in on the host (`wall` on Linux, `msg` on Windows; best effort), so the team learns of an undo no one was watching |
 | `laby --history` | List this host's runs, oldest first: ID, phase, start time (UTC) and state, which is `armed` (with the time it is undone; on Linux, `armed: timer lost` when systemd no longer has the timer, because its unit files are missing or broken), `kept`, `no revert` (run with `--no-revert`), `undone`, `undone with errors`, or `not kept, no timer`. Changes nothing; needs root or Administrator (`20`) |
 | `laby --show ID` | List what one run changed, read-only: the run's phase, profile, host, group, start and end (UTC) and state, then each module in run order with its status and every change it made (action and target, the previous value, the note and the backup, where the manifest has them). A module's status is `applied`, `kept once verified`, `undone`, `blocked, nothing changed`, or `failed (apply exit N)`, `failed (verify exit N)` or `failed (a scored service stopped working)`, with `, then undone` when its changes were put back. The last line is `Log:` and the path of the run log, when it exists. The ID is always needed: without it, the runs are listed (`40`). Secrets are never shown, and no backup file is read. Needs root or Administrator (`20`). `-v` is planned (section 3.3) and not accepted with it yet |
+| `laby --doctor` | Check that this host is ready for a real run. Read-only: no lock, no run ID, no log, and nothing under the data root changes. Needs root or an Administrator (`20` otherwise), like `--history`. It prints one line per check, in this order, `OK`, `WARN` or `FAIL`, and under a `WARN` or `FAIL` an indented `Fix:` line. (1) The release matches `release.sha256`: a mismatch is a `FAIL` and the other checks are not run, because the changed files must not run; no `release.sha256` is a `WARN`. (2) The code folder, the configuration folder and the data root can be changed only by root or Administrators (the trusted-code check, below). (3) The configuration files (section 2.2) exist and parse, `protected-accounts` and `services` list something, and no value is still an example one from `config/*.example` (a name under `example.test`, or an address in a documentation range); only the first problem is shown. (4) This host is on exactly one line of `hosts`, with a platform this runner serves, and its profile exists and lists module IDs. (5) A revert timer can be armed, tested without arming one: systemd runs and answers, and can write its unit files (Linux), or the Task Scheduler service runs (Windows). (6) The clock: a `FAIL` when its date is before 2026-09-28, the date of Labyrinth's first commit, and a `WARN` when no time-sync service runs (systemd-timesyncd, chrony or ntpd on Linux; the Windows Time service on Windows). It never reaches the network. (7) The tools that the `tools` (Linux) or `tools_windows` field of each module in the host's profile lists (section 2.1) are present, reported per module. (8) No revert timer is armed and stale: one whose time passed, or `armed: timer lost` on Linux (the states `--history` shows). A `WARN` does not fail it. With any `FAIL` it ends with a `Next:` line holding the first fix and exits `20`; otherwise it prints `Ready for a run.` and exits `0` |
 | `laby --probe` | Probe every scored service once; exit `30` if one fails. Changes nothing |
 | `laby --new-seed` | Make this host's decoy seed, save it as `DECOY_SEED` in `seed.conf` and show it once on the terminal until the operator types `recorded` (design 16, section 4.1). Needs root or Administrator and a terminal, and checks both (`20`) before it makes or saves anything. If the host already has a decoy seed, it asks first (Questions, below); `-y` answers yes. If the terminal goes before `recorded`, it puts `seed.conf` back as it was (`20`). The seed is never printed to standard output or logged. A `seed.conf` that cannot be read, or holds an invalid `DECOY_SEED`, is an error (`40`) |
 | `laby --seed-check` | Ask for a seed at a visible prompt on the terminal and say whether it is valid (exit `0`; not valid `30`; no terminal `20`). The seed is never taken from the command line or standard input. Reads no configuration, needs no root, and writes nothing |
@@ -141,6 +142,7 @@ A line holds one **action**, or only a phase, or neither: then it is the status.
 | | `--probe` | `-Probe` | none | action |
 | | `--history` | `-History` | none | action |
 | | `--show` | `-Show` | ID | action |
+| | `--doctor` | `-Doctor` | none | action |
 | | `--new-seed` | `-NewSeed` | none | action |
 | | `--seed-check` | `-SeedCheck` | none | action |
 | `-P` | `--profile` | `-Profile` | NAME, `[a-z0-9-]+` | a phase |
@@ -160,7 +162,7 @@ A line holds one **action**, or only a phase, or neither: then it is the status.
 
 #### How the line is read
 
-- **One action per line:** `-r`, `-k`, `--extend`, `-u`, `--probe`, `--history`, `--show`, `--new-seed`, `--seed-check`, `-V` or `--manual`. Two actions are a usage error (`40`). A phase word alone previews it. A line with neither an action nor a phase is the status, unless it gives `-P`, `--only`, `--skip`, `--break-glass`, `--confirm-group` or `--approve`, which only a preview or a run uses: that line is a preview with its phase missing (`40`). Options may come before or after the action and its word.
+- **One action per line:** `-r`, `-k`, `--extend`, `-u`, `--probe`, `--history`, `--show`, `--doctor`, `--new-seed`, `--seed-check`, `-V` or `--manual`. Two actions are a usage error (`40`). A phase word alone previews it. A line with neither an action nor a phase is the status, unless it gives `-P`, `--only`, `--skip`, `--break-glass`, `--confirm-group` or `--approve`, which only a preview or a run uses: that line is a preview with its phase missing (`40`). Options may come before or after the action and its word.
 - **Case.** Short letters are case-sensitive: `-P` is the profile and `-V` the version, and `-p` and `-v` are errors with a near-miss suggestion. Long names ignore case and dashes, so PowerShell's `-Run`, `-Undo`, `-Profile`, `-BreakGlass` and `-Root` work, and each option has one name in both runners.
 - **Stacking.** Short letters may be joined, such as `-rv` once `-v` is built (section 3.3); today only `-r` and `-P` can share a stack (`-rP NAME`). A letter that takes a value comes last. A single dash before a word is read as a long name when the word is a long name (`-Undo`), and otherwise as a stack of letters, where a letter that is not a short flag is a usage error.
 - **Values** are given as `-k 7f3a`, `--keep 7f3a`, `--keep=7f3a` or `-Name:value`, and `--` ends the options. A run is never kept or undone by guess. PowerShell may hand `-k 0123` over as a number; the runner takes the raw text, never a number.
@@ -247,7 +249,7 @@ The default is no: anything but `y` or `yes` prints `Nothing was changed.` and e
 - This host's line in `hosts` must name a platform the runner serves: `ubuntu` (the whole Debian family; `debian` is read as `ubuntu`) or `rhel-family` (Fedora, RHEL, Rocky, Oracle Linux, AlmaLinux) for `labyrinth.sh`, `windows` for `labyrinth.ps1`. Otherwise the run is blocked (`20`).
 - An `appliance` is never changed (design 05).
 
-`-k`, `-u` and `--history` skip these checks, so a stored revert-timer command still works after the configuration changes.
+`-k`, `-u` and `--history` skip these checks, so a stored revert-timer command still works after the configuration changes. `--doctor` skips them too, because it reports what they would refuse.
 
 #### Profile and module order
 

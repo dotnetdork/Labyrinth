@@ -3,7 +3,7 @@
 This page shows the commands a person types to run Labyrinth, with what each one does and when to use it. It is written for teammates learning the tool, not for the people building it.
 
 > [!NOTE]
-> **Working now and planned.** The status, preview, run, keep, undo, history, show, probe, the decoy seed commands, help, the manual and the version work now. Parts marked **Planned** are not built yet; each names its stage (Roadmap). The installer (`sudo ./install.sh` on Linux, `.\install.ps1` as Administrator on Windows) adds the commands `laby` and `labyrinth`; without it, `laby` means `./labyrinth.sh` on Linux or `.\labyrinth.ps1` on Windows, run from the release folder. The exact rules, including every flag and every edge case, are in [Conventions, section 3.1](Conventions.md#31-commands-options-gates-and-the-order-of-an-apply) for what works now and [section 3.3](Conventions.md#33-automatic-runs-and-the-rest-of-the-command-line-specified-planned) for what is planned; if this page and Conventions ever disagree, Conventions wins.
+> **Working now and planned.** The status, preview, run, keep, undo, history, show, doctor, probe, the decoy seed commands, help, the manual and the version work now. Parts marked **Planned** are not built yet; each names its stage (Roadmap). The installer (`sudo ./install.sh` on Linux, `.\install.ps1` as Administrator on Windows) adds the commands `laby` and `labyrinth`; without it, `laby` means `./labyrinth.sh` on Linux or `.\labyrinth.ps1` on Windows, run from the release folder. The exact rules, including every flag and every edge case, are in [Conventions, section 3.1](Conventions.md#31-commands-options-gates-and-the-order-of-an-apply) for what works now and [section 3.3](Conventions.md#33-automatic-runs-and-the-rest-of-the-command-line-specified-planned) for what is planned; if this page and Conventions ever disagree, Conventions wins.
 
 ## The idea in one paragraph
 
@@ -129,6 +129,14 @@ laby --show 7f3a
 
 List what that run changed: its phase, profile, host, group, start and end, and state, then each module with its status and every change it made, with the previous value and the backup where there is one. Use it to undo something by hand, to explain a change to a reviewer, or to see whether a run touched SSH. It changes nothing, and passwords never appear. The last line gives the run log, which holds everything the run printed.
 
+## Checking that a host is ready
+
+```
+laby --doctor
+```
+
+Check that this host is ready for a real run, before you need it. It prints one line per check, `OK`, `WARN` or `FAIL`, and a `Fix:` line under each `WARN` and `FAIL`: whether Labyrinth's files match the release, whether only root can change them, whether the configuration files are filled in, whether this host is in `hosts` once and has a profile, whether a revert timer can be set, whether the clock is sane, whether the tools the profile needs are there, and whether an old revert timer is still armed. A `WARN` is worth a look and does not stop a run. If anything fails it ends with `Next:` and the first fix, and exits with code `20`; otherwise it says `Ready for a run.` It changes nothing and needs root.
+
 ## Checking the services
 
 ```
@@ -185,6 +193,7 @@ laby observe             preview the next phase
 laby -r observe          then the later phases, in order
 laby --history           find a run's ID
 laby --show 7f3a         see what that run changed
+laby --doctor            check the host is ready, before you need it
 laby --probe             re-check the scored services at any time
 laby --new-seed          make this host's decoy seed, once
 ```
