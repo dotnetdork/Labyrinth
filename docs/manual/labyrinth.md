@@ -244,6 +244,7 @@ Labyrinth does **one action per line**. A phase on its own is a preview. Every o
 | Undo a run | `@CMD@ -u ID [--all [-y]]` | 0, 20 or 40 |
 | List the runs | `@CMD@ --history` | 0, 20 or 40 |
 | List what a run changed | `@CMD@ --show ID` | 0, 20 or 40 |
+| Check the host is ready for a run | `@CMD@ --doctor` | 0, 20 or 40 |
 | Test the scored services | `@CMD@ --probe` | 0, 20, 30 or 40 |
 | Make this host's decoy seed | `@CMD@ --new-seed [-y]` | 0, 20 or 40 |
 | Check a seed you typed | `@CMD@ --seed-check` | 0, 20 or 30 |
@@ -262,6 +263,7 @@ Labyrinth does **one action per line**. A phase on its own is a preview. Every o
 | Undo a run | `@CMD@ -u ID [-All [-y]]` | 0, 20 or 40 |
 | List the runs | `@CMD@ -History` | 0, 20 or 40 |
 | List what a run changed | `@CMD@ -Show ID` | 0, 20 or 40 |
+| Check the host is ready for a run | `@CMD@ -Doctor` | 0, 20 or 40 |
 | Test the scored services | `@CMD@ -Probe` | 0, 20, 30 or 40 |
 | Make this host's decoy seed | `@CMD@ -NewSeed [-y]` | 0, 20 or 40 |
 | Check a seed you typed | `@CMD@ -SeedCheck` | 0, 20 or 30 |
@@ -467,6 +469,47 @@ Below the list, it shows how to name a run by its last four characters. Then it 
 <!-- end -->
 what one run changed. Name the run by its ID or its last four characters; without one, it lists the runs and shows none. It shows the run's phase, profile, host, group, start and end (UTC) and state, then each module in run order with its status and every change it made. The status is `applied`, `kept once verified`, `undone`, `blocked, nothing changed`, or `failed` with what failed and whether it was undone. Each change shows what was done and to what, the previous value, and the backup folder, where Labyrinth recorded them. The last line gives the path of the run log. Passwords never appear, and the contents of backed-up files are never printed. It changes nothing, but it must be run as @ADMIN@. Ends with 0, 20 when not run as @ADMIN@, and 40 on an error.
 
+## doctor
+
+<!-- linux -->
+`--doctor` checks
+<!-- end -->
+<!-- windows -->
+`-Doctor` checks
+<!-- end -->
+that this host is ready for a real run, so a broken install is found now and not when `-r` refuses. It prints one line per check, `OK`, `WARN` or `FAIL`, and under each `WARN` and `FAIL` a `Fix:` line:
+
+1. The release: every Labyrinth file matches `release.sha256` (section 11). If a file differs, that is a `FAIL`, and no other check runs, because the changed files must not run. With no `release.sha256` it is a `WARN`: the files were not checked.
+<!-- linux -->
+2. The folders: Labyrinth's folder, the configuration folder and the data root can be changed only by root, and so can every folder above them.
+<!-- end -->
+<!-- windows -->
+2. The folders: Labyrinth's folder, the configuration folder and the data root can be changed only by Administrators, and so can every folder above them.
+<!-- end -->
+3. The configuration files (section 10): they exist, they can be read, and `protected-accounts` and `services` list something. A value copied from a `config/*.example` template, such as a name under `example.test` or an address in a documentation range, counts as not filled in. Only the first problem is shown.
+4. This host is on exactly one line of the `hosts` file, with a platform this program serves, and the profile on that line exists and lists only module IDs.
+<!-- linux -->
+5. The revert timer can be set: systemd is running, answers, and its folder for unit files can be written. No test timer is set.
+<!-- end -->
+<!-- windows -->
+5. The revert timer can be set: the Task Scheduler service is running. No test timer is set.
+<!-- end -->
+<!-- linux -->
+6. The clock: a `FAIL` if its date is earlier than this release, a `WARN` if no time-sync service (systemd-timesyncd, chrony or ntpd) is running. It never asks the network for the time.
+<!-- end -->
+<!-- windows -->
+6. The clock: a `FAIL` if its date is earlier than this release, a `WARN` if the Windows Time service is not running. It never asks the network for the time.
+<!-- end -->
+7. The tools: every tool that a module of this host's profile lists in its `module.yml` is on the host. The line names the module and the missing tool.
+<!-- linux -->
+8. Revert timers: a run whose timer is armed and past due, or shown as `armed: timer lost` in the history, is a `FAIL`. Keep it or undo it, as the `Fix:` line says.
+<!-- end -->
+<!-- windows -->
+8. Revert timers: a run whose timer is armed and past due is a `FAIL`. Keep it or undo it, as the `Fix:` line says.
+<!-- end -->
+
+A `WARN` does not stop the check from passing. If anything fails, the last line is `Next:` and the first fix, and it ends with 20; otherwise the last line is `Ready for a run.` and it ends with 0. It takes no run ID, writes no log and changes nothing, but it must be run as @ADMIN@. Ends with 0 when the host is ready, 20 when a check fails or when not run as @ADMIN@, and 40 on a mistake in the command.
+
 ## probe
 
 <!-- linux -->
@@ -507,7 +550,7 @@ for a seed at a prompt on the terminal and says whether it is a valid seed. Use 
 
 ## help (-h) [*topic*]
 
-Prints help for the whole program, or for one topic. A topic is an action (`run`, `keep`, `undo`, `history`, `show`, `probe`, `new-seed`, `seed-check`, `version`), an option (such as `profile` or `root`), a phase, or one of two more:
+Prints help for the whole program, or for one topic. A topic is an action (`run`, `keep`, `undo`, `history`, `show`, `doctor`, `probe`, `new-seed`, `seed-check`, `version`), an option (such as `profile` or `root`), a phase, or one of two more:
 
 - `@CMD@ -h basics` explains phases, modules, previews and runs, the history, the revert timer, keep, undo and scored services, in plain words, on one screen.
 - `@CMD@ -h <module-id>`, such as `@CMD@ -h lockout.firewall`, explains one module: its name, its phase and order, what it may change in plain words, whether it can affect a scored service, the platforms it runs on, its folder, and then its own page: what it checks and changes, why, what can go wrong, how to undo it, and what to do when it fails. Every warning, block, failure and error in the output names the page to read.
@@ -572,6 +615,7 @@ all work. A word that starts with a dash and holds a long name (even with one da
 | `-u`, `--undo ID` | Undo a run. The ID is always needed. | action |
 | `--history` | List this host's runs. | action |
 | `--show ID` | List what one run changed. The ID is always needed. | action |
+| `--doctor` | Check that this host is ready for a real run. | action |
 | `--probe` | Test every scored service once. | action |
 | `--new-seed` | Make this host's decoy seed, show it once and save it. | action |
 | `--seed-check` | Check a seed you type at a prompt. | action |
@@ -601,6 +645,7 @@ Example: `sudo ./labyrinth.sh -r lockout --root /srv/labyrinth`
 | `-u`, `-Undo ID` | Undo a run. The ID is always needed. | action |
 | `-History` | List this host's runs. | action |
 | `-Show ID` | List what one run changed. The ID is always needed. | action |
+| `-Doctor` | Check that this host is ready for a real run. | action |
 | `-Probe` | Test every scored service once. | action |
 | `-NewSeed` | Make this host's decoy seed, show it once and save it. | action |
 | `-SeedCheck` | Check a seed you type at a prompt. | action |
@@ -852,7 +897,7 @@ The run that is `armed` is the one to undo; its ID is also on the second line of
 **A module's `Problem:` line** says what stopped it. If the module gave no reason, Labyrinth says so, names the module's script on a `Script:` line, and in a preview shows the script's last lines as `It said:` lines. The `More:` line gives the command that explains the module.
 
 <!-- linux -->
-**"needs root".** `-r`, `-k`, `-u`, `--history` and `--show` need full rights. Run the command again with `sudo`.
+**"needs root".** `-r`, `-k`, `-u`, `--history`, `--show` and `--doctor` need full rights. Run the command again with `sudo`.
 <!-- end -->
 <!-- windows -->
 **"needs an elevated Administrator session".** `-r`, `-k`, `-u`, `-History` and `-Show` need full rights. Open PowerShell with **Run as administrator** and run the command again.

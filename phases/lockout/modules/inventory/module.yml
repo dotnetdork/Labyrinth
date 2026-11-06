@@ -9,3 +9,5 @@ touches_scored: false
 requires: []
 outputs: [state/inventory/*.jsonl, state/inventory/deps]
 spec: 08
+tools: [ss]
+tools_windows: [Get-NetTCPConnection]

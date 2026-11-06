@@ -10,6 +10,7 @@
 #   laby -u ID [--all]       undo a run, newest change first
 #   laby --history           list this host's runs and their state
 #   laby --show ID           list what one run changed
+#   laby --doctor            check this host is ready for a run
 #   laby --probe             test every scored service once
 #   laby --new-seed          make this host's decoy seed
 #   laby --seed-check        check a seed typed at a prompt
@@ -42,7 +43,7 @@ trap 'on_internal_error "$?" "${BASH_SOURCE[0]##*/}" "$LINENO" "$BASH_COMMAND"' 
 readonly LAB_VERSION='0.1.0'
 readonly LAB_URL='https://dotnetdork.github.io/Labyrinth/'
 readonly PHASES='lockout observe deceive sustain'
-readonly MODULE_KEYS='id title phase priority platforms risk touches_scored requires outputs spec pre_approvable keep_on_verify'
+readonly MODULE_KEYS='id title phase priority platforms risk touches_scored requires outputs spec pre_approvable keep_on_verify tools tools_windows'
 readonly -a REQUIRED_KEYS=(id title phase priority platforms risk touches_scored)
 readonly RISKS='read-only reversible service-affecting approval manual-only'
 readonly PLATFORMS='ubuntu rhel-family windows appliance'
@@ -74,6 +75,24 @@ if (( ! COMPLETING )); then source "$LAB_ROOT/core/safety/release.sh"; fi
 LAB_RELEASE=0              # 0 checked, 1 no release list, 2 a file differs
 if (( ! COMPLETING )); then lab_release_check "$LAB_ROOT" || LAB_RELEASE=$?; fi
 if (( LAB_RELEASE == 2 )); then
+  # --doctor reports the mismatch as its first check instead of refusing.
+  # It loads none of the core and runs no other check; help keeps its refusal.
+  doctor_asked=0 help_like=0
+  for a in "$@"; do
+    lower="${a,,}"
+    case "$lower" in
+      --doctor | -doctor) doctor_asked=1 ;;
+      -h | --help | -help | '-?' | '/?') help_like=1 ;;
+    esac
+    if [[ "$a" =~ ^-[rkuVPhy]*h[rkuVPhy]*$ ]]; then help_like=1; fi
+  done
+  if (( doctor_asked && ! help_like )); then
+    printf '%-6s%s\n' FAIL "release: $LAB_RELEASE_PROBLEM"
+    printf '      Fix: %s\n' "Copy Labyrinth here again from the team's copy, as manual section 11 says."
+    printf '      %s\n' 'The other checks were not run.'
+    printf '\nNext: %s\n' "Copy Labyrinth here again from the team's copy, as manual section 11 says."
+    exit 20
+  fi
   printf 'labyrinth: %s, so Labyrinth will not run\n' "$LAB_RELEASE_PROBLEM" >&2
   printf '%s\n' "Copy Labyrinth here again from the team's copy, as manual section 11 says." >&2
   for a in "$@"; do
@@ -133,11 +152,11 @@ NAME="${SELF#sudo }"   # the name as typed, for the start of a usage error
 # name, the key its long name is matched by (lower case, no dashes), whether
 # it takes a value, its short letter, if it has one, and whether it is an
 # action. Short letters are case-sensitive; long names are not.
-readonly -a OPT_NAMES=(run keep extend undo probe history show new-seed seed-check version manual all profile root config break-glass confirm-group approve yes no-revert only skip help)
-readonly -a OPT_KEYS=(run keep extend undo probe history show newseed seedcheck version manual all profile root config breakglass confirmgroup approve yes norevert only skip help)
-readonly -a OPT_VALUE=(0 1 1 1 0 0 1 0 0 0 0 0 1 1 1 1 1 1 0 0 1 1 0)
-readonly -a OPT_SHORT=(r k '' u '' '' '' '' '' V '' '' P '' '' '' '' '' y '' '' '' h)
-readonly -a OPT_ACTION=(1 1 1 1 1 1 1 1 1 1 1 0 0 0 0 0 0 0 0 0 0 0 0)
+readonly -a OPT_NAMES=(run keep extend undo probe history show doctor new-seed seed-check version manual all profile root config break-glass confirm-group approve yes no-revert only skip help)
+readonly -a OPT_KEYS=(run keep extend undo probe history show doctor newseed seedcheck version manual all profile root config breakglass confirmgroup approve yes norevert only skip help)
+readonly -a OPT_VALUE=(0 1 1 1 0 0 1 0 0 0 0 0 0 1 1 1 1 1 1 0 0 1 1 0)
+readonly -a OPT_SHORT=(r k '' u '' '' '' '' '' '' V '' '' P '' '' '' '' '' y '' '' '' h)
+readonly -a OPT_ACTION=(1 1 1 1 1 1 1 1 1 1 1 1 0 0 0 0 0 0 0 0 0 0 0 0)
 # The flags that docs/Conventions.md section 3.3 plans and nothing builds yet,
 # one row each: the short letter, the long name's match key ('' when the name
 # is already an option) and how a message shows it. Typing one is a usage
@@ -206,7 +225,7 @@ Actions (one per line):
       --show ID           list a run's changes   --extend ID  delay the undo
       --new-seed          make a decoy seed      --seed-check   check a seed
   -V, --version           print the version      --manual   the full manual
-
+      --doctor            check that this host is ready for a run
 Options:
   -P, --profile NAME      profile to use, if not this host's line in hosts
   --root DIR              data root         --config DIR   configuration
@@ -325,6 +344,22 @@ run log. Changes nothing; needs root or an Administrator.
 Exit: 0 shown, 20 not root, 40 error.
 Example: @CMD@ --show 4f2a
 See also: @CMD@ --history, @CMD@ -h undo
+EOF
+    ;;
+    doctor) cat <<'EOF'
+Usage: @CMD@ --doctor [--root DIR] [--config DIR]
+
+Check that this host is ready for a real run, and print one line per
+check: OK, WARN or FAIL, with the fix under each WARN and FAIL. It
+checks the release, who can change Labyrinth's folders, the
+configuration files, this host's line in hosts and its profile, the
+revert timer, the clock, the tools the profile's modules need, and any
+revert timer left armed. A WARN does not fail it. Changes nothing;
+needs root or an Administrator.
+
+Exit: 0 ready, 20 a check failed or not root, 40 error.
+Example: @CMD@ --doctor
+See also: @CMD@ --probe, @CMD@ -h basics
 EOF
     ;;
     probe) cat <<'EOF'
@@ -1437,7 +1472,7 @@ list_items() {
 
 # Check MOD's values against design 00, section 4.
 validate_module() {
-  local file="$1" want_id="$2" want_phase="$3" p items
+  local file="$1" want_id="$2" want_phase="$3" p t items
   [[ "${MOD[id]}" == "$want_id" ]] || { yml_error "$file" "id ${MOD[id]} does not match $want_id"; return 1; }
   [[ "${MOD[phase]}" == "$want_phase" ]] || { yml_error "$file" "phase ${MOD[phase]} does not match $want_phase"; return 1; }
   [[ "${MOD[priority]}" =~ ^P[0-3]$ ]] || { yml_error "$file" 'priority must be P0 to P3'; return 1; }
@@ -1460,6 +1495,13 @@ validate_module() {
       [[ "$p" =~ ^[a-z0-9-]+$ ]] || { yml_error "$file" "not a category: $p"; return 1; }
     done
   fi
+  for p in tools tools_windows; do
+    [[ -n "${MOD[$p]:-}" ]] || continue
+    items="$(list_items "${MOD[$p]}")" || { yml_error "$file" "$p must be a list"; return 1; }
+    for t in $items; do
+      [[ "$t" =~ ^[A-Za-z0-9][A-Za-z0-9._+-]*$ ]] || { yml_error "$file" "not a tool name: $t"; return 1; }
+    done
+  done
   if [[ -n "${MOD[keep_on_verify]:-}" ]]; then
     lab_in_list "${MOD[keep_on_verify]}" 'true false' || { yml_error "$file" 'keep_on_verify must be true or false'; return 1; }
     if [[ "${MOD[keep_on_verify]}" == true ]] && ! lab_in_list "${MOD[risk]}" 'reversible service-affecting approval'; then
@@ -2969,6 +3011,293 @@ cmd_runs() {
   exit 0
 }
 
+# --doctor (docs/Conventions.md section 3.1): a read-only check that this host
+# is ready for a real run. One line per check, OK, WARN or FAIL, and under a
+# WARN or FAIL its fix. It takes no lock, makes no run ID, writes no log and
+# changes nothing in the data root. A WARN does not fail it; any FAIL exits
+# 20, with a Next line for the first one.
+readonly LAB_CLOCK_FLOOR='2026-09-28'   # the date of Labyrinth's first commit: an earlier clock is wrong
+DOC_FAILS=0                # FAIL rows so far
+DOC_FIRST=''               # the fix of the first FAIL
+DOC_WHY=''                 # the problem a doctor_* helper found
+DOC_FIX=''                 # and how to fix it
+declare -a DOC_IDS=()      # the module IDs of this host's profile
+DOC_PROFILE=''             # this host's profile, once it is known
+
+# doctor_row WORD TEXT [FIX]: print a check's line, and its fix under it.
+doctor_row() {
+  printf '%-6s%s\n' "$1" "$(safe_text "$2")"
+  if [[ -n "${3:-}" ]]; then printf '      Fix: %s\n' "$(safe_text "$3")"; fi
+  if [[ "$1" == FAIL ]]; then
+    DOC_FAILS=$((DOC_FAILS + 1))
+    if [[ -z "$DOC_FIRST" ]]; then DOC_FIRST="${3:-$2}"; fi
+  fi
+}
+
+# doctor_reason FILE LOADER [ARG...]: why a configuration loader refused
+# FILE, as "file: line N: message".
+doctor_reason() {
+  local file="$1" text
+  shift
+  text="$(load_reason "$@")" || true
+  text="${text#"$LAB_CONFIG_DIR/"}"
+  if [[ "$text" =~ ^([^:]+):([0-9]+):\ (.*)$ ]]; then
+    text="${BASH_REMATCH[1]}: line ${BASH_REMATCH[2]}: ${BASH_REMATCH[3]}"
+  fi
+  printf '%s' "${text:-$file: cannot be read}"
+}
+
+# doctor_load FILE REQUIRED LOADER [ARG...]: run a loader; on a problem set
+# DOC_WHY and DOC_FIX and return 1. A missing or empty file is a problem
+# only when REQUIRED is 1.
+doctor_load() {
+  local file="$1" required="$2" rc=0
+  shift 2
+  "$@" 2> /dev/null || rc=$?
+  case "$rc" in
+    0) return 0 ;;
+    1)
+      DOC_WHY="$(doctor_reason "$file" "$@")"
+      DOC_FIX="edit $LAB_CONFIG_DIR/$file" ;;
+    *)
+      (( required )) || return 0
+      if [[ -f "$LAB_CONFIG_DIR/$file" ]]; then
+        DOC_WHY="$file: lists nothing"
+        DOC_FIX="edit $LAB_CONFIG_DIR/$file"
+      else
+        DOC_WHY="$file: missing"
+        DOC_FIX="copy the team's $file to $LAB_CONFIG_DIR/$file"
+      fi ;;
+  esac
+  return 1
+}
+
+# doctor_example VALUE: is VALUE a placeholder from a config/*.example file:
+# an address in a documentation range, or a name under example.test?
+doctor_example() {
+  case "${1,,}" in
+    192.0.2.* | 198.51.100.* | 203.0.113.* | 2001:db8:* | example.test | *.example.test) return 0 ;;
+  esac
+  return 1
+}
+
+# doctor_config: set DOC_WHY and DOC_FIX and return 1 for the first problem
+# in the configuration files; 0 when they read and hold no example value.
+doctor_config() {
+  local i k
+  if [[ ! -d "$LAB_CONFIG_DIR" ]]; then
+    DOC_WHY="the configuration folder $LAB_CONFIG_DIR does not exist"
+    DOC_FIX='check --root, or give the folder with --config'
+    return 1
+  fi
+  doctor_load protected-accounts 1 lab_protected_load || return 1
+  doctor_load services 1 lab_services_load || return 1
+  for ((i = 0; i < ${#LAB_SVC_HOST[@]}; i++)); do
+    if doctor_example "${LAB_SVC_HOST[i]}"; then
+      DOC_WHY="services: line ${LAB_CFG_NOS[i]}: ${LAB_SVC_HOST[i]} is an example value"
+      DOC_FIX="edit $LAB_CONFIG_DIR/services"
+      return 1
+    fi
+  done
+  doctor_load event.conf 0 lab_event_load || return 1
+  for k in "${!LAB_EVENT[@]}"; do
+    if doctor_example "${LAB_EVENT[$k]}"; then
+      DOC_WHY="event.conf: $k is an example value"
+      DOC_FIX="edit $LAB_CONFIG_DIR/event.conf"
+      return 1
+    fi
+  done
+  for k in scoring-allowlist never-ban; do
+    doctor_load "$k" 0 lab_addrs_load "$k" || return 1
+    for ((i = 0; i < ${#LAB_ADDRS[@]}; i++)); do
+      if doctor_example "${LAB_ADDRS[i]%%/*}"; then
+        DOC_WHY="$k: line ${LAB_CFG_NOS[i]}: ${LAB_ADDRS[i]} is an example value"
+        DOC_FIX="edit $LAB_CONFIG_DIR/$k"
+        return 1
+      fi
+    done
+  done
+  doctor_load pre-approved 0 lab_preapproved_load || return 1
+}
+
+# doctor_host: set DOC_WHY and DOC_FIX and return 1 for the first problem
+# with this host's line in hosts or its profile; otherwise fill DOC_PROFILE
+# and DOC_IDS and return 0.
+doctor_host() {
+  local host rc=0 n=0 file raw line dups=0
+  host="$(lab_host)" || host=''
+  DOC_PROFILE='' DOC_IDS=()
+  if [[ ! -f "$LAB_CONFIG_DIR/hosts" ]]; then
+    DOC_WHY='hosts: missing'
+    DOC_FIX="copy the team's hosts file to $LAB_CONFIG_DIR/hosts"
+    return 1
+  fi
+  lab_host_lookup "$host" 2> /dev/null || rc=$?
+  if (( rc == 1 )); then
+    DOC_WHY="$(doctor_reason hosts lab_host_lookup "$host")"
+    DOC_FIX="edit $LAB_CONFIG_DIR/hosts"
+    return 1
+  elif (( rc != 0 )); then
+    DOC_WHY="this host ($host) is not in hosts"
+    DOC_FIX="add a line for $host to $LAB_CONFIG_DIR/hosts"
+    return 1
+  fi
+  for line in "${LAB_CFG_LINES[@]}"; do
+    line="${line%%[[:space:]]*}"
+    if [[ "${line,,}" == "${host,,}" ]]; then dups=$((dups + 1)); fi
+  done
+  if (( dups > 1 )); then
+    DOC_WHY="this host ($host) is on $dups lines of hosts"
+    DOC_FIX="keep one line for $host in $LAB_CONFIG_DIR/hosts"
+    return 1
+  fi
+  case "$LAB_HOST_PLATFORM" in
+    ubuntu | rhel-family) ;;
+    appliance)
+      DOC_WHY="this host ($host) is an appliance: Labyrinth never changes it"
+      DOC_FIX="configure it by hand, or correct its line in $LAB_CONFIG_DIR/hosts"
+      return 1 ;;
+    *)
+      DOC_WHY="this runner does not serve this host's platform, $LAB_HOST_PLATFORM"
+      DOC_FIX="use the runner for $LAB_HOST_PLATFORM, or correct this host's line in $LAB_CONFIG_DIR/hosts"
+      return 1 ;;
+  esac
+  file="$LAB_CONFIG_DIR/profiles/$LAB_HOST_PROFILE.profile"
+  [[ -f "$file" ]] || file="$LAB_ROOT/profiles/$LAB_HOST_PROFILE.profile"
+  if [[ ! -f "$file" ]]; then
+    DOC_WHY="the profile $LAB_HOST_PROFILE does not exist"
+    DOC_FIX="add $LAB_HOST_PROFILE.profile to $LAB_CONFIG_DIR/profiles, or correct this host's line in hosts"
+    return 1
+  fi
+  while IFS= read -r raw || [[ -n "$raw" ]]; do
+    n=$((n + 1))
+    line="$(lab_trim "${raw%%#*}")"
+    if [[ -z "$line" ]]; then continue; fi
+    if [[ ! "$line" =~ $RE_MODULE_ID ]]; then
+      DOC_WHY="profile $LAB_HOST_PROFILE: line $n is not a module ID"
+      DOC_FIX="edit $file"
+      return 1
+    fi
+    DOC_IDS+=("$line")
+  done < "$file"
+  DOC_PROFILE="$LAB_HOST_PROFILE"
+}
+
+# doctor_tools: the tools the profile's modules need that this host lacks,
+# as "module is missing a, b; ...", in DOC_WHY; returns 1 when any are.
+doctor_tools() {
+  local id dir t missing found='' all=''
+  for id in "${DOC_IDS[@]+"${DOC_IDS[@]}"}"; do
+    dir="$LAB_ROOT/phases/${id%%.*}/modules/${id#*.}"
+    if [[ ! -d "$dir" ]]; then
+      found+="${found:+; }$id has no module folder"; continue
+    fi
+    YML_ERR=''
+    if ! read_module_yml "$dir/module.yml" || ! validate_module "$dir/module.yml" "$id" "${id%%.*}"; then
+      found+="${found:+; }$id has a module.yml that is not valid"; continue
+    fi
+    if ! compgen -G "$dir/*.sh" > /dev/null; then continue; fi
+    missing=''
+    for t in $(list_items "${MOD[tools]:-[]}"); do
+      if ! type -P -- "$t" > /dev/null 2>&1; then missing+="${missing:+, }$t"; all+="${all:+, }$t"; fi
+    done
+    if [[ -n "$missing" ]]; then found+="${found:+; }$id is missing $missing"; fi
+  done
+  [[ -z "$found" ]] && return 0
+  DOC_WHY="$found"
+  DOC_FIX="${all:+make these tools available on this host: $all}"
+  DOC_FIX="${DOC_FIX:-correct the modules named above}"
+  return 1
+}
+
+cmd_doctor() {
+  local bad now rc svc id st fixcmd='' reason
+  local -a stale=()
+  lab_is_admin || die '--doctor needs root' 20 "$FIX_ADMIN"
+  export LAB_DRY_RUN=1
+  flush_warnings
+
+  if (( LAB_RELEASE == 0 )); then
+    doctor_row OK 'release matches release.sha256'
+  else
+    doctor_row WARN "no release.sha256: Labyrinth's files were not checked" \
+      "copy Labyrinth here again from the team's copy, with its release.sha256"
+  fi
+
+  if bad="$(lab_tree_trusted "$LAB_ROOT" "$LAB_CONFIG_DIR" "$DATA_ROOT")"; then
+    doctor_row OK 'code and data folders writable only by root'
+  else
+    doctor_row FAIL "$bad can be changed by an account other than root" \
+      "let only root change $bad, in folders only root can change"
+  fi
+
+  if doctor_config; then
+    doctor_row OK 'configuration files read and filled in'
+  else
+    doctor_row FAIL "$DOC_WHY" "$DOC_FIX"
+  fi
+
+  if doctor_host; then
+    doctor_row OK "this host is $(lab_host) in hosts, profile $DOC_PROFILE"
+  else
+    doctor_row FAIL "$DOC_WHY" "$DOC_FIX"
+  fi
+
+  if reason="$(lab_timer_ready 2>&1)"; then
+    doctor_row OK 'revert timer can be armed (systemd)'
+  else
+    doctor_row FAIL "revert timer cannot be armed: ${reason:-systemd does not answer}" \
+      'run Labyrinth on a host where systemd is running and its timers work'
+  fi
+
+  now="$(lab_now)"
+  rc=0
+  svc="$(lab_clock_sync)" || rc=$?
+  if [[ "$now" < "${LAB_CLOCK_FLOOR}T00:00:00Z" ]]; then
+    doctor_row FAIL "clock: the date is ${now:0:10}, earlier than this release" \
+      'set the right date and time on this host'
+  elif (( rc == 1 )); then
+    doctor_row WARN 'clock: no time sync running' \
+      'start the time service (systemd-timesyncd, chrony or ntpd), or set the time by hand'
+  elif (( rc != 0 )); then
+    doctor_row WARN 'clock: cannot tell whether time sync is running' \
+      'check the host has a running time service (systemd-timesyncd, chrony or ntpd)'
+  else
+    doctor_row OK "clock is set and time sync is running ($svc)"
+  fi
+
+  if [[ -z "$DOC_PROFILE" ]]; then
+    doctor_row WARN "tools: not checked because this host's profile is not known" \
+      'fix the host line above, then run the check again'
+  elif doctor_tools; then
+    doctor_row OK "tools for the $DOC_PROFILE profile: present"
+  else
+    doctor_row FAIL "tools for the $DOC_PROFILE profile: $DOC_WHY" "$DOC_FIX"
+  fi
+
+  for id in $(list_runs); do
+    st="$(run_state "$id")"
+    case "$st" in
+      'armed: was due'* | 'armed: timer lost') stale+=("${id: -4} ($st)") ;;
+    esac
+    if [[ -z "$fixcmd" && ${#stale[@]} -gt 0 ]]; then fixcmd="${id: -4}"; fi
+  done
+  if (( ${#stale[@]} == 0 )); then
+    doctor_row OK 'no stale revert timer'
+  else
+    doctor_row FAIL "stale revert timer: run ${stale[*]}" \
+      "keep it with '$SELF -k $fixcmd$(data_opts)' or undo it with '$SELF -u $fixcmd$(data_opts)'"
+  fi
+
+  printf '\n'
+  if (( DOC_FAILS > 0 )); then
+    printf 'Next: %s\n' "$(safe_text "$DOC_FIRST")"
+    exit 20
+  fi
+  printf 'Ready for a run.\n'
+  exit 0
+}
+
 # show_time TS: a manifest time, 2026-10-02T14:03:07Z, as 2026-10-02 14:03:07 UTC.
 show_time() {
   if [[ "$1" =~ ^([0-9-]{10})T([0-9:]{8})Z$ ]]; then
@@ -3755,6 +4084,7 @@ bad_word() {
     undo) hint="$SELF -u ID" ;;
     history) hint="$SELF --history" ;;
     show) hint="$SELF --show ID" ;;
+    doctor) hint="$SELF --doctor" ;;
     probe) hint="$SELF --probe" ;;
     newseed) hint="$SELF --new-seed" ;;
     seedcheck) hint="$SELF --seed-check" ;;
@@ -3859,7 +4189,7 @@ cmp_fits() {
   case "$name" in
     help | root | config) return 0 ;;
     run) [[ -z "$act" ]] ;;
-    keep | extend | undo | probe | history | show | new-seed | seed-check | version | manual)
+    keep | extend | undo | probe | history | show | doctor | new-seed | seed-check | version | manual)
       [[ -z "$act" ]] && (( ! pre )) ;;
     all) [[ "$act" == undo ]] ;;
     yes) [[ "$act" == undo || "$act" == new-seed ]] ;;
@@ -4110,7 +4440,7 @@ main() {
       (( $# == 0 )) || usage_error "$(show_opt "$action") takes no seed on the command line: it asks for one" \
         'A seed typed on a command line stays in the shell history; clear it there.'
       label="$(show_opt "$action")" ;;
-    probe | history | version | manual)
+    probe | history | doctor | version | manual)
       (( $# == 0 )) || usage_error "unexpected word '$1' after '$(show_opt "$action")'"
       label="$(show_opt "$action")" ;;
   esac
@@ -4164,6 +4494,7 @@ main() {
     probe) cmd_probe ;;
     runs) cmd_runs ;;
     show) cmd_show "$word" ;;
+    doctor) cmd_doctor ;;
     newseed) cmd_new_seed ;;
   esac
 }

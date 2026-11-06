@@ -28,6 +28,7 @@
 40|err|'newseed' is not a phase. Did you mean '|newseed
 40|err|'seed-check' is not a phase. Did you mean '|seed-check
 40|err|'show' is not a phase. Did you mean '|show
+40|err|'doctor' is not a phase. Did you mean '|doctor
 40|err|no phase or action given|-P test
 40|err|-r needs a phase|-r --root @ROOT@
 40|err|unexpected word 'extra' after 'observe'|observe extra
@@ -36,6 +37,7 @@
 40|err|unexpected word 'extra'|--probe extra
 40|err|unexpected word 'extra'|--history extra
 40|err|unexpected word 'extra' after|--show 4f2a extra
+40|err|unexpected word 'extra'|--doctor extra
 40|err|takes no seed on the command line: it asks for one|--new-seed extra
 40|err|takes no seed on the command line: it asks for one|--seed-check extra
 40|err|unexpected word 'observe' after '-k'|observe -k
@@ -80,6 +82,7 @@
 # One action per line.
 40|err|two actions on one line: -r and -k|-r observe -k 4f2a
 40|err|two actions on one line|-k 4f2a --show 4f2a
+40|err|two actions on one line|-k 4f2a --doctor
 40|err|two actions on one line|--extend 4f2a -k 4f2a
 40|err|two actions on one line|-u 4f2a --extend 4f2a
 40|err|two actions on one line: -k and -u|-k 4f2a -u 4f2a
@@ -88,6 +91,7 @@
 40|err|is only for -u, not -k|-k 4f2a --all
 40|err|is only for -u, not |--extend 4f2a --all
 40|err|is only for -u, not |--show 4f2a --all
+40|err|is only for -u, not |--doctor --all
 40|err|is only for -u, not a preview|observe --all
 40|err|is only for -u, not the status|--all
 #
@@ -98,6 +102,7 @@
 40|err|-y is only for -u ID|-k 4f2a -y
 40|err|-y is only for -u ID|--extend 4f2a -y
 40|err|-y is only for -u ID|--show 4f2a -y
+40|err|-y is only for -u ID|--doctor -y
 40|err|-y is only for -u ID|--seed-check -y
 40|err|-y is only for -u ID|--probe -y
 40|err|or leave out -y|-u 4f2a -y
@@ -105,12 +110,14 @@
 40|err|is only for -r, not -k|-k 4f2a --no-revert
 40|err|is only for -r, not |--extend 4f2a --no-revert
 40|err|is only for -r, not |--show 4f2a --no-revert
+40|err|is only for -r, not |--doctor --no-revert
 40|err|is only for -r, not the status|--no-revert
 #
 # --only and --skip: a list of module IDs of the phase, for a preview or -r.
 40|err|cannot be used together|observe --only observe.toggle --skip observe.toggle
 40|err|is only for a preview or -r, not -k|-k 4f2a --only observe.toggle
 40|err|is only for a preview or -r, not |-V --skip observe.toggle
+40|err|is only for a preview or -r, not |--doctor --only observe.toggle
 40|err|no phase or action given|--only observe.toggle
 40|err|needs a value|observe --only
 40|err|not a module ID: 'toggle'|observe --only toggle

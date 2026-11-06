@@ -184,4 +184,25 @@ Describe 'real system (Windows)' {
         $runId = (Get-ChildItem -LiteralPath (Join-Path $root 'state\runs') -Directory | Select-Object -First 1).Name
         @(Get-ScheduledTask -TaskPath '\Labyrinth\' -ErrorAction SilentlyContinue | Where-Object { $_.TaskName -like "lab-*-$runId-*" }) | Should -BeNullOrEmpty
     }
+
+    It 'the timer-ready check passes on this runner and arms nothing' -Skip:($env:LAB_REALSYSTEM -ne '1') {
+        $env:LAB_ROOT = $script:Repo
+        $env:LAB_STATE_DIR = Join-Path $TestDrive 'state'
+        . (Join-Path $script:Repo 'core\Lab.ps1')
+        $before = @(Get-ScheduledTask -TaskPath '\Labyrinth\' -ErrorAction SilentlyContinue | ForEach-Object { $_.TaskName })
+        Test-LabTimerReady | Should -BeExactly ''
+        $after = @(Get-ScheduledTask -TaskPath '\Labyrinth\' -ErrorAction SilentlyContinue | ForEach-Object { $_.TaskName })
+        $after.Count | Should -Be $before.Count
+    }
+
+    It 'the clock-sync check answers with a defined value, quickly' -Skip:($env:LAB_REALSYSTEM -ne '1') {
+        $env:LAB_ROOT = $script:Repo
+        $env:LAB_STATE_DIR = Join-Path $TestDrive 'state'
+        . (Join-Path $script:Repo 'core\Lab.ps1')
+        $watch = [Diagnostics.Stopwatch]::StartNew()
+        $answer = Get-LabClockSync
+        $watch.Stop()
+        $watch.Elapsed.TotalSeconds | Should -BeLessThan 10
+        @('', 'Windows Time', 'unknown') | Should -Contain $answer
+    }
 }

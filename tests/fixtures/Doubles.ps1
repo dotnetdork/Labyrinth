@@ -11,7 +11,11 @@
 #     $env:LAB_ROOT\probe-state, and passes otherwise;
 #   - the console is two files, $env:LAB_ROOT\tty.out and tty.in (below);
 #   - a notice to every session is appended to $env:LAB_ROOT\notice.log, unless
-#     $env:LAB_ROOT\NO_WALL exists (no msg command).
+#     $env:LAB_ROOT\NO_WALL exists (no msg command);
+#   - the revert timer can be armed unless $env:LAB_ROOT\NO_TIMER exists;
+#   - time sync is running unless $env:LAB_ROOT\NO_TIMESYNC exists (or
+#     TIMESYNC_UNKNOWN, which makes it unknown);
+#   - the clock is the first line of $env:LAB_ROOT\CLOCK, if that file exists.
 
 function Test-LabAdmin { return -not (Test-Path -LiteralPath (Join-Path $env:LAB_ROOT 'NOT_ADMIN')) }
 
@@ -20,6 +24,23 @@ function Find-LabUntrustedItem {
     $null = $Path
     if (Test-Path -LiteralPath (Join-Path $env:LAB_ROOT 'UNTRUSTED')) { return $env:LAB_ROOT }
     return $null
+}
+
+function Test-LabTimerReady {
+    if (Test-Path -LiteralPath (Join-Path $env:LAB_ROOT 'NO_TIMER')) { return 'the Task Scheduler service is not running' }
+    return ''
+}
+
+function Get-LabClockSync {
+    if (Test-Path -LiteralPath (Join-Path $env:LAB_ROOT 'TIMESYNC_UNKNOWN')) { return 'unknown' }
+    if (Test-Path -LiteralPath (Join-Path $env:LAB_ROOT 'NO_TIMESYNC')) { return '' }
+    return 'fake-timesync'
+}
+
+function Get-LabUtcNow {
+    $f = Join-Path $env:LAB_ROOT 'CLOCK'
+    if (Test-Path -LiteralPath $f) { return ([IO.File]::ReadAllText($f).Trim()) }
+    return [DateTime]::UtcNow.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'")
 }
 
 function Get-LabConsoleSession {

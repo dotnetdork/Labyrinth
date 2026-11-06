@@ -223,3 +223,29 @@ teardown() {
   [[ "$output" == *"can be changed by an account other than root"* ]]
   grep -qx 'setting=off' "$LAB/toggle.conf"
 }
+
+@test "realsystem: the timer-ready check passes on this runner and arms nothing" {
+  sudo -n env LAB_ROOT="$REPO" LAB_STATE_DIR="$W/state" W="$W" bash -c '
+    set -Eeuo pipefail
+    source "$LAB_ROOT/core/lib.sh"
+    before="$( { ls /etc/systemd/system/ | grep "^lab-" || true; systemctl list-units --all --no-legend "lab-*" || true; } | sort)"
+    lab_timer_ready 2> "$W/reason" || { cat "$W/reason"; exit 1; }
+    after="$( { ls /etc/systemd/system/ | grep "^lab-" || true; systemctl list-units --all --no-legend "lab-*" || true; } | sort)"
+    [ "$before" = "$after" ]'
+  [ ! -s "$W/reason" ]
+}
+
+@test "realsystem: the clock-sync check answers with a defined value, quickly" {
+  sudo -n env LAB_ROOT="$REPO" LAB_STATE_DIR="$W/state" W="$W" bash -c '
+    set -Eeuo pipefail
+    source "$LAB_ROOT/core/lib.sh"
+    start=$SECONDS
+    rc=0
+    svc="$(lab_clock_sync)" || rc=$?
+    [ $(( SECONDS - start )) -le 10 ]
+    case "$rc" in
+      0) [ -n "$svc" ] ;;
+      1 | 2) [ -z "$svc" ] ;;
+      *) echo "unexpected status $rc"; exit 1 ;;
+    esac'
+}
