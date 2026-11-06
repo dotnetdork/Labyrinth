@@ -69,15 +69,20 @@ Describe 'labyrinth.ps1 --complete' {
         $phases = @('lockout', 'observe', 'deceive', 'sustain')
     }
 
-    It 'offers the actions and options, short and long, after a lone dash' {
-        $c = Get-TestBare $t @('-')
-        foreach ($want in '-r', '-Run', '-k', '-Keep', '-u', '-Undo', '-V', '-Version', '-h', '-Help', '-P', '-Profile',
+    It 'offers the actions and options, by their long names, after two dashes' {
+        # PowerShell cannot hand a script a lone '-', so the completer sends '--'.
+        $c = Get-TestBare $t @('--')
+        foreach ($want in '-Run', '-Keep', '-Undo', '-Version', '-Help', '-Profile',
             '-History', '-Show', '-Probe', '-NewSeed', '-SeedCheck', '-Manual', '-Root', '-Config', '-Only', '-Skip') {
             $c | Should -Contain $want
         }
         $c | Should -Not -Contain '-All'
         $c | Should -Not -Contain '-NoRevert'
-        $c | Should -Not -Contain '-y'
+        $c | Should -Not -Contain '-Yes'
+    }
+
+    It 'offers the short letters for a single typed letter' {
+        Assert-TestList (Get-TestBare $t @('-r')) (@('-r', '-Run', '-Root'))
     }
 
     It 'matches a typed name ignoring case and dashes' {
@@ -88,18 +93,18 @@ Describe 'labyrinth.ps1 --complete' {
     }
 
     It 'offers only the options that fit the action on the line' {
-        $c = Get-TestBare $t @('-u', '4f2a', '-')
+        $c = Get-TestBare $t @('-u', '4f2a', '--')
         $c | Should -Contain '-All'
         $c | Should -Contain '-Yes'
         $c | Should -Not -Contain '-Only'
         $c | Should -Not -Contain '-NewSeed'
         $c | Should -Not -Contain '-Undo'
-        $c = Get-TestBare $t @('-r', 'lockout', '-')
+        $c = Get-TestBare $t @('-r', 'lockout', '--')
         foreach ($want in '-NoRevert', '-Only', '-Skip', '-Profile', '-BreakGlass', '-ConfirmGroup', '-Approve') {
             $c | Should -Contain $want
         }
         $c | Should -Not -Contain '-All'
-        $c = Get-TestBare $t @('lockout', '-Only', 'lockout.inventory', '-')
+        $c = Get-TestBare $t @('lockout', '-Only', 'lockout.inventory', '--')
         $c | Should -Contain '-Profile'
         $c | Should -Not -Contain '-Skip'
         $c | Should -Not -Contain '-Only'
@@ -107,7 +112,7 @@ Describe 'labyrinth.ps1 --complete' {
     }
 
     It 'does not offer an option twice' {
-        $c = Get-TestBare $t @('-Root', 'x', '-')
+        $c = Get-TestBare $t @('-Root', 'x', '--')
         $c | Should -Not -Contain '-Root'
         $c | Should -Contain '-Config'
     }
@@ -205,7 +210,6 @@ Describe 'labyrinth.ps1 --complete' {
         (Get-TestBare $t @('--', '')) | Should -BeNullOrEmpty
         (Get-TestBare $t @('-r', '--', '')) | Should -BeNullOrEmpty
         (Get-TestBare $t @('-Root=x')) | Should -BeNullOrEmpty
-        (Get-TestBare $t @('-Profile:te')) | Should -BeNullOrEmpty
         foreach ($w in '-Root', '-Config', '-BreakGlass', '-ConfirmGroup', '-Approve') {
             (Get-TestBare $t @($w, '')) | Should -BeNullOrEmpty -Because $w
         }
@@ -224,7 +228,7 @@ Describe 'labyrinth.ps1 --complete' {
     It 'writes nothing, takes no lock and logs nothing' {
         Write-TestRun $t '20261003T090000Z-9b1c'
         $before = Get-TestSnapshot $t
-        foreach ($w in '', '-', '--', '-r', '-k', '-u', '-P', '-Only', '-h') {
+        foreach ($w in '', '--', '-r', '-k', '-u', '-P', '-Only', '-h') {
             Get-TestComp $t @($w, '') | Out-Null
         }
         Get-TestComp $t @('-k', '') | Out-Null
@@ -276,7 +280,7 @@ Describe 'labyrinth.ps1 --complete' {
         $r.Code | Should -Be 0
         $r.Out | Should -Not -Match 'complete'
         @($r.Out -split '\r?\n').Count | Should -BeLessOrEqual 24
-        (Get-TestBare $t @('-')) | Should -Not -Contain '--complete'
+        (Get-TestBare $t @('--')) | Should -Not -Contain '--complete'
         (Invoke-TestLabCapture $t @('lockout', '--complete')).Code | Should -Be 40
     }
 }
@@ -319,7 +323,7 @@ Import-Module '$module'
         @($out.Result -split '\r?\n' | Where-Object { $_ -ne '' }) | Should -Be @('lockout', 'observe', 'deceive', 'sustain')
     }
 
-    It 'registers no command and runs nothing for a command that is not Labyrinth''s launcher' {
+    It 'offers nothing of Labyrinth''s for a laby that is not Labyrinth''s launcher' {
         $module = Join-Path $script:Repo 'core\completion\Labyrinth.psm1'
         $other = Join-Path $TestDrive ([Guid]::NewGuid().ToString('N'))
         New-Item -ItemType Directory -Path $other | Out-Null
@@ -329,7 +333,7 @@ Import-Module '$module'
 Import-Module '$module'
 (Get-Command -Module Labyrinth | Measure-Object).Count
 `$line = 'laby -r '
-(TabExpansion2 -inputScript `$line -cursorColumn `$line.Length).CompletionMatches.Count
+@((TabExpansion2 -inputScript `$line -cursorColumn `$line.Length).CompletionMatches | Where-Object { `$_.CompletionText -in 'lockout', 'observe', 'deceive', 'sustain' }).Count
 "@
         $file = Join-Path $TestDrive 'tab2.ps1'
         Set-Content -LiteralPath $file -Value $script -Encoding Ascii

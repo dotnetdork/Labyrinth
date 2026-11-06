@@ -29,18 +29,28 @@ function ConvertTo-LabCompletionArgument {
 }
 
 # Get-LabCompletionLine AST CURSOR: the words typed after the command, up to
-# the cursor. The last is the one being completed: '' after a space.
+# the cursor. The last is the one being completed: '' after a space (the
+# command's extent ends before a trailing space, so a cursor past it means one).
+# PowerShell cannot hand a script a lone '-', so that last word goes as '--'
+# (the long names), and a lone '-' before it is left out.
 function Get-LabCompletionLine {
     param($CommandAst, [int] $Cursor)
     $text = $CommandAst.Extent.Text
     $upto = $Cursor - $CommandAst.Extent.StartOffset
-    if ($upto -ge 0 -and $upto -lt $text.Length) { $text = $text.Substring(0, $upto) }
+    $space = $false
+    if ($upto -gt $text.Length) { $space = $true }
+    elseif ($upto -ge 0) { $text = $text.Substring(0, $upto) }
+    if ($text -match '\s$') { $space = $true }
     $parts = @($text -split '\s+' | Where-Object { $_ -ne '' })
     $words = @()
     if ($parts.Count -gt 1) { $words = @($parts[1..($parts.Count - 1)] | ForEach-Object { $_.Trim([char] 34, [char] 39) }) }
-    if ($text -match '\s$') { $words += '' }
-    elseif ($words.Count -eq 0) { $words = @('') }
-    return $words
+    if ($space -or $words.Count -eq 0) { $words += '' }
+    $out = @()
+    for ($i = 0; $i -lt $words.Count; $i++) {
+        if ($words[$i] -ne '-') { $out += $words[$i] }
+        elseif ($i -eq $words.Count - 1) { $out += '--' }
+    }
+    return $out
 }
 
 # Get-LabCompletionCandidate SCRIPT WORD...: what 'labyrinth.ps1 --complete'
