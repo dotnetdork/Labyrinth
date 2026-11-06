@@ -3706,12 +3706,276 @@ function Confirm-LabUndoAll {
     }
 }
 
+# Tab completion (docs/Conventions.md section 3.1). The completer in
+# core\completion\Labyrinth.psm1 holds no logic: it passes the words typed
+# after the command to the hidden entry 'labyrinth.ps1 --complete WORD...'
+# and offers what it prints. The last WORD is the one being completed ('' when
+# nothing is typed yet). The entry only reads: no lock, no log, no run ID, no
+# configuration file, no Administrator needed. It prints candidates, one per
+# line, and nothing else; a folder it cannot read gives no candidates, and it
+# always exits 0. It runs before the release check and loads none of the
+# core, so a Tab never waits for the hashes and a changed core file still
+# never runs. The state is in $script:Cmp, as labyrinth.sh keeps it in CMP_*.
+
+# Write-LabCompletionCandidate TEXT: print a candidate that is plain text, so
+# that a name found in a folder can never send a control sequence to the
+# console.
+function Write-LabCompletionCandidate {
+    param([string] $Text)
+    if ($Text -cmatch '^[A-Za-z0-9._,:-]+$') { [Console]::Out.WriteLine($Text) }
+}
+
+# Test-LabCompletionMatch CANDIDATE WORD: does CANDIDATE begin with WORD, in
+# any case?
+function Test-LabCompletionMatch {
+    param([string] $Candidate, [string] $Word)
+    return $Candidate.StartsWith($Word, [StringComparison]::OrdinalIgnoreCase)
+}
+
+# Add-LabCompletionValue NAME VALUE: keep the value of an option that changes
+# where candidates are read from.
+function Add-LabCompletionValue {
+    param([string] $Name, [string] $Value)
+    if ($Name -ceq 'root') { $script:Cmp.Root = $Value.Replace('/', '\') }
+    elseif ($Name -ceq 'config') { $script:Cmp.Config = $Value.Replace('/', '\') }
+}
+
+# Add-LabCompletionOption ROW VAL: record the option in ROW, typed before the
+# word being completed. A value option with no value yet is pending.
+function Add-LabCompletionOption {
+    param($Row, [string] $Val)
+    if ($Row.Name -ceq 'help') { $script:Cmp.Help = $true; $script:Cmp.HelpLast = $true; return }
+    $script:Cmp.Given[$Row.Name] = $true
+    if ($Row.Action) { $script:Cmp.Actions += $Row.Name }
+    if ($Row.Value) {
+        if ($Val -ne '') { Add-LabCompletionValue $Row.Name $Val } else { $script:Cmp.Pending = $Row.Name }
+    }
+}
+
+# Read-LabCompletionWord WORD: sort one word typed before the cursor, the way
+# Read-LabArgument does but without a single complaint.
+function Read-LabCompletionWord {
+    param([string] $Word)
+    if ($script:Cmp.Ended) { $script:Cmp.Plain += $Word; return }
+    if ($script:Cmp.Pending -ne '') {
+        if ($Word -notlike '-?*') { Add-LabCompletionValue $script:Cmp.Pending $Word; $script:Cmp.Pending = ''; return }
+        $script:Cmp.Pending = ''
+    }
+    if ($Word -ceq '--') { $script:Cmp.Ended = $true; return }
+    if ($Word -ceq '-?' -or $Word -ceq '/?') { $script:Cmp.Help = $true; $script:Cmp.HelpLast = $true; return }
+    if ($Word -notlike '-?*') { $script:Cmp.Plain += $Word; return }
+    $key = $Word.Substring(1)
+    $long = $false
+    if ($key.StartsWith('-')) { $long = $true; $key = $key.Substring(1) }
+    $val = ''
+    if ($key -match '^([^=:]*)([=:])(.*)$') { $key = $Matches[1]; $val = $Matches[3] }
+    $row = Find-LabOption $key.ToLowerInvariant().Replace('-', '')
+    if ($null -ne $row) { Add-LabCompletionOption $row $val; return }
+    if ($long -or $key -eq '') { return }
+    # A stack of short letters: every letter must be one.
+    $rows = @()
+    foreach ($ch in $key.ToCharArray()) {
+        $shortRow = Find-LabShort ([string] $ch)
+        if ($null -eq $shortRow) { return }
+        $rows += $shortRow
+    }
+    for ($c = 0; $c -lt $rows.Count - 1; $c++) { Add-LabCompletionOption $rows[$c] '' }
+    Add-LabCompletionOption $rows[$rows.Count - 1] $val
+}
+
+# Test-LabCompletionFit NAME ACT PRE: does the option fit the line so far? ACT
+# is the action typed, if any; PRE is true when an option only a preview or -r
+# uses was typed.
+function Test-LabCompletionFit {
+    param([string] $Name, [string] $Act, [bool] $Pre)
+    $given = $script:Cmp.Given
+    switch -CaseSensitive ($Name) {
+        { $_ -in 'help', 'root', 'config' } { return $true }
+        'run' { return ($Act -eq '') }
+        { $_ -in 'keep', 'undo', 'probe', 'history', 'show', 'new-seed', 'seed-check', 'version', 'manual' } {
+            return ($Act -eq '' -and -not $Pre)
+        }
+        'all' { return ($Act -ceq 'undo') }
+        'yes' { return ($Act -ceq 'undo' -or $Act -ceq 'new-seed') }
+        { $_ -in 'no-revert', 'break-glass', 'confirm-group', 'approve' } { return ($Act -ceq 'run') }
+        'only' { return (($Act -eq '' -or $Act -ceq 'run') -and -not $given.ContainsKey('skip')) }
+        'skip' { return (($Act -eq '' -or $Act -ceq 'run') -and -not $given.ContainsKey('only')) }
+        'profile' { return ($Act -eq '' -or $Act -ceq 'run') }
+    }
+    return $false
+}
+
+# Write-LabCompletionOption: the options that fit the line and begin like the
+# word, short and long. A lone '-' lists all of them, '-' and '--' the long
+# names only; other text is matched against the long names ignoring case and
+# dashes, so -Ru finds -Run.
+function Write-LabCompletionOption {
+    $act = ''
+    if ($script:Cmp.Actions.Count -gt 0) { $act = $script:Cmp.Actions[0] }
+    $pre = $false
+    foreach ($name in @('profile', 'only', 'skip', 'break-glass', 'confirm-group', 'approve')) {
+        if ($script:Cmp.Given.ContainsKey($name)) { $pre = $true }
+    }
+    $body = $script:Cmp.Cur.TrimStart('-').ToLowerInvariant().Replace('-', '')
+    foreach ($o in $script:LabOptions) {
+        if ($script:Cmp.Given.ContainsKey($o.Name) -or -not (Test-LabCompletionFit $o.Name $act $pre)) { continue }
+        if ($o.Short -ne '' -and ($script:Cmp.Cur -ceq '-' -or $script:Cmp.Cur -ceq "-$($o.Short)")) {
+            Write-LabCompletionCandidate "-$($o.Short)"
+        }
+        if ($o.Key.StartsWith($body, [StringComparison]::Ordinal)) { Write-LabCompletionCandidate $o.Long }
+    }
+}
+
+# Write-LabCompletionPhase: the phases that begin like the word; and, with
+# nothing typed yet and no action, the long names of the actions.
+function Write-LabCompletionPhase {
+    foreach ($p in $Phases) {
+        if (Test-LabCompletionMatch $p $script:Cmp.Cur) { Write-LabCompletionCandidate $p }
+    }
+    if ($script:Cmp.Cur -eq '' -and $script:Cmp.Actions.Count -eq 0) {
+        foreach ($o in $script:LabOptions) {
+            if ($o.Action) { Write-LabCompletionCandidate $o.Long }
+        }
+    }
+}
+
+# Write-LabCompletionProfile: the profile names of this host, from the
+# configuration folder and the release.
+function Write-LabCompletionProfile {
+    $cfg = $script:Cmp.Config
+    if ($cfg -eq '') { $cfg = Join-Path $script:Cmp.Root 'etc' }
+    $seen = @()
+    foreach ($dir in @((Join-Path $cfg 'profiles'), (Join-Path $PSScriptRoot 'profiles'))) {
+        if (-not (Test-Path -LiteralPath $dir -PathType Container)) { continue }
+        foreach ($f in @(Get-ChildItem -LiteralPath $dir -Filter '*.profile' -File | Sort-Object Name)) {
+            if ($seen -ccontains $f.BaseName) { continue }
+            $seen += $f.BaseName
+            if (Test-LabCompletionMatch $f.BaseName $script:Cmp.Cur) { Write-LabCompletionCandidate $f.BaseName }
+        }
+    }
+}
+
+# Write-LabCompletionRun: this host's run IDs, newest first. With nothing
+# typed, a run is written as its last four characters, which name it, or as
+# its whole ID when another run ends the same way; with text typed, whole IDs
+# that begin with it.
+function Write-LabCompletionRun {
+    $dir = Join-Path (Join-Path $script:Cmp.Root 'state') 'runs'
+    if (-not (Test-Path -LiteralPath $dir -PathType Container)) { return }
+    $ids = @(Get-ChildItem -LiteralPath $dir -Directory | Where-Object {
+            $_.Name -cmatch $ReRunId -and (Test-Path -LiteralPath (Join-Path $_.FullName 'manifest.jsonl') -PathType Leaf)
+        } | Sort-Object Name -Descending | ForEach-Object { $_.Name })
+    foreach ($id in $ids) {
+        $short = $id.Substring($id.Length - 4)
+        $dup = @($ids | Where-Object { $_ -cne $id -and $_.EndsWith($short, [StringComparison]::Ordinal) }).Count -gt 0
+        if ($script:Cmp.Cur -eq '') {
+            if ($dup) { Write-LabCompletionCandidate $id } else { Write-LabCompletionCandidate $short }
+        } elseif (Test-LabCompletionMatch $id $script:Cmp.Cur) {
+            Write-LabCompletionCandidate $id
+        } elseif (-not $dup -and (Test-LabCompletionMatch $short $script:Cmp.Cur)) {
+            Write-LabCompletionCandidate $short
+        }
+    }
+}
+
+# Write-LabCompletionModule: module IDs of the phase typed (all phases when
+# none is), for a comma list. The IDs already in the list are not offered
+# again, and each candidate carries the list before it, so that it replaces
+# the whole word.
+function Write-LabCompletionModule {
+    $before = ''
+    $last = $script:Cmp.Cur
+    if ($last.Contains(',')) {
+        $cut = $last.LastIndexOf(',')
+        $before = $last.Substring(0, $cut + 1)
+        $last = $last.Substring($cut + 1)
+    }
+    foreach ($id in (Get-LabModuleId)) {
+        if ($script:Cmp.Phase -ne '' -and -not $id.StartsWith($script:Cmp.Phase + '.', [StringComparison]::Ordinal)) { continue }
+        if ((',' + $before).Contains(",$id,")) { continue }
+        if (Test-LabCompletionMatch $id $last) { Write-LabCompletionCandidate ($before + $id) }
+    }
+}
+
+# Write-LabCompletionTopic: what -h takes: an action's or option's long name,
+# 'basics', a phase or a module ID.
+function Write-LabCompletionTopic {
+    $topics = @()
+    foreach ($o in $script:LabOptions) {
+        if ($o.Name -cne 'help') { $topics += $o.Name }
+    }
+    $topics += 'basics'
+    $topics += $Phases
+    $topics += @(Get-LabModuleId)
+    foreach ($t in $topics) {
+        if (Test-LabCompletionMatch $t $script:Cmp.Cur) { Write-LabCompletionCandidate $t }
+    }
+}
+
+# Write-LabCompletion WORD...: the candidates for the last WORD.
+function Write-LabCompletion {
+    param([AllowEmptyCollection()] [AllowEmptyString()] [string[]] $Word = @())
+    try {
+        $script:Cmp = @{
+            Cur = ''; Pending = ''; Help = $false; HelpLast = $false; Ended = $false; Phase = ''
+            Root = 'C:\ProgramData\Labyrinth'; Config = ''; Given = @{}; Actions = @(); Plain = @()
+        }
+        $n = $Word.Count
+        if ($n -gt 0) { $script:Cmp.Cur = $Word[$n - 1] }
+        for ($i = 0; $i -lt $n - 1; $i++) {
+            $script:Cmp.HelpLast = $false
+            Read-LabCompletionWord $Word[$i]
+        }
+        foreach ($w in $script:Cmp.Plain) {
+            if ($script:Cmp.Phase -eq '' -and $Phases -ccontains $w.ToLowerInvariant()) { $script:Cmp.Phase = $w.ToLowerInvariant() }
+        }
+        $cur = $script:Cmp.Cur
+        # Help takes what follows -h as its topic and nothing after that.
+        if ($script:Cmp.Help) {
+            if ($script:Cmp.HelpLast -and $script:Cmp.Actions.Count -eq 0 -and $script:Cmp.Plain.Count -eq 0 -and -not $cur.StartsWith('-')) {
+                Write-LabCompletionTopic
+            }
+            return
+        }
+        if ($script:Cmp.Ended) { return }
+        # -k, -u and -Show may be left without an ID, so an option can follow.
+        if ($script:Cmp.Pending -ne '' -and $cur.StartsWith('-') -and $script:Cmp.Pending -cin 'keep', 'undo', 'show') {
+            $script:Cmp.Pending = ''
+        }
+        if ($script:Cmp.Pending -ne '') {
+            switch -CaseSensitive ($script:Cmp.Pending) {
+                'profile' { Write-LabCompletionProfile }
+                { $_ -in 'keep', 'undo', 'show' } { Write-LabCompletionRun }
+                { $_ -in 'only', 'skip' } { Write-LabCompletionModule }
+            }
+            return
+        }
+        if ($cur.StartsWith('-')) {
+            if ($cur.IndexOfAny([char[]] '=:') -lt 0) { Write-LabCompletionOption }
+            return
+        }
+        if ($script:Cmp.Phase -eq '' -and $script:Cmp.Plain.Count -eq 0 -and
+            ($script:Cmp.Actions.Count -eq 0 -or $script:Cmp.Actions[0] -ceq 'run')) {
+            Write-LabCompletionPhase
+        }
+    } catch {
+        # Nothing to offer: a Tab never shows an error.
+        $null = $_
+    }
+}
+
 try {
     # The release check (design 21, section 5) comes before any of the
     # core is loaded, so a changed core file never runs. A file that
     # differs from release.sha256 stops every command, the revert timer's
     # rollback included; with no release.sha256, apply, keep and rollback
     # warn.
+    # The hidden --complete entry (Tab completion) comes first: it only reads names
+    # and prints candidates, and loads none of the core.
+    if ($script:Arguments.Count -gt 0 -and $script:Arguments[0] -is [string] -and $script:Arguments[0] -ceq '--complete') {
+        Write-LabCompletion ([string[]] @($script:Arguments | Select-Object -Skip 1 | ForEach-Object { [string] $_ }))
+        exit 0
+    }
     . (Join-Path $PSScriptRoot 'core\safety\Release.ps1')
     $script:Release = Test-LabRelease -Root $PSScriptRoot
     if ($script:Release.Status -eq 'problem') { Exit-LabRelease }

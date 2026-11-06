@@ -11,7 +11,9 @@
     root (C:\ProgramData\Labyrinth, only Administrators and SYSTEM can use
     it), copies the code to C:\Program Files\Labyrinth, adds that folder to
     the machine PATH so that laby and labyrinth work, installs the help topic
-    for Get-Help about_Labyrinth, and copies the config\*.example templates
+    for Get-Help about_Labyrinth and the tab completion for laby and
+    labyrinth (the Labyrinth module; Import-Module Labyrinth turns it on), and
+    copies the config\*.example templates
     into <root>\etc without overwriting a file already there. Safe to run
     again. It refuses, changing nothing, while a revert timer is armed.
 
@@ -57,9 +59,14 @@ $ModuleManifest = @"
     ModuleVersion     = '1.0.0'
     GUID              = '6f1c9d1e-2a4b-4c8e-9a53-0b7d5e2f4a11'
     Author            = 'Labyrinth'
-    Description       = 'The help topic for Labyrinth: Get-Help about_Labyrinth. It has no commands.'
+    Description       = 'The help topic for Labyrinth (Get-Help about_Labyrinth) and tab completion for laby and labyrinth. It has no commands.'
     PowerShellVersion = '5.1'
-    FileList          = @('en-US\about_Labyrinth.help.txt')
+    RootModule        = 'Labyrinth.psm1'
+    FunctionsToExport = @()
+    CmdletsToExport   = @()
+    VariablesToExport = @()
+    AliasesToExport   = @()
+    FileList          = @('Labyrinth.psm1', 'en-US\about_Labyrinth.help.txt')
 }
 
 "@
@@ -78,9 +85,10 @@ function Show-LabInstallHelp {
         ''
         'It adds the code in C:\Program Files\Labyrinth, puts that folder on the'
         'machine PATH (the commands laby and labyrinth), installs the help topic'
-        '(Get-Help about_Labyrinth) and copies the configuration templates into'
-        'DIR\etc (files already there are kept). For tests only: -CodeDir,'
-        '-ModuleDir and -NoPath.'
+        '(Get-Help about_Labyrinth), adds tab completion for laby and labyrinth'
+        '(the Labyrinth module; Import-Module Labyrinth turns it on) and copies'
+        'the configuration templates into DIR\etc (files already there are'
+        'kept). For tests only: -CodeDir, -ModuleDir and -NoPath.'
         'Exit: 0 done, 20 refused, 40 error.'
         'Example: .\install.ps1'
     ) | ForEach-Object { [Console]::Out.WriteLine($_) }
@@ -365,11 +373,21 @@ try {
         if ((Test-LabSameFile $topic $topicFile) -and (Test-Path -LiteralPath $manifestFile -PathType Leaf) -and
             ([IO.File]::ReadAllText($manifestFile) -ceq $ModuleManifest)) { $helpState = 'same' }
     }
+    # The tab completion: a module file beside the help topic. A copy with no
+    # completion file keeps the module as the help topic alone.
+    $completer = Join-Path $Here 'core\completion\Labyrinth.psm1'
+    $compState = 'skip'
+    if (Test-Path -LiteralPath $completer -PathType Leaf) {
+        $compState = 'new'
+        if ((Test-LabSameFile $completer (Join-Path $HelpModule 'Labyrinth.psm1')) -and
+            (Test-Path -LiteralPath (Join-Path $HelpModule 'Labyrinth.psd1') -PathType Leaf) -and
+            ([IO.File]::ReadAllText((Join-Path $HelpModule 'Labyrinth.psd1')) -ceq $ModuleManifest)) { $compState = 'same' }
+    }
     $pathState = 'skip'
     if (-not $NoPath) { $pathState = 'new'; if (Test-LabMachinePath -Folder $CodeDir) { $pathState = 'same' } }
 
     $todo = ($codeState -ne 'same') -or $rootNew -or $subsMissing -or (-not $rootLocked) -or ($templates.Count -gt 0) -or
-        ($helpState -eq 'new') -or ($pathState -eq 'new')
+        ($helpState -eq 'new') -or ($compState -eq 'new') -or ($pathState -eq 'new')
 
     # 4. The screen, before the question: the release hash to compare by eye
     # with the offline record, then what changes on this host.
@@ -408,6 +426,9 @@ try {
     if ($helpState -eq 'skip') { $rows += , @('Manual', 'skipped: this copy has no built manual (manual\about_Labyrinth.help.txt)') }
     elseif ($helpState -eq 'same') { $rows += , @('Manual', 'Get-Help about_Labyrinth (unchanged)') }
     else { $rows += , @('Manual', 'Get-Help about_Labyrinth (new)') }
+    if ($compState -eq 'same') { $rows += , @('Tab keys', 'Import-Module Labyrinth (unchanged)') }
+    elseif ($compState -eq 'new') { $rows += , @('Tab keys', 'Import-Module Labyrinth turns it on (new)') }
+    else { $rows += , @('Tab keys', 'skipped: this copy has no core\completion\Labyrinth.psm1') }
     $config = "$($templates.Count) templates"
     if ($kept -gt 0) { $config = "$($templates.Count) copied, $kept kept" }
     elseif ($templates.Count -eq 1) { $config = '1 template' }
@@ -499,10 +520,13 @@ try {
     # The help topic, where Get-Help about_Labyrinth looks: a module folder with
     # a manifest and the topic in its en-US folder (Microsoft Learn, "Writing
     # Help for PowerShell Modules").
-    if ($helpState -eq 'new') {
+    # The tab completion goes in the same module: Labyrinth.psm1 registers it
+    # when the module is imported.
+    if ($helpState -eq 'new' -or $compState -eq 'new') {
         $lang = Join-Path $HelpModule 'en-US'
         if (-not (Test-Path -LiteralPath $lang)) { [void][IO.Directory]::CreateDirectory($lang) }
-        [IO.File]::Copy($topic, (Join-Path $lang 'about_Labyrinth.help.txt'), $true)
+        if ($helpState -eq 'new') { [IO.File]::Copy($topic, (Join-Path $lang 'about_Labyrinth.help.txt'), $true) }
+        if ($compState -eq 'new') { [IO.File]::Copy($completer, (Join-Path $HelpModule 'Labyrinth.psm1'), $true) }
         [IO.File]::WriteAllText((Join-Path $HelpModule 'Labyrinth.psd1'), $ModuleManifest, (New-Object Text.UTF8Encoding $false))
     }
 
@@ -520,6 +544,7 @@ try {
     $items = @("Fill in $Root\etc: hosts and protected-accounts`nhold placeholder names (manual, section 10)")
     if ($taken.ContainsKey('laby')) { $items += 'laby is taken here, so the command is labyrinth' }
     if ($pathState -eq 'new') { $items += "Open a new PowerShell window so it finds $cmd" }
+    if ($compState -ne 'skip') { $items += "For tab completion, add this line to your PowerShell profile:`nImport-Module Labyrinth" }
     $rootArg = ''
     if ($Root -ne $DefaultRoot) { $rootArg = " -Root `"$Root`"" }
     # Each host makes its own decoy seed once it runs, never here: a seed made

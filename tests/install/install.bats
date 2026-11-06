@@ -16,7 +16,7 @@ setup() {
 }
 
 # inst_setup: a release folder (REL) with a valid release.sha256, and an empty
-# throwaway system (SYS: ROOT, LINKS, MAN).
+# throwaway system (SYS: ROOT, LINKS, MAN, COMP).
 inst_setup() {
   REPO="$BATS_TEST_DIRNAME/../.."
   T="$(cd "$BATS_TEST_TMPDIR" && pwd -P)"
@@ -25,6 +25,7 @@ inst_setup() {
   ROOT="$SYS/opt/labyrinth"
   LINKS="$SYS/usr/bin"
   MAN="$SYS/usr/local/share/man/man1"
+  COMP="$SYS/usr/share/bash-completion/completions"
   unset SUDO_USER
   mkdir -p "$REL" "$SYS"
   cp "$REPO/labyrinth.sh" "$REPO/install.sh" "$REL/"
@@ -41,7 +42,7 @@ seal() { bash "$REPO/tools/release/manifest.sh" "$REL" > /dev/null; }
 
 # install_sh [OPTION...]: run the installer from the release folder.
 install_sh() {
-  run bash "$REL/install.sh" --root "$ROOT" --link-dir "$LINKS" --man-dir "$MAN" "$@"
+  run bash "$REL/install.sh" --root "$ROOT" --link-dir "$LINKS" --man-dir "$MAN" --comp-dir "$COMP" "$@"
 }
 
 # answer LINE...: what is typed at the "Install?" question, in order.
@@ -68,6 +69,7 @@ snapshot() {
   [[ "$flat" == *"Data $ROOT (new, root only)"* ]]
   [[ "$flat" == *"Commands laby, labyrinth in $LINKS (new)"* ]]
   [[ "$flat" == *"Manual man laby (new)"* ]]
+  [[ "$flat" == *"Tab keys bash completion for laby, labyrinth (new)"* ]]
   [[ "$flat" == *"Config 8 templates "*" $ROOT/etc"* ]]
   [[ "$output" == *'Nothing was changed.'* ]]
   grep -q 'Install? \[y/N\]' "$REL/tty.out"
@@ -218,6 +220,84 @@ about() {
   [ -f "$ROOT/etc/protected-accounts" ]
   [ ! -e "$ROOT/etc/hosts.example" ]
   cmp "$ROOT/etc/hosts" "$REL/config/hosts.example"
+  # Tab completion: a file for each command, the same as the release's.
+  cmp "$COMP/laby" "$REPO/core/completion/laby.sh"
+  cmp "$COMP/labyrinth" "$REPO/core/completion/laby.sh"
+  [ "$(stat -c %a "$COMP/laby")" = 644 ]
+  [ -z "$(find "$COMP" -name '.*.??????' -o -name 'tmp.*')" ]
+}
+
+@test "the installed bash completion offers what the installed runner prints" {
+  inst_setup
+  install_sh -y
+  [ "$status" -eq 0 ]
+  mkdir -p "$T/bin"
+  printf '%s\n' '#!/bin/bash' "exec bash \"$ROOT/bin/labyrinth.sh\" \"\$@\"" > "$T/bin/laby"
+  chmod +x "$T/bin/laby"
+  run env PATH="$T/bin:$PATH" COMP="$COMP" bash -c '
+    source "$COMP/laby"
+    COMP_WORDS=(laby -r ""); COMP_CWORD=2
+    _laby_complete
+    printf "%s\n" "${COMPREPLY[@]}"
+  '
+  [ "$output" = $'lockout\nobserve\ndeceive\nsustain' ]
+  run bash -c 'source "$1"; complete -p laby' _ "$COMP/laby"
+  [[ "$output" == *"-F _laby_complete laby" ]]
+  run bash -c 'source "$1"; complete -p labyrinth' _ "$COMP/labyrinth"
+  [[ "$output" == *"-F _laby_complete labyrinth" ]]
+}
+
+@test "a completion file that is not ours is never replaced, and the rest still installs" {
+  inst_setup
+  mkdir -p "$COMP"
+  printf 'not ours\n' > "$COMP/labyrinth"
+  install_sh -y
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"tab completion for labyrinth is left out: $COMP/labyrinth belongs to another program"* ]]
+  [ "$(cat "$COMP/labyrinth")" = 'not ours' ]
+  cmp "$COMP/laby" "$REPO/core/completion/laby.sh"
+  [[ "$(tr -s " " <<< "$output")" == *"Tab keys bash completion for laby (new)"* ]]
+}
+
+@test "a laby that something else owns gets no laby completion either" {
+  inst_setup
+  mkdir -p "$LINKS"
+  printf 'not ours\n' > "$LINKS/laby"
+  install_sh -y
+  [ "$status" -eq 0 ]
+  [ ! -e "$COMP/laby" ]
+  cmp "$COMP/labyrinth" "$REPO/core/completion/laby.sh"
+  [[ "$(tr -s " " <<< "$output")" == *"Tab keys bash completion for labyrinth (new)"* ]]
+}
+
+@test "a second run leaves the completion files alone and says unchanged" {
+  inst_setup
+  install_sh -y
+  [ "$status" -eq 0 ]
+  before="$(snapshot)"
+  install_sh -y
+  [[ "$(tr -s " " <<< "$output")" == *"Tab keys bash completion for laby, labyrinth (unchanged)"* ]]
+  [ "$(snapshot)" = "$before" ]
+}
+
+@test "a changed completion file is replaced whole on the next run" {
+  inst_setup
+  install_sh -y
+  printf '# Labyrinth tab completion for bash.\nold\n' > "$COMP/laby"
+  install_sh -y
+  [ "$status" -eq 0 ]
+  cmp "$COMP/laby" "$REPO/core/completion/laby.sh"
+}
+
+@test "a copy with no completion file skips it in one line and still installs" {
+  inst_setup
+  rm -rf "$REL/core/completion"
+  seal
+  install_sh -y
+  [ "$status" -eq 0 ]
+  [[ "$(tr -s " " <<< "$output")" == *"Tab keys bash completion skipped: this copy has no completion file"* ]]
+  [ ! -e "$COMP/laby" ]
+  [ -f "$ROOT/bin/labyrinth.sh" ]
 }
 
 @test "-y answers the question for the installer" {

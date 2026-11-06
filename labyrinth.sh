@@ -66,7 +66,12 @@ export LAB_ROOT
 # shellcheck source=core/safety/release.sh
 source "$LAB_ROOT/core/safety/release.sh"
 LAB_RELEASE=0              # 0 checked, 1 no release list, 2 a file differs
-lab_release_check "$LAB_ROOT" || LAB_RELEASE=$?
+# The hidden --complete entry (Tab completion) only reads names and prints
+# candidates. It runs before the check and loads none of the core, so a Tab
+# never waits for the hashes and a changed core file still never runs.
+COMPLETING=0
+if [[ "${1:-}" == --complete ]]; then COMPLETING=1; fi
+if (( ! COMPLETING )); then lab_release_check "$LAB_ROOT" || LAB_RELEASE=$?; fi
 if (( LAB_RELEASE == 2 )); then
   printf 'labyrinth: %s, so Labyrinth will not run\n' "$LAB_RELEASE_PROBLEM" >&2
   printf '%s\n' "Copy Labyrinth here again from the team's copy, as manual section 11 says." >&2
@@ -86,7 +91,7 @@ if (( LAB_RELEASE == 2 )); then
   exit 20
 fi
 # shellcheck source=core/lib.sh
-source "$LAB_ROOT/core/lib.sh"
+if (( ! COMPLETING )); then source "$LAB_ROOT/core/lib.sh"; fi
 
 declare -A MOD=()          # fields of the module.yml being read
 declare -a PROFILE_IDS=()  # module ids from the profile, in order
@@ -3547,9 +3552,259 @@ bad_word() {
     'The phases are lockout, observe, deceive and sustain.'
 }
 
+# Tab completion (docs/Conventions.md section 3.1). The completion scripts in
+# core/completion hold no logic: they pass the words typed after the command
+# to the hidden entry 'labyrinth.sh --complete WORD...' and offer what it
+# prints. The last WORD is the one being completed ('' when nothing is typed
+# yet). The entry only reads: no lock, no log, no run ID, no configuration
+# file, no root needed. It prints candidates, one per line, and nothing else;
+# a folder it cannot read gives no candidates, and it always exits 0, so Tab
+# never prompts for a password.
+CMP_CUR=''                 # the word being completed
+CMP_PENDING=''             # the value option still waiting for its value
+CMP_HELP=0                 # 1 when a help flag came before CMP_CUR
+CMP_HELP_LAST=0            # 1 when the word just before CMP_CUR was a help flag
+CMP_ENDED=0                # 1 after a lone '--'
+CMP_PHASE=''               # the phase typed, if any
+CMP_ROOT=/opt/labyrinth    # the data root (--root)
+CMP_CONFIG=''              # the configuration folder (--config)
+declare -A CMP_GIVEN=()    # canonical option name -> 1, for those typed
+declare -a CMP_ACTIONS=()  # the actions typed
+declare -a CMP_PLAIN=()    # the words that are not options
+
+# cmp_emit CANDIDATE: print a candidate that is plain text, so that a name
+# found in a folder can never send a control sequence to the terminal.
+cmp_emit() {
+  if [[ "$1" =~ ^[A-Za-z0-9._,:-]+$ ]]; then printf '%s\n' "$1"; fi
+}
+
+# cmp_match CANDIDATE WORD: does CANDIDATE begin with WORD, in any case?
+cmp_match() { [[ "${1,,}" == "${2,,}"* ]]; }
+
+# cmp_note_value NAME VALUE: keep the value of an option that changes where
+# candidates are read from.
+cmp_note_value() {
+  case "$1" in
+    root) CMP_ROOT="$2" ;;
+    config) CMP_CONFIG="$2" ;;
+  esac
+}
+
+# cmp_note_option ROW VAL: record the option in row ROW, typed before the
+# word being completed. A value option with no value yet is pending.
+cmp_note_option() {
+  local row="$1" val="$2" name
+  name="${OPT_NAMES[row]}"
+  if [[ "$name" == help ]]; then CMP_HELP=1; CMP_HELP_LAST=1; return 0; fi
+  CMP_GIVEN[$name]=1
+  if (( OPT_ACTION[row] )); then CMP_ACTIONS+=("$name"); fi
+  if (( OPT_VALUE[row] )); then
+    if [[ -n "$val" ]]; then cmp_note_value "$name" "$val"; else CMP_PENDING="$name"; fi
+  fi
+}
+
+# cmp_read_word WORD: sort one word typed before the cursor, the way
+# parse_args does but without a single complaint.
+cmp_read_word() {
+  local w="$1" key long=0 val='' lk c bad=0
+  if (( CMP_ENDED )); then CMP_PLAIN+=("$w"); return 0; fi
+  if [[ -n "$CMP_PENDING" ]]; then
+    if [[ "$w" != -?* ]]; then cmp_note_value "$CMP_PENDING" "$w"; CMP_PENDING=''; return 0; fi
+    CMP_PENDING=''
+  fi
+  case "$w" in
+    --) CMP_ENDED=1; return 0 ;;
+    '-?' | '/?') CMP_HELP=1; CMP_HELP_LAST=1; return 0 ;;
+    -?*) ;;
+    *) CMP_PLAIN+=("$w"); return 0 ;;
+  esac
+  key="${w#-}"
+  if [[ "$key" == -* ]]; then long=1; key="${key#-}"; fi
+  if [[ "$key" =~ ^([^=:]*)([=:])(.*)$ ]]; then
+    key="${BASH_REMATCH[1]}" val="${BASH_REMATCH[3]}"
+  fi
+  lk="${key,,}"; lk="${lk//-/}"
+  if opt_lookup "$lk"; then cmp_note_option "$OPT_ROW" "$val"; return 0; fi
+  if (( long )) || [[ -z "$key" ]]; then return 0; fi
+  # A stack of short letters: every letter must be one.
+  for ((c = 0; c < ${#key}; c++)); do
+    if ! short_lookup "${key:c:1}"; then bad=1; break; fi
+  done
+  if (( bad )); then return 0; fi
+  for ((c = 0; c < ${#key} - 1; c++)); do
+    short_lookup "${key:c:1}"; cmp_note_option "$OPT_ROW" ''
+  done
+  short_lookup "${key: -1}"; cmp_note_option "$OPT_ROW" "$val"
+}
+
+# cmp_fits NAME ACT PRE: does the option fit the line so far? ACT is the
+# action typed, if any; PRE is 1 when an option only a preview or -r uses was
+# typed.
+cmp_fits() {
+  local name="$1" act="$2" pre="$3"
+  case "$name" in
+    help | root | config) return 0 ;;
+    run) [[ -z "$act" ]] ;;
+    keep | undo | probe | history | show | new-seed | seed-check | version | manual)
+      [[ -z "$act" ]] && (( ! pre )) ;;
+    all) [[ "$act" == undo ]] ;;
+    yes) [[ "$act" == undo || "$act" == new-seed ]] ;;
+    no-revert | break-glass | confirm-group | approve) [[ "$act" == run ]] ;;
+    only) [[ -z "$act" || "$act" == run ]] && [[ -z "${CMP_GIVEN[skip]+s}" ]] ;;
+    skip) [[ -z "$act" || "$act" == run ]] && [[ -z "${CMP_GIVEN[only]+s}" ]] ;;
+    profile) [[ -z "$act" || "$act" == run ]] ;;
+    *) return 1 ;;
+  esac
+}
+
+# cmp_options: the options that fit the line and begin like the word, short
+# and long. A lone '-' lists all of them, '--' the long names only; other
+# text is matched against the long names ignoring case and dashes, so -Ru
+# finds --run.
+cmp_options() {
+  local act='' pre=0 i name body short
+  if (( ${#CMP_ACTIONS[@]} > 0 )); then act="${CMP_ACTIONS[0]}"; fi
+  for name in profile only skip break-glass confirm-group approve; do
+    if [[ -n "${CMP_GIVEN[$name]+s}" ]]; then pre=1; fi
+  done
+  body="${CMP_CUR#-}"; body="${body#-}"; body="${body,,}"; body="${body//-/}"
+  for ((i = 0; i < ${#OPT_NAMES[@]}; i++)); do
+    name="${OPT_NAMES[i]}"; short="${OPT_SHORT[i]}"
+    if [[ -n "${CMP_GIVEN[$name]+s}" ]] || ! cmp_fits "$name" "$act" "$pre"; then continue; fi
+    if [[ -n "$short" && ( "$CMP_CUR" == - || "$CMP_CUR" == "-$short" ) ]]; then cmp_emit "-$short"; fi
+    if [[ "${OPT_KEYS[i]}" == "$body"* ]]; then cmp_emit "--$name"; fi
+  done
+}
+
+# cmp_phases: the phases that begin like the word; and, with nothing typed
+# yet and no action, the long names of the actions.
+cmp_phases() {
+  local p i
+  for p in $PHASES; do
+    if cmp_match "$p" "$CMP_CUR"; then cmp_emit "$p"; fi
+  done
+  if [[ -z "$CMP_CUR" && ${#CMP_ACTIONS[@]} -eq 0 ]]; then
+    for ((i = 0; i < ${#OPT_NAMES[@]}; i++)); do
+      if (( OPT_ACTION[i] )); then cmp_emit "--${OPT_NAMES[i]}"; fi
+    done
+  fi
+}
+
+# cmp_profiles: the profile names of this host, from the configuration
+# folder and the release.
+cmp_profiles() {
+  local f name seen=' ' cfg="${CMP_CONFIG:-$CMP_ROOT/etc}"
+  for f in "$cfg"/profiles/*.profile "$LAB_ROOT"/profiles/*.profile; do
+    [[ -f "$f" ]] || continue
+    name="${f##*/}"; name="${name%.profile}"
+    if [[ "$seen" == *" $name "* ]]; then continue; fi
+    seen+="$name "
+    if cmp_match "$name" "$CMP_CUR"; then cmp_emit "$name"; fi
+  done
+}
+
+# cmp_runs: this host's run IDs, newest first. With nothing typed, a run is
+# written as its last four characters, which name it, or as its whole ID when
+# another run ends the same way; with text typed, whole IDs that begin with it.
+cmp_runs() {
+  local d id short other i dup
+  local -a ids=()
+  for d in "$CMP_ROOT"/state/runs/*/; do
+    id="${d%/}"; id="${id##*/}"
+    if [[ "$id" =~ $RE_RUN_ID && -f "${d}manifest.jsonl" ]]; then ids+=("$id"); fi
+  done
+  for ((i = ${#ids[@]} - 1; i >= 0; i--)); do
+    id="${ids[i]}"; short="${id: -4}"; dup=0
+    for other in "${ids[@]}"; do
+      if [[ "$other" != "$id" && "${other: -4}" == "$short" ]]; then dup=1; fi
+    done
+    if [[ -z "$CMP_CUR" ]]; then
+      if (( dup )); then cmp_emit "$id"; else cmp_emit "$short"; fi
+    elif cmp_match "$id" "$CMP_CUR"; then
+      cmp_emit "$id"
+    elif (( ! dup )) && cmp_match "$short" "$CMP_CUR"; then
+      cmp_emit "$short"
+    fi
+  done
+}
+
+# cmp_modules: module IDs of the phase typed (all phases when none is), for
+# a comma list. The IDs already in the list are not offered again, and each
+# candidate carries the list before it, so that it replaces the whole word.
+cmp_modules() {
+  local before='' last="$CMP_CUR" id
+  if [[ "$CMP_CUR" == *,* ]]; then before="${CMP_CUR%,*},"; last="${CMP_CUR##*,}"; fi
+  while IFS= read -r id; do
+    if [[ -n "$CMP_PHASE" && "${id%%.*}" != "$CMP_PHASE" ]]; then continue; fi
+    if [[ ",$before" == *",$id,"* ]]; then continue; fi
+    if cmp_match "$id" "$last"; then cmp_emit "$before$id"; fi
+  done < <(module_ids)
+}
+
+# cmp_topics: what -h takes: an action's or option's long name, 'basics', a
+# phase or a module ID.
+cmp_topics() {
+  local i t
+  for ((i = 0; i < ${#OPT_NAMES[@]}; i++)); do
+    if [[ "${OPT_NAMES[i]}" != help ]] && cmp_match "${OPT_NAMES[i]}" "$CMP_CUR"; then cmp_emit "${OPT_NAMES[i]}"; fi
+  done
+  for t in basics $PHASES; do
+    if cmp_match "$t" "$CMP_CUR"; then cmp_emit "$t"; fi
+  done
+  while IFS= read -r t; do
+    if cmp_match "$t" "$CMP_CUR"; then cmp_emit "$t"; fi
+  done < <(module_ids)
+}
+
+# cmd_complete WORD...: the candidates for the last WORD.
+cmd_complete() {
+  local n=$# i w p
+  local -a typed=("$@")
+  trap 'exit 0' ERR
+  exec 2> /dev/null
+  if (( n > 0 )); then CMP_CUR="${typed[n-1]}"; fi
+  for ((i = 0; i < n - 1; i++)); do
+    CMP_HELP_LAST=0
+    cmp_read_word "${typed[i]}"
+  done
+  for w in "${CMP_PLAIN[@]+"${CMP_PLAIN[@]}"}"; do
+    p="${w,,}"
+    if [[ -z "$CMP_PHASE" && " $PHASES " == *" $p "* ]]; then CMP_PHASE="$p"; fi
+  done
+  # Help takes what follows -h as its topic and nothing after that.
+  if (( CMP_HELP )); then
+    if (( CMP_HELP_LAST && ${#CMP_ACTIONS[@]} == 0 && ${#CMP_PLAIN[@]} == 0 )) && [[ "$CMP_CUR" != -* ]]; then
+      cmp_topics
+    fi
+    return 0
+  fi
+  if (( CMP_ENDED )); then return 0; fi
+  # -k, -u and --show may be left without an ID, so an option can follow.
+  if [[ -n "$CMP_PENDING" && "$CMP_CUR" == -* ]]; then
+    case "$CMP_PENDING" in keep | undo | show) CMP_PENDING='' ;; esac
+  fi
+  if [[ -n "$CMP_PENDING" ]]; then
+    case "$CMP_PENDING" in
+      profile) cmp_profiles ;;
+      keep | undo | show) cmp_runs ;;
+      only | skip) cmp_modules ;;
+    esac
+    return 0
+  fi
+  if [[ "$CMP_CUR" == -* ]]; then
+    if [[ "$CMP_CUR" != *[=:]* ]]; then cmp_options; fi
+    return 0
+  fi
+  if [[ -z "$CMP_PHASE" && ${#CMP_PLAIN[@]} -eq 0 ]] \
+      && { (( ${#CMP_ACTIONS[@]} == 0 )) || [[ "${CMP_ACTIONS[0]}" == run ]]; }; then
+    cmp_phases
+  fi
+}
+
 main() {
   local action='' word='' phase='' label shown opt
   local -a used=()
+  if [[ "${1:-}" == --complete ]]; then shift; cmd_complete "$@"; exit 0; fi
   parse_args "$@"
   # Help never runs anything: it comes before every other check and read,
   # whatever else the line says.
