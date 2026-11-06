@@ -50,7 +50,8 @@ BeforeAll {
         param($T)
         $items = @(Get-ChildItem -LiteralPath $T.Lab, $T.Root, $T.Etc -Recurse -Force |
                 Sort-Object FullName)
-        $rows = @($items | ForEach-Object { '{0} {1} {2}' -f $_.FullName, $_.Length, $_.LastWriteTimeUtc.Ticks })
+        # A folder's own time is left out: the system may touch it without a write.
+        $rows = @($items | ForEach-Object { if ($_.PSIsContainer) { $_.FullName } else { '{0} {1} {2}' -f $_.FullName, $_.Length, $_.LastWriteTimeUtc.Ticks } })
         $hashes = @($items | Where-Object { -not $_.PSIsContainer } |
                 ForEach-Object { '{0} {1}' -f $_.FullName, (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash })
         return ($rows + $hashes) -join "`n"
