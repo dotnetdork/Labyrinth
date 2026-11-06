@@ -189,7 +189,7 @@ Then fill in what is left, and check the result with a preview, such as `@CMD@ l
 | Run ID | The name of a run, such as `20261002T140301Z-4f2a`: the start time in UTC and four random characters. Wherever a command asks for a run, the last four characters (`4f2a`) are enough. |
 | Preview | A dry run: each module reports what it would change. Nothing is changed and nothing is written. |
 | Real run | A run with `-r`: Labyrinth plans, asks you to confirm, then makes the changes. |
-| Revert timer | A timer started before a risky change. If nobody **keeps** the run in time, the timer undoes the run by itself. It protects you if a change locks you out. |
+| Revert timer | A timer started before a risky change. If nobody **keeps** the run in time, the timer undoes the run by itself. It protects you if a change locks you out. About a minute before it fires, everyone logged in gets a warning with the commands to keep the run or add time. |
 | Keep | Telling Labyrinth that a run's changes are good, with `-k`: the revert timer is cancelled and the changes stay. |
 | Kept once verified | A change that only takes access away from an intruder, such as a new admin password or a removed planted key, cannot lock you out. Labyrinth keeps it as soon as its check passes and no scored service got worse, so the revert timer does not hand the intruder their access back. |
 | Undo | Undoing what a run changed, newest first. The revert timer starts one automatically; you can start one too with `-u`. |
@@ -217,7 +217,7 @@ The normal way to use Labyrinth is: preview, run, check, keep.
 
 3. **Check that you can still get in.** Open a new login session, on the console or over the network, and make sure it works. Do not close your current session yet.
 
-4. **Keep the run.** At the keep prompt, type `keep`. If you are not sure, type anything else: the revert timer stays armed and undoes the run when it fires. You can still keep it before then, with the last four characters of the run ID:
+4. **Keep the run.** At the keep prompt, type `keep`. If you are not sure, type anything else: the revert timer stays armed and undoes the run when it fires. About a minute before that, everyone logged in to the host gets a message that names the run, the time and the commands to keep it or to get more time; sending it is best effort, so do not count on it. You can still keep the run before then, with the last four characters of the run ID:
 
    ```
    @CMD@ -k 4f2a
@@ -387,7 +387,7 @@ The run is always needed. Without one, the extend action changes nothing and end
 <!-- end -->
 has no timer to extend, and is refused with 20. A run whose timer was lost (`armed: timer lost` in the history) gets a new timer. The new timer is set before the old one is removed, so a failed extension leaves the old timer in place.
 
-Each extension is written to the run log and to the run's record, and the history, the status and the show command then give the new time. Extending does not keep the run: when you have checked the logins, keep it with `-k`.
+Each extension is written to the run log and to the run's record, and the history, the status and the show command then give the new time. The warning that goes to everyone logged in about a minute before the timer fires moves with it: a timer under two minutes warns at its halfway point instead. If the warning could not be set up, the extension says so on a `Note:` line, and the timer is armed all the same. Extending does not keep the run: when you have checked the logins, keep it with `-k`.
 
 Ends with 0 when the timer is extended, 20 when it is not run as @ADMIN@, when Labyrinth's files could be changed by another account (section 11), or when the run has no armed timer, and 40 when the timer could not be extended or the extension could not be recorded.
 
