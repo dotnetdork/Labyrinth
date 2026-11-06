@@ -140,7 +140,7 @@ Describe 'the warning before the revert timer undoes a run' {
         [IO.File]::ReadAllText((Join-Path $t.Lab 'toggle.conf')) | Should -Match 'setting=on'
         $r = Invoke-TestLabRun $t @('-Extend', $a)
         $r.Code | Should -Be 0
-        $r.Out | Should -Match '(?m)^Note:   the warning before the undo was not set up; the timer is armed$'
+        $r.Out | Should -Match '(?m)^Note:   the warning before the undo was not set up; the timer is armed?$'
         $r.Out | Should -Match '(?m)^Next:   '
     }
 

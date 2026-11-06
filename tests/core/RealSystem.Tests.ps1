@@ -147,9 +147,9 @@ Describe 'real system (Windows)' {
     }
 
     It 'an apply that is not kept is warned before the timer rolls it back' -Skip:($env:LAB_REALSYSTEM -ne '1') {
-        $lab = Join-Path $TestDrive 'lab'
-        $etc = Join-Path $TestDrive 'etc'
-        $root = Join-Path $TestDrive 'root'
+        $lab = Join-Path $TestDrive 'lab-warn'
+        $etc = Join-Path $TestDrive 'etc-warn'
+        $root = Join-Path $TestDrive 'root-warn'
         New-Item -ItemType Directory -Path (Join-Path $lab 'phases\observe\modules'), (Join-Path $lab 'profiles'), $etc -Force | Out-Null
         Copy-Item -LiteralPath (Join-Path $script:Repo 'labyrinth.ps1') -Destination $lab
         Copy-Item -LiteralPath (Join-Path $script:Repo 'core') -Destination $lab -Recurse
