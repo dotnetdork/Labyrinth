@@ -23,6 +23,35 @@ lab_tty_read() {
   printf '%s\n' "$line"
 }
 
+# lab_tty_cols: the terminal's width in columns, read from the terminal
+# itself; 80 when it cannot be read.
+lab_tty_cols() {
+  local size cols
+  size="$(stty size < /dev/tty 2> /dev/null)" || size=''
+  cols="${size#* }"
+  if [[ "$cols" =~ ^[0-9]+$ ]] && (( cols > 0 )); then
+    printf '%s\n' "$cols"
+  else
+    printf '80\n'
+  fi
+}
+
+# lab_tty_rows TEXT WIDTH: print how many rows down the cursor moves while
+# TEXT is written from the start of a row on a terminal WIDTH columns wide,
+# counting long lines that wrap. A line that exactly fills the width counts
+# one row more than it may take, so a clear never falls short.
+lab_tty_rows() {
+  local rest="$1" width="$2" line rows=0
+  if [[ ! "$width" =~ ^[0-9]+$ ]] || (( width < 1 )); then width=80; fi
+  while [[ "$rest" == *$'\n'* ]]; do
+    line="${rest%%$'\n'*}"
+    rows=$((rows + ${#line} / width + 1))
+    rest="${rest#*$'\n'}"
+  done
+  rows=$((rows + ${#rest} / width))
+  printf '%s\n' "$rows"
+}
+
 # lab_secret_new [LENGTH]: print a new password of LENGTH characters (14 to
 # 64; 20 by default) from /dev/urandom. It uses letters, digits and -_.+=,
 # leaves out characters easily mistaken when copied by hand (0 O 1 l I),
@@ -62,22 +91,27 @@ lab_secret_can_show() { lab_tty_ok; }
 # when there is no terminal, and 1 when the terminal goes before the answer:
 # the module must then roll back the change, because nobody recorded it.
 lab_secret_show() {
-  local label="$1" secret="$2" answer lines=6
+  local label="$1" secret="$2" answer typed shown prompt
   if ! lab_tty_ok; then
     printf 'secret: no terminal to show the new password on\n' >&2
     return 20
   fi
-  lab_tty_write $'\n'"  New password for $label, shown once:"$'\n\n'"      $secret"$'\n\n'
+  prompt="  Type 'recorded' once it is in the offline record: "
+  shown=$'\n'"  New password for $label, shown once:"$'\n\n'"      $secret"$'\n\n'
+  lab_tty_write "$shown"
   while :; do
-    lab_tty_write "  Type 'recorded' once it is in the offline record: "
+    lab_tty_write "$prompt"
     if ! answer="$(lab_tty_read)"; then
       lab_tty_write $'\n'
       return 1
     fi
+    # The typed answer is echoed on the prompt's row, then Enter ends it.
+    shown+="$prompt$answer"$'\n'
     answer="$(lab_trim "$answer")"
     if [[ "${answer,,}" == recorded ]]; then break; fi
-    lines=$((lines + 1))
   done
-  # Back up over the lines shown and clear to the end of the screen.
-  lab_tty_write $'\r\033['"$lines"$'A\033[J'
+  # Back up over the rows shown (wrapped ones too) and clear to the end of
+  # the screen.
+  typed="$(lab_tty_rows "$shown" "$(lab_tty_cols)")"
+  lab_tty_write $'\r\033['"$typed"$'A\033[J'
 }

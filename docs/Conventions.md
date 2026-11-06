@@ -99,7 +99,7 @@ Both runners share one vocabulary. In this section `laby` stands for the install
 laby [PHASE] [options]          preview a phase
 laby -r PHASE [options]         run a phase
 laby [options]                  this host's status and the next step
-laby ACTION [ID] [options]      keep, undo, history, show, probe, new-seed, seed-check, version, manual, help
+laby ACTION [ID] [options]      keep, extend, undo, history, show, probe, new-seed, seed-check, version, manual, help
 ```
 
 #### Commands
@@ -112,6 +112,7 @@ A line holds one **action**, or only a phase, or neither: then it is the status.
 | `laby PHASE` | Every module of the phase reports what it would change. Nothing is written, not even logs |
 | `laby -r PHASE` / `--run` | Preview, then run the phase behind the gates below. `-r` may come before or after the phase |
 | `laby -k ID` / `--keep ID` | Keep a run's changes: cancel its revert timer, then record the keep. The ID is always needed: `-k` alone is a usage error (`40`) that lists the armed runs and their IDs |
+| `laby --extend ID` | Push back a run's revert timer: add one timer length (`REVERT_MINUTES` from `event.conf`, 5 by default) to the time left on it, so a timer with 2 minutes left that is extended fires in 7, and in 12 after a second call. It takes no time argument, and there is no total cap: each extension is short, so a forgotten run is still undone once people stop extending it. Only a run whose timer is armed (also `armed: timer lost`, which a new timer repairs) can be extended; a run that was kept, undone or made with `--no-revert` is refused (`20`, like `-k` on an undone run), and a time after the ID is a usage error (`40`). The ID is always needed: without it, the armed runs are listed (`40`). It prints `Timer:  now fires 21:39 UTC (in 7 minutes)` and `Next:   sudo laby -k 7f3a`, records `timer_extended` in the manifest and a line in the run log, and `--history`, the status and `--show` then show the new time (The revert timer, below). Needs root or Administrator (`20`) |
 | `laby -u ID` / `--undo ID` | Undo what a run applied, newest module first, except the modules kept once they verified (`keep_on_verify`, below); `--all` (only with `-u`) undoes those too, after a question (Questions, below). The revert timer runs exactly this form, which never asks. The ID is always needed: without it, the runs are listed (`40`). When it undid anything, it writes a notice to every terminal or session logged in on the host (`wall` on Linux, `msg` on Windows; best effort), so the team learns of an undo no one was watching |
 | `laby --history` | List this host's runs, oldest first: ID, phase, start time (UTC) and state, which is `armed` (with the time it is undone; on Linux, `armed: timer lost` when systemd no longer has the timer, because its unit files are missing or broken), `kept`, `no revert` (run with `--no-revert`), `undone`, `undone with errors`, or `not kept, no timer`. Changes nothing; needs root or Administrator (`20`) |
 | `laby --show ID` | List what one run changed, read-only: the run's phase, profile, host, group, start and end (UTC) and state, then each module in run order with its status and every change it made (action and target, the previous value, the note and the backup, where the manifest has them). A module's status is `applied`, `kept once verified`, `undone`, `blocked, nothing changed`, or `failed (apply exit N)`, `failed (verify exit N)` or `failed (a scored service stopped working)`, with `, then undone` when its changes were put back. The last line is `Log:` and the path of the run log, when it exists. The ID is always needed: without it, the runs are listed (`40`). Secrets are never shown, and no backup file is read. Needs root or Administrator (`20`). `-v` is planned (section 3.3) and not accepted with it yet |
@@ -130,6 +131,7 @@ A line holds one **action**, or only a phase, or neither: then it is the status.
 |---|---|---|---|---|
 | `-r` | `--run` | `-Run` | none | a phase: make the changes |
 | `-k` | `--keep` | `-Keep` | ID | action |
+| | `--extend` | `-Extend` | ID | action |
 | `-u` | `--undo` | `-Undo` | ID | action |
 | | `--all` | `-All` | none: also undo the modules kept once they verified | `-u` only |
 | `-y` | `--yes` | `-Yes` | none: yes to the question before `-u ID --all`, or before `--new-seed` replaces a seed (Questions, below) | `-u ID --all` and `--new-seed` only |
@@ -158,7 +160,7 @@ A line holds one **action**, or only a phase, or neither: then it is the status.
 
 #### How the line is read
 
-- **One action per line:** `-r`, `-k`, `-u`, `--probe`, `--history`, `--show`, `--new-seed`, `--seed-check`, `-V` or `--manual`. Two actions are a usage error (`40`). A phase word alone previews it. A line with neither an action nor a phase is the status, unless it gives `-P`, `--only`, `--skip`, `--break-glass`, `--confirm-group` or `--approve`, which only a preview or a run uses: that line is a preview with its phase missing (`40`). Options may come before or after the action and its word.
+- **One action per line:** `-r`, `-k`, `--extend`, `-u`, `--probe`, `--history`, `--show`, `--new-seed`, `--seed-check`, `-V` or `--manual`. Two actions are a usage error (`40`). A phase word alone previews it. A line with neither an action nor a phase is the status, unless it gives `-P`, `--only`, `--skip`, `--break-glass`, `--confirm-group` or `--approve`, which only a preview or a run uses: that line is a preview with its phase missing (`40`). Options may come before or after the action and its word.
 - **Case.** Short letters are case-sensitive: `-P` is the profile and `-V` the version, and `-p` and `-v` are errors with a near-miss suggestion. Long names ignore case and dashes, so PowerShell's `-Run`, `-Undo`, `-Profile`, `-BreakGlass` and `-Root` work, and each option has one name in both runners.
 - **Stacking.** Short letters may be joined, such as `-rv` once `-v` is built (section 3.3); today only `-r` and `-P` can share a stack (`-rP NAME`). A letter that takes a value comes last. A single dash before a word is read as a long name when the word is a long name (`-Undo`), and otherwise as a stack of letters, where a letter that is not a short flag is a usage error.
 - **Values** are given as `-k 7f3a`, `--keep 7f3a`, `--keep=7f3a` or `-Name:value`, and `--` ends the options. A run is never kept or undone by guess. PowerShell may hand `-k 0123` over as a number; the runner takes the raw text, never a number.
@@ -170,6 +172,7 @@ A line holds one **action**, or only a phase, or neither: then it is the status.
 **Usage errors** exit `40`. They print one line, `<name>: <what is wrong>`, an optional line saying how to fix it, then `Try '<name> -h'.` (or the action's help, such as `Try '<name> -u -h'.`), all to standard error. `<name>` is the name the person typed (`laby`, `labyrinth` or the script's name). The line names the word at fault and, for a near miss, suggests the right one (`did you mean 'observe'?`). A near miss is the only word it begins, or else the nearest within 2 edits, or 1 edit for a word of 3 letters or fewer, so `--foo` gets no suggestion. A bare word that is neither a phase nor known is an error and nothing runs; when it is an action's long name, the line gives the real form: `laby: 'undo' is not a phase. Did you mean 'laby -u ID'?`. These are errors too:
 
 - an option given twice;
+- a word after `--extend ID`, such as a time (`laby: --extend takes no time: each call adds one timer length`);
 - an option whose value is missing, or looks like another option (`--profile needs a value, but got '--root'`);
 - an option that does not fit the action, such as `--all` without `-u`, or two actions;
 - `--only` and `--skip` together, or either one with an action (`laby: --only is only for a preview or -r, not -k`);
@@ -223,7 +226,7 @@ The default is no: anything but `y` or `yes` prints `Nothing was changed.` and e
 
 #### No revert timer
 
-`laby -r PHASE --no-revert` arms no revert timer and ends without asking to keep the run. It is for test machines only: a change that locks the team out is not undone by itself. Nothing is kept once verified, as there is no timer to keep it from. The manifest records `run_no_revert` after `breakglass_verified`; `--history` and the status show the run as `no revert`; and the end of the run says there is no timer and gives the `-u` command that undoes it. `laby -k ID` on such a run records nothing and says there is no timer to cancel (`0`).
+`laby -r PHASE --no-revert` arms no revert timer and ends without asking to keep the run. It is for test machines only: a change that locks the team out is not undone by itself. Nothing is kept once verified, as there is no timer to keep it from. The manifest records `run_no_revert` after `breakglass_verified`; `--history` and the status show the run as `no revert`; and the end of the run says there is no timer and gives the `-u` command that undoes it. `laby -k ID` on such a run records nothing and says there is no timer to cancel (`0`), and `laby --extend ID` refuses it (`20`).
 
 #### Partial runs
 
@@ -279,6 +282,8 @@ The default is no: anything but `y` or `yes` prints `Nothing was changed.` and e
 #### The revert timer
 
 **The revert timer** is a systemd timer and service pair `lab-revert-<run>-<n>` on Linux and a one-time scheduled task `\Labyrinth\lab-revert-<run>-<n>` running as SYSTEM on Windows. Both survive a restart, and fire as soon as they can if their time passed while the host was off. On Linux the two unit files go in `/etc/systemd/system`, and the timer is enabled: `OnCalendar=` holds the due time with `Persistent=true`, for a restart, and `OnActiveSec=` holds the same delay, so a clock change cannot move it. Re-arming creates the new timer first and only then removes the earlier one, so a failed re-arm leaves the run covered. `-k` and `-u`, the timer's own included, stop the timer, disable it and delete its two unit files; these files, which Labyrinth wrote, are the only ones it deletes outside its own paths, as the scheduled task is the only task it unregisters. If the unit files are missing or broken, `--history` shows the run as `armed: timer lost`. `-u` waits ten seconds for the run lock. If a live run still holds it, hung or waiting at a prompt, `-u` stops that run and the entry points it started (TERM, then KILL after 30 seconds) and then undoes the run, so the timer never undoes a run that is still changing the host and about to report success. Only if that run cannot be stopped does `-u` go on without the lock, with a warning.
+
+**Extending.** `laby --extend ID` re-arms the run's timer for the time left plus one timer length (`REVERT_MINUTES`). It takes the run lock like `-k`, then creates the new timer first and only then removes the earlier one, as for any re-arm, so a failed extension (`40`) leaves the earlier timer armed and the run covered. The time left is read from `timer-due`; if it is missing, the timer is set to one timer length from now. Each extension records `timer_extended` in the manifest and a line in the run log. The warning planned before the timer fires (Roadmap, step 7) will read the same `timer-due`, so it moves with the timer.
 
 The time a timer will fire is kept in `<state>/runs/<run>/timer-due` (UTC, `YYYY-MM-DDTHH:MM:SSZ`), for `--history` and the keep prompt. The file is advisory: if it is missing, the time is shown as unknown.
 
@@ -531,6 +536,7 @@ The manifest is `<state>/runs/<run>/manifest.jsonl`, one JSON object per line, e
 
 | Action | Meaning |
 |---|---|
+| `timer_extended` | `laby --extend ID` added one timer length to the run's revert timer (empty `module`); its `note` is `added N minutes; now fires <UTC time>`. Nothing to undo |
 | `run_start`, `breakglass_verified`, `run_kept`, `run_rolled_back` | The run itself (empty `module`). `breakglass_verified` records the operator's confirmation, not a proof; its `note` is the console session found for the account (`console session <id>`), `no console session found`, `console sessions could not be listed`, or `confirmed earlier`. The name stays as it is so older manifests read the same |
 | `apply_start` | A module's `apply` is about to run; `-u ID` undoes every module with one, except one kept once verified (`module_kept`) |
 | `file` | A file is about to change; `backup` holds its copy, `<backup>/<run>/<module>/<seq>-<name>` |

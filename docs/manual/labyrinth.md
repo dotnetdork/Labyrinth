@@ -240,6 +240,7 @@ Labyrinth does **one action per line**. A phase on its own is a preview. Every o
 | Preview a phase | `@CMD@ PHASE` | 0, 10, 20 or 40 |
 | Run a phase | `@CMD@ -r PHASE` | 0, 10, 20, 30 or 40 |
 | Keep a run | `@CMD@ -k ID` | 0, 20 or 40 |
+| Add time to a run's revert timer | `@CMD@ --extend ID` | 0, 20 or 40 |
 | Undo a run | `@CMD@ -u ID [--all [-y]]` | 0, 20 or 40 |
 | List the runs | `@CMD@ --history` | 0, 20 or 40 |
 | List what a run changed | `@CMD@ --show ID` | 0, 20 or 40 |
@@ -257,6 +258,7 @@ Labyrinth does **one action per line**. A phase on its own is a preview. Every o
 | Preview a phase | `@CMD@ PHASE` | 0, 10, 20 or 40 |
 | Run a phase | `@CMD@ -r PHASE` | 0, 10, 20, 30 or 40 |
 | Keep a run | `@CMD@ -k ID` | 0, 20 or 40 |
+| Add time to a run's revert timer | `@CMD@ -Extend ID` | 0, 20 or 40 |
 | Undo a run | `@CMD@ -u ID [-All [-y]]` | 0, 20 or 40 |
 | List the runs | `@CMD@ -History` | 0, 20 or 40 |
 | List what a run changed | `@CMD@ -Show ID` | 0, 20 or 40 |
@@ -268,7 +270,7 @@ Labyrinth does **one action per line**. A phase on its own is a preview. Every o
 | Get help | `@CMD@ -h [TOPIC]` | 0 |
 <!-- end -->
 
-`PHASE` is `lockout`, `observe`, `deceive` or `sustain`. `ID` is a run ID or its last four characters; `-k` and `-u` always need one. `-r` may come before or after the phase. Two actions on one line are an error (exit 40), and so is a word that is not a phase.
+`PHASE` is `lockout`, `observe`, `deceive` or `sustain`. `ID` is a run ID or its last four characters; `-k`, `-u` and the extend and show actions always need one. `-r` may come before or after the phase. Two actions on one line are an error (exit 40), and so is a word that is not a phase.
 
 This manual writes the program's name as `laby`. The installer (section 2) puts `laby`, and the longer name `labyrinth`, on the path, and the program's own help and hints then write the name you typed. Without the installer, type `@CMD@` instead; the help and hints write the name you started it with.
 
@@ -357,6 +359,38 @@ Keeps a run's changes: cancels its revert timer, then records that the run was k
 
 Ends with 0 when the run is kept, 20 when it is not run as @ADMIN@, when Labyrinth's files could be changed by another account (section 11), or when it is too late because the run was already undone, and 40 when the timer could not be cancelled or the keep could not be recorded. If the timer could not be cancelled, the run is **not** kept and the timer will still undo it: Labyrinth says when, and gives the command to try again.
 
+## extend *run*
+
+Pushes back a run's revert timer, for when checking the logins takes longer than the timer allows. Each time you run it, it adds one timer length to the time the timer has left. The length is `REVERT_MINUTES` in `event.conf`, 5 minutes unless the team changed it. If the timer would fire in 2 minutes, one extension makes it fire in 7 and a second in 12. You never type a time: a time after the ID is an error (exit 40). There is no limit on how often you extend, but each extension is short, so a run that people stop extending is still undone.
+
+<!-- linux -->
+```
+@CMD@ --extend 7f3a
+Timer:  now fires 21:39 UTC (in 7 minutes)
+Next:   @CMD@ -k 7f3a
+```
+<!-- end -->
+<!-- windows -->
+```
+@CMD@ -Extend 7f3a
+Timer:  now fires 21:39 UTC (in 7 minutes)
+Next:   @CMD@ -k 7f3a
+```
+<!-- end -->
+
+The run is always needed. Without one, the extend action changes nothing and ends with 40; run as @ADMIN@, it also lists the runs whose timer is armed, to choose from. Only a run whose timer is armed can be extended. A run that was already kept, already undone, or made with
+<!-- linux -->
+`--no-revert`
+<!-- end -->
+<!-- windows -->
+`-NoRevert`
+<!-- end -->
+has no timer to extend, and is refused with 20. A run whose timer was lost (`armed: timer lost` in the history) gets a new timer. The new timer is set before the old one is removed, so a failed extension leaves the old timer in place.
+
+Each extension is written to the run log and to the run's record, and the history, the status and the show command then give the new time. Extending does not keep the run: when you have checked the logins, keep it with `-k`.
+
+Ends with 0 when the timer is extended, 20 when it is not run as @ADMIN@, when Labyrinth's files could be changed by another account (section 11), or when the run has no armed timer, and 40 when the timer could not be extended or the extension could not be recorded.
+
 ## undo (-u) *run*
 
 Undoes what the run changed, newest change first. This is exactly what the revert timer does when it fires. You must name the run. Without one, it changes nothing and ends with 40; run as @ADMIN@, it also lists the runs to choose from. Running it twice is safe.
@@ -406,7 +440,7 @@ Ends with 0 when the run is undone, 20 when not run as @ADMIN@ or when Labyrinth
 <!-- end -->
 this host's runs, oldest first, with the run ID, phase, start time (UTC) and state:
 
-- `armed`: the revert timer is set, with the time it will undo the run. If that time has passed, it says when the timer was due; if Labyrinth cannot tell, it says the time is unknown;
+- `armed`: the revert timer is set, with the time it will undo the run (the new time after an extension). If that time has passed, it says when the timer was due; if Labyrinth cannot tell, it says the time is unknown;
 <!-- linux -->
 - `armed: timer lost`: the run is still armed, but systemd no longer has its revert timer, because its unit files were removed or damaged. Nothing will undo the run by itself. Keep it or undo it now;
 <!-- end -->
@@ -534,6 +568,7 @@ all work. A word that starts with a dash and holds a long name (even with one da
 |---|---|---|
 | `-r`, `--run` | Run a phase for real. May come before or after the phase. | action |
 | `-k`, `--keep ID` | Keep a run. The ID is always needed. | action |
+| `--extend ID` | Add one timer length to a run's revert timer. The ID is always needed; no time is given. | action |
 | `-u`, `--undo ID` | Undo a run. The ID is always needed. | action |
 | `--history` | List this host's runs. | action |
 | `--show ID` | List what one run changed. The ID is always needed. | action |
@@ -562,6 +597,7 @@ Example: `sudo ./labyrinth.sh -r lockout --root /srv/labyrinth`
 |---|---|---|
 | `-r`, `-Run` | Run a phase for real. May come before or after the phase. | action |
 | `-k`, `-Keep ID` | Keep a run. The ID is always needed. | action |
+| `-Extend ID` | Add one timer length to a run's revert timer. The ID is always needed; no time is given. | action |
 | `-u`, `-Undo ID` | Undo a run. The ID is always needed. | action |
 | `-History` | List this host's runs. | action |
 | `-Show ID` | List what one run changed. The ID is always needed. | action |
@@ -870,6 +906,8 @@ Then run the command again. Labyrinth's own check finds a changed, added or miss
 **"too late".** You tried to keep a run that was already undone, by the timer or by hand. Its changes are gone. Preview and run it again if you still want them.
 
 **"could not be cancelled".** `-k` could not stop the revert timer, so the run was not kept and the timer will still undo it at the time shown. Run the `Retry:` command it prints.
+
+**"could not be extended".** The extend action could not set the new revert timer, so the earlier timer is unchanged and still undoes the run at the time shown. Run the `Retry:` command it prints.
 
 **"the keep could not be recorded".** `-k` cancelled the revert timer, so the changes stay, but the run's record could not be written. The history may not show the run as `kept`. Check that the data folder is not full or read-only.
 

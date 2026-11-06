@@ -11,7 +11,7 @@ BeforeAll {
     . (Join-Path $PSScriptRoot 'LabTestHelper.ps1')
     $t = Initialize-TestLab
     # Every topic with a page of its own; the basics page is longer.
-    $topics = @('run', 'keep', 'undo', 'history', 'show', 'probe', 'new-seed', 'seed-check', 'version', 'manual',
+    $topics = @('run', 'keep', 'extend', 'undo', 'history', 'show', 'probe', 'new-seed', 'seed-check', 'version', 'manual',
         'profile', 'root', 'config', 'break-glass', 'confirm-group', 'approve', 'all', 'yes', 'no-revert', 'only', 'skip',
         'lockout', 'observe', 'deceive', 'sustain')
     $mainFirst = 'Usage: laby PHASE                preview a phase: nothing changes'
@@ -77,6 +77,7 @@ Describe 'labyrinth.ps1 help' {
             'run'     = @(@('-r', '-h'), @('-Run', '-Help'), @('--run', '--help'), @('-h', 'run'), @('-Help', 'RUN'), @('-h', 'Run'))
             'undo'    = @(@('-u', '-h'), @('-Undo', '-Help'), @('-u', '4f2a', '-h'), @('-h', '-u'))
             'keep'    = @(@('-k', '-h'), @('-Keep', '-Help'), @('-k=4f2a', '-h'))
+            'extend'  = @(@('-Extend', '-h'), @('--extend', '--help'), @('-Extend', '4f2a', '-h'), @('-h', '-Extend'))
             'history' = @(@('-History', '-h'), @('--history', '--help'))
             'show'    = @(@('-Show', '-h'), @('--show', '--help'), @('-Show', '4f2a', '-h'), @('-h', '-Show'))
             'observe' = @(@('observe', '-h'), @('observe', '-Help'), @('OBSERVE', '-h'))
@@ -172,7 +173,7 @@ Describe 'labyrinth.ps1 help' {
     }
 
     It 'the actions that need an Administrator say so, and -h history names every state' {
-        foreach ($topic in @('run', 'keep', 'undo', 'history', 'show', 'probe', 'new-seed')) {
+        foreach ($topic in @('run', 'keep', 'extend', 'undo', 'history', 'show', 'probe', 'new-seed')) {
             (Get-TestHelp $t @('-h', $topic)).Out | Should -Match 'Administrator' -Because "-h $topic"
         }
         $out = (Get-TestHelp $t @('-h', 'history')).Out
@@ -187,6 +188,9 @@ Describe 'labyrinth.ps1 help' {
         $out | Should -Match '(?m)^Blocked: not an Administrator, another run, host not in hosts, or a gate\.\r?$'
         (Get-TestHelp $t @('-h', 'basics')).Out | Should -Match 'break-glass'
         (Get-TestHelp $t @('-h', 'keep')).Out | Should -Match '(?m)^Blocked: not an Administrator, a file another account can change, or too late\r?$'
+        $out = (Get-TestHelp $t @('-h', 'extend')).Out
+        $out | Should -Match '(?m)^Blocked: not an Administrator, a file another account can change, or the run\r?$'
+        $out | Should -Match ([regex]::Escape('has no armed timer (kept, undone, or run with --no-revert).'))
         (Get-TestHelp $t @('-h', 'undo')).Out | Should -Match '(?m)^Blocked: not an Administrator, or a file another account can change\.\r?$'
     }
 

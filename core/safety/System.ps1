@@ -240,6 +240,22 @@ function Get-LabRevertTimerDue {
     return $due
 }
 
+# Get-LabRevertTimerLeft -RunId RUN: the whole seconds until the run's revert
+# timer fires, 0 when that time has passed, or -1 when the time is unknown.
+# -Extend adds one timer length to this and re-arms (Register-LabRevertTimer)
+# for the total.
+function Get-LabRevertTimerLeft {
+    param([Parameter(Mandatory)] [string] $RunId)
+    $due = Get-LabRevertTimerDue -RunId $RunId
+    if ($due -eq '') { return -1 }
+    $when = [DateTime]::MinValue
+    $styles = [Globalization.DateTimeStyles]::AssumeUniversal -bor [Globalization.DateTimeStyles]::AdjustToUniversal
+    if (-not [DateTime]::TryParseExact($due, "yyyy-MM-dd'T'HH:mm:ss'Z'", [Globalization.CultureInfo]::InvariantCulture, $styles, [ref] $when)) { return -1 }
+    $left = [int][Math]::Floor(($when - [DateTime]::UtcNow).TotalSeconds)
+    if ($left -lt 0) { return 0 }
+    return $left
+}
+
 # Test-LabRevertTimer -RunId RUN: is a revert timer armed for the run?
 function Test-LabRevertTimer {
     param([Parameter(Mandatory)] [string] $RunId)
