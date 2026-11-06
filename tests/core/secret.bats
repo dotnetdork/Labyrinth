@@ -22,6 +22,7 @@ fake_tty() {
   echo 0 > "$TTY_IN.pos"
   lab_tty_ok() { true; }
   lab_tty_write() { printf '%s' "$1" >> "$TTY_OUT"; }
+  lab_tty_cols() { printf '%s\n' "${TTY_COLS:-80}"; }
   # Read in a command substitution, so the position is kept in a file.
   lab_tty_read() {
     local pos
@@ -64,6 +65,64 @@ fake_tty() {
   [ "$(grep -o "Type 'recorded'" "$TTY_OUT" | wc -l)" -eq 2 ]
   # Up over the 7 lines shown (one wrong answer), then clear to the end.
   [[ "$(cat "$TTY_OUT")" == *$'\r\033[7A\033[J' ]]
+}
+
+@test "rows: counts long lines that wrap, at widths 80 and 25" {
+  local long
+  long="$(printf '%0100d' 0)"
+  # A line shorter than the width takes one row, as does the empty text's
+  # last line (no row down yet).
+  [ "$(lab_tty_rows $'short\n' 80)" -eq 1 ]
+  [ "$(lab_tty_rows 'short' 80)" -eq 0 ]
+  [ "$(lab_tty_rows $'a\nb\n\n' 80)" -eq 3 ]
+  # Exactly the width counts one row more than it may take; one longer wraps.
+  [ "$(lab_tty_rows "$(printf '%080d' 0)"$'\n' 80)" -eq 2 ]
+  [ "$(lab_tty_rows "$(printf '%081d' 0)"$'\n' 80)" -eq 2 ]
+  [ "$(lab_tty_rows "$(printf '%025d' 0)"$'\n' 25)" -eq 2 ]
+  [ "$(lab_tty_rows "$(printf '%026d' 0)"$'\n' 25)" -eq 2 ]
+  [ "$(lab_tty_rows "$(printf '%024d' 0)"$'\n' 25)" -eq 1 ]
+  # A long wrong answer: 100 characters take 2 rows at 80, 5 at 25.
+  [ "$(lab_tty_rows "$long"$'\n' 80)" -eq 2 ]
+  [ "$(lab_tty_rows "$long"$'\n' 25)" -eq 5 ]
+  # A width that is not a number counts as 80.
+  [ "$(lab_tty_rows "$long"$'\n' abc)" -eq 2 ]
+}
+
+@test "show: backs up over wrapped rows on a narrow terminal" {
+  fake_tty
+  TTY_COLS=25
+  printf 'recorded\n' > "$TTY_IN"
+  run lab_secret_show testuser 'Ab3-secretvalue'
+  [ "$status" -eq 0 ]
+  # 1 + 2 (header wraps) + 1 + 1 + 1 + 3 (prompt and answer wrap) = 9 rows.
+  [[ "$(cat "$TTY_OUT")" == *$'\r\033[9A\033[J' ]]
+}
+
+@test "show: a long wrong answer adds its wrapped rows" {
+  fake_tty
+  printf '%0100d\nrecorded\n' 0 > "$TTY_IN"
+  run lab_secret_show testuser 'Ab3-secretvalue'
+  [ "$status" -eq 0 ]
+  # 5 rows of text, the 152-character prompt and answer (2 rows), then 1.
+  [[ "$(cat "$TTY_OUT")" == *$'\r\033[8A\033[J' ]]
+}
+
+@test "seed show: backs up over the rows shown, wrapped or not" {
+  fake_tty
+  printf 'no\nrecorded\n' > "$TTY_IN"
+  run lab_seed_show testuser 'seedvalue'
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+  # 5 rows of text and two prompts, each on one row at 80 columns.
+  [[ "$(cat "$TTY_OUT")" == *$'\r\033[7A\033[J' ]]
+  : > "$TTY_OUT"
+  fake_tty
+  TTY_COLS=25
+  printf 'recorded\n' > "$TTY_IN"
+  run lab_seed_show testuser 'seedvalue'
+  [ "$status" -eq 0 ]
+  # 1 + 2 (header wraps) + 1 + 1 + 1 + 4 (prompt and answer wrap) = 10 rows.
+  [[ "$(cat "$TTY_OUT")" == *$'\r\033[10A\033[J' ]]
 }
 
 @test "show: fails when the terminal goes before the answer, and is blocked without one" {

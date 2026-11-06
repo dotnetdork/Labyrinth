@@ -200,22 +200,27 @@ lab_seed_store() {
 # is no terminal, and 1 when the terminal goes before the answer: the caller
 # must then undo what it saved, because nobody recorded the seed.
 lab_seed_show() {
-  local label="$1" seed="$2" answer lines=6
+  local label="$1" seed="$2" answer typed shown prompt
   if ! lab_tty_ok; then
     printf 'seed: no terminal to show the seed on\n' >&2
     return 20
   fi
-  lab_tty_write $'\n'"  Decoy seed for $label, shown once:"$'\n\n'"      $seed"$'\n\n'
+  prompt="  Type 'recorded' once it is in the offline record and the team chat: "
+  shown=$'\n'"  Decoy seed for $label, shown once:"$'\n\n'"      $seed"$'\n\n'
+  lab_tty_write "$shown"
   while :; do
-    lab_tty_write "  Type 'recorded' once it is in the offline record and the team chat: "
+    lab_tty_write "$prompt"
     if ! answer="$(lab_tty_read)"; then
       lab_tty_write $'\n'
       return 1
     fi
+    # The typed answer is echoed on the prompt's row, then Enter ends it.
+    shown+="$prompt$answer"$'\n'
     answer="$(lab_trim "$answer")"
     if [[ "${answer,,}" == recorded ]]; then break; fi
-    lines=$((lines + 1))
   done
-  # Back up over the lines shown and clear to the end of the screen.
-  lab_tty_write $'\r\033['"$lines"$'A\033[J'
+  # Back up over the rows shown (wrapped ones too) and clear to the end of
+  # the screen.
+  typed="$(lab_tty_rows "$shown" "$(lab_tty_cols)")"
+  lab_tty_write $'\r\033['"$typed"$'A\033[J'
 }

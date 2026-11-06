@@ -66,6 +66,7 @@ lab_probe_service() {
 # at all if $LAB_ROOT/NO_TTY exists.
 lab_tty_ok() { [[ ! -e "$LAB_ROOT/NO_TTY" ]]; }
 lab_tty_write() { printf '%s' "$1" >> "$LAB_ROOT/tty.out"; }
+lab_tty_cols() { printf '80\n'; }
 lab_tty_read() {
   local pos=0
   if [[ -f "$LAB_ROOT/tty.pos" ]]; then pos="$(cat "$LAB_ROOT/tty.pos")"; fi
