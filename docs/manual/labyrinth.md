@@ -129,6 +129,7 @@ It checks the release against `release.sha256` and refuses if a file differs. It
 - copies the program to `/opt/labyrinth/bin`, owned by root;
 - adds the commands `laby` and `labyrinth` in `/usr/bin`. If something else already has the name `laby`, it leaves `laby` out and says so; if something else has the name `labyrinth`, it installs nothing;
 - installs the manual, so `man laby` works (when this copy has the built manual; otherwise it skips it with one line). It never replaces another program's manual page: if `laby` is left out, or another program already has a `laby` page, only `man labyrinth` is added;
+- installs the Tab key for bash, a file named `laby` and a file named `labyrinth` in `/usr/share/bash-completion/completions` (when the host has bash-completion; otherwise it skips it with one line). It never replaces another program's file, and it leaves out the `laby` file when `laby` is left out. A new shell picks it up;
 - copies the configuration templates into `/opt/labyrinth/etc` without the `.example` ending, never replacing a file that is already there.
 
 It first checks that only root can change the program's folder, the commands' folder, the manual's folder, every folder above them, and an existing data root and everything in it, and refuses if not. It warns if root's `PATH` has a folder that others can write to. It ends by telling you what to fill in (the templates hold placeholder names) and the next command, `sudo laby`.
@@ -146,6 +147,7 @@ It checks the release against `release.sha256` and refuses if a file differs. It
 - copies the program to `C:\Program Files\Labyrinth`, where only Administrators can write;
 - adds that folder to the machine's `PATH`, so that `laby` and `labyrinth` work in a new PowerShell or command window. If another program on the `PATH` already has the name `labyrinth`, it installs nothing; if one has the name `laby`, it says so, and you type `labyrinth` instead;
 - installs the help topic, so `Get-Help about_Labyrinth` shows the manual (if PowerShell does not find it, run `Import-Module Labyrinth` first). When this copy has no built manual, it skips this with one line;
+- installs the Tab key for `laby` and `labyrinth` in the same `Labyrinth` module as the help topic. To turn it on, add the line `Import-Module Labyrinth` to your PowerShell profile (`notepad $PROFILE`) and open a new window. The installer does not edit your profile;
 - copies the configuration templates into `C:\ProgramData\Labyrinth\etc` without the `.example` ending, never replacing a file that is already there.
 
 It first checks that only Administrators, SYSTEM and TrustedInstaller can change the program's folder and every folder above it, and refuses if not. If the data root is already there but still open to other accounts, it makes it private, then checks it the same way; if something in it belongs to an account that is not an administrator, it installs nothing, so a person can check that file first. It ends by telling you what to fill in (the templates hold placeholder names) and the next command, `laby`.
@@ -625,6 +627,14 @@ A run ID that PowerShell can read as a number must be put in quotes, or PowerShe
 <!-- end -->
 
 An option given twice, an option with no value, or a word Labyrinth does not know is an error (exit 40). Labyrinth says which word is wrong and, for a near miss, suggests the right one. An option that the action does not use, such as a break-glass answer on a preview, only earns a warning.
+
+**Tab completion.** The installer (section 2) sets up the Tab key for the commands.
+<!-- linux -->
+In bash, press Tab after `laby` to see the actions and options; after `-r` the phases; after `-P` the profiles; after `-k`, `-u` or `--show` the runs, newest first (shown as their last four characters, or whole when two runs end the same way), and after `--extend` only the runs with an armed revert timer; after `-h` the help topics; and after `--only` or `--skip` the module IDs, one at a time in a comma list. The run IDs come from the data root, which only root can read, so they appear in a root shell (`sudo -i`) and not after a plain `sudo laby`. Tab never asks for a password and never changes anything.
+<!-- end -->
+<!-- windows -->
+In PowerShell, press Tab after `laby` to see the actions and options; after `-r` the phases; after `-P` the profiles; after `-k`, `-u` or `-Show` the runs, newest first (shown as their last four characters, or whole when two runs end the same way), and after `-Extend` only the runs with an armed revert timer; after `-h` the help topics; and after `-Only` or `-Skip` the module IDs, one at a time in a comma list. The run IDs come from the data root, which only Administrators can read, so they appear in an elevated window. Tab never changes anything. It works once your PowerShell profile runs `Import-Module Labyrinth`.
+<!-- end -->
 
 **Planned, not built yet.** These are not accepted: `-q`, `-a` and `-d` (queue the run, no questions in the middle of it, and the login check); `-v` (short output); and `init` and `harden`. Typing one of the flags is a usage error (exit 40) that says it is planned and not built yet; the rest is an ordinary mistake.
 

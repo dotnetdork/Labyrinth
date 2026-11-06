@@ -198,6 +198,25 @@ laby -q                  look at what is waiting for a person
 laby -q -a 2             approve what the team agreed to
 ```
 
+## Tab completion
+
+The installer sets up the Tab key for `laby` and `labyrinth`. Type part of a word and press Tab:
+
+| After | Tab offers |
+|---|---|
+| `laby ` | the phases and the actions |
+| `laby -` | the actions and options that fit the line, short and long |
+| `-r` | the phases |
+| `-P` | the profile names |
+| `-k`, `-u`, `--show` | this host's runs, newest first, as their last four characters (the whole ID when two runs end the same way) |
+| `--extend` | the same, but only the runs with an armed revert timer |
+| `-h` | the help topics: every action, option, phase and module ID, and `basics` |
+| `--only`, `--skip` | the module IDs of the phase on the line, one at a time in a comma list |
+
+Tab never asks for a password and never changes anything. The runs live in the data root, which only root (Administrator on Windows) can read, so run IDs appear in a root shell (`sudo -i`) and not after a plain `sudo laby`; the other lists need no root. Queue numbers will join the list when the queue is built.
+
+On Linux the installer puts the bash completion in `/usr/share/bash-completion/completions` when the host has bash-completion; a new shell picks it up. On Windows it adds Tab to the `Labyrinth` module, and your PowerShell profile needs the line `Import-Module Labyrinth` to turn it on.
+
 ## On Windows
 
 The same commands work in PowerShell: `laby -r lockout`, `laby -k 7f3a`. The long forms also work in PowerShell's own style, such as `laby -Run lockout` or `laby -Undo 7f3a`, because long names ignore case and dashes. Type `/?` or `laby -h` for help; a bare `-?` is taken by PowerShell itself and shows a short page that points to `laby -h`.

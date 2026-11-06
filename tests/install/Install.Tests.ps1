@@ -127,6 +127,7 @@ Describe 'install.ps1 refuses, or asks, before it changes anything' {
         $flat | Should -Match ([regex]::Escape('Commands laby, labyrinth (new)'))
         $flat | Should -Match ([regex]::Escape('PATH not changed (-NoPath)'))
         $flat | Should -Match ([regex]::Escape('Manual Get-Help about_Labyrinth (new)'))
+        $flat | Should -Match ([regex]::Escape('Tab keys Import-Module Labyrinth turns it on (new)'))
         $flat | Should -Match ([regex]::Escape('Config 8 templates '))
         # The release hash, in two lines of eight groups of four, before the tree.
         $sum = (Get-FileHash -LiteralPath (Join-Path $r.Rel 'release.sha256') -Algorithm SHA256).Hash.ToLowerInvariant()
@@ -307,6 +308,41 @@ Describe 'install.ps1 installs' -Skip:(-not $elevated) {
         Join-Path $r.Modules 'Labyrinth\Labyrinth.psd1' | Should -Exist
         Join-Path $r.Modules 'Labyrinth\en-US\about_Labyrinth.help.txt' | Should -Exist
         { Import-PowerShellDataFile -LiteralPath (Join-Path $r.Modules 'Labyrinth\Labyrinth.psd1') } | Should -Not -Throw
+        # The tab completion: the module file, named by the manifest, and the
+        # line that turns it on.
+        Join-Path $r.Modules 'Labyrinth\Labyrinth.psm1' | Should -Exist
+        (Get-FileHash -LiteralPath (Join-Path $r.Modules 'Labyrinth\Labyrinth.psm1')).Hash |
+            Should -Be (Get-FileHash -LiteralPath (Join-Path $r.Rel 'core\completion\Labyrinth.psm1')).Hash
+        (Import-PowerShellDataFile -LiteralPath (Join-Path $r.Modules 'Labyrinth\Labyrinth.psd1')).RootModule | Should -Be 'Labyrinth.psm1'
+    }
+
+    It 'a second run leaves the tab completion alone and says unchanged' {
+        (Invoke-TestInstall $r @('-Yes')).Code | Should -Be 0
+        $before = Get-TestSnapshot $r.Sys
+        $x = Invoke-TestInstall $r @('-Yes')
+        $x.Code | Should -Be 0
+        (ConvertTo-TestFlat $x.Output) | Should -Match ([regex]::Escape('Tab keys Import-Module Labyrinth (unchanged)'))
+        Get-TestSnapshot $r.Sys | Should -Be $before
+    }
+
+    It 'a changed completion module is replaced whole on the next run' {
+        (Invoke-TestInstall $r @('-Yes')).Code | Should -Be 0
+        $psm1 = Join-Path $r.Modules 'Labyrinth\Labyrinth.psm1'
+        [IO.File]::WriteAllText($psm1, "# old`n")
+        $x = Invoke-TestInstall $r @('-Yes')
+        $x.Code | Should -Be 0
+        (Get-FileHash -LiteralPath $psm1).Hash |
+            Should -Be (Get-FileHash -LiteralPath (Join-Path $r.Rel 'core\completion\Labyrinth.psm1')).Hash
+    }
+
+    It 'a copy with no completion module skips it in one line and still installs' {
+        Remove-Item -LiteralPath (Join-Path $r.Rel 'core\completion') -Recurse -Force
+        Write-TestSeal $r
+        $x = Invoke-TestInstall $r @('-Yes')
+        $x.Code | Should -Be 0
+        (ConvertTo-TestFlat $x.Output) | Should -Match ([regex]::Escape('Tab keys skipped: this copy has no core\completion\Labyrinth.psm1'))
+        Join-Path $r.Modules 'Labyrinth\Labyrinth.psm1' | Should -Not -Exist
+        Join-Path $r.Code 'labyrinth.ps1' | Should -Exist
     }
 
     It '-y answers the question for the installer' {
@@ -416,7 +452,8 @@ Describe 'install.ps1 installs' -Skip:(-not $elevated) {
         $x.Code | Should -Be 0
         (ConvertTo-TestFlat $x.Output) | Should -Match ([regex]::Escape('Manual skipped: this copy has no built manual'))
         Join-Path $r.Code 'labyrinth.ps1' | Should -Exist
-        Join-Path $r.Modules 'Labyrinth' | Should -Not -Exist
+        Join-Path $r.Modules 'Labyrinth\en-US\about_Labyrinth.help.txt' | Should -Not -Exist
+        Join-Path $r.Modules 'Labyrinth\Labyrinth.psm1' | Should -Exist
     }
 
     It 'the installed copy refuses to install over itself' {

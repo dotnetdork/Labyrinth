@@ -7,14 +7,16 @@
 # Run it from the release folder as root. It checks the release against
 # release.sha256, prints its plan, asks "Install? [y/N]" (default no), and
 # then: creates the data root, copies the code to <root>/bin, adds the
-# commands /usr/bin/laby and /usr/bin/labyrinth, installs the manual and
-# copies the config/*.example templates into <root>/etc without
-# overwriting a file already there. Safe to run again. It refuses, changing
-# nothing, while a revert timer is armed.
+# commands /usr/bin/laby and /usr/bin/labyrinth, installs the manual and the
+# bash tab completion (when bash-completion is on the host) and copies the
+# config/*.example templates into <root>/etc without overwriting a file
+# already there. Safe to run again. It refuses, changing nothing, while a
+# revert timer is armed.
 #
-# The options --code-dir, --link-dir and --man-dir exist for the tests only:
-# they point the installer at throwaway folders, so a test run never edits the
-# real system folders. The same checks apply to whatever folders are given.
+# The options --code-dir, --link-dir, --man-dir and --comp-dir exist for the
+# tests only: they point the installer at throwaway folders, so a test run
+# never edits the real system folders. The same checks apply to whatever
+# folders are given.
 #
 # Exit: 0 installed, or nothing to change; 20 refused; 40 usage error.
 set -Eeuo pipefail
@@ -23,6 +25,7 @@ HERE="$(cd "$(dirname "$(readlink -f -- "${BASH_SOURCE[0]}")")" && pwd -P)"
 ME="${0##*/}"
 DEFAULT_ROOT=/opt/labyrinth
 ROOT="$DEFAULT_ROOT" CODE='' LINKDIR=/usr/bin MANDIR=/usr/local/share/man/man1
+COMPDIR=/usr/share/bash-completion/completions COMPDIR_GIVEN=0
 YES=0
 STAGE='' OLD='' TMPS=()    # what the EXIT trap removes if the install stops partway
 
@@ -39,8 +42,9 @@ what it will do and asks before it changes anything. Safe to run again.
   -h, --help    this page
 
 It adds the code, the commands laby and labyrinth in /usr/bin, the manual
-(man laby) and the configuration templates in DIR/etc (files already
-there are kept). For tests only: --code-dir, --link-dir and --man-dir.
+(man laby), tab completion for bash (when bash-completion is installed) and
+the configuration templates in DIR/etc (files already there are kept). For
+tests only: --code-dir, --link-dir, --man-dir and --comp-dir.
 Exit: 0 done, 20 refused, 40 usage error.
 Example: sudo ./install.sh
 EOF
@@ -89,27 +93,29 @@ while (( $# > 0 )); do
   case "$1" in
     -y | --yes) YES=1; shift ;;
     -h | --help | '-?') usage; exit 0 ;;
-    --root | --code-dir | --link-dir | --man-dir)
+    --root | --code-dir | --link-dir | --man-dir | --comp-dir)
       need_value "$1" "$#"
       case "$1" in
         --root) ROOT="$2" ;;
         --code-dir) CODE="$2" ;;
         --link-dir) LINKDIR="$2" ;;
         --man-dir) MANDIR="$2" ;;
+        --comp-dir) COMPDIR="$2" COMPDIR_GIVEN=1 ;;
       esac
       shift 2 ;;
-    --root=* | --code-dir=* | --link-dir=* | --man-dir=*)
+    --root=* | --code-dir=* | --link-dir=* | --man-dir=* | --comp-dir=*)
       case "$1" in
         --root=*) ROOT="${1#*=}" ;;
         --code-dir=*) CODE="${1#*=}" ;;
         --link-dir=*) LINKDIR="${1#*=}" ;;
         --man-dir=*) MANDIR="${1#*=}" ;;
+        --comp-dir=*) COMPDIR="${1#*=}" COMPDIR_GIVEN=1 ;;
       esac
       shift ;;
     *) usage_error "unknown option '$1'" ;;
   esac
 done
-for v in ROOT LINKDIR MANDIR; do
+for v in ROOT LINKDIR MANDIR COMPDIR; do
   [[ "${!v}" == /* ]] || usage_error "the folder must be a full path, not '${!v}'"
 done
 [[ -z "$CODE" || "$CODE" == /* ]] || usage_error "the folder must be a full path, not '$CODE'"
@@ -118,6 +124,7 @@ CODE_GIVEN="${CODE:-$ROOT/bin}"   # as given, so a link there can be refused bel
 CODE="$(readlink -m -- "$CODE_GIVEN")"
 LINKDIR="$(readlink -m -- "$LINKDIR")"
 MANDIR="$(readlink -m -- "$MANDIR")"
+COMPDIR="$(readlink -m -- "$COMPDIR")"
 
 # 1. The release. Checked before any of its files is run.
 for t in sha256sum readlink stat; do
@@ -308,11 +315,45 @@ if [[ "$MAN_STATE" == new ]]; then
   fi
 fi
 
+# Tab completion for bash: core/completion/laby.sh, installed as a file named
+# for each command (bash-completion loads the file of the command being
+# completed). It is installed only where bash-completion is, unless a folder
+# was given. A file that is not ours (it lacks our title line) is never
+# replaced, and laby's is left out when the command laby is.
+COMP_MARK='^# Labyrinth tab completion for bash\.'
+COMP_SRC="$HERE/core/completion/laby.sh"
+declare -A COMP_STATE=() COMP_WHY=()
+COMP_ANY=0
+for name in laby labyrinth; do
+  path="$COMPDIR/$name"
+  COMP_STATE[$name]=skip COMP_WHY[$name]=''
+  if [[ ! -f "$COMP_SRC" ]]; then
+    COMP_WHY[$name]='this copy has no completion file'
+  elif [[ "${LINK_STATE[$name]}" == taken ]]; then
+    COMP_WHY[$name]="the command $name is left out"
+  elif (( ! COMPDIR_GIVEN )) && [[ ! -d "$(dirname -- "$COMPDIR")" ]]; then
+    COMP_WHY[$name]='bash-completion is not installed on this host'
+  elif [[ -L "$path" ]] || { [[ -e "$path" ]] && ! grep -q "$COMP_MARK" "$path" 2> /dev/null; }; then
+    COMP_WHY[$name]="$path belongs to another program"
+  elif [[ -f "$path" ]] && cmp -s -- "$COMP_SRC" "$path"; then
+    COMP_STATE[$name]=same COMP_ANY=1
+  else
+    COMP_STATE[$name]=new COMP_ANY=1
+  fi
+done
+if [[ "${COMP_STATE[laby]}" == new || "${COMP_STATE[labyrinth]}" == new ]]; then
+  if bad="$(lab_path_trusted "$COMPDIR")"; then :; else
+    refuse "$bad can be changed by an account other than root, so nothing was installed" \
+      'Make it owned by root and not writable by group or others, then run the installer again.'
+  fi
+fi
+
 TODO=0
 [[ "$CODE_STATE" == same ]] || TODO=1
 (( ROOT_NEW == 0 && SUBS_MISSING == 0 )) || TODO=1
 (( ${#TEMPLATES[@]} == 0 )) || TODO=1
 [[ "$MAN_STATE" != new ]] || TODO=1
+[[ "${COMP_STATE[laby]}" != new && "${COMP_STATE[labyrinth]}" != new ]] || TODO=1
 for name in laby labyrinth; do
   [[ "${LINK_STATE[$name]}" != free ]] || TODO=1
 done
@@ -325,6 +366,11 @@ fi
 if [[ "$MAN_STATE" == new ]] && (( ! MAN_LABY )); then
   warn "man laby is left out: $MAN_LABY_WHY"
 fi
+for name in laby labyrinth; do
+  if [[ "${COMP_STATE[$name]}" == skip && "${COMP_WHY[$name]}" == *'belongs to another program' ]]; then
+    warn "tab completion for $name is left out: ${COMP_WHY[$name]}"
+  fi
+done
 UNI=0
 if lab_banner_unicode; then UNI=1; fi
 version="$(sed -n "s/^readonly LAB_VERSION='\([^']*\)'.*/\1/p" "$HERE/labyrinth.sh")"
@@ -360,6 +406,20 @@ case "$MAN_STATE" in
   same) rows+=("Manual|man $man_cmd (unchanged)") ;;
   new) rows+=("Manual|man $man_cmd (new)") ;;
 esac
+# One row for the tab completion: its state is the weakest of the two files'.
+if (( COMP_ANY )); then
+  comp_cmds=''
+  for name in laby labyrinth; do
+    if [[ "${COMP_STATE[$name]}" != skip ]]; then comp_cmds+="${comp_cmds:+, }$name"; fi
+  done
+  if [[ "${COMP_STATE[laby]}" == new || "${COMP_STATE[labyrinth]}" == new ]]; then
+    rows+=("Tab keys|bash completion for $comp_cmds (new)")
+  else
+    rows+=("Tab keys|bash completion for $comp_cmds (unchanged)")
+  fi
+else
+  rows+=("Tab keys|bash completion skipped: ${COMP_WHY[labyrinth]}")
+fi
 n="${#TEMPLATES[@]}"
 if (( KEPT > 0 )); then config="$n copied, $KEPT kept"
 elif (( n == 1 )); then config='1 template'
@@ -450,6 +510,18 @@ if [[ "$MAN_STATE" == new ]]; then
     mandb -q "$(dirname -- "$MANDIR")" > /dev/null 2>&1 || warn 'mandb failed, so man may not find the manual yet'
   fi
 fi
+
+# Tab completion for bash: a file for each command, replaced whole.
+for name in laby labyrinth; do
+  if [[ "${COMP_STATE[$name]}" == new ]]; then
+    new_dir 755 "$COMPDIR"
+    tmp="$(mktemp "$COMPDIR/.$name.XXXXXX")"
+    TMPS+=("$tmp")
+    cp -- "$COMP_SRC" "$tmp"
+    chmod 644 -- "$tmp"
+    mv -f -- "$tmp" "$COMPDIR/$name"
+  fi
+done
 
 # The commands, last: they appear only once the code they point to is in place.
 new_dir 755 "$LINKDIR"
