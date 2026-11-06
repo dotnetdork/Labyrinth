@@ -3118,7 +3118,7 @@ doctor_config() {
 # with this host's line in hosts or its profile; otherwise fill DOC_PROFILE
 # and DOC_IDS and return 0.
 doctor_host() {
-  local host rc=0 n=0 file raw line count=0
+  local host rc=0 n=0 file raw line dups=0
   host="$(lab_host)" || host=''
   DOC_PROFILE='' DOC_IDS=()
   if [[ ! -f "$LAB_CONFIG_DIR/hosts" ]]; then
@@ -3138,10 +3138,10 @@ doctor_host() {
   fi
   for line in "${LAB_CFG_LINES[@]}"; do
     line="${line%%[[:space:]]*}"
-    if [[ "${line,,}" == "${host,,}" ]]; then count=$((count + 1)); fi
+    if [[ "${line,,}" == "${host,,}" ]]; then dups=$((dups + 1)); fi
   done
-  if (( count > 1 )); then
-    DOC_WHY="this host ($host) is on $count lines of hosts"
+  if (( dups > 1 )); then
+    DOC_WHY="this host ($host) is on $dups lines of hosts"
     DOC_FIX="keep one line for $host in $LAB_CONFIG_DIR/hosts"
     return 1
   fi
