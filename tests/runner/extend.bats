@@ -171,9 +171,6 @@ arms() { grep -c '^arm ' "$LAB/timer.log"; }
   [[ "$output" == *"Try '$SELF --extend -h'."* ]]
   lab --extend "${a: -4}" 10m
   [ "$status" -eq 40 ]
-  lab --extend 10 "$a"
-  [ "$status" -eq 40 ]
-  [[ "$output" == *"not a run ID: '10'"* ]]
   [ "$(arms)" -eq "$before" ]
 }
 

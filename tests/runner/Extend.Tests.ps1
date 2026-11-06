@@ -32,8 +32,8 @@ BeforeAll {
 
     function Get-TestSuffix { param([string] $Id) return $Id.Substring($Id.Length - 4) }
 
-    # Set-TestFireIn T RUN SECONDS: make the run's timer fire SECONDS from now.
-    function Set-TestFireIn {
+    # Write-TestFireIn T RUN SECONDS: make the run's timer fire SECONDS from now.
+    function Write-TestFireIn {
         param($T, [string] $RunId, [int] $Seconds)
         $due = [DateTime]::UtcNow.AddSeconds($Seconds).ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", [Globalization.CultureInfo]::InvariantCulture)
         [IO.File]::WriteAllText((Join-Path $T.Root "state\runs\$RunId\timer-due"), "$due`n")
@@ -66,7 +66,7 @@ Describe 'labyrinth.ps1 -Extend' {
 
     It 'adds one timer length to the time left, and a second extension adds another' {
         $a = Get-TestArmedRun $t
-        Set-TestFireIn $t $a 120
+        Write-TestFireIn $t $a 120
         $r = Invoke-TestLabRun $t @('-Extend', $a)
         $r.Code | Should -Be 0
         $r.Out | Should -Match 'Timer:  now fires \d\d:\d\d UTC \(in 7 minutes\)'
@@ -86,7 +86,7 @@ Describe 'labyrinth.ps1 -Extend' {
     It 'the timer length is REVERT_MINUTES from event.conf' {
         $a = Get-TestArmedRun $t
         Write-TestConfig $t 'event.conf' @('REVERT_MINUTES=3')
-        Set-TestFireIn $t $a 60
+        Write-TestFireIn $t $a 60
         $r = Invoke-TestLabRun $t @('-Extend', $a)
         $r.Code | Should -Be 0
         $r.Out | Should -Match '\(in 4 minutes\)'
@@ -203,7 +203,7 @@ Describe 'labyrinth.ps1 -Extend' {
 
     It 'a failed re-arm leaves the earlier timer as it was, exits 40 and records nothing' {
         $a = Get-TestArmedRun $t
-        Set-TestFireIn $t $a 120
+        Write-TestFireIn $t $a 120
         $timer = [IO.File]::ReadAllText((Join-Path $t.Root "state\runs\$a\timer"))
         $due = [IO.File]::ReadAllText((Join-Path $t.Root "state\runs\$a\timer-due"))
         [IO.File]::AppendAllText((Join-Path $t.Lab 'core\Lab.ps1'), "`nfunction Register-LabRevertTimer { throw 'task scheduler is down' }`n")
@@ -235,7 +235,7 @@ Describe 'labyrinth.ps1 -Extend' {
 
     It '-History, the status and -Show give the new fire time' {
         $a = Get-TestArmedRun $t
-        Set-TestFireIn $t $a 120
+        Write-TestFireIn $t $a 120
         (Invoke-TestLabRun $t @('-Extend', $a)).Code | Should -Be 0
         $due = ([IO.File]::ReadAllText((Join-Path $t.Root "state\runs\$a\timer-due"))).Trim()
         $at = $due.Substring(11, 5)
@@ -247,8 +247,8 @@ Describe 'labyrinth.ps1 -Extend' {
     It "extending a run does not touch another run's timer" {
         $a = Get-TestArmedRun $t
         $b = Get-TestArmedRun $t
-        Set-TestFireIn $t $a 120
-        Set-TestFireIn $t $b 120
+        Write-TestFireIn $t $a 120
+        Write-TestFireIn $t $b 120
         (Invoke-TestLabRun $t @('-Extend', $a)).Code | Should -Be 0
         Get-TestLeft $t $b | Should -BeLessOrEqual 120
         Get-TestLeft $t $a | Should -BeGreaterOrEqual 415
