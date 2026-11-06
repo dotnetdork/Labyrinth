@@ -63,14 +63,14 @@ export LAB_ROOT
 # core is loaded, so a changed core file never runs. A file that differs
 # from release.sha256 stops every action, the revert timer's undo
 # included; with no release.sha256, -r, -k and -u warn.
-# shellcheck source=core/safety/release.sh
-source "$LAB_ROOT/core/safety/release.sh"
-LAB_RELEASE=0              # 0 checked, 1 no release list, 2 a file differs
 # The hidden --complete entry (Tab completion) only reads names and prints
 # candidates. It runs before the check and loads none of the core, so a Tab
 # never waits for the hashes and a changed core file still never runs.
 COMPLETING=0
 if [[ "${1:-}" == --complete ]]; then COMPLETING=1; fi
+# shellcheck source=core/safety/release.sh
+if (( ! COMPLETING )); then source "$LAB_ROOT/core/safety/release.sh"; fi
+LAB_RELEASE=0              # 0 checked, 1 no release list, 2 a file differs
 if (( ! COMPLETING )); then lab_release_check "$LAB_ROOT" || LAB_RELEASE=$?; fi
 if (( LAB_RELEASE == 2 )); then
   printf 'labyrinth: %s, so Labyrinth will not run\n' "$LAB_RELEASE_PROBLEM" >&2
