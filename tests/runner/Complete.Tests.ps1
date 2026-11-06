@@ -35,8 +35,8 @@ BeforeAll {
         return , @($r.Out -split '\r?\n' | Where-Object { $_ -ne '' })
     }
 
-    # New-TestRunDir T ID: a run on this host.
-    function New-TestRunDir {
+    # Write-TestRun T ID: a run on this host.
+    function Write-TestRun {
         param($T, [string] $Id)
         $dir = Join-Path $T.Root "state\runs\$Id"
         New-Item -ItemType Directory -Path $dir -Force | Out-Null
@@ -147,9 +147,9 @@ Describe 'labyrinth.ps1 --complete' {
     }
 
     It 'offers the run IDs after -k, -u and -Show, newest first, as their last 4 characters' {
-        New-TestRunDir $t '20261001T000000Z-aaaa'
-        New-TestRunDir $t '20261003T090000Z-9b1c'
-        New-TestRunDir $t '20261002T140301Z-4f2a'
+        Write-TestRun $t '20261001T000000Z-aaaa'
+        Write-TestRun $t '20261003T090000Z-9b1c'
+        Write-TestRun $t '20261002T140301Z-4f2a'
         # A folder with no manifest is a plan's leftover, not a run.
         New-Item -ItemType Directory -Path (Join-Path $t.Root 'state\runs\20261004T000000Z-dead') | Out-Null
         foreach ($w in '-k', '-Keep', '-u', '-Undo', '-Show') {
@@ -158,15 +158,15 @@ Describe 'labyrinth.ps1 --complete' {
     }
 
     It 'offers a run whole when another run ends the same way' {
-        New-TestRunDir $t '20261001T000000Z-4f2a'
-        New-TestRunDir $t '20261002T140301Z-4f2a'
-        New-TestRunDir $t '20261003T090000Z-9b1c'
+        Write-TestRun $t '20261001T000000Z-4f2a'
+        Write-TestRun $t '20261002T140301Z-4f2a'
+        Write-TestRun $t '20261003T090000Z-9b1c'
         Assert-TestList (Get-TestComp $t @('-k', '')) (@('9b1c', '20261002T140301Z-4f2a', '20261001T000000Z-4f2a'))
     }
 
     It 'matches whole IDs and the 4 characters of an unshared run for typed text' {
-        New-TestRunDir $t '20261002T140301Z-4f2a'
-        New-TestRunDir $t '20261003T090000Z-9b1c'
+        Write-TestRun $t '20261002T140301Z-4f2a'
+        Write-TestRun $t '20261003T090000Z-9b1c'
         Assert-TestList (Get-TestComp $t @('-k', '20261002')) (@('20261002T140301Z-4f2a'))
         Assert-TestList (Get-TestComp $t @('-u', '9b')) (@('9b1c'))
         (Get-TestComp $t @('-u', 'zz')) | Should -BeNullOrEmpty
@@ -222,7 +222,7 @@ Describe 'labyrinth.ps1 --complete' {
     }
 
     It 'writes nothing, takes no lock and logs nothing' {
-        New-TestRunDir $t '20261003T090000Z-9b1c'
+        Write-TestRun $t '20261003T090000Z-9b1c'
         $before = Get-TestSnapshot $t
         foreach ($w in '', '-', '--', '-r', '-k', '-u', '-P', '-Only', '-h') {
             Get-TestComp $t @($w, '') | Out-Null
@@ -236,7 +236,7 @@ Describe 'labyrinth.ps1 --complete' {
     }
 
     It 'prints only candidates: nothing on the error stream, and only plain text' {
-        New-TestRunDir $t '20261003T090000Z-9b1c'
+        Write-TestRun $t '20261003T090000Z-9b1c'
         $r = Invoke-TestLabCapture $t @('--complete', '-Root', $t.Root, '-k', '')
         $r.Err | Should -BeNullOrEmpty
         $r.Out | Should -Be '9b1c'

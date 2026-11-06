@@ -452,7 +452,8 @@ Describe 'install.ps1 installs' -Skip:(-not $elevated) {
         $x.Code | Should -Be 0
         (ConvertTo-TestFlat $x.Output) | Should -Match ([regex]::Escape('Manual skipped: this copy has no built manual'))
         Join-Path $r.Code 'labyrinth.ps1' | Should -Exist
-        Join-Path $r.Modules 'Labyrinth' | Should -Not -Exist
+        Join-Path $r.Modules 'Labyrinth\en-US\about_Labyrinth.help.txt' | Should -Not -Exist
+        Join-Path $r.Modules 'Labyrinth\Labyrinth.psm1' | Should -Exist
     }
 
     It 'the installed copy refuses to install over itself' {

@@ -3732,12 +3732,12 @@ cmp_runs() {
 # a comma list. The IDs already in the list are not offered again, and each
 # candidate carries the list before it, so that it replaces the whole word.
 cmp_modules() {
-  local before='' last="$CMP_CUR" id
-  if [[ "$CMP_CUR" == *,* ]]; then before="${CMP_CUR%,*},"; last="${CMP_CUR##*,}"; fi
+  local prefix='' last="$CMP_CUR" id
+  if [[ "$CMP_CUR" == *,* ]]; then prefix="${CMP_CUR%,*},"; last="${CMP_CUR##*,}"; fi
   while IFS= read -r id; do
     if [[ -n "$CMP_PHASE" && "${id%%.*}" != "$CMP_PHASE" ]]; then continue; fi
-    if [[ ",$before" == *",$id,"* ]]; then continue; fi
-    if cmp_match "$id" "$last"; then cmp_emit "$before$id"; fi
+    if [[ ",$prefix" == *",$id,"* ]]; then continue; fi
+    if cmp_match "$id" "$last"; then cmp_emit "$prefix$id"; fi
   done < <(module_ids)
 }
 
