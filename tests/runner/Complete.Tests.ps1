@@ -74,7 +74,7 @@ Describe 'labyrinth.ps1 --complete' {
         # PowerShell cannot hand a script a lone '-', so the completer sends '--'.
         $c = Get-TestBare $t @('--')
         foreach ($want in '-Run', '-Keep', '-Undo', '-Version', '-Help', '-Profile',
-            '-History', '-Show', '-Probe', '-NewSeed', '-SeedCheck', '-Manual', '-Root', '-Config', '-Only', '-Skip') {
+            '-History', '-Show', '-Doctor', '-Probe', '-NewSeed', '-SeedCheck', '-Manual', '-Root', '-Config', '-Only', '-Skip') {
             $c | Should -Contain $want
         }
         $c | Should -Not -Contain '-All'
@@ -194,7 +194,7 @@ Describe 'labyrinth.ps1 --complete' {
 
     It 'offers the topics after -h: actions, options, phases, basics and module IDs' {
         $c = Get-TestBare $t @('-h', '')
-        foreach ($want in 'run', 'keep', 'undo', 'history', 'show', 'probe', 'new-seed', 'seed-check', 'version', 'manual',
+        foreach ($want in 'run', 'keep', 'undo', 'history', 'show', 'doctor', 'probe', 'new-seed', 'seed-check', 'version', 'manual',
             'all', 'profile', 'root', 'config', 'break-glass', 'confirm-group', 'approve', 'yes', 'no-revert', 'only',
             'skip', 'basics', 'lockout', 'observe', 'deceive', 'sustain', 'observe.toggle', 'lockout.inventory') {
             $c | Should -Contain $want

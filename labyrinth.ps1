@@ -13,6 +13,7 @@
       .\labyrinth.ps1 -u ID [-All]     undo a run, newest change first
       .\labyrinth.ps1 -History         list this host's runs and their state
       .\labyrinth.ps1 -Show ID         list what one run changed
+      .\labyrinth.ps1 -Doctor           check this host is ready for a run
       .\labyrinth.ps1 -Probe           test every scored service once
       .\labyrinth.ps1 -NewSeed         make this host's decoy seed
       .\labyrinth.ps1 -SeedCheck       check a seed typed at a prompt
@@ -70,7 +71,7 @@
     Keeps the run whose ID ends in 4f2a: its revert timer is cancelled.
 
 .NOTES
-    -r, -k, -u, -History and -NewSeed need PowerShell opened with 'Run as
+    -r, -k, -u, -History, -Doctor and -NewSeed need PowerShell opened with 'Run as
     administrator'. Use -h for help: PowerShell takes -? for itself. The
     common parameters, such as -Verbose and -ErrorAction, are not
     supported.
@@ -84,7 +85,7 @@ $ErrorActionPreference = 'Stop'
 $LabVersion = '0.1.0'
 $LabUrl = 'https://dotnetdork.github.io/Labyrinth/'
 $Phases = @('lockout', 'observe', 'deceive', 'sustain')
-$ModuleKeys = @('id', 'title', 'phase', 'priority', 'platforms', 'risk', 'touches_scored', 'requires', 'outputs', 'spec', 'pre_approvable', 'keep_on_verify')
+$ModuleKeys = @('id', 'title', 'phase', 'priority', 'platforms', 'risk', 'touches_scored', 'requires', 'outputs', 'spec', 'pre_approvable', 'keep_on_verify', 'tools', 'tools_windows')
 $RequiredKeys = @('id', 'title', 'phase', 'priority', 'platforms', 'risk', 'touches_scored')
 $Risks = @('read-only', 'reversible', 'service-affecting', 'approval', 'manual-only')
 $Platforms = @('ubuntu', 'rhel-family', 'windows', 'appliance')
@@ -124,6 +125,7 @@ $script:LabOptions = @(
     @{ Name = 'probe'; Show = '-Probe'; Long = '-Probe'; Key = 'probe'; Short = ''; Value = $false; Action = $true }
     @{ Name = 'history'; Show = '-History'; Long = '-History'; Key = 'history'; Short = ''; Value = $false; Action = $true }
     @{ Name = 'show'; Show = '-Show'; Long = '-Show'; Key = 'show'; Short = ''; Value = $true; Action = $true }
+    @{ Name = 'doctor'; Show = '-Doctor'; Long = '-Doctor'; Key = 'doctor'; Short = ''; Value = $false; Action = $true }
     @{ Name = 'new-seed'; Show = '-NewSeed'; Long = '-NewSeed'; Key = 'newseed'; Short = ''; Value = $false; Action = $true }
     @{ Name = 'seed-check'; Show = '-SeedCheck'; Long = '-SeedCheck'; Key = 'seedcheck'; Short = ''; Value = $false; Action = $true }
     @{ Name = 'version'; Show = '-V'; Long = '-Version'; Key = 'version'; Short = 'V'; Value = $false; Action = $true }
@@ -233,7 +235,7 @@ Actions (one per line):
       --show ID           list a run's changes   --extend ID  delay the undo
       --new-seed          make a decoy seed      --seed-check   check a seed
   -V, --version           print the version      --manual   the full manual
-
+      --doctor            check that this host is ready for a run
 Options:
   -P, --profile NAME      profile to use, if not this host's line in hosts
   --root DIR              data root         --config DIR   configuration
@@ -346,6 +348,21 @@ run log. Changes nothing; needs root or an Administrator.
 Exit: 0 shown, 20 not root, 40 error.
 Example: @CMD@ --show 4f2a
 See also: @CMD@ --history, @CMD@ -h undo
+'@ }
+        'doctor' { @'
+Usage: @CMD@ --doctor [--root DIR] [--config DIR]
+
+Check that this host is ready for a real run, and print one line per
+check: OK, WARN or FAIL, with the fix under each WARN and FAIL. It
+checks the release, who can change Labyrinth's folders, the
+configuration files, this host's line in hosts and its profile, the
+revert timer, the clock, the tools the profile's modules need, and any
+revert timer left armed. A WARN does not fail it. Changes nothing;
+needs root or an Administrator.
+
+Exit: 0 ready, 20 a check failed or not root, 40 error.
+Example: @CMD@ --doctor
+See also: @CMD@ --probe, @CMD@ -h basics
 '@ }
         'probe' { @'
 Usage: @CMD@ --probe [--root DIR] [--config DIR]
@@ -1087,6 +1104,7 @@ function Exit-LabBadWord {
     elseif ($lc -ceq 'undo') { $hint = "$Self -u ID" }
     elseif ($lc -ceq 'history') { $hint = "$Self -History" }
     elseif ($lc -ceq 'show') { $hint = "$Self -Show ID" }
+    elseif ($lc -ceq 'doctor') { $hint = "$Self -Doctor" }
     elseif ($lc -ceq 'probe') { $hint = "$Self -Probe" }
     elseif ($lc -ceq 'newseed') { $hint = "$Self -NewSeed" }
     elseif ($lc -ceq 'seedcheck') { $hint = "$Self -SeedCheck" }
@@ -1177,6 +1195,24 @@ function Test-LabUndoAsked {
 # that, as from the revert timer (best effort); the core, which has
 # Send-LabNotice, is not loaded, because it may be the file that differs.
 function Exit-LabRelease {
+    # -Doctor reports the mismatch as its first check instead of refusing,
+    # unless the line asks for help, which never runs anything.
+    $doctorAsked = $false
+    $helpLike = $false
+    foreach ($a in $script:Arguments) {
+        if ($a -isnot [string]) { continue }
+        if ($a -match '^--?doctor$') { $doctorAsked = $true }
+        if ($a -ceq '-h' -or $a -ceq '-?' -or $a -ceq '/?' -or $a -match '^--?help$' -or $a -cmatch '^-[rkuVPhy]*h[rkuVPhy]*$') { $helpLike = $true }
+    }
+    if ($doctorAsked -and -not $helpLike) {
+        $fix = "Copy Labyrinth here again from the team's copy, as manual section 11 says."
+        [Console]::Out.WriteLine('FAIL  release: ' + $script:Release.Problem)
+        [Console]::Out.WriteLine('      Fix: ' + $fix)
+        [Console]::Out.WriteLine('      The other checks were not run.')
+        [Console]::Out.WriteLine('')
+        [Console]::Out.WriteLine('Next: ' + $fix)
+        exit 20
+    }
     if (Test-LabUndoAsked) {
         $exe = Join-Path $env:SystemRoot 'System32\msg.exe'
         if (Test-Path -LiteralPath $exe -PathType Leaf) {
@@ -1658,6 +1694,14 @@ function Test-LabModule {
         if ($m['risk'] -cne 'approval') { Write-YmlError $File 'pre_approvable is only for approval modules'; return $false }
         foreach ($c in $cats) {
             if ($c -cnotmatch '^[a-z0-9-]+$') { Write-YmlError $File "not a category: $c"; return $false }
+        }
+    }
+    foreach ($key in @('tools', 'tools_windows')) {
+        if (-not $m.ContainsKey($key)) { continue }
+        $names = Get-LabListItem $m[$key]
+        if ($null -eq $names) { Write-YmlError $File "$key must be a list"; return $false }
+        foreach ($t in $names) {
+            if ($t -cnotmatch '^[A-Za-z0-9][A-Za-z0-9._+-]*$') { Write-YmlError $File "not a tool name: $t"; return $false }
         }
     }
     if ($m.ContainsKey('keep_on_verify')) {
@@ -3171,6 +3215,306 @@ function Invoke-LabRunsCommand {
     exit 0
 }
 
+# -Doctor (docs/Conventions.md section 3.1): a read-only check that this host
+# is ready for a real run. One line per check, OK, WARN or FAIL, and under a
+# WARN or FAIL its fix. It takes no lock, makes no run ID, writes no log and
+# changes nothing in the data root. A WARN does not fail it; any FAIL exits
+# 20, with a Next line for the first one.
+$script:ClockFloor = '2026-09-28'   # the date of Labyrinth's first commit: an earlier clock is wrong
+$script:DocFails = 0                # FAIL rows so far
+$script:DocFirst = ''               # the fix of the first FAIL
+$script:DocProfile = ''             # this host's profile, once it is known
+$script:DocIds = @()                # the module IDs of that profile
+
+# Write-LabDoctorRow WORD TEXT [FIX]: print a check's line, and its fix under it.
+function Write-LabDoctorRow {
+    param([string] $Word, [string] $Text, [string] $Fix = '')
+    Write-LabLine ($Word.PadRight(6) + (Get-LabSafeText $Text))
+    if ($Fix -ne '') { Write-LabLine ('      Fix: ' + (Get-LabSafeText $Fix)) }
+    if ($Word -ceq 'FAIL') {
+        $script:DocFails++
+        if ($script:DocFirst -eq '') {
+            if ($Fix -ne '') { $script:DocFirst = $Fix } else { $script:DocFirst = $Text }
+        }
+    }
+}
+
+# Get-LabDoctorProblem WHY FIX: the object a check returns when it finds one.
+function Get-LabDoctorProblem {
+    param([string] $Why, [string] $Fix)
+    return [pscustomobject]@{ Why = $Why; Fix = $Fix }
+}
+
+# Format-LabDoctorReason MESSAGE: a configuration error, "file:N: message", as
+# "file: line N: message", without the configuration folder in front.
+function Format-LabDoctorReason {
+    param([string] $Message)
+    $text = $Message
+    $dir = $env:LAB_CONFIG_DIR.TrimEnd('\') + '\'
+    if ($text.StartsWith($dir, [StringComparison]::OrdinalIgnoreCase)) { $text = $text.Substring($dir.Length) }
+    if ($text -match '^([^:]+):([0-9]+): (.*)$') { return "$($Matches[1]): line $($Matches[2]): $($Matches[3])" }
+    return $text
+}
+
+# Test-LabExampleValue VALUE: is VALUE a placeholder from a config\*.example
+# file: an address in a documentation range, or a name under example.test?
+function Test-LabExampleValue {
+    param([string] $Value)
+    $v = $Value.ToLowerInvariant()
+    if ($v -match '^(192\.0\.2\.|198\.51\.100\.|203\.0\.113\.|2001:db8:)') { return $true }
+    return ($v -ceq 'example.test' -or $v.EndsWith('.example.test'))
+}
+
+# Invoke-LabDoctorLoad FILE REQUIRED READER: run a configuration reader. The
+# result has the Value it read and the Problem it found, if any. A missing or
+# empty file is a problem only when REQUIRED.
+function Invoke-LabDoctorLoad {
+    param([string] $File, [bool] $Required, [scriptblock] $Reader)
+    $path = Join-Path $env:LAB_CONFIG_DIR $File
+    $value = $null
+    try { $value = & $Reader } catch {
+        $why = Format-LabDoctorReason $_.Exception.Message
+        return [pscustomobject]@{ Value = $null; Problem = (Get-LabDoctorProblem $why "edit $path") }
+    }
+    if ($null -eq $value -and $Required) {
+        if (Test-Path -LiteralPath $path -PathType Leaf) {
+            return [pscustomobject]@{ Value = $null; Problem = (Get-LabDoctorProblem "${File}: lists nothing" "edit $path") }
+        }
+        return [pscustomobject]@{ Value = $null; Problem = (Get-LabDoctorProblem "${File}: missing" "copy the team's $File to $path") }
+    }
+    return [pscustomobject]@{ Value = $value; Problem = $null }
+}
+
+# Get-LabDoctorConfigProblem: the first problem in the configuration files,
+# or $null when they read and hold no example value.
+function Get-LabDoctorConfigProblem {
+    $dir = $env:LAB_CONFIG_DIR
+    if (-not (Test-Path -LiteralPath $dir -PathType Container)) {
+        return (Get-LabDoctorProblem "the configuration folder $dir does not exist" 'check -Root, or give the folder with -Config')
+    }
+    $r = Invoke-LabDoctorLoad 'protected-accounts' $true { Read-LabProtectedSet }
+    if ($null -ne $r.Problem) { return $r.Problem }
+    $r = Invoke-LabDoctorLoad 'services' $true { Read-LabServiceList }
+    if ($null -ne $r.Problem) { return $r.Problem }
+    $services = Join-Path $dir 'services'
+    $lines = @(Get-LabConfigLine $services)
+    $svc = @($r.Value)
+    for ($i = 0; $i -lt $svc.Count; $i++) {
+        if (Test-LabExampleValue $svc[$i].Target) {
+            return (Get-LabDoctorProblem "services: line $($lines[$i].No): $($svc[$i].Target) is an example value" "edit $services")
+        }
+    }
+    $r = Invoke-LabDoctorLoad 'event.conf' $false { Read-LabEventConfig }
+    if ($null -ne $r.Problem) { return $r.Problem }
+    foreach ($k in @($r.Value.Keys | Sort-Object)) {
+        if (Test-LabExampleValue ([string] $r.Value[$k])) {
+            return (Get-LabDoctorProblem "event.conf: $k is an example value" "edit $(Join-Path $dir 'event.conf')")
+        }
+    }
+    foreach ($name in @('scoring-allowlist', 'never-ban')) {
+        $reader = { Read-LabAddressList -Name $name }
+        $r = Invoke-LabDoctorLoad $name $false $reader
+        if ($null -ne $r.Problem) { return $r.Problem }
+        if ($null -eq $r.Value) { continue }
+        $file = Join-Path $dir $name
+        $lines = @(Get-LabConfigLine $file)
+        $addr = @($r.Value)
+        for ($i = 0; $i -lt $addr.Count; $i++) {
+            if (Test-LabExampleValue (($addr[$i] -split '/')[0])) {
+                return (Get-LabDoctorProblem "${name}: line $($lines[$i].No): $($addr[$i]) is an example value" "edit $file")
+            }
+        }
+    }
+    $r = Invoke-LabDoctorLoad 'pre-approved' $false { Read-LabPreApproved }
+    return $r.Problem
+}
+
+# Get-LabDoctorHostProblem: the first problem with this host's line in hosts
+# or its profile, or $null; then DocProfile and DocIds hold the profile.
+function Get-LabDoctorHostProblem {
+    $hostName = Get-LabHostName
+    $script:DocProfile = ''
+    $script:DocIds = @()
+    $hostsFile = Join-Path $env:LAB_CONFIG_DIR 'hosts'
+    if (-not (Test-Path -LiteralPath $hostsFile -PathType Leaf)) {
+        return (Get-LabDoctorProblem 'hosts: missing' "copy the team's hosts file to $hostsFile")
+    }
+    $entry = $null
+    try { $entry = Find-LabHost -Name $hostName } catch {
+        return (Get-LabDoctorProblem (Format-LabDoctorReason $_.Exception.Message) "edit $hostsFile")
+    }
+    if ($null -eq $entry) {
+        return (Get-LabDoctorProblem "this host ($hostName) is not in hosts" "add a line for $hostName to $hostsFile")
+    }
+    $count = 0
+    foreach ($l in @(Get-LabConfigLine $hostsFile)) {
+        if ((($l.Text -split '\s+')[0]) -eq $hostName) { $count++ }
+    }
+    if ($count -gt 1) {
+        return (Get-LabDoctorProblem "this host ($hostName) is on $count lines of hosts" "keep one line for $hostName in $hostsFile")
+    }
+    switch -CaseSensitive ($entry.Platform) {
+        'windows' { }
+        'appliance' {
+            return (Get-LabDoctorProblem "this host ($hostName) is an appliance: Labyrinth never changes it" "configure it by hand, or correct its line in $hostsFile")
+        }
+        default {
+            return (Get-LabDoctorProblem "this runner does not serve this host's platform, $($entry.Platform)" "use the runner for $($entry.Platform), or correct this host's line in $hostsFile")
+        }
+    }
+    $prof = $entry.Profile
+    $file = Join-Path (Join-Path $env:LAB_CONFIG_DIR 'profiles') "$prof.profile"
+    if (-not (Test-Path -LiteralPath $file -PathType Leaf)) {
+        $file = Join-Path (Join-Path $env:LAB_ROOT 'profiles') "$prof.profile"
+    }
+    if (-not (Test-Path -LiteralPath $file -PathType Leaf)) {
+        return (Get-LabDoctorProblem "the profile $prof does not exist" "add $prof.profile to $(Join-Path $env:LAB_CONFIG_DIR 'profiles'), or correct this host's line in hosts")
+    }
+    $ids = @()
+    $n = 0
+    foreach ($raw in [IO.File]::ReadAllLines($file)) {
+        $n++
+        $line = ($raw -replace '#.*$', '').Trim()
+        if ($line -eq '') { continue }
+        if ($line -cnotmatch $ReModuleId) {
+            return (Get-LabDoctorProblem "profile ${prof}: line $n is not a module ID" "edit $file")
+        }
+        $ids += $line
+    }
+    $script:DocProfile = $prof
+    $script:DocIds = $ids
+    return $null
+}
+
+# Get-LabDoctorToolProblem: the tools of this profile's modules that this
+# host lacks, as "module is missing a, b; ...", or $null when none is.
+function Get-LabDoctorToolProblem {
+    $found = @()
+    $all = @()
+    foreach ($id in @($script:DocIds)) {
+        $phase = $id.Split('.')[0]
+        $dir = Join-Path $PSScriptRoot "phases\$phase\modules\$($id.Substring($phase.Length + 1))"
+        if (-not (Test-Path -LiteralPath $dir -PathType Container)) { $found += "$id has no module folder"; continue }
+        $yml = Join-Path $dir 'module.yml'
+        $script:YmlErr = @()
+        if (-not (Read-LabModuleYml $yml) -or -not (Test-LabModule $yml $id $phase)) {
+            $found += "$id has a module.yml that is not valid"
+            continue
+        }
+        if (@(Get-ChildItem -LiteralPath $dir -Filter '*.ps1' -File).Count -eq 0) { continue }
+        $tools = @()
+        if ($script:Mod.ContainsKey('tools_windows')) {
+            $list = Get-LabListItem $script:Mod['tools_windows']
+            if ($null -ne $list) { $tools = @($list) }
+        }
+        $missing = @()
+        foreach ($t in $tools) {
+            $cmd = Get-Command -Name $t -CommandType Application, Cmdlet, Function, ExternalScript -ErrorAction SilentlyContinue
+            if ($null -eq $cmd) { $missing += $t; $all += $t }
+        }
+        if ($missing.Count -gt 0) { $found += "$id is missing $($missing -join ', ')" }
+    }
+    if ($found.Count -eq 0) { return $null }
+    $fix = 'correct the modules named above'
+    if ($all.Count -gt 0) { $fix = "make these tools available on this host: $($all -join ', ')" }
+    return (Get-LabDoctorProblem ($found -join '; ') $fix)
+}
+
+function Invoke-LabDoctorCommand {
+    if (-not (Test-LabAdmin)) { Exit-Lab '-Doctor needs an elevated Administrator session' 20 $FixAdmin }
+    $script:NoLog = $true
+    Write-LabPendingWarning
+
+    if ($script:Release.Status -eq 'ok') {
+        Write-LabDoctorRow 'OK' 'release matches release.sha256'
+    } else {
+        Write-LabDoctorRow 'WARN' "no release.sha256: Labyrinth's files were not checked" `
+            "copy Labyrinth here again from the team's copy, with its release.sha256"
+    }
+
+    $bad = Find-LabUntrustedItem -Path @($env:LAB_ROOT, $env:LAB_CONFIG_DIR, $script:DataRoot)
+    if ($null -eq $bad) {
+        Write-LabDoctorRow 'OK' 'code and data folders writable only by Administrators'
+    } else {
+        Write-LabDoctorRow 'FAIL' "$bad can be changed by an account other than Administrators" `
+            "let only Administrators change $bad, in folders only they can change"
+    }
+
+    $problem = Get-LabDoctorConfigProblem
+    if ($null -eq $problem) {
+        Write-LabDoctorRow 'OK' 'configuration files read and filled in'
+    } else {
+        Write-LabDoctorRow 'FAIL' $problem.Why $problem.Fix
+    }
+
+    $problem = Get-LabDoctorHostProblem
+    if ($null -eq $problem) {
+        Write-LabDoctorRow 'OK' "this host is $(Get-LabHostName) in hosts, profile $($script:DocProfile)"
+    } else {
+        Write-LabDoctorRow 'FAIL' $problem.Why $problem.Fix
+    }
+
+    $reason = Test-LabTimerReady
+    if ($reason -eq '') {
+        Write-LabDoctorRow 'OK' 'revert timer can be armed (Task Scheduler)'
+    } else {
+        Write-LabDoctorRow 'FAIL' "revert timer cannot be armed: $reason" `
+            'run Labyrinth on a host where the Task Scheduler service is running'
+    }
+
+    $now = Get-LabUtcNow
+    $sync = Get-LabClockSync
+    if ([string]::CompareOrdinal($now, "$($script:ClockFloor)T00:00:00Z") -lt 0) {
+        Write-LabDoctorRow 'FAIL' "clock: the date is $($now.Substring(0, 10)), earlier than this release" `
+            'set the right date and time on this host'
+    } elseif ($sync -eq '') {
+        Write-LabDoctorRow 'WARN' 'clock: no time sync running' `
+            'start the Windows Time service (w32time), or set the time by hand'
+    } elseif ($sync -eq 'unknown') {
+        Write-LabDoctorRow 'WARN' 'clock: cannot tell whether time sync is running' `
+            'check that the Windows Time service (w32time) is running'
+    } else {
+        Write-LabDoctorRow 'OK' "clock is set and time sync is running ($sync)"
+    }
+
+    if ($script:DocProfile -eq '') {
+        Write-LabDoctorRow 'WARN' "tools: not checked because this host's profile is not known" `
+            'fix the host line above, then run the check again'
+    } else {
+        $problem = Get-LabDoctorToolProblem
+        if ($null -eq $problem) {
+            Write-LabDoctorRow 'OK' "tools for the $($script:DocProfile) profile: present"
+        } else {
+            Write-LabDoctorRow 'FAIL' "tools for the $($script:DocProfile) profile: $($problem.Why)" $problem.Fix
+        }
+    }
+
+    $stale = @()
+    $first = ''
+    foreach ($id in @(Get-LabRunList)) {
+        $state = Get-LabRunState $id
+        if ($state -like 'armed: was due*') {
+            $stale += "$(Get-LabShortId $id) ($state)"
+            if ($first -eq '') { $first = Get-LabShortId $id }
+        }
+    }
+    if ($stale.Count -eq 0) {
+        Write-LabDoctorRow 'OK' 'no stale revert timer'
+    } else {
+        $opts = Get-LabDataOption
+        Write-LabDoctorRow 'FAIL' "stale revert timer: run $($stale -join ' ')" `
+            "keep it with '$Self -k $first$opts' or undo it with '$Self -u $first$opts'"
+    }
+
+    Write-LabLine ''
+    if ($script:DocFails -gt 0) {
+        Write-LabLine ('Next: ' + (Get-LabSafeText $script:DocFirst))
+        exit 20
+    }
+    Write-LabLine 'Ready for a run.'
+    exit 0
+}
+
 # Format-LabShowTime TS: a manifest time, 2026-10-02T14:03:07Z, as
 # 2026-10-02 14:03:07 UTC.
 function Format-LabShowTime {
@@ -3909,7 +4253,7 @@ function Test-LabCompletionFit {
     switch -CaseSensitive ($Name) {
         { $_ -in 'help', 'root', 'config' } { return $true }
         'run' { return ($Act -eq '') }
-        { $_ -in 'keep', 'extend', 'undo', 'probe', 'history', 'show', 'new-seed', 'seed-check', 'version', 'manual' } {
+        { $_ -in 'keep', 'extend', 'undo', 'probe', 'history', 'show', 'doctor', 'new-seed', 'seed-check', 'version', 'manual' } {
             return ($Act -eq '' -and -not $Pre)
         }
         'all' { return ($Act -ceq 'undo') }
@@ -4262,6 +4606,7 @@ try {
         'probe' { Invoke-LabProbeCommand }
         'runs' { Invoke-LabRunsCommand }
         'show' { Invoke-LabShowCommand $word }
+        'doctor' { Invoke-LabDoctorCommand }
         'newseed' { Invoke-LabNewSeedCommand }
     }
 } catch {

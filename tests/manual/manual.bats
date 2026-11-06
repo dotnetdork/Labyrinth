@@ -39,7 +39,7 @@ setup() {
 @test "both manuals describe every command, exit code and option" {
   for p in linux windows; do
     run bash "$SPLIT" "$p"
-    for c in status preview run keep extend undo history show probe new-seed seed-check version manual help; do
+    for c in status preview run keep extend undo history show doctor probe new-seed seed-check version manual help; do
       grep -Eq "^## $c( |\$)" <<<"$output" || { echo "$p: no section for $c"; return 1; }
     done
     for code in 0 10 20 30 40; do
@@ -47,11 +47,11 @@ setup() {
     done
   done
   run bash "$SPLIT" linux
-  for o in --run --keep --extend --undo --history --show --probe --new-seed --seed-check --profile --root --config --break-glass --confirm-group --approve --all --yes --no-revert --only --skip --help --version --manual; do
+  for o in --run --keep --extend --undo --history --show --doctor --probe --new-seed --seed-check --profile --root --config --break-glass --confirm-group --approve --all --yes --no-revert --only --skip --help --version --manual; do
     [[ "$output" == *"\`$o"* ]] || { echo "linux: $o missing"; return 1; }
   done
   run bash "$SPLIT" windows
-  for o in -Run -Keep -Extend -Undo -History -Show -Probe -NewSeed -SeedCheck -Profile -Root -Config -BreakGlass -ConfirmGroup -Approve -All -Yes -NoRevert -Only -Skip -Help -Version -Manual; do
+  for o in -Run -Keep -Extend -Undo -History -Show -Doctor -Probe -NewSeed -SeedCheck -Profile -Root -Config -BreakGlass -ConfirmGroup -Approve -All -Yes -NoRevert -Only -Skip -Help -Version -Manual; do
     [[ "$output" == *"\`$o"* ]] || { echo "windows: $o missing"; return 1; }
   done
 }
@@ -132,5 +132,5 @@ setup() {
 
 @test "the README describes the commands that are built" {
   if grep -q 'plan mode only' "$REPO/README.md"; then return 1; fi
-  grep -qF 'the status (`laby` alone), preview, run (`-r`), keep (`-k`), `--extend`, undo (`-u`), `--history`, `--probe`, `--new-seed`, `--seed-check` and `--manual`' "$REPO/README.md"
+  grep -qF 'the status (`laby` alone), preview, run (`-r`), keep (`-k`), `--extend`, undo (`-u`), `--history`, `--doctor`, `--probe`, `--new-seed`, `--seed-check` and `--manual`' "$REPO/README.md"
 }

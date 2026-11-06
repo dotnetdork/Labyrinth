@@ -9,7 +9,7 @@ setup() { lab_setup; }
 
 # Every topic with a page of its own: the actions, the options and the
 # phases. Basics is the one screen that is longer.
-ACTIONS='run keep extend undo history show probe new-seed seed-check version manual'
+ACTIONS='run keep extend undo history show doctor probe new-seed seed-check version manual'
 OPTIONS='profile root config break-glass confirm-group approve all yes no-revert only skip'
 PHASES='lockout observe deceive sustain'
 TOPICS="$ACTIONS $OPTIONS $PHASES"
@@ -101,6 +101,12 @@ here() { cd "$LAB" && run bash ./labyrinth.sh "$@" < /dev/null; }
   done
   ask -h extend; want="$output"
   for a in '--extend -h' '--extend --help' '--extend 4f2a -h' '-h --extend'; do
+    # shellcheck disable=SC2086
+    ask $a
+    [ "$status" -eq 0 ] && [ "$output" = "$want" ] || { echo "$a"; return 1; }
+  done
+  ask -h doctor; want="$output"
+  for a in '--doctor -h' '--doctor --help' '-h --doctor'; do
     # shellcheck disable=SC2086
     ask $a
     [ "$status" -eq 0 ] && [ "$output" = "$want" ] || { echo "$a"; return 1; }
@@ -197,7 +203,7 @@ here() { cd "$LAB" && run bash ./labyrinth.sh "$@" < /dev/null; }
   for p in linux windows; do
     run bash "$REPO/tools/manual/split.sh" "$p"
     [ "$status" -eq 0 ]
-    for c in status preview run keep extend undo history show probe new-seed seed-check version manual help; do
+    for c in status preview run keep extend undo history show doctor probe new-seed seed-check version manual help; do
       grep -Eq "^## $c( |\$)" <<< "$output" || { echo "$p manual: no section for $c"; return 1; }
     done
   done
@@ -205,7 +211,7 @@ here() { cd "$LAB" && run bash ./labyrinth.sh "$@" < /dev/null; }
 
 @test "the actions that need root say so, and -h history names every state" {
   local t s
-  for t in run keep extend undo history show probe new-seed; do
+  for t in run keep extend undo history show doctor probe new-seed; do
     ask -h "$t"
     grep -qi 'needs root' <<< "$output" || { echo "-h $t: no root note"; return 1; }
   done

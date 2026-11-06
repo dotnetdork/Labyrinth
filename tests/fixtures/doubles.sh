@@ -11,7 +11,10 @@
 #   - a probe fails if its host is listed as "<host> fail" in
 #     $LAB_ROOT/probe-state, and passes otherwise.
 #   - the terminal is two files, $LAB_ROOT/tty.out and tty.in (below);
-#   - a notice to every terminal is appended to $LAB_ROOT/notice.log.
+#   - a notice to every terminal is appended to $LAB_ROOT/notice.log;
+#   - --doctor: no revert timer can be armed if $LAB_ROOT/NO_TIMER exists; no
+#     time sync runs if NO_TIMESYNC exists, and it cannot be told if
+#     TIMESYNC_UNKNOWN exists; the clock reads the time in $LAB_ROOT/CLOCK.
 
 lab_is_admin() { [[ ! -e "$LAB_ROOT/NOT_ADMIN" ]]; }
 
@@ -49,6 +52,24 @@ lab_timer_cancel() {
   [[ -f "$LAB_STATE_DIR/runs/$1/timer" ]] || return 0
   rm -f -- "$LAB_STATE_DIR/runs/$1/timer" "$LAB_STATE_DIR/runs/$1/timer-due"
   printf 'cancel %s\n' "$1" >> "$LAB_ROOT/timer.log"
+}
+
+lab_timer_ready() {
+  [[ ! -e "$LAB_ROOT/NO_TIMER" ]] && return 0
+  printf 'systemd is not running
+' >&2
+  return 1
+}
+
+lab_clock_sync() {
+  [[ ! -e "$LAB_ROOT/TIMESYNC_UNKNOWN" ]] || return 2
+  [[ ! -e "$LAB_ROOT/NO_TIMESYNC" ]] || return 1
+  printf 'fake-timesyncd
+'
+}
+
+lab_now() {
+  if [[ -f "$LAB_ROOT/CLOCK" ]]; then cat "$LAB_ROOT/CLOCK"; else date -u +%Y-%m-%dT%H:%M:%SZ; fi
 }
 
 lab_notify_all() { printf '%s\n' "$1" >> "$LAB_ROOT/notice.log"; }

@@ -262,6 +262,29 @@ function Test-LabRevertTimer {
     return (Test-Path -LiteralPath (Join-Path (Get-LabRunDir $RunId) 'timer'))
 }
 
+# Test-LabTimerReady: '' when a revert timer can be armed, else the reason it
+# cannot. Read-only: the Task Scheduler service runs and the scheduling
+# commands exist. No test timer is armed (-Doctor).
+function Test-LabTimerReady {
+    $svc = Get-Service -Name 'Schedule' -ErrorAction SilentlyContinue
+    if ($null -eq $svc) { return 'the Task Scheduler service is missing' }
+    if ($svc.Status -ne 'Running') { return 'the Task Scheduler service is not running' }
+    if ($null -eq (Get-Command -Name 'Register-ScheduledTask' -ErrorAction SilentlyContinue)) {
+        return 'the scheduling commands are missing'
+    }
+    return ''
+}
+
+# Get-LabClockSync: the time-sync service that is running ('Windows Time'),
+# '' when none is, or 'unknown' when that cannot be told. Never asks the
+# network (-Doctor).
+function Get-LabClockSync {
+    $svc = Get-Service -Name 'w32time' -ErrorAction SilentlyContinue
+    if ($null -eq $svc) { return '' }
+    if ($svc.Status -eq 'Running') { return 'Windows Time' }
+    return ''
+}
+
 # Send-LabNotice -Message TEXT: show TEXT in every session logged in on this
 # host, so the team learns that a run was rolled back even when no one is
 # watching the revert timer. Best effort: returns $false when msg.exe is

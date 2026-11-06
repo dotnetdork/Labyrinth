@@ -243,6 +243,55 @@ lab_timer_live() {
   return 1
 }
 
+# lab_timer_ready: could a revert timer be armed now? It only looks: it
+# arms nothing. Needs systemctl, a running systemd, a folder root can write
+# the unit files to, and a systemd that answers. Returns 1 with the reason
+# on stderr when not (--doctor).
+lab_timer_ready() {
+  local udir="${LAB_SYSTEMD_DIR:-/etc/systemd/system}"
+  if ! command -v systemctl > /dev/null 2>&1; then
+    printf 'systemctl is not on this host
+' >&2; return 1
+  fi
+  if [[ ! -d /run/systemd/system ]]; then
+    printf 'systemd is not running
+' >&2; return 1
+  fi
+  if [[ ! -d "$udir" || ! -w "$udir" ]]; then
+    printf '%s is not a folder root can write to
+' "$udir" >&2; return 1
+  fi
+  if ! systemctl list-timers --no-pager > /dev/null 2>&1; then
+    printf 'systemd does not answer
+' >&2; return 1
+  fi
+}
+
+# lab_clock_sync: is a time-sync service running on this host? Prints its
+# name and returns 0; returns 1 when none is running, and 2 when this host
+# has no way to tell. It reads only the local service list, never the
+# network (--doctor).
+lab_clock_sync() {
+  local u known=0
+  if command -v systemctl > /dev/null 2>&1 && [[ -d /run/systemd/system ]]; then
+    known=1
+    for u in systemd-timesyncd chronyd chrony ntpd ntp ntpsec; do
+      if systemctl is-active --quiet "$u" 2> /dev/null; then printf '%s
+' "$u"; return 0; fi
+    done
+  fi
+  if command -v pgrep > /dev/null 2>&1; then
+    known=1
+    # The process names systemd-timesyncd and others are cut to 15 characters.
+    for u in systemd-timesyn chronyd ntpd; do
+      if pgrep -x "$u" > /dev/null 2>&1; then printf '%s
+' "$u"; return 0; fi
+    done
+  fi
+  if (( known )); then return 1; fi
+  return 2
+}
+
 # lab_notify_all MESSAGE: write MESSAGE to every terminal logged in on this
 # host, so the team learns that a run was rolled back even when no one is
 # watching the revert timer. Best effort: returns 1 when wall is missing or
