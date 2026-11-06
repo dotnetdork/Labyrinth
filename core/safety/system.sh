@@ -10,6 +10,11 @@
 # removes the last, so a failed re-arm leaves the earlier timer armed. The armed timer's name is kept in $LAB_STATE_DIR/runs/<run>/timer,
 # and the time it fires in timer-due (UTC, YYYY-MM-DDTHH:MM:SSZ), which is
 # advisory: it is shown to the operator, and nothing fails without it.
+#
+# The warning that logged-in sessions get shortly before the undo is a
+# second pair, lab-warn-<run>-<n>, armed and removed with the timer; its
+# name is kept in runs/<run>/warn. It is best effort: it never blocks the
+# timer.
 
 lab_is_admin() { [[ "$(id -u)" == 0 ]]; }
 
@@ -114,16 +119,10 @@ lab_console_session() {
   return 2
 }
 
-# lab_timer_arm SECONDS RUN COMMAND [ARG...]: (re)arm the run's revert timer
-# to run COMMAND (an absolute path) after SECONDS, unless cancelled.
-lab_timer_arm() {
-  local secs="$1" run="$2" dir n=1 unit old='' udir="${LAB_SYSTEMD_DIR:-/etc/systemd/system}"
-  local cmd='' a q due bs=\\ dq=\" pc=% dl=\$
-  shift 2
-  if ! command -v systemctl > /dev/null 2>&1 || [[ ! -d /run/systemd/system ]]; then
-    printf 'revert timer: systemd is not available on this host, so no timer can be armed\n' >&2
-    return 1
-  fi
+# lab_unit_exec ARG...: print ARG... as the value of ExecStart= in a unit
+# file. Returns 1, printing nothing, if an ARG has a line break.
+lab_unit_exec() {
+  local cmd='' a q bs=\\ dq=\" pc=% dl=\$
   for a in "$@"; do
     if [[ "$a" == *$'\n'* ]]; then
       printf 'revert timer: the command has a line break, which a unit file cannot hold\n' >&2
@@ -135,6 +134,20 @@ lab_timer_arm() {
     q=${a//"$bs"/"$bs$bs"}; q=${q//"$dq"/"$bs$dq"}; q=${q//"$pc"/"$pc$pc"}; q=${q//"$dl"/"$dl$dl"}
     cmd+="${cmd:+ }\"$q\""
   done
+  printf '%s' "$cmd"
+}
+
+# lab_timer_arm SECONDS RUN COMMAND [ARG...]: (re)arm the run's revert timer
+# to run COMMAND (an absolute path) after SECONDS, unless cancelled.
+lab_timer_arm() {
+  local secs="$1" run="$2" dir n=1 unit old='' udir="${LAB_SYSTEMD_DIR:-/etc/systemd/system}"
+  local cmd='' due
+  shift 2
+  if ! command -v systemctl > /dev/null 2>&1 || [[ ! -d /run/systemd/system ]]; then
+    printf 'revert timer: systemd is not available on this host, so no timer can be armed\n' >&2
+    return 1
+  fi
+  cmd="$(lab_unit_exec "$@")" || return 1
   dir="$LAB_STATE_DIR/runs/$run"
   mkdir -p "$dir" || return 1
   if [[ -f "$dir/timer-count" ]]; then
@@ -196,6 +209,68 @@ lab_timer_cancel() {
   unit="$(cat "$dir/timer")"
   lab_timer_remove "$unit" || return 1
   rm -f -- "$dir/timer" "$dir/timer-due"
+  # The warning goes with it. Best effort: one left behind sees that the
+  # run has no timer and sends nothing.
+  lab_warn_cancel "$1" > /dev/null 2>&1 || true
+}
+
+# lab_warn_lead SECONDS: print how many seconds before the undo the warning
+# is sent for a timer of SECONDS: 60, or half the time when the timer is
+# shorter than two minutes (docs/Conventions.md, section 3.1). 0 means the
+# timer is too short to warn.
+lab_warn_lead() {
+  if (( $1 >= 120 )); then printf '60\n'; else printf '%s\n' "$(( $1 / 2 ))"; fi
+}
+
+# lab_warn_arm SECONDS RUN COMMAND [ARG...]: (re)arm the run's warning, to
+# run COMMAND (an absolute path) lab_warn_lead seconds before its revert
+# timer, which is SECONDS from now, fires. Called right after lab_timer_arm,
+# whose count it shares: the units are lab-warn-<run>-<n>, and the armed
+# one's name is kept in $LAB_STATE_DIR/runs/<run>/warn. As for the timer,
+# the new one is made before the earlier one is removed. Best effort for the
+# caller: on failure the earlier warning is removed too, as it would name
+# the wrong time, and 1 is returned.
+lab_warn_arm() {
+  local secs="$1" run="$2" dir lead n unit old='' udir="${LAB_SYSTEMD_DIR:-/etc/systemd/system}"
+  local cmd='' due
+  shift 2
+  dir="$LAB_STATE_DIR/runs/$run"
+  lead="$(lab_warn_lead "$secs")"
+  if (( lead < 1 )); then lab_warn_cancel "$run" || true; return 0; fi
+  [[ -f "$dir/timer-count" ]] || return 1
+  n="$(cat "$dir/timer-count")"
+  if [[ -f "$dir/warn" ]]; then old="$(cat "$dir/warn")"; fi
+  secs=$(( secs - lead ))
+  unit="lab-warn-$run-$n"
+  cmd="$(lab_unit_exec "$@")" || { lab_warn_cancel "$run" || true; return 1; }
+  due="$(date -d "@$(( $(date +%s) + secs ))" '+%Y-%m-%d %H:%M:%S')" || { lab_warn_cancel "$run" || true; return 1; }
+  if ! printf '%s\n' '[Unit]' "Description=Labyrinth revert warning for run $run" '' \
+        '[Service]' "ExecStart=$cmd" > "$udir/$unit.service" \
+      || ! printf '%s\n' '[Unit]' "Description=Labyrinth revert warning for run $run" '' \
+        '[Timer]' "OnCalendar=$due" 'Persistent=true' "OnActiveSec=${secs}s" 'AccuracySec=1s' '' \
+        '[Install]' 'WantedBy=timers.target' > "$udir/$unit.timer" \
+      || ! systemctl daemon-reload \
+      || ! systemctl enable --quiet "$unit.timer" \
+      || ! systemctl start "$unit.timer"; then
+    lab_timer_remove "$unit" > /dev/null 2>&1 || true
+    lab_warn_cancel "$run" || true
+    return 1
+  fi
+  printf '%s\n' "$unit" > "$dir/warn" || { lab_timer_remove "$unit" > /dev/null 2>&1 || true; return 1; }
+  if [[ -n "$old" && "$old" != "$unit" ]]; then
+    lab_timer_remove "$old" > /dev/null 2>&1 || true
+  fi
+}
+
+# lab_warn_cancel RUN: remove the run's warning, if one is armed. Returns 1,
+# keeping the state file, if its units could not be removed.
+lab_warn_cancel() {
+  local f="$LAB_STATE_DIR/runs/$1/warn" unit=''
+  [[ -f "$f" ]] || return 0
+  IFS= read -r unit < "$f" || [[ -n "$unit" ]] || return 1
+  [[ "$unit" =~ ^lab-warn-[A-Za-z0-9-]+$ ]] || { rm -f -- "$f"; return 0; }
+  lab_timer_remove "$unit" || return 1
+  rm -f -- "$f"
 }
 
 # lab_timer_due_write RUN SECONDS: record that the run's revert timer fires

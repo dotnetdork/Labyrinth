@@ -5,11 +5,13 @@
 #   - the administrator check passes unless $env:LAB_ROOT\NOT_ADMIN exists;
 #   - the ownership check passes unless $env:LAB_ROOT\UNTRUSTED exists;
 #   - every account has console session 1 unless $env:LAB_ROOT\NO_CONSOLE exists;
-#   - the revert timer is recorded in $env:LAB_ROOT\timer.log instead of registered;
+#   - the revert timer is recorded in $env:LAB_ROOT\timer.log instead of registered,
+#     and its warning in $env:LAB_ROOT\warn.log;
 #   - a probe fails if its host is listed as "<host> fail" in
 #     $env:LAB_ROOT\probe-state, and passes otherwise;
 #   - the console is two files, $env:LAB_ROOT\tty.out and tty.in (below);
-#   - a notice to every session is appended to $env:LAB_ROOT\notice.log;
+#   - a notice to every session is appended to $env:LAB_ROOT\notice.log, unless
+#     $env:LAB_ROOT\NO_WALL exists (no msg command);
 #   - the revert timer can be armed unless $env:LAB_ROOT\NO_TIMER exists;
 #   - time sync is running unless $env:LAB_ROOT\NO_TIMESYNC exists (or
 #     TIMESYNC_UNKNOWN, which makes it unknown);
@@ -64,10 +66,32 @@ function Unregister-LabRevertTimer {
     Remove-Item -LiteralPath $f -Force
     Remove-Item -LiteralPath (Join-Path (Get-LabRunDir $RunId) 'timer-due') -Force -ErrorAction SilentlyContinue
     Add-Content -LiteralPath (Join-Path $env:LAB_ROOT 'timer.log') -Value "cancel $RunId" -Encoding Ascii
+    [void](Unregister-LabRevertWarning -RunId $RunId)
+}
+
+# The warning before the undo: arming it is recorded in $env:LAB_ROOT\warn.log
+# ("arm RUN SECONDS ARGUMENT") and the command is kept in runs\<run>\warn. It
+# fails when $env:LAB_ROOT\WARN_FAIL exists.
+function Register-LabRevertWarning {
+    param([int] $Seconds, [string] $RunId, [string] $Execute, [string] $Argument)
+    if (Test-Path -LiteralPath (Join-Path $env:LAB_ROOT 'WARN_FAIL')) { throw 'the warning could not be armed' }
+    if ((Get-LabWarnLead -Seconds $Seconds) -lt 1) { [void](Unregister-LabRevertWarning -RunId $RunId); return }
+    [IO.File]::WriteAllText((Join-Path (Get-LabRunDir $RunId) 'warn'), "$Execute $Argument`n")
+    Add-Content -LiteralPath (Join-Path $env:LAB_ROOT 'warn.log') -Value "arm $RunId $Seconds $Argument" -Encoding Ascii
+}
+
+function Unregister-LabRevertWarning {
+    param([string] $RunId)
+    $f = Join-Path (Get-LabRunDir $RunId) 'warn'
+    if (-not (Test-Path -LiteralPath $f)) { return $true }
+    Remove-Item -LiteralPath $f -Force
+    Add-Content -LiteralPath (Join-Path $env:LAB_ROOT 'warn.log') -Value "cancel $RunId" -Encoding Ascii
+    return $true
 }
 
 function Send-LabNotice {
     param([string] $Message)
+    if (Test-Path -LiteralPath (Join-Path $env:LAB_ROOT 'NO_WALL')) { return $false }
     Add-Content -LiteralPath (Join-Path $env:LAB_ROOT 'notice.log') -Value $Message -Encoding Ascii
     return $true
 }

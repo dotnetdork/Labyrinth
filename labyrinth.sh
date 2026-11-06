@@ -130,6 +130,7 @@ RUN_REF=''                 # the run keep or rollback acts on
 CMD=''                     # the command being run, for on_internal_error
 RUN_OPEN=0                 # 1 once an apply has recorded run_start
 NO_REVERT=0                # 1 with --no-revert: no revert timer, no keep question
+WARN_FAILED=0              # 1 when the warning before the undo could not be armed
 # How the operator started this program, so a hint can be pasted and run
 # (docs/Conventions.md section 3.2): the path as typed, './' added when it
 # was a bare name not on the PATH, quoted if it needs it, and 'sudo' in
@@ -2468,6 +2469,7 @@ apply_one() {
       more "$id"
       RUN_STATE[i]=blocked; return 20
     fi
+    arm_warning "$((LAB_EVENT[REVERT_MINUTES] * 60))"
   fi
 
   # Checked by hand: errexit is off inside a function called with ||, and a
@@ -2484,6 +2486,10 @@ apply_one() {
   fi
   LAB_MODULE_ID="$id" lab_log_info apply_start "applying"
   say CHANGE "$name"
+  if (( WARN_FAILED )); then
+    detail Note 'the warning before the undo was not set up; the timer is armed'
+    WARN_FAILED=0
+  fi
   if [[ -n "$APPROVED" ]]; then show_choice; fi
   run_entry "$dir" apply "$id" 0
   case "$ENTRY_RC" in
@@ -3471,6 +3477,97 @@ cmd_keep() {
   exit "$rc"
 }
 
+# warn_name: how the warning names this command, for a command to paste.
+# Started through the installed link it is 'sudo laby' (or 'sudo
+# labyrinth'); otherwise the full path of this program, as a timer's
+# stored command has it. The operator's own relative path would not work
+# for whoever reads the warning.
+warn_name() {
+  local n="${SELF#sudo }"
+  if [[ "$n" != laby && "$n" != labyrinth ]]; then n="$(shell_word "$LAB_ROOT/labyrinth.sh")"; fi
+  printf 'sudo %s' "$n"
+}
+
+# arm_warning SECONDS: arm the warning that goes to logged-in sessions
+# shortly before the run's revert timer, which was just armed for SECONDS,
+# undoes it (docs/Conventions.md section 3.1). Best effort: a failure sets
+# WARN_FAILED, so the caller prints a Note, and never stops the run.
+arm_warning() {
+  WARN_FAILED=0
+  if ! lab_warn_arm "$1" "$LAB_RUN_ID" \
+      "$BASH" "$LAB_ROOT/labyrinth.sh" --warn "$LAB_RUN_ID" \
+      "$(readlink -m -- "$DATA_ROOT")" "$(readlink -m -- "$LAB_CONFIG_DIR")" "$(warn_name)" 2> /dev/null; then
+    WARN_FAILED=1
+  fi
+  return 0
+}
+
+# warn_data_opts: the --root and --config of this warning, for a command to
+# paste: only what differs from the defaults.
+warn_data_opts() {
+  if [[ "$DATA_ROOT" != /opt/labyrinth ]]; then printf ' --root %s' "$(shell_word "$DATA_ROOT")"; fi
+  if [[ "$LAB_CONFIG_DIR" != "$DATA_ROOT/etc" ]]; then printf ' --config %s' "$(shell_word "$LAB_CONFIG_DIR")"; fi
+}
+
+# warn_text RUN NAME LEFT: the warning for RUN, whose revert timer undoes
+# it in LEFT seconds, with the commands written as NAME (docs/Conventions.md
+# section 3.1).
+warn_text() {
+  local run="$1" name="$2" left="$3" due at when opts mins
+  due="$(lab_timer_due "$run")"
+  at="${due:11:5}"
+  if (( left == 1 )); then
+    when='1 second'
+  elif (( left < 50 )); then
+    when="$left seconds"
+  else
+    mins=$(( (left + 30) / 60 ))
+    if (( mins == 1 )); then when='1 minute'; else when="$mins minutes"; fi
+  fi
+  mins="${LAB_EVENT[REVERT_MINUTES]}"
+  opts="$(warn_data_opts)"
+  printf 'Labyrinth undoes run %s on %s at %s UTC (in %s).\n' "${run: -4}" "$(lab_host)" "$at" "$when"
+  printf '%-17s%s -k %s%s\n' 'To keep it:' "$name" "${run: -4}" "$opts"
+  printf '%-17s%s --extend %s%s\n' "To get $mins more:" "$name" "${run: -4}" "$opts"
+}
+
+# cmd_warn RUN ROOT CONFIG NAME: the hidden entry the warning's timer runs,
+# like --complete, not an action and not in the help. It tells everyone
+# logged in that the run's revert timer undoes it in about a minute, and
+# changes nothing else but the run log. Best effort and silent when there
+# is nothing to say: it sends nothing if the run is no longer armed, or if
+# the undo is not due within 90 seconds, as when the host was off past the
+# warning time, or a timer's earlier warning is still waiting.
+cmd_warn() {
+  local run="${1:-}" left text
+  [[ "$run" =~ $RE_RUN_ID && "${2:-}" == /* && "${3:-}" == /* ]] || exit 40
+  lab_is_admin || exit 20
+  DATA_ROOT="$2"
+  LAB_CONFIG_DIR="$3"
+  LAB_STATE_DIR="$DATA_ROOT/state"
+  LAB_LOG_DIR="$DATA_ROOT/logs"
+  LAB_BACKUP_DIR="$DATA_ROOT/backup"
+  LAB_RUN_ID="$run"
+  export LAB_CONFIG_DIR LAB_STATE_DIR LAB_LOG_DIR LAB_BACKUP_DIR LAB_RUN_ID
+  export LAB_DRY_RUN=0
+  gate_trusted
+  lab_timer_armed "$run" || exit 0
+  left="$(lab_timer_left "$run")" || exit 0
+  (( left > 0 && left <= 90 )) || exit 0
+  lab_event_load 2> /dev/null || LAB_EVENT=([REVERT_MINUTES]=5)
+  umask 077
+  text="$(warn_text "$run" "${4:-sudo laby}" "$left")"
+  log_open "warn run $run"
+  if lab_notify_all "$text"; then
+    out "warned the sessions logged in that the revert timer undoes run $run in $left seconds"
+    lab_log_info timer_warned "revert timer warning sent; the undo is due in $left seconds"
+  else
+    out "could not warn the sessions logged in (no wall command): run $run is undone in $left seconds"
+    lab_log_info timer_warned "revert timer warning not sent: wall is missing or failed"
+  fi
+  exit 0
+}
+
 # extend_run: add one timer length (REVERT_MINUTES) to the time left on the
 # current run's revert timer, and record it (docs/Conventions.md section
 # 3.1). The new timer is armed before the earlier one is removed, so a
@@ -3516,6 +3613,7 @@ extend_run() {
     err "Retry: $SELF --extend ${LAB_RUN_ID: -4}$(data_opts)"
     return 40
   fi
+  arm_warning "$secs"
   mins=$(( (secs + 59) / 60 ))
   if ! due="$(lab_timer_due "$LAB_RUN_ID")"; then due=''; fi
   at="${due:11:5}"
@@ -3530,6 +3628,10 @@ extend_run() {
   lab_log_info timer_extended "revert timer extended by $((extra / 60)) minutes; now fires ${due:-$at UTC}"
   lab_lock_release
   out "Timer:  now fires $at UTC (in $when)"
+  if (( WARN_FAILED )); then
+    out 'Note:   the warning before the undo was not set up; the timer is armed'
+    WARN_FAILED=0
+  fi
   out "Next:   $SELF -k ${LAB_RUN_ID: -4}$(data_opts)"
 }
 
@@ -4255,6 +4357,7 @@ main() {
   local action='' word='' phase='' label shown opt
   local -a used=()
   if [[ "${1:-}" == --complete ]]; then shift; cmd_complete "$@"; exit 0; fi
+  if [[ "${1:-}" == --warn ]]; then shift; cmd_warn "$@"; fi
   parse_args "$@"
   # Help never runs anything: it comes before every other check and read,
   # whatever else the line says.

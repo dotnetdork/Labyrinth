@@ -463,6 +463,99 @@ Describe 'core library' {
         }
     }
 
+    It 'warning: it is sent a minute before the undo, or at the halfway point of a timer under two minutes' {
+        Get-LabWarnLead -Seconds 300 | Should -Be 60
+        Get-LabWarnLead -Seconds 120 | Should -Be 60
+        Get-LabWarnLead -Seconds 119 | Should -Be 59
+        Get-LabWarnLead -Seconds 90 | Should -Be 45
+        Get-LabWarnLead -Seconds 2 | Should -Be 1
+        Get-LabWarnLead -Seconds 1 | Should -Be 0
+    }
+
+    It 'warning: it is registered ahead of the undo, a re-arm removes the earlier one afterwards, and cancelling the timer removes it' {
+        # Stand-ins for the scheduled-task cmdlets, in this test's scope only.
+        Import-Module ScheduledTasks
+        $registered = Join-Path $base 'registered'
+        $removed = Join-Path $base 'removed'
+        $dir = Get-LabRunDir $env:LAB_RUN_ID
+        New-Item -ItemType Directory -Path $dir -Force | Out-Null
+        Set-Item -Path function:Register-ScheduledTask -Value ([scriptblock]::Create(
+                "param(`$TaskName, `$Trigger) Add-Content -LiteralPath '$registered' -Value (`$TaskName + ' ' + `$Trigger.StartBoundary)"))
+        Set-Item -Path function:Unregister-ScheduledTask -Value ([scriptblock]::Create(
+                "param(`$TaskName) Add-Content -LiteralPath '$removed' -Value `$TaskName"))
+        Set-Item -Path function:Get-ScheduledTask -Value { }
+        foreach ($c in 'Register-ScheduledTask', 'Unregister-ScheduledTask', 'Get-ScheduledTask') {
+            [string](Get-Command $c).Module | Should -Be ''
+        }
+        try {
+            $run = $env:LAB_RUN_ID
+            Register-LabRevertTimer -Seconds 300 -RunId $run -Execute 'cmd.exe' -Argument '/c rem'
+            Register-LabRevertWarning -Seconds 300 -RunId $run -Execute 'cmd.exe' -Argument '/c rem'
+            ([IO.File]::ReadAllText((Join-Path $dir 'warn'))).Trim() | Should -Be "lab-warn-$run-1"
+            $line = @(Get-Content -LiteralPath $registered)[-1]
+            $line | Should -BeLike "lab-warn-$run-1 *"
+            $due = [datetime]::Parse(($line -split ' ', 2)[1], [Globalization.CultureInfo]::InvariantCulture)
+            # 300 seconds less the minute of warning: 240 from now.
+            ($due - (Get-Date)).TotalSeconds | Should -BeGreaterThan 225
+            ($due - (Get-Date)).TotalSeconds | Should -BeLessThan 245
+            # A re-arm for a short timer warns at the halfway point, and removes the earlier warning only afterwards.
+            Register-LabRevertTimer -Seconds 90 -RunId $run -Execute 'cmd.exe' -Argument '/c rem'
+            Register-LabRevertWarning -Seconds 90 -RunId $run -Execute 'cmd.exe' -Argument '/c rem'
+            ([IO.File]::ReadAllText((Join-Path $dir 'warn'))).Trim() | Should -Be "lab-warn-$run-2"
+            $due = [datetime]::Parse((@(Get-Content -LiteralPath $registered)[-1] -split ' ', 2)[1], [Globalization.CultureInfo]::InvariantCulture)
+            ($due - (Get-Date)).TotalSeconds | Should -BeGreaterThan 35
+            ($due - (Get-Date)).TotalSeconds | Should -BeLessThan 50
+            @(Get-Content -LiteralPath $removed) | Should -Contain "lab-warn-$run-1"
+            # Cancelling the timer cancels the warning with it.
+            Unregister-LabRevertTimer -RunId $run
+            Join-Path $dir 'warn' | Should -Not -Exist
+            @(Get-Content -LiteralPath $removed) | Should -Contain "lab-warn-$run-2"
+        } finally {
+            Remove-Item -Path function:Register-ScheduledTask, function:Unregister-ScheduledTask, function:Get-ScheduledTask -ErrorAction SilentlyContinue
+            Import-Module ScheduledTasks -Force
+        }
+    }
+
+    It 'warning: a timer too short to warn gets none, and a failed registration removes the earlier warning' {
+        Import-Module ScheduledTasks
+        $removed = Join-Path $base 'removed'
+        $dir = Get-LabRunDir $env:LAB_RUN_ID
+        New-Item -ItemType Directory -Path $dir -Force | Out-Null
+        [IO.File]::WriteAllText((Join-Path $dir 'timer-count'), "2`n")
+        [IO.File]::WriteAllText((Join-Path $dir 'warn'), "lab-warn-$($env:LAB_RUN_ID)-1`n")
+        Set-Item -Path function:Unregister-ScheduledTask -Value ([scriptblock]::Create(
+                "param(`$TaskName) Add-Content -LiteralPath '$removed' -Value `$TaskName"))
+        Set-Item -Path function:Register-ScheduledTask -Value { throw 'refused' }
+        Set-Item -Path function:Get-ScheduledTask -Value { }
+        foreach ($c in 'Register-ScheduledTask', 'Unregister-ScheduledTask', 'Get-ScheduledTask') {
+            [string](Get-Command $c).Module | Should -Be ''
+        }
+        try {
+            $threw = $false
+            try { Register-LabRevertWarning -Seconds 300 -RunId $env:LAB_RUN_ID -Execute 'cmd.exe' -Argument '/c rem' } catch { $threw = $true }
+            $threw | Should -Be $true
+            Join-Path $dir 'warn' | Should -Not -Exist
+            (Get-Content -LiteralPath $removed) | Should -Contain "lab-warn-$($env:LAB_RUN_ID)-1"
+            # One second is too short to warn: nothing is registered, so the refusal is never reached.
+            [IO.File]::WriteAllText((Join-Path $dir 'warn'), "lab-warn-$($env:LAB_RUN_ID)-1`n")
+            Register-LabRevertWarning -Seconds 1 -RunId $env:LAB_RUN_ID -Execute 'cmd.exe' -Argument '/c rem'
+            Join-Path $dir 'warn' | Should -Not -Exist
+        } finally {
+            Remove-Item -Path function:Register-ScheduledTask, function:Unregister-ScheduledTask, function:Get-ScheduledTask -ErrorAction SilentlyContinue
+            Import-Module ScheduledTasks -Force
+        }
+    }
+
+    It 'notice: a missing msg is a failure the caller can ignore' {
+        $saved = $env:SystemRoot
+        $env:SystemRoot = $base
+        try {
+            Send-LabNotice -Message 'Labyrinth undoes run 1234' | Should -Be $false
+        } finally {
+            $env:SystemRoot = $saved
+        }
+    }
+
     It 'probe: a closed port fails' {
         Invoke-LabProbe -Proto tcp -Target 127.0.0.1 -Port 1 -Expect '-' -Timeout 2 | Should -Be 'fail no connection'
         Invoke-LabProbe -Proto smtp -Target 127.0.0.1 -Port 1 -Expect '-' -Timeout 2 | Should -Be 'fail no banner'

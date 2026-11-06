@@ -450,6 +450,83 @@ esac'
   [ "$status" -eq 1 ]
 }
 
+@test "warning: it is sent a minute before the undo, or at the halfway point of a timer under two minutes" {
+  [ "$(lab_warn_lead 300)" = 60 ]
+  [ "$(lab_warn_lead 120)" = 60 ]
+  [ "$(lab_warn_lead 119)" = 59 ]
+  [ "$(lab_warn_lead 90)" = 45 ]
+  [ "$(lab_warn_lead 2)" = 1 ]
+  [ "$(lab_warn_lead 1)" = 0 ]
+}
+
+@test "warning: arm writes an enabled, persistent timer ahead of the undo, and re-arm and cancel remove it with the timer" {
+  [ -d /run/systemd/system ] || skip 'no systemd on this machine'
+  export LAB_SYSTEMD_DIR="$BATS_TEST_TMPDIR/units"
+  mkdir -p "$LAB_SYSTEMD_DIR" "$LAB_STATE_DIR"
+  stub systemctl 'printf "systemctl %s\n" "$*" >> "$LAB_STATE_DIR/calls"; [[ "$1" != is-active ]]'
+  lab_timer_arm 300 "$LAB_RUN_ID" /bin/true
+  lab_warn_arm 300 "$LAB_RUN_ID" /bin/bash '/x/lab folder/labyrinth.sh' --warn "$LAB_RUN_ID"
+  w="$LAB_SYSTEMD_DIR/lab-warn-$LAB_RUN_ID-1"
+  [ "$(cat "$LAB_STATE_DIR/runs/$LAB_RUN_ID/warn")" = "lab-warn-$LAB_RUN_ID-1" ]
+  grep -qxF "ExecStart=\"/bin/bash\" \"/x/lab folder/labyrinth.sh\" \"--warn\" \"$LAB_RUN_ID\"" "$w.service"
+  grep -qxF 'Persistent=true' "$w.timer"
+  grep -qxF 'OnActiveSec=240s' "$w.timer"
+  grep -qxF 'WantedBy=timers.target' "$w.timer"
+  grep -qE '^OnCalendar=[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}$' "$w.timer"
+  # Re-arming makes the new pair first, then removes the earlier one.
+  lab_timer_arm 200 "$LAB_RUN_ID" /bin/true
+  lab_warn_arm 200 "$LAB_RUN_ID" /bin/bash /x/labyrinth.sh --warn "$LAB_RUN_ID"
+  [ ! -e "$w.timer" ]
+  [ ! -e "$w.service" ]
+  grep -qxF 'OnActiveSec=140s' "$LAB_SYSTEMD_DIR/lab-warn-$LAB_RUN_ID-2.timer"
+  [ "$(cat "$LAB_STATE_DIR/runs/$LAB_RUN_ID/warn")" = "lab-warn-$LAB_RUN_ID-2" ]
+  # Cancelling the timer cancels the warning with it.
+  lab_timer_cancel "$LAB_RUN_ID"
+  [ ! -e "$LAB_STATE_DIR/runs/$LAB_RUN_ID/warn" ]
+  [ -z "$(ls -A "$LAB_SYSTEMD_DIR")" ]
+  calls="$(cat "$LAB_STATE_DIR/calls")"
+  [[ "$calls" == *"systemctl enable --quiet lab-warn-$LAB_RUN_ID-1.timer"$'\n'"systemctl start lab-warn-$LAB_RUN_ID-1.timer"* ]]
+  [[ "$calls" == *"systemctl disable --quiet lab-warn-$LAB_RUN_ID-2.timer"* ]]
+}
+
+@test "warning: a timer under two minutes warns at the halfway point, and one too short to warn arms none" {
+  [ -d /run/systemd/system ] || skip 'no systemd on this machine'
+  export LAB_SYSTEMD_DIR="$BATS_TEST_TMPDIR/units"
+  mkdir -p "$LAB_SYSTEMD_DIR" "$LAB_STATE_DIR"
+  stub systemctl 'printf "systemctl %s\n" "$*" >> "$LAB_STATE_DIR/calls"; [[ "$1" != is-active ]]'
+  lab_timer_arm 90 "$LAB_RUN_ID" /bin/true
+  lab_warn_arm 90 "$LAB_RUN_ID" /bin/true
+  grep -qxF 'OnActiveSec=45s' "$LAB_SYSTEMD_DIR/lab-warn-$LAB_RUN_ID-1.timer"
+  # An extension to a timer too short to warn drops the earlier warning.
+  lab_timer_arm 1 "$LAB_RUN_ID" /bin/true
+  lab_warn_arm 1 "$LAB_RUN_ID" /bin/true
+  [ ! -e "$LAB_STATE_DIR/runs/$LAB_RUN_ID/warn" ]
+  [ ! -e "$LAB_SYSTEMD_DIR/lab-warn-$LAB_RUN_ID-1.timer" ]
+  [ ! -e "$LAB_SYSTEMD_DIR/lab-warn-$LAB_RUN_ID-2.timer" ]
+}
+
+@test "warning: a failed arm leaves the revert timer armed, and removes the earlier warning, which would name the wrong time" {
+  [ -d /run/systemd/system ] || skip 'no systemd on this machine'
+  export LAB_SYSTEMD_DIR="$BATS_TEST_TMPDIR/units"
+  mkdir -p "$LAB_SYSTEMD_DIR" "$LAB_STATE_DIR"
+  stub systemctl 'printf "systemctl %s\n" "$*" >> "$LAB_STATE_DIR/calls"; [[ "$*" != "start lab-warn-$LAB_RUN_ID-2.timer" && "$1" != is-active ]]'
+  lab_timer_arm 300 "$LAB_RUN_ID" /bin/true
+  lab_warn_arm 300 "$LAB_RUN_ID" /bin/true
+  lab_timer_arm 300 "$LAB_RUN_ID" /bin/true
+  run lab_warn_arm 300 "$LAB_RUN_ID" /bin/true
+  [ "$status" -eq 1 ]
+  [ "$(cat "$LAB_STATE_DIR/runs/$LAB_RUN_ID/timer")" = "lab-revert-$LAB_RUN_ID-2" ]
+  [ -e "$LAB_SYSTEMD_DIR/lab-revert-$LAB_RUN_ID-2.timer" ]
+  [ ! -e "$LAB_STATE_DIR/runs/$LAB_RUN_ID/warn" ]
+  run compgen -G "$LAB_SYSTEMD_DIR/lab-warn-*"
+  [ "$status" -ne 0 ]
+}
+
+@test "notice: a missing wall is a failure the caller can ignore" {
+  mkdir -p "$BATS_TEST_TMPDIR/nowall"
+  if PATH="$BATS_TEST_TMPDIR/nowall" lab_notify_all 'Labyrinth undoes run 1234'; then return 1; fi
+}
+
 @test "probe: http through curl checks status and content" {
   stub curl 'printf "<h1>Welcome</h1>\n200"'
   [[ "$(lab_probe_service http www.example.test 80 Welcome 5)" == 'pass status 200' ]]
