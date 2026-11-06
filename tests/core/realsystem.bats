@@ -196,7 +196,7 @@ teardown() {
   done
   rolled_back
   # The warning ran the hidden entry, which logged it, before the undo started.
-  sudo -n grep -q '"event":"timer_warned"' "$ROOT"/logs/run/*.jsonl
+  sudo -n grep -rq 'timer_warned' "$ROOT/logs"
   warn_line="$(sudo -n grep -n ': warn run ' "$ROOT"/state/runs/*/output.log | head -n 1 | cut -d: -f1)"
   undo_line="$(sudo -n grep -n ': undo run ' "$ROOT"/state/runs/*/output.log | head -n 1 | cut -d: -f1)"
   [ -n "$warn_line" ] && [ -n "$undo_line" ]
