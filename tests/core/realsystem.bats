@@ -197,8 +197,8 @@ teardown() {
   rolled_back
   # The warning ran the hidden entry, which logged it, before the undo started.
   sudo -n grep -rq 'timer_warned' "$ROOT/logs"
-  warn_line="$(sudo -n grep -n ': warn run ' "$ROOT"/state/runs/*/output.log | head -n 1 | cut -d: -f1)"
-  undo_line="$(sudo -n grep -n ': undo run ' "$ROOT"/state/runs/*/output.log | head -n 1 | cut -d: -f1)"
+  warn_line="$(sudo -n bash -c 'grep -n ": warn run " "$1"/state/runs/*/output.log' _ "$ROOT" | head -n 1 | cut -d: -f1)"
+  undo_line="$(sudo -n bash -c 'grep -n ": undo run " "$1"/state/runs/*/output.log' _ "$ROOT" | head -n 1 | cut -d: -f1)"
   [ -n "$warn_line" ] && [ -n "$undo_line" ]
   [ "$warn_line" -lt "$undo_line" ]
   # The rollback the timer ran deleted the warning's unit files too.
