@@ -9,6 +9,7 @@
       .\labyrinth.ps1 PHASE            preview a phase: nothing changes
       .\labyrinth.ps1 -r PHASE         run a phase: plan, confirm, then change
       .\labyrinth.ps1 -k ID            keep a run: cancel its revert timer
+      .\labyrinth.ps1 -Extend ID       add one timer length to a run's revert timer
       .\labyrinth.ps1 -u ID [-All]     undo a run, newest change first
       .\labyrinth.ps1 -History         list this host's runs and their state
       .\labyrinth.ps1 -Show ID         list what one run changed
@@ -118,6 +119,7 @@ if ($Self -notmatch '^[A-Za-z0-9_.:\\/~-]+$') { $Self = "& '" + $Self.Replace("'
 $script:LabOptions = @(
     @{ Name = 'run'; Show = '-r'; Long = '-Run'; Key = 'run'; Short = 'r'; Value = $false; Action = $true }
     @{ Name = 'keep'; Show = '-k'; Long = '-Keep'; Key = 'keep'; Short = 'k'; Value = $true; Action = $true }
+    @{ Name = 'extend'; Show = '-Extend'; Long = '-Extend'; Key = 'extend'; Short = ''; Value = $true; Action = $true }
     @{ Name = 'undo'; Show = '-u'; Long = '-Undo'; Key = 'undo'; Short = 'u'; Value = $true; Action = $true }
     @{ Name = 'probe'; Show = '-Probe'; Long = '-Probe'; Key = 'probe'; Short = ''; Value = $false; Action = $true }
     @{ Name = 'history'; Show = '-History'; Long = '-History'; Key = 'history'; Short = ''; Value = $false; Action = $true }
@@ -228,7 +230,7 @@ Actions (one per line):
   -k, --keep ID           keep a run: cancel its revert timer
   -u, --undo ID [--all]   undo a run, newest change first
       --history           list this host's runs  --probe   test every service
-      --show ID           list what a run changed
+      --show ID           list a run's changes   --extend ID  delay the undo
       --new-seed          make a decoy seed      --seed-check   check a seed
   -V, --version           print the version      --manual   the full manual
 
@@ -279,6 +281,24 @@ Blocked: not an Administrator, a file another account can change, or too late
 (the run was already undone).
 Example: @CMD@ -k 4f2a
 See also: @CMD@ --history, @CMD@ -h undo
+'@ }
+        'extend' { @'
+Usage: @CMD@ --extend ID [--root DIR] [--config DIR]
+
+Push back a run's revert timer. Each call adds one timer length (5
+minutes, or REVERT_MINUTES in event.conf) to the time left on it, so
+two calls add 10. It takes no time: run it again to add more. There is
+no limit, but a run nobody extends is still undone. ID is always
+needed: a run ID or its last 4 characters. Without it, the armed runs
+are listed. Needs root or an Administrator.
+
+Options: --root DIR (data root), --config DIR (configuration folder)
+
+Exit: 0 extended, 20 blocked, 40 error.
+Blocked: not an Administrator, a file another account can change, or the run
+has no armed timer (kept, undone, or run with --no-revert).
+Example: @CMD@ --extend 4f2a
+See also: @CMD@ --history, @CMD@ -h keep
 '@ }
         'undo' { @'
 Usage: @CMD@ -u ID [--all [-y]] [--root DIR] [--config DIR]
@@ -877,7 +897,7 @@ function Join-LabListWord {
 # Add-LabOption ROW SEP VAL: record the option in row ROW. SEP is the
 # separator typed before VAL ('' when none); an option that takes a value and
 # has none there takes the next word, unless that word looks like an option.
-# -k, -u and -Show go without a value, and main lists the runs.
+# -k, -Extend, -u and -Show go without a value, and main lists the runs.
 function Add-LabOption {
     param($Row, [string] $Sep, [string] $Val)
     $name = $Row.Name
@@ -887,7 +907,7 @@ function Add-LabOption {
         $script:HelpAsked = $true
         return
     }
-    $optional = ($name -ceq 'keep' -or $name -ceq 'undo' -or $name -ceq 'show')
+    $optional = ($name -ceq 'keep' -or $name -ceq 'extend' -or $name -ceq 'undo' -or $name -ceq 'show')
     if ($Row.Value) {
         # '-Name value', or a session's '-Name:' with the value as the next word.
         if ($Sep -eq '' -or ($Sep -eq ':' -and $Val -eq '')) {
@@ -1063,6 +1083,7 @@ function Exit-LabBadWord {
     $hint = ''
     if ($lc -ceq 'run') { $hint = "$Self -r PHASE" }
     elseif ($lc -ceq 'keep') { $hint = "$Self -k ID" }
+    elseif ($lc -ceq 'extend') { $hint = "$Self -Extend ID" }
     elseif ($lc -ceq 'undo') { $hint = "$Self -u ID" }
     elseif ($lc -ceq 'history') { $hint = "$Self -History" }
     elseif ($lc -ceq 'show') { $hint = "$Self -Show ID" }
@@ -1562,6 +1583,10 @@ function Get-LabRecovery {
         'keep' {
             if ($short -ne '') { return @("The run may not be kept; '$Self -History' shows its state.", "Retry: $Self -k $short") }
             return 'Nothing was kept.'
+        }
+        'extend' {
+            if ($short -ne '') { return @("The timer may not be extended; '$Self -History' shows when it fires.", "Retry: $Self -Extend $short") }
+            return 'Nothing was extended.'
         }
         'newseed' { return 'The decoy seed may or may not be saved; run -NewSeed again to be sure.' }
     }
@@ -2567,10 +2592,7 @@ function Invoke-LabApplyOne {
     if ($M.Risk -ne 'read-only' -and -not $script:NoRevert) {
         try {
             $exe = (Get-Process -Id $PID).Path
-            $arg = '-NoProfile -NonInteractive -ExecutionPolicy Bypass -File {0} -u {1} -Root {2} -Config {3}' -f `
-                (ConvertTo-LabCommandLineArgument (Join-Path $env:LAB_ROOT 'labyrinth.ps1')), $env:LAB_RUN_ID,
-                (ConvertTo-LabCommandLineArgument $script:DataRoot), (ConvertTo-LabCommandLineArgument $env:LAB_CONFIG_DIR)
-            Register-LabRevertTimer -Seconds ($script:Settings['REVERT_MINUTES'] * 60) -RunId $env:LAB_RUN_ID -Execute $exe -Argument $arg
+            Register-LabRevertTimer -Seconds ($script:Settings['REVERT_MINUTES'] * 60) -RunId $env:LAB_RUN_ID -Execute $exe -Argument (Get-LabRevertArgument)
         } catch {
             Write-LabErrorLine $_.Exception.Message
             Write-LabStatus 'BLOCKED' $name
@@ -3009,6 +3031,14 @@ function Invoke-LabApplyCommand {
     Exit-LabRun 'apply' $worst $Phase
 }
 
+# Get-LabRevertArgument: the command line the revert timer runs, which undoes
+# the current run.
+function Get-LabRevertArgument {
+    return ('-NoProfile -NonInteractive -ExecutionPolicy Bypass -File {0} -u {1} -Root {2} -Config {3}' -f `
+            (ConvertTo-LabCommandLineArgument (Join-Path $env:LAB_ROOT 'labyrinth.ps1')), $env:LAB_RUN_ID,
+        (ConvertTo-LabCommandLineArgument $script:DataRoot), (ConvertTo-LabCommandLineArgument $env:LAB_CONFIG_DIR))
+}
+
 # Has the current run already been rolled back as a whole?
 function Test-LabRunRolledBack {
     return (@(Get-LabManifestEntry | Where-Object { $_.action -ceq 'run_rolled_back' }).Count -gt 0)
@@ -3277,19 +3307,23 @@ function Resolve-LabRunId {
     return $hits[0]
 }
 
+# Exit-LabNeedArmedRun OPTION: OPTION (-k or -Extend) always needs a run
+# (section 3.1): list the armed ones and stop with a usage error.
+function Exit-LabNeedArmedRun {
+    param([string] $Option)
+    $need = "$Option needs a run ID, or its last 4 characters"
+    if (-not (Test-LabAdmin)) { Exit-LabUsage $need "As Administrator, '$Self -History' lists them." }
+    Assert-LabTrustedTree
+    $armed = @(Get-LabArmedRun)
+    if ($armed.Count -eq 0) { Exit-LabUsage $need 'No run on this host has an armed revert timer.' }
+    foreach ($l in (Get-LabRunTable $armed)) { [Console]::Error.WriteLine($l) }
+    Exit-LabUsage $need 'These runs have an armed revert timer; pick one from the list above.'
+}
+
 function Invoke-LabKeepCommand {
     param([string] $Ref)
     $script:DryRun = '0'; $env:LAB_DRY_RUN = '0'
-    if ($Ref -eq '') {
-        # -k always needs a run (section 3.3): list the armed ones, keep none.
-        $need = '-k needs a run ID, or its last 4 characters'
-        if (-not (Test-LabAdmin)) { Exit-LabUsage $need "As Administrator, '$Self -History' lists them." }
-        Assert-LabTrustedTree
-        $armed = @(Get-LabArmedRun)
-        if ($armed.Count -eq 0) { Exit-LabUsage $need 'No run on this host has an armed revert timer.' }
-        foreach ($l in (Get-LabRunTable $armed)) { [Console]::Error.WriteLine($l) }
-        Exit-LabUsage $need 'These runs have an armed revert timer; pick one from the list above.'
-    }
+    if ($Ref -eq '') { Exit-LabNeedArmedRun '-k' }
     if (-not (Test-LabAdmin)) { Exit-Lab '-k needs an elevated Administrator session' 20 $FixAdmin }
     Assert-LabTrustedTree
     $env:LAB_RUN_ID = Resolve-LabRunId $Ref
@@ -3298,6 +3332,89 @@ function Invoke-LabKeepCommand {
     Write-LabPendingWarning
     Open-LabRunLog "keep run $env:LAB_RUN_ID"
     $rc = Invoke-LabKeep
+    if ($script:LogFile -ne '') { Write-LabLine "Log: $($script:LogFile)" }
+    exit $rc
+}
+
+# Invoke-LabExtend: add one timer length (REVERT_MINUTES) to the time left on
+# the current run's revert timer, and record it (docs/Conventions.md section
+# 3.1). The new timer is registered before the earlier one is removed, so a
+# failed re-arm leaves the run covered. Returns 0, 20 or 40.
+function Invoke-LabExtend {
+    if (-not (Enter-LabLock -WaitSeconds 10)) { return 20 }
+    try {
+        $state = Get-LabRunState $env:LAB_RUN_ID
+        $short = Get-LabShortId $env:LAB_RUN_ID
+        if ($state -like 'undone*') {
+            Write-LabErrorLine "labyrinth: too late: run $env:LAB_RUN_ID was already undone"
+            Write-LabErrorLine 'Its changes are gone, so there is no timer to extend.'
+            return 20
+        }
+        if ($state -ceq 'kept') {
+            Write-LabErrorLine "labyrinth: run $env:LAB_RUN_ID was already kept, so it has no revert timer to extend"
+            return 20
+        }
+        if ($state -ceq 'no revert') {
+            Write-LabErrorLine "labyrinth: run $env:LAB_RUN_ID has no revert timer (-NoRevert), so there is nothing to extend"
+            Write-LabErrorLine "To undo it: $Self -u $short"
+            return 20
+        }
+        if ($state -notlike 'armed*') {
+            Write-LabErrorLine "labyrinth: run $env:LAB_RUN_ID has no armed revert timer to extend"
+            return 20
+        }
+        $extra = [int]$script:Settings['REVERT_MINUTES'] * 60
+        $left = Get-LabRevertTimerLeft -RunId $env:LAB_RUN_ID
+        if ($left -lt 0) { $left = 0 }
+        $total = $left + $extra
+        try {
+            $exe = (Get-Process -Id $PID).Path
+            Register-LabRevertTimer -Seconds $total -RunId $env:LAB_RUN_ID -Execute $exe -Argument (Get-LabRevertArgument)
+        } catch {
+            Write-LabErrorLine $_.Exception.Message
+            $when = Get-LabDueWord $env:LAB_RUN_ID
+            if ($when -ne '') { $when = " $when" }
+            Write-LabErrorLine "labyrinth: the revert timer for run $env:LAB_RUN_ID could not be extended"
+            Write-LabErrorLine "The earlier timer is unchanged and still undoes the run$when."
+            Write-LabErrorLine "Retry: $Self -Extend $short$(Get-LabDataOption)"
+            return 40
+        }
+        $mins = [int][Math]::Floor(($total + 59) / 60)
+        $due = Get-LabRevertTimerDue -RunId $env:LAB_RUN_ID
+        if ($due -ne '') { $at = $due.Substring(11, 5) } else { $at = [DateTime]::UtcNow.AddSeconds($total).ToString('HH:mm', [Globalization.CultureInfo]::InvariantCulture) }
+        if ($mins -eq 1) { $inWords = '1 minute' } else { $inWords = "$mins minutes" }
+        $fires = "$at UTC"
+        if ($due -ne '') { $fires = $due }
+        try {
+            Add-LabEntryFor '' 'timer_extended' '' "added $([int]($extra / 60)) minutes; now fires $fires"
+        } catch {
+            Write-LabErrorLine $_.Exception.Message
+            Write-LabErrorLine "labyrinth: the extension of run $env:LAB_RUN_ID could not be recorded"
+            Write-LabErrorLine "The revert timer is extended: it now fires $at UTC (in $inWords)."
+            return 40
+        }
+        Write-LabLog -Level info -EventName timer_extended -Message "revert timer extended by $([int]($extra / 60)) minutes; now fires $fires"
+        Write-LabLine "Timer:  now fires $at UTC (in $inWords)"
+        Write-LabLine "Next:   $Self -k $short$(Get-LabDataOption)"
+        return 0
+    } finally {
+        Exit-LabLock
+    }
+}
+
+function Invoke-LabExtendCommand {
+    param([string] $Ref)
+    $script:DryRun = '0'; $env:LAB_DRY_RUN = '0'
+    if ($Ref -eq '') { Exit-LabNeedArmedRun '-Extend' }
+    if (-not (Test-LabAdmin)) { Exit-Lab '-Extend needs an elevated Administrator session' 20 $FixAdmin }
+    Assert-LabTrustedTree
+    $env:LAB_RUN_ID = Resolve-LabRunId $Ref
+    $script:RunRef = $env:LAB_RUN_ID
+    if (-not (Test-Path -LiteralPath (Get-LabManifestPath) -PathType Leaf)) { Exit-Lab "no run $env:LAB_RUN_ID on this host" 40 "'$Self -History' lists them." }
+    Read-LabSetting
+    Write-LabPendingWarning
+    Open-LabRunLog "extend run $env:LAB_RUN_ID"
+    $rc = Invoke-LabExtend
     if ($script:LogFile -ne '') { Write-LabLine "Log: $($script:LogFile)" }
     exit $rc
 }
@@ -3781,10 +3898,13 @@ try {
             $label = '-r'
             $used = @('profile', 'break-glass', 'confirm-group', 'approve')
         }
-    } elseif ($action -ceq 'keep' -or $action -ceq 'undo' -or $action -ceq 'show') {
+    } elseif ($action -ceq 'keep' -or $action -ceq 'extend' -or $action -ceq 'undo' -or $action -ceq 'show') {
         $word = [string] $script:Given[$action]
         $after = Get-LabShow $action
         if ($word -ne '') { $after += " $word" }
+        if ($action -ceq 'extend' -and $words.Count -gt 0) {
+            Exit-LabUsage '-Extend takes no time: each call adds one timer length' "To add more, run it again: $Self -Extend$(if ($word -ne '') { " $word" })"
+        }
         if ($words.Count -gt 0) { Exit-LabUsage "unexpected word '$($words[0])' after '$after'" }
         # A full run ID is accepted in any case, like its last 4 characters.
         if ($word -match '^[0-9]{8}T[0-9]{6}Z-[0-9a-f]{4}$') {
@@ -3863,6 +3983,7 @@ try {
         'plan' { Invoke-LabPlanCommand $phase }
         'apply' { Invoke-LabApplyCommand $phase }
         'keep' { Invoke-LabKeepCommand $word }
+        'extend' { Invoke-LabExtendCommand $word }
         'rollback' { Invoke-LabRollbackCommand $word }
         'probe' { Invoke-LabProbeCommand }
         'runs' { Invoke-LabRunsCommand }

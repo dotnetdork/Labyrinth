@@ -127,7 +127,7 @@ Each module ships its read-only `check` and `plan` first. The modules are built 
 | #67 | `phase-4/short-output` | Conventions §3.3 | One line per module, full blocks only for failures and blocks, `-v`, in both runners with the manual and both test suites |
 | #114 | — | Conventions §3 | `laby --doctor`: a read-only check of the install and the run-time configuration |
 | #115 | — | 03, Conventions §3 | A warning to logged-in sessions before the revert timer undoes a run |
-| #118 | — | Conventions §3, 03 | `laby --extend ID TIME`, to push back a run's revert timer |
+| #118 | — | Conventions §3, 03 | `laby --extend ID`, to add one timer length to a run's revert timer |
 | #116 | — | Conventions §3, §7 | `laby --show ID`, to list what one run changed |
 | #117 | — | Conventions §3 | `--only` and `--skip`, to preview or run chosen modules |
 | #119 | — | Conventions §3 | Tab completion for `laby` in bash and PowerShell |

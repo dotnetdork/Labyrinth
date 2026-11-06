@@ -43,6 +43,30 @@ Describe 'real system (Windows)' {
         }
     }
 
+    It 'an extended revert timer fires later, and the earlier one is gone' -Skip:($env:LAB_REALSYSTEM -ne '1') {
+        $env:LAB_ROOT = $script:Repo
+        $env:LAB_STATE_DIR = Join-Path $TestDrive 'state'
+        . (Join-Path $script:Repo 'core\Lab.ps1')
+        $d = Join-Path $TestDrive 'fired-d'
+        $run = '20261002T000000Z-dddd'
+        $cmd = Join-Path $env:SystemRoot 'System32\cmd.exe'
+        try {
+            Register-LabRevertTimer -Seconds 5 -RunId $run -Execute $cmd -Argument "/c echo x > `"$d`""
+            $left = Get-LabRevertTimerLeft -RunId $run
+            $left | Should -BeGreaterThan 0
+            $left | Should -BeLessOrEqual 5
+            Register-LabRevertTimer -Seconds ($left + 120) -RunId $run -Execute $cmd -Argument "/c echo x > `"$d`""
+            Test-LabRevertTimer -RunId $run | Should -Be $true
+            Get-LabRevertTimerLeft -RunId $run | Should -BeGreaterThan 100
+            # Past the earlier time, and still not fired.
+            Start-Sleep -Seconds 20
+            $d | Should -Not -Exist
+            Wait-TestCondition 240 { Test-Path -LiteralPath $d } | Should -Be $true
+        } finally {
+            Unregister-LabRevertTimer -RunId $run
+        }
+    }
+
     It 'an apply that is not kept is rolled back by the timer' -Skip:($env:LAB_REALSYSTEM -ne '1') {
         $lab = Join-Path $TestDrive 'lab'
         $etc = Join-Path $TestDrive 'etc'

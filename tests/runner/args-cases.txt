@@ -20,6 +20,7 @@
 40|err|'help' is not a phase.|help
 40|err|'undo' is not a phase. Did you mean '@SELF@ -u ID'?|undo 4f2a
 40|err|'keep' is not a phase. Did you mean '@SELF@ -k ID'?|keep 4f2a
+40|err|'extend' is not a phase. Did you mean '|extend 4f2a
 40|err|'run' is not a phase. Did you mean '@SELF@ -r PHASE'?|run observe
 40|err|'version' is not a phase. Did you mean '@SELF@ -V'?|version
 40|err|'history' is not a phase. Did you mean '|history
@@ -79,10 +80,13 @@
 # One action per line.
 40|err|two actions on one line: -r and -k|-r observe -k 4f2a
 40|err|two actions on one line|-k 4f2a --show 4f2a
+40|err|two actions on one line|--extend 4f2a -k 4f2a
+40|err|two actions on one line|-u 4f2a --extend 4f2a
 40|err|two actions on one line: -k and -u|-k 4f2a -u 4f2a
 40|err|two actions on one line: -r and -V|-r observe -V
 40|err|two actions on one line: -k and -V|-k ../x -V
 40|err|is only for -u, not -k|-k 4f2a --all
+40|err|is only for -u, not |--extend 4f2a --all
 40|err|is only for -u, not |--show 4f2a --all
 40|err|is only for -u, not a preview|observe --all
 40|err|is only for -u, not the status|--all
@@ -92,12 +96,14 @@
 40|err|-y is only for -u ID|-r observe --yes
 40|err|-y is only for -u ID|-y
 40|err|-y is only for -u ID|-k 4f2a -y
+40|err|-y is only for -u ID|--extend 4f2a -y
 40|err|-y is only for -u ID|--show 4f2a -y
 40|err|-y is only for -u ID|--seed-check -y
 40|err|-y is only for -u ID|--probe -y
 40|err|or leave out -y|-u 4f2a -y
 40|err|is only for -r, not a preview|observe --no-revert
 40|err|is only for -r, not -k|-k 4f2a --no-revert
+40|err|is only for -r, not |--extend 4f2a --no-revert
 40|err|is only for -r, not |--show 4f2a --no-revert
 40|err|is only for -r, not the status|--no-revert
 #
@@ -129,6 +135,14 @@
 # -k and -u always need an ID; without one they list runs and change nothing.
 40|err|-k needs a run ID, or its last 4 characters|-k --root @ROOT@ --config @ETC@
 40|err|-u needs a run ID, or its last 4 characters|-u --root @ROOT@ --config @ETC@
+40|err|needs a run ID, or its last 4 characters|--extend --root @ROOT@ --config @ETC@
+40|err|not a run ID|--extend ../x
+40|err|not a run ID|--extend 12
+# A time after the ID is a usage error: --extend takes no time.
+40|err|takes no time: each call adds one timer length|--extend 4f2a 10
+40|err|takes no time: each call adds one timer length|--extend 4f2a 10m
+40|err|takes no time: each call adds one timer length|--extend 4f2a 600
+40|err|To add more, run it again: |--extend 4f2a 10
 40|err|not a run ID|-k ../x
 40|err|not a run ID|-u 12
 40|err|needs a run ID, or its last 4 characters|--show --root @ROOT@ --config @ETC@

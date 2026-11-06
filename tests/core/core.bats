@@ -433,6 +433,23 @@ esac'
   [ "$status" -eq 1 ]
 }
 
+@test "timer: the time left is whole seconds, 0 once past, and unknown without a timer-due" {
+  mkdir -p "$LAB_STATE_DIR/runs/$LAB_RUN_ID"
+  run lab_timer_left "$LAB_RUN_ID"
+  [ "$status" -eq 1 ]
+  date -u -d '+300 seconds' +%Y-%m-%dT%H:%M:%SZ > "$LAB_STATE_DIR/runs/$LAB_RUN_ID/timer-due"
+  run lab_timer_left "$LAB_RUN_ID"
+  [ "$status" -eq 0 ]
+  [ "$output" -ge 295 ] && [ "$output" -le 300 ]
+  printf '2000-01-01T00:00:00Z\n' > "$LAB_STATE_DIR/runs/$LAB_RUN_ID/timer-due"
+  run lab_timer_left "$LAB_RUN_ID"
+  [ "$status" -eq 0 ]
+  [ "$output" -eq 0 ]
+  printf 'soon\n' > "$LAB_STATE_DIR/runs/$LAB_RUN_ID/timer-due"
+  run lab_timer_left "$LAB_RUN_ID"
+  [ "$status" -eq 1 ]
+}
+
 @test "probe: http through curl checks status and content" {
   stub curl 'printf "<h1>Welcome</h1>\n200"'
   [[ "$(lab_probe_service http www.example.test 80 Welcome 5)" == 'pass status 200' ]]

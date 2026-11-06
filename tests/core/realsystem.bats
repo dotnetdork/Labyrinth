@@ -35,6 +35,32 @@ teardown() {
   [ "$status" -ne 0 ]
 }
 
+@test "realsystem: an extended revert timer fires later, and the earlier one is gone" {
+  sudo -n env LAB_ROOT="$REPO" LAB_STATE_DIR="$W/state" W="$W" bash -c '
+    set -Eeuo pipefail
+    source "$LAB_ROOT/core/lib.sh"
+    r=20261002T000000Z-dddd
+    lab_timer_arm 5 "$r" /usr/bin/touch "$W/fired-d"
+    left="$(lab_timer_left "$r")"
+    [ "$left" -ge 1 ] && [ "$left" -le 5 ]
+    lab_timer_arm $(( left + 20 )) "$r" /usr/bin/touch "$W/fired-d"
+    [ ! -e /etc/systemd/system/lab-revert-$r-1.timer ]
+    systemctl is-active --quiet "lab-revert-$r-2.timer"
+    [ "$(lab_timer_left "$r")" -gt 15 ]'
+  # Past the earlier time, and still not fired.
+  sleep 9
+  [ ! -e "$W/fired-d" ]
+  for _ in $(seq 1 20); do
+    if [ -e "$W/fired-d" ]; then break; fi
+    sleep 2
+  done
+  [ -e "$W/fired-d" ]
+  sudo -n env LAB_ROOT="$REPO" LAB_STATE_DIR="$W/state" bash -c '
+    set -Eeuo pipefail
+    source "$LAB_ROOT/core/lib.sh"
+    lab_timer_cancel 20261002T000000Z-dddd'
+}
+
 @test "realsystem: the revert timer is enabled and persistent, so it outlives a restart" {
   sudo -n env LAB_ROOT="$REPO" LAB_STATE_DIR="$W/state" W="$W" bash -c '
     set -Eeuo pipefail
