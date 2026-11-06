@@ -215,6 +215,17 @@ lab_timer_due() {
   printf '%s\n' "$due"
 }
 
+# lab_timer_left RUN: print the whole seconds until the run's revert timer
+# fires, 0 when that time has passed; 1 if the time is unknown. --extend
+# adds one timer length to this and re-arms (lab_timer_arm) for the total.
+lab_timer_left() {
+  local due at now
+  due="$(lab_timer_due "$1")" || return 1
+  at="$(date -u -d "$due" +%s 2> /dev/null)" || return 1
+  now="$(date +%s)"
+  if (( at > now )); then printf '%s\n' "$(( at - now ))"; else printf '0\n'; fi
+}
+
 # lab_timer_armed RUN: is a revert timer armed for the run?
 lab_timer_armed() { [[ -f "$LAB_STATE_DIR/runs/$1/timer" ]]; }
 

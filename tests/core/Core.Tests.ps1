@@ -420,6 +420,20 @@ Describe 'core library' {
         Get-LabRevertTimerDue -RunId $env:LAB_RUN_ID | Should -Be ''
     }
 
+    It 'timer: the time left is whole seconds, 0 once past, and -1 when unknown' {
+        $dir = Get-LabRunDir $env:LAB_RUN_ID
+        New-Item -ItemType Directory -Path $dir -Force | Out-Null
+        Get-LabRevertTimerLeft -RunId $env:LAB_RUN_ID | Should -Be -1
+        Save-LabRevertTimerDue -RunId $env:LAB_RUN_ID -At ([datetime]::UtcNow.AddSeconds(300))
+        $left = Get-LabRevertTimerLeft -RunId $env:LAB_RUN_ID
+        $left | Should -BeGreaterOrEqual 295
+        $left | Should -BeLessOrEqual 300
+        [IO.File]::WriteAllText((Join-Path $dir 'timer-due'), "2000-01-01T00:00:00Z`n")
+        Get-LabRevertTimerLeft -RunId $env:LAB_RUN_ID | Should -Be 0
+        [IO.File]::WriteAllText((Join-Path $dir 'timer-due'), "soon`n")
+        Get-LabRevertTimerLeft -RunId $env:LAB_RUN_ID | Should -Be -1
+    }
+
     It 'timer: a timer still there after removal is not cancelled' {
         # Stand-ins, as in the re-arm test above.
         Import-Module ScheduledTasks

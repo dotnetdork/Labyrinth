@@ -6,6 +6,7 @@
 #   laby PHASE               preview a phase: nothing changes, nothing written
 #   laby -r PHASE            run a phase: plan, confirm, then make the changes
 #   laby -k ID               keep a run: cancel its revert timer
+#   laby --extend ID         add one timer length to a run's revert timer
 #   laby -u ID [--all]       undo a run, newest change first
 #   laby --history           list this host's runs and their state
 #   laby --show ID           list what one run changed
@@ -126,11 +127,11 @@ NAME="${SELF#sudo }"   # the name as typed, for the start of a usage error
 # name, the key its long name is matched by (lower case, no dashes), whether
 # it takes a value, its short letter, if it has one, and whether it is an
 # action. Short letters are case-sensitive; long names are not.
-readonly -a OPT_NAMES=(run keep undo probe history show new-seed seed-check version manual all profile root config break-glass confirm-group approve yes no-revert only skip help)
-readonly -a OPT_KEYS=(run keep undo probe history show newseed seedcheck version manual all profile root config breakglass confirmgroup approve yes norevert only skip help)
-readonly -a OPT_VALUE=(0 1 1 0 0 1 0 0 0 0 0 1 1 1 1 1 1 0 0 1 1 0)
-readonly -a OPT_SHORT=(r k u '' '' '' '' '' V '' '' P '' '' '' '' '' y '' '' '' h)
-readonly -a OPT_ACTION=(1 1 1 1 1 1 1 1 1 1 0 0 0 0 0 0 0 0 0 0 0 0)
+readonly -a OPT_NAMES=(run keep extend undo probe history show new-seed seed-check version manual all profile root config break-glass confirm-group approve yes no-revert only skip help)
+readonly -a OPT_KEYS=(run keep extend undo probe history show newseed seedcheck version manual all profile root config breakglass confirmgroup approve yes norevert only skip help)
+readonly -a OPT_VALUE=(0 1 1 1 0 0 1 0 0 0 0 0 1 1 1 1 1 1 0 0 1 1 0)
+readonly -a OPT_SHORT=(r k '' u '' '' '' '' '' V '' '' P '' '' '' '' '' y '' '' '' h)
+readonly -a OPT_ACTION=(1 1 1 1 1 1 1 1 1 1 1 0 0 0 0 0 0 0 0 0 0 0 0)
 # The flags that docs/Conventions.md section 3.3 plans and nothing builds yet,
 # one row each: the short letter, the long name's match key ('' when the name
 # is already an option) and how a message shows it. Typing one is a usage
@@ -196,7 +197,7 @@ Actions (one per line):
   -k, --keep ID           keep a run: cancel its revert timer
   -u, --undo ID [--all]   undo a run, newest change first
       --history           list this host's runs  --probe   test every service
-      --show ID           list what a run changed
+      --show ID           list a run's changes   --extend ID  delay the undo
       --new-seed          make a decoy seed      --seed-check   check a seed
   -V, --version           print the version      --manual   the full manual
 
@@ -249,6 +250,25 @@ Blocked: not root, a file another account can change, or too late
 (the run was already undone).
 Example: @CMD@ -k 4f2a
 See also: @CMD@ --history, @CMD@ -h undo
+EOF
+    ;;
+    extend) cat <<'EOF'
+Usage: @CMD@ --extend ID [--root DIR] [--config DIR]
+
+Push back a run's revert timer. Each call adds one timer length (5
+minutes, or REVERT_MINUTES in event.conf) to the time left on it, so
+two calls add 10. It takes no time: run it again to add more. There is
+no limit, but a run nobody extends is still undone. ID is always
+needed: a run ID or its last 4 characters. Without it, the armed runs
+are listed. Needs root or an Administrator.
+
+Options: --root DIR (data root), --config DIR (configuration folder)
+
+Exit: 0 extended, 20 blocked, 40 error.
+Blocked: not root, a file another account can change, or the run has no
+armed timer (kept, undone, or run with --no-revert).
+Example: @CMD@ --extend 4f2a
+See also: @CMD@ --history, @CMD@ -h keep
 EOF
     ;;
     undo) cat <<'EOF'
@@ -767,6 +787,13 @@ run_recovery() {
       else
         printf 'Nothing was kept.\n'
       fi ;;
+    extend)
+      if [[ -n "$ref" ]]; then
+        printf "The timer may not be extended; '%s --history' shows when it fires.\n" "$SELF"
+        printf 'Retry: %s --extend %s\n' "$SELF" "${ref: -4}"
+      else
+        printf 'Nothing was extended.\n'
+      fi ;;
     newseed) printf 'The decoy seed may or may not be saved; run --new-seed again to be sure.\n' ;;
     *) printf 'Nothing was changed.\n' ;;
   esac
@@ -1251,7 +1278,7 @@ stack_error() {
 # record_option ROW SEP VAL: record the option in row ROW. SEP is the
 # separator typed before VAL ('' when none); an option that takes a value
 # and has none there takes the next word, unless that word looks like an
-# option. -k, -u and --show go without a value, and main lists the runs.
+# option. -k, --extend, -u and --show go without a value, and main lists the runs.
 record_option() {
   local row="$1" sep="$2" val="$3" name show next=''
   name="${OPT_NAMES[row]}"; show="$(show_opt "$name")"
@@ -1265,7 +1292,7 @@ record_option() {
     if [[ -z "$sep" || ( "$sep" == : && -z "$val" ) ]]; then
       if (( P_I < ${#P_ARGS[@]} )); then next="${P_ARGS[P_I]}"; fi
       if (( P_I >= ${#P_ARGS[@]} )) || [[ "$next" == -?* ]]; then
-        if [[ "$name" != keep && "$name" != undo && "$name" != show ]]; then
+        if [[ "$name" != keep && "$name" != extend && "$name" != undo && "$name" != show ]]; then
           if (( P_I >= ${#P_ARGS[@]} )); then
             parse_fail "$show needs a value"
           else
@@ -1277,7 +1304,7 @@ record_option() {
         val="$next"; P_I=$((P_I + 1))
       fi
     fi
-    if [[ -z "$val" && "$name" != keep && "$name" != undo && "$name" != show ]]; then parse_fail "$show needs a value"; return 0; fi
+    if [[ -z "$val" && "$name" != keep && "$name" != extend && "$name" != undo && "$name" != show ]]; then parse_fail "$show needs a value"; return 0; fi
   elif [[ -n "$sep" ]]; then
     parse_fail "$show takes no value"; return 0
   fi
@@ -3076,23 +3103,27 @@ armed_runs() {
   done
 }
 
-cmd_keep() {
-  local rc=0 list
+# need_armed_run OPTION: OPTION (-k or --extend) always needs a run
+# (section 3.1): list the armed ones and stop with a usage error.
+need_armed_run() {
+  local list
   local -a armed=()
-  export LAB_DRY_RUN=0
-  if [[ -z "$1" ]]; then
-    # -k always needs a run (section 3.3): list the armed ones, keep none.
-    if ! lab_is_admin; then
-      usage_error '-k needs a run ID, or its last 4 characters' "As root, '$SELF --history' lists them."
-    fi
-    gate_trusted
-    list="$(armed_runs)" || die "the runs in $LAB_STATE_DIR/runs cannot be read" 40 "$FIX_DATA"
-    if [[ -z "$list" ]]; then
-      usage_error '-k needs a run ID, or its last 4 characters' 'No run on this host has an armed revert timer.'
-    fi
-    mapfile -t armed <<< "$list"; print_runs "${armed[@]}" >&2
-    usage_error '-k needs a run ID, or its last 4 characters' 'These runs have an armed revert timer; pick one from the list above.'
+  if ! lab_is_admin; then
+    usage_error "$1 needs a run ID, or its last 4 characters" "As root, '$SELF --history' lists them."
   fi
+  gate_trusted
+  list="$(armed_runs)" || die "the runs in $LAB_STATE_DIR/runs cannot be read" 40 "$FIX_DATA"
+  if [[ -z "$list" ]]; then
+    usage_error "$1 needs a run ID, or its last 4 characters" 'No run on this host has an armed revert timer.'
+  fi
+  mapfile -t armed <<< "$list"; print_runs "${armed[@]}" >&2
+  usage_error "$1 needs a run ID, or its last 4 characters" 'These runs have an armed revert timer; pick one from the list above.'
+}
+
+cmd_keep() {
+  local rc=0
+  export LAB_DRY_RUN=0
+  if [[ -z "$1" ]]; then need_armed_run -k; fi
   lab_is_admin || die '-k needs root' 20 "$FIX_ADMIN"
   gate_trusted
   resolve_run "$1"
@@ -3102,6 +3133,86 @@ cmd_keep() {
   umask 077
   log_open "keep run $LAB_RUN_ID"
   keep_run || rc=$?
+  if [[ -n "$LOG_FILE" ]]; then out "Log: $LOG_FILE"; fi
+  exit "$rc"
+}
+
+# extend_run: add one timer length (REVERT_MINUTES) to the time left on the
+# current run's revert timer, and record it (docs/Conventions.md section
+# 3.1). The new timer is armed before the earlier one is removed, so a
+# failed re-arm leaves the run covered. Returns 0, 20 or 40.
+extend_run() {
+  local state extra left secs mins due at when
+  lab_lock_acquire 10 || return 20
+  state="$(run_state "$LAB_RUN_ID")"
+  case "$state" in
+    armed*) ;;
+    undone*)
+      lab_lock_release
+      err "labyrinth: too late: run $LAB_RUN_ID was already undone"
+      err 'Its changes are gone, so there is no timer to extend.'
+      return 20 ;;
+    kept)
+      lab_lock_release
+      err "labyrinth: run $LAB_RUN_ID was already kept, so it has no revert timer to extend"
+      return 20 ;;
+    'no revert')
+      lab_lock_release
+      err "labyrinth: run $LAB_RUN_ID has no revert timer (--no-revert), so there is nothing to extend"
+      err "To undo it: $SELF -u ${LAB_RUN_ID: -4}"
+      return 20 ;;
+    *)
+      lab_lock_release
+      err "labyrinth: run $LAB_RUN_ID has no armed revert timer to extend"
+      return 20 ;;
+  esac
+  extra=$(( LAB_EVENT[REVERT_MINUTES] * 60 ))
+  left=0
+  left="$(lab_timer_left "$LAB_RUN_ID")" || left=0
+  secs=$(( left + extra ))
+  # Checked by hand: errexit is off inside a function called with ||.
+  if ! lab_timer_arm "$secs" "$LAB_RUN_ID" \
+      "$BASH" "$LAB_ROOT/labyrinth.sh" --root "$(readlink -m -- "$DATA_ROOT")" \
+      --config "$(readlink -m -- "$LAB_CONFIG_DIR")" -u "$LAB_RUN_ID"; then
+    lab_lock_release
+    when=''
+    if when="$(due_words "$LAB_RUN_ID")"; then when=" $when"; fi
+    err "labyrinth: the revert timer for run $LAB_RUN_ID could not be extended"
+    err "The earlier timer is unchanged and still undoes the run$when."
+    err "Retry: $SELF --extend ${LAB_RUN_ID: -4}$(data_opts)"
+    return 40
+  fi
+  mins=$(( (secs + 59) / 60 ))
+  if ! due="$(lab_timer_due "$LAB_RUN_ID")"; then due=''; fi
+  at="${due:11:5}"
+  if [[ -z "$at" ]]; then at="$(date -u -d "@$(( $(date +%s) + secs ))" +%H:%M)"; fi
+  if (( mins == 1 )); then when='1 minute'; else when="$mins minutes"; fi
+  if ! record_for '' timer_extended '' "added $((extra / 60)) minutes; now fires ${due:-$at UTC}"; then
+    lab_lock_release
+    err "labyrinth: the extension of run $LAB_RUN_ID could not be recorded"
+    err "The revert timer is extended: it now fires $at UTC (in $when)."
+    return 40
+  fi
+  lab_log_info timer_extended "revert timer extended by $((extra / 60)) minutes; now fires ${due:-$at UTC}"
+  lab_lock_release
+  out "Timer:  now fires $at UTC (in $when)"
+  out "Next:   $SELF -k ${LAB_RUN_ID: -4}$(data_opts)"
+}
+
+cmd_extend() {
+  local rc=0
+  export LAB_DRY_RUN=0
+  if [[ -z "$1" ]]; then need_armed_run --extend; fi
+  lab_is_admin || die '--extend needs root' 20 "$FIX_ADMIN"
+  gate_trusted
+  resolve_run "$1"
+  export LAB_RUN_ID="$RUN_REF"
+  [[ -f "$(lab_manifest_file)" ]] || die "no run $LAB_RUN_ID on this host" 40 "'$SELF --history' lists them."
+  lab_event_load 2>/dev/null || die "event.conf is malformed: $(load_reason lab_event_load)" 40 "$FIX_LINE"
+  flush_warnings
+  umask 077
+  log_open "extend run $LAB_RUN_ID"
+  extend_run || rc=$?
   if [[ -n "$LOG_FILE" ]]; then out "Log: $LOG_FILE"; fi
   exit "$rc"
 }
@@ -3533,6 +3644,7 @@ bad_word() {
   case "${lc//-/}" in
     run) hint="$SELF -r PHASE" ;;
     keep) hint="$SELF -k ID" ;;
+    extend) hint="$SELF --extend ID" ;;
     undo) hint="$SELF -u ID" ;;
     history) hint="$SELF --history" ;;
     show) hint="$SELF --show ID" ;;
@@ -3613,8 +3725,11 @@ main() {
       else
         label='-r'; used=(profile break-glass confirm-group approve)
       fi ;;
-    keep | undo | show)
+    keep | extend | undo | show)
       word="${GIVEN[$action]}"
+      if [[ "$action" == extend ]] && (( $# > 0 )); then
+        usage_error "--extend takes no time: each call adds one timer length"           "To add more, run it again: $SELF --extend${word:+ $word}"
+      fi
       (( $# == 0 )) || usage_error "unexpected word '$1' after '$(show_opt "$action")${word:+ $word}'"
       # A full run ID is accepted in any case, like its last 4 characters.
       if [[ "${word,,}" =~ ^[0-9]{8}t[0-9]{6}z-[0-9a-f]{4}$ ]]; then
@@ -3678,6 +3793,7 @@ main() {
     plan) cmd_plan "$phase" ;;
     apply) cmd_apply "$phase" ;;
     keep) cmd_keep "$word" ;;
+    extend) cmd_extend "$word" ;;
     rollback) cmd_rollback "$word" ;;
     probe) cmd_probe ;;
     runs) cmd_runs ;;

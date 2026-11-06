@@ -98,6 +98,12 @@ laby --keep 7f3a        long form, the same
 **Keep** run `7f3a`'s changes when you missed the keep question (for example, the window closed) but have checked a new login works. It must be done before the timer fires; after that, the changes are already undone.
 
 ```
+laby --extend 7f3a
+```
+
+**Extend** run `7f3a`'s revert timer when checking the logins is taking longer than the timer allows. Each call adds one timer length (5 minutes unless the team changed `REVERT_MINUTES`) to the time the timer has left: a timer with 2 minutes left fires in 7 after one call and in 12 after two. You never type a time. It only works on a run whose timer is still armed, and it does not keep the run: when the checks are done, keep it with `laby -k 7f3a`.
+
+```
 laby -u 7f3a            short form
 laby --undo 7f3a        long form, the same
 ```
