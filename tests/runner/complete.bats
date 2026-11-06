@@ -165,6 +165,41 @@ snapshot() {
   done
 }
 
+# arm ID: the run has an armed revert timer. finish ID ACTION: the run was kept,
+# undone, or run with no revert.
+arm() { printf 'lab-revert-%s-1\n' "$1" > "$ROOT/state/runs/$1/timer"; }
+finish() { printf '{"action":"%s"}\n' "$2" >> "$ROOT/state/runs/$1/manifest.jsonl"; }
+
+@test "after --extend, only the runs with an armed revert timer, newest first" {
+  run_dir 20261001T000000Z-aaaa; arm 20261001T000000Z-aaaa
+  run_dir 20261002T140301Z-4f2a; arm 20261002T140301Z-4f2a
+  run_dir 20261003T090000Z-9b1c
+  run_dir 20261004T090000Z-d00d; arm 20261004T090000Z-d00d; finish 20261004T090000Z-d00d run_kept
+  run_dir 20261005T090000Z-e11e; arm 20261005T090000Z-e11e; finish 20261005T090000Z-e11e run_rolled_back
+  run_dir 20261006T090000Z-f22f; arm 20261006T090000Z-f22f; finish 20261006T090000Z-f22f run_no_revert
+  comp --extend ''
+  [ "$status" -eq 0 ]
+  [ "$output" = $'4f2a\naaaa' ]
+  # A run shown by its last 4 characters must name one run among all of them.
+  run_dir 20260901T000000Z-aaaa
+  comp --extend ''
+  [ "$output" = $'4f2a\n20261001T000000Z-aaaa' ]
+  comp --extend 2026100
+  [ "$output" = $'20261002T140301Z-4f2a\n20261001T000000Z-aaaa' ]
+}
+
+@test "--extend is an action: it is offered, takes no phase, and fits only itself" {
+  bare -
+  has --extend
+  bare --extend 4f2a --
+  ! has --extend
+  ! has --run
+  ! has --all
+  has --root
+  bare --extend 4f2a ''
+  [ -z "$output" ]
+}
+
 @test "a run whose last 4 characters another run shares is offered whole" {
   run_dir 20261001T000000Z-4f2a
   run_dir 20261002T140301Z-4f2a

@@ -3757,7 +3757,7 @@ cmp_fits() {
   case "$name" in
     help | root | config) return 0 ;;
     run) [[ -z "$act" ]] ;;
-    keep | undo | probe | history | show | new-seed | seed-check | version | manual)
+    keep | extend | undo | probe | history | show | new-seed | seed-check | version | manual)
       [[ -z "$act" ]] && (( ! pre )) ;;
     all) [[ "$act" == undo ]] ;;
     yes) [[ "$act" == undo || "$act" == new-seed ]] ;;
@@ -3815,11 +3815,14 @@ cmp_profiles() {
   done
 }
 
-# cmp_runs: this host's run IDs, newest first. With nothing typed, a run is
-# written as its last four characters, which name it, or as its whole ID when
-# another run ends the same way; with text typed, whole IDs that begin with it.
+# cmp_runs [armed]: this host's run IDs, newest first. With nothing typed, a
+# run is written as its last four characters, which name it, or as its whole
+# ID when another run ends the same way; with text typed, whole IDs that begin
+# with it. With 'armed', only the runs whose revert timer is armed (a timer
+# file, and no kept, undone or no-revert entry), which --extend takes; the
+# short form still counts every run, since a name must fit one run.
 cmp_runs() {
-  local d id short other i dup
+  local d id short other i dup f
   local -a ids=()
   for d in "$CMP_ROOT"/state/runs/*/; do
     id="${d%/}"; id="${id##*/}"
@@ -3827,6 +3830,10 @@ cmp_runs() {
   done
   for ((i = ${#ids[@]} - 1; i >= 0; i--)); do
     id="${ids[i]}"; short="${id: -4}"; dup=0
+    if [[ "${1:-}" == armed ]]; then
+      f="$CMP_ROOT/state/runs/$id"
+      if [[ ! -f "$f/timer" ]] || grep -qE '"action":"run_(rolled_back|kept|no_revert)"' "$f/manifest.jsonl" 2> /dev/null; then continue; fi
+    fi
     for other in "${ids[@]}"; do
       if [[ "$other" != "$id" && "${other: -4}" == "$short" ]]; then dup=1; fi
     done
@@ -3893,12 +3900,13 @@ cmd_complete() {
   if (( CMP_ENDED )); then return 0; fi
   # -k, -u and --show may be left without an ID, so an option can follow.
   if [[ -n "$CMP_PENDING" && "$CMP_CUR" == -* ]]; then
-    case "$CMP_PENDING" in keep | undo | show) CMP_PENDING='' ;; esac
+    case "$CMP_PENDING" in keep | extend | undo | show) CMP_PENDING='' ;; esac
   fi
   if [[ -n "$CMP_PENDING" ]]; then
     case "$CMP_PENDING" in
       profile) cmp_profiles ;;
       keep | undo | show) cmp_runs ;;
+      extend) cmp_runs armed ;;
       only | skip) cmp_modules ;;
     esac
     return 0

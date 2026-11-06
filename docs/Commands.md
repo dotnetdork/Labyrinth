@@ -209,6 +209,7 @@ The installer sets up the Tab key for `laby` and `labyrinth`. Type part of a wor
 | `-r` | the phases |
 | `-P` | the profile names |
 | `-k`, `-u`, `--show` | this host's runs, newest first, as their last four characters (the whole ID when two runs end the same way) |
+| `--extend` | the same, but only the runs with an armed revert timer |
 | `-h` | the help topics: every action, option, phase and module ID, and `basics` |
 | `--only`, `--skip` | the module IDs of the phase on the line, one at a time in a comma list |
 

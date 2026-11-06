@@ -162,6 +162,20 @@ Describe 'labyrinth.ps1 --complete' {
         }
     }
 
+    It 'offers only the runs with an armed revert timer after -Extend, newest first' {
+        $arm = { param($id) Set-Content -LiteralPath (Join-Path $t.Root "state\runs\$id\timer") -Value "lab-revert-$id-1" }
+        $end = { param($id, $action) Add-Content -LiteralPath (Join-Path $t.Root "state\runs\$id\manifest.jsonl") -Value ('{"action":"' + $action + '"}') }
+        Write-TestRun $t '20261001T000000Z-aaaa'; & $arm '20261001T000000Z-aaaa'
+        Write-TestRun $t '20261002T140301Z-4f2a'; & $arm '20261002T140301Z-4f2a'
+        Write-TestRun $t '20261003T090000Z-9b1c'
+        Write-TestRun $t '20261004T090000Z-d00d'; & $arm '20261004T090000Z-d00d'; & $end '20261004T090000Z-d00d' 'run_kept'
+        Write-TestRun $t '20261005T090000Z-e11e'; & $arm '20261005T090000Z-e11e'; & $end '20261005T090000Z-e11e' 'run_rolled_back'
+        Write-TestRun $t '20261006T090000Z-f22f'; & $arm '20261006T090000Z-f22f'; & $end '20261006T090000Z-f22f' 'run_no_revert'
+        Assert-TestList (Get-TestComp $t @('-Extend', '')) (@('4f2a', 'aaaa'))
+        Write-TestRun $t '20260901T000000Z-aaaa'
+        Assert-TestList (Get-TestComp $t @('-Extend', '')) (@('4f2a', '20261001T000000Z-aaaa'))
+    }
+
     It 'offers a run whole when another run ends the same way' {
         Write-TestRun $t '20261001T000000Z-4f2a'
         Write-TestRun $t '20261002T140301Z-4f2a'

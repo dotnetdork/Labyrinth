@@ -3909,7 +3909,7 @@ function Test-LabCompletionFit {
     switch -CaseSensitive ($Name) {
         { $_ -in 'help', 'root', 'config' } { return $true }
         'run' { return ($Act -eq '') }
-        { $_ -in 'keep', 'undo', 'probe', 'history', 'show', 'new-seed', 'seed-check', 'version', 'manual' } {
+        { $_ -in 'keep', 'extend', 'undo', 'probe', 'history', 'show', 'new-seed', 'seed-check', 'version', 'manual' } {
             return ($Act -eq '' -and -not $Pre)
         }
         'all' { return ($Act -ceq 'undo') }
@@ -3975,8 +3975,11 @@ function Write-LabCompletionProfile {
 # Write-LabCompletionRun: this host's run IDs, newest first. With nothing
 # typed, a run is written as its last four characters, which name it, or as
 # its whole ID when another run ends the same way; with text typed, whole IDs
-# that begin with it.
+# that begin with it. With -Armed, only the runs whose revert timer is armed (a
+# timer file, and no kept, undone or no-revert entry), which -Extend takes; the
+# short form still counts every run, since a name must fit one run.
 function Write-LabCompletionRun {
+    param([switch] $Armed)
     $dir = Join-Path (Join-Path $script:Cmp.Root 'state') 'runs'
     if (-not (Test-Path -LiteralPath $dir -PathType Container)) { return }
     $ids = @(Get-ChildItem -LiteralPath $dir -Directory | Where-Object {
@@ -3985,6 +3988,12 @@ function Write-LabCompletionRun {
     foreach ($id in $ids) {
         $short = $id.Substring($id.Length - 4)
         $dup = @($ids | Where-Object { $_ -cne $id -and $_.EndsWith($short, [StringComparison]::Ordinal) }).Count -gt 0
+        if ($Armed) {
+            $runDir = Join-Path $dir $id
+            if (-not (Test-Path -LiteralPath (Join-Path $runDir 'timer'))) { continue }
+            $ended = Select-String -LiteralPath (Join-Path $runDir 'manifest.jsonl') -Pattern '"action":"run_(rolled_back|kept|no_revert)"' -Quiet
+            if ($ended) { continue }
+        }
         if ($script:Cmp.Cur -eq '') {
             if ($dup) { Write-LabCompletionCandidate $id } else { Write-LabCompletionCandidate $short }
         } elseif (Test-LabCompletionMatch $id $script:Cmp.Cur) {
@@ -4056,13 +4065,14 @@ function Write-LabCompletion {
         }
         if ($script:Cmp.Ended) { return }
         # -k, -u and -Show may be left without an ID, so an option can follow.
-        if ($script:Cmp.Pending -ne '' -and $cur.StartsWith('-') -and $script:Cmp.Pending -cin 'keep', 'undo', 'show') {
+        if ($script:Cmp.Pending -ne '' -and $cur.StartsWith('-') -and $script:Cmp.Pending -cin 'keep', 'extend', 'undo', 'show') {
             $script:Cmp.Pending = ''
         }
         if ($script:Cmp.Pending -ne '') {
             switch -CaseSensitive ($script:Cmp.Pending) {
                 'profile' { Write-LabCompletionProfile }
                 { $_ -in 'keep', 'undo', 'show' } { Write-LabCompletionRun }
+                'extend' { Write-LabCompletionRun -Armed }
                 { $_ -in 'only', 'skip' } { Write-LabCompletionModule }
             }
             return
