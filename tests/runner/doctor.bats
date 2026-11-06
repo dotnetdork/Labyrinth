@@ -81,9 +81,9 @@ armed_run() {
   [ "${lines[5]}" = 'OK    clock is set and time sync is running (fake-timesyncd)' ]
   [ "${lines[6]}" = 'OK    tools for the test profile: present' ]
   [ "${lines[7]}" = 'OK    no stale revert timer' ]
-  [ "${lines[8]}" = '' ]
-  [ "${lines[9]}" = 'Ready for a run.' ]
-  [ "${#lines[@]}" -eq 10 ]
+  # bats drops the blank line before the last line.
+  [ "${lines[8]}" = 'Ready for a run.' ]
+  [ "${#lines[@]}" -eq 9 ]
   [[ "$output" != *FAIL* && "$output" != *WARN* && "$output" != *Next:* ]]
 }
 
@@ -102,9 +102,11 @@ armed_run() {
   [ "${lines[0]}" = 'FAIL  release: core/lib.sh differs from the release' ]
   [[ "${lines[1]}" == '      Fix: Copy Labyrinth here again'* ]]
   [ "${lines[2]}" = '      The other checks were not run.' ]
-  [ "${lines[3]}" = '' ]
-  [ "${lines[4]}" = "Next: ${lines[1]#      Fix: }" ]
-  [ "${#lines[@]}" -eq 5 ]
+  [ "${lines[3]}" = "Next: ${lines[1]#      Fix: }" ]
+  [ "${#lines[@]}" -eq 4 ]
+  [[ "$output" == *$'The other checks were not run.
+
+Next: '* ]]
 }
 
 @test "release: a file planted in a module folder is a FAIL too" {
