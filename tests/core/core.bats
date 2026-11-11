@@ -204,6 +204,47 @@ stub() {
   [ "$(cat "$f")" = one ]
 }
 
+@test "manifest: a backup that cannot be copied records nothing and fails" {
+  f="$BATS_TEST_TMPDIR/files/c.conf"
+  printf 'orig\n' > "$f"
+  # The backup folder cannot be made: a file stands where its parent would be.
+  : > "$BATS_TEST_TMPDIR/blocker"
+  LAB_BACKUP_DIR="$BATS_TEST_TMPDIR/blocker/backups" run lab_backup_file "$f"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"was not backed up"* ]]
+  [ ! -s "$(lab_manifest_file)" ]
+  if [[ "$(id -u)" != 0 ]]; then
+    # The folder exists, but the copy cannot be written into it.
+    dir="$LAB_BACKUP_DIR/$LAB_RUN_ID/observe.unit"
+    mkdir -p "$dir"
+    chmod 555 "$dir"
+    run lab_backup_file "$f"
+    chmod 755 "$dir"
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"was not backed up"* ]]
+    [ ! -s "$(lab_manifest_file)" ]
+    [ -z "$(ls -A "$dir")" ]
+  fi
+}
+
+@test "manifest: a restore that cannot write the file fails and names the backup" {
+  [[ "$(id -u)" != 0 ]] || skip 'root can write the file'
+  f="$BATS_TEST_TMPDIR/files/d.conf"
+  printf 'orig\n' > "$f"
+  lab_backup_file "$f"
+  printf 'changed\n' > "$f"
+  chmod 444 "$f"
+  run lab_restore_files
+  chmod 644 "$f"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"could not write $f"* ]]
+  [[ "$output" == *"restore it by hand from $LAB_BACKUP_DIR/$LAB_RUN_ID/observe.unit/"* ]]
+  [ "$(cat "$f")" = changed ]
+  # Once the file can be written, the same restore works.
+  lab_restore_files
+  [ "$(cat "$f")" = orig ]
+}
+
 @test "manifest: only the module's own entries are restored" {
   f="$BATS_TEST_TMPDIR/files/b.conf"
   printf 'orig\n' > "$f"

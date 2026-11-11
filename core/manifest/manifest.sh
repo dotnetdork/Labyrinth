@@ -86,9 +86,12 @@ lab_json_get() {
 
 # lab_backup_file PATH: before changing PATH, copy it to the run's backup
 # folder and record it, so rollback can put it back. If PATH does not exist
-# yet, record that the module creates it.
+# yet, record that the module creates it. Returns 1, recording nothing, when
+# the copy cannot be made: the caller must then leave PATH alone. The copy
+# is made under a temporary name and renamed, so a backup the manifest lists
+# is always a whole one.
 lab_backup_file() {
-  local path="$1" dir dest
+  local path="$1" dir dest seq
   [[ "$path" == /* ]] || { printf 'backup: path must be absolute: %s\n' "$path" >&2; return 1; }
   if [[ -L "$path" || ( -e "$path" && ! -f "$path" ) ]]; then
     printf 'backup: not a regular file: %s\n' "$path" >&2
@@ -96,17 +99,26 @@ lab_backup_file() {
   fi
   if [[ -f "$path" ]]; then
     dir="$LAB_BACKUP_DIR/$LAB_RUN_ID/$LAB_MODULE_ID"
-    mkdir -p "$dir"
-    dest="$dir/$(lab_manifest_next_seq)-${path##*/}"
-    cp -p -- "$path" "$dest"
-    lab_manifest_record file "$path" "$dest"
+    if ! mkdir -p "$dir"; then
+      printf 'backup: cannot create %s; %s was not backed up\n' "$dir" "$path" >&2
+      return 1
+    fi
+    seq="$(lab_manifest_next_seq)" || return 1
+    dest="$dir/$seq-${path##*/}"
+    if ! cp -p -- "$path" "$dest.part" || ! mv -- "$dest.part" "$dest"; then
+      rm -f -- "$dest.part"
+      printf 'backup: could not copy %s to %s; it was not backed up\n' "$path" "$dest" >&2
+      return 1
+    fi
+    lab_manifest_record file "$path" "$dest" || return 1
   else
-    lab_manifest_record file_created "$path"
+    lab_manifest_record file_created "$path" || return 1
   fi
 }
 
 # lab_restore_one BACKUP TARGET: put a backed-up file back, keeping the
-# target's identity (inode, SELinux label) when it still exists.
+# target's identity (inode, SELinux label) when it still exists. Returns 1
+# on the first step that fails, saying what state the target is left in.
 lab_restore_one() {
   local backup="$1" target="$2"
   [[ -f "$backup" ]] || { printf 'restore: backup missing: %s\n' "$backup" >&2; return 1; }
@@ -115,11 +127,18 @@ lab_restore_one() {
     return 1
   fi
   if [[ -f "$target" ]]; then
-    cat -- "$backup" > "$target"
-    chmod --reference="$backup" -- "$target"
-    chown --reference="$backup" -- "$target"
-  else
-    cp -p -- "$backup" "$target"
+    # Written into the existing file, so a failure part way leaves it short.
+    if ! cat -- "$backup" > "$target"; then
+      printf 'restore: could not write %s, which may now be incomplete; restore it by hand from %s\n' "$target" "$backup" >&2
+      return 1
+    fi
+    if ! chmod --reference="$backup" -- "$target" || ! chown --reference="$backup" -- "$target"; then
+      printf 'restore: %s has its content back, but its mode or owner could not be set; compare it with %s\n' "$target" "$backup" >&2
+      return 1
+    fi
+  elif ! cp -p -- "$backup" "$target"; then
+    printf 'restore: could not copy %s back to %s\n' "$backup" "$target" >&2
+    return 1
   fi
   if command -v restorecon > /dev/null 2>&1; then
     restorecon -- "$target" 2> /dev/null || true
