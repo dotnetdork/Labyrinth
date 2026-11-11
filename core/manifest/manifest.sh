@@ -85,13 +85,26 @@ lab_json_get() {
 }
 
 # lab_copy_private PATH: make a copy Labyrinth keeps under its data root
-# changeable only by the account Labyrinth runs as (root): mode 600, unless
-# it is a symbolic link, then that account as owner. Everything under the
+# changeable only by the account Labyrinth runs as (root): that account as
+# owner, then mode 600 unless it is a symbolic link. Everything under the
 # data root must be so, or Labyrinth refuses to run (lab_tree_trusted). The
-# mode goes first, so a set-user-ID file never becomes root's.
+# owner goes first, so the old owner cannot change the mode again; Linux
+# clears set-user-ID when the owner changes. A moved file that has another
+# name elsewhere (a hard link) is first replaced by a fresh copy, so the
+# file behind the other name keeps its owner and mode.
 lab_copy_private() {
-  [[ -L "$1" ]] || chmod -- 600 "$1" || return 1
-  chown -h -- "$(id -u):$(id -g)" "$1"
+  local links
+  if [[ -f "$1" && ! -L "$1" ]]; then
+    links="$(stat -c %h -- "$1")" || return 1
+    if ((links > 1)); then
+      if ! (umask 077 && cp --preserve=timestamps -- "$1" "$1.part") || ! mv -f -- "$1.part" "$1"; then
+        rm -f -- "$1.part"
+        return 1
+      fi
+    fi
+  fi
+  chown -h -- "$(id -u):$(id -g)" "$1" || return 1
+  [[ -L "$1" ]] || chmod -- 600 "$1"
 }
 
 # lab_backup_file PATH: before changing PATH, copy it to the run's backup

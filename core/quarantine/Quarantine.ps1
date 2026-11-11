@@ -61,6 +61,12 @@ function Move-LabQuarantineFile {
         Write-LabQuarantineError "refusing a folder (list it for a person): $Path"
         return 20
     }
+    # A link is left for a person: its owner and access list cannot be read
+    # or set without reaching the file it points to.
+    if ((Get-Item -LiteralPath $Path -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) {
+        Write-LabQuarantineError "refusing a link (list it for a person): $Path"
+        return 20
+    }
     # A file that cannot be read (locked or denied) or moved is one item left
     # for a person, not an error that stops the whole sweep.
     try {
@@ -115,6 +121,10 @@ function Restore-LabQuarantineFile {
         return 40
     }
     if (Test-Path -LiteralPath $target) {
+        if ((Get-Item -LiteralPath $target -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) {
+            Write-LabQuarantineError "a link is now at $target; remove it by hand, then restore again from $backup"
+            return 40
+        }
         $aside = Join-Path (Get-LabQuarantineDir) ('aside-{0}\{1}' -f $Entry.seq, ($target -replace ':', ''))
         New-Item -ItemType Directory -Path (Split-Path -Parent $aside) -Force | Out-Null
         $was = 'unknown'

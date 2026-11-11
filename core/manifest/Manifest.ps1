@@ -112,6 +112,9 @@ function Restore-LabBackup {
             # A moved file keeps its own owner and access list, so it is made
             # private like every copy under the data root; they go in the log.
             try {
+                if ((Get-Item -LiteralPath $e.target -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) {
+                    throw "restore: $($e.target) is now a link; move it away by hand"
+                }
                 $was = 'unknown'
                 try { $was = Get-LabFileSddl -Path $e.target } catch { Write-Verbose 'access list not read' }
                 Move-Item -LiteralPath $e.target -Destination $aside

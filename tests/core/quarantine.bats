@@ -75,6 +75,23 @@ manifest_field() { lab_json_get "$(grep "\"action\":\"$1\"" "$(lab_manifest_file
   [ -z "$(find "$LAB_BACKUP_DIR" -type f -perm /022)" ]
 }
 
+@test "file: a planted hard link is quarantined without touching the file behind its other name" {
+  printf 'site config\n' > "$R/etc/config"
+  chmod 664 "$R/etc/config"
+  ln "$R/etc/config" "$R/tmp/.x"
+  lab_quarantine_file "$R/tmp/.x" 'planted hard link'
+  local dest
+  dest="$(manifest_field quarantine_file backup)"
+  absent "$R/tmp/.x"
+  [ "$(stat -c '%u %a %h' "$R/etc/config")" = "$(id -u) 664 1" ]
+  [ "$(stat -c '%u %a %h' "$dest")" = "$(id -u) 600 1" ]
+  [ "$(cat "$dest")" = 'site config' ]
+  lab_quarantine_restore
+  [ "$(cat "$R/tmp/.x")" = 'site config' ]
+  [ "$(stat -c %a "$R/tmp/.x")" = 664 ]
+  [ "$(stat -c %a "$R/etc/config")" = 664 ]
+}
+
 @test "file: a symbolic link is moved, not followed" {
   printf 'keep\n' > "$R/etc/target"
   ln -s "$R/etc/target" "$R/etc/link"

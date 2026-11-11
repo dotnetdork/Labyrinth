@@ -89,9 +89,21 @@ function Invoke-LabFileOwner {
 # an access list of its own that names only those two. A file moved there
 # keeps its own owner and access list, and Labyrinth refuses to run while
 # another account can change anything under its data root
-# (Find-LabUntrustedItem). Throws if it cannot.
+# (Find-LabUntrustedItem). A link is refused: the access list calls would
+# reach the file it points to. A file that has another name elsewhere (a
+# hard link) is first replaced by a fresh copy, so the file behind the other
+# name keeps its owner and access list. Throws if it cannot.
 function Protect-LabCopy {
     param([Parameter(Mandatory)] [string] $Path)
+    $item = Get-Item -LiteralPath $Path -Force
+    if ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) {
+        throw "$Path is a link; set its owner and access by hand"
+    }
+    if ("$($item.LinkType)" -eq 'HardLink') {
+        [IO.File]::Copy($Path, "$Path.part", $true)
+        [IO.File]::Delete($Path)
+        [IO.File]::Move("$Path.part", $Path)
+    }
     Invoke-LabFileOwner -Path $Path -Sid 'S-1-5-32-544'
     $acl = New-Object Security.AccessControl.FileSecurity
     $acl.SetAccessRuleProtection($true, $false)

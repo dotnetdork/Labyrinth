@@ -86,6 +86,35 @@ Describe 'quarantine' {
         @($moved.GetAccessRules($true, $true, $sidType) | Where-Object { $_.IdentityReference.Value -ceq 'S-1-5-32-545' }).Count | Should -Be 0
     }
 
+    It 'file: a planted hard link is quarantined without touching the file behind its other name, and a link is refused' {
+        $sidType = [Security.Principal.SecurityIdentifier]
+        $real = Join-Path $items 'config.ps1'
+        [IO.File]::WriteAllText($real, 'site config')
+        $users = New-Object Security.Principal.SecurityIdentifier 'S-1-5-32-545'
+        $acl = [IO.File]::GetAccessControl($real)
+        $acl.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule($users, 'Modify', 'Allow')))
+        [IO.File]::SetAccessControl($real, $acl)
+        Invoke-LabFileOwner -Path $real -Sid 'S-1-5-32-545'
+        $planted = Join-Path $items 'planted.ps1'
+        New-Item -ItemType HardLink -Path $planted -Value $real | Out-Null
+
+        Move-LabQuarantineFile -Path $planted -Reason test | Should -Be 0
+        Test-Path -LiteralPath $planted | Should -BeFalse
+        $after = [IO.File]::GetAccessControl($real)
+        $after.GetOwner($sidType).Value | Should -Be 'S-1-5-32-545'
+        @($after.GetAccessRules($true, $false, $sidType) | Where-Object { $_.IdentityReference.Value -ceq 'S-1-5-32-545' }).Count | Should -Be 1
+        $copy = @(Get-TestEntry 'quarantine_file')[0].backup
+        [IO.File]::ReadAllText($copy) | Should -Be 'site config'
+        $kept = [IO.File]::GetAccessControl($copy)
+        $kept.GetOwner($sidType).Value | Should -Be 'S-1-5-32-544'
+        @($kept.GetAccessRules($true, $true, $sidType) | Where-Object { $_.IdentityReference.Value -ceq 'S-1-5-32-545' }).Count | Should -Be 0
+
+        $link = Join-Path $items 'link.ps1'
+        New-Item -ItemType SymbolicLink -Path $link -Value $real | Out-Null
+        Move-LabQuarantineFile -Path $link -Reason test 2> $null | Should -Be 20
+        Test-Path -LiteralPath $link | Should -BeTrue
+    }
+
     It 'file: refused in plan mode, for a folder, a relative path or Labyrinth''s own tree' {
         $f = Join-Path $items 'a.ps1'
         [IO.File]::WriteAllText($f, 'x')
