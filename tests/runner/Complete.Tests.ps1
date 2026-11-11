@@ -313,10 +313,23 @@ Describe 'the Labyrinth tab completion module' {
         Copy-Item -LiteralPath (Join-Path $t.Lab 'phases') -Destination $bin -Recurse
         Copy-Item -LiteralPath (Join-Path $t.Lab 'profiles') -Destination $bin -Recurse
         Set-Content -LiteralPath (Join-Path $bin 'laby.cmd') -Value '@echo off' -Encoding Ascii
+        # The module as install.ps1 leaves it: the completer and, beside it, a
+        # manifest that records the code folder.
+        $modDir = Join-Path (Join-Path $TestDrive ([Guid]::NewGuid().ToString('N'))) 'Labyrinth'
+        New-Item -ItemType Directory -Path $modDir | Out-Null
+        Copy-Item -LiteralPath (Join-Path $script:Repo 'core\completion\Labyrinth.psm1') -Destination $modDir
+        Set-Content -LiteralPath (Join-Path $modDir 'Labyrinth.psd1') -Encoding Ascii -Value @(
+            '@{',
+            "    ModuleVersion = '1.0.0'",
+            "    RootModule    = 'Labyrinth.psm1'",
+            "    PrivateData   = @{ CodeDir = '$bin' }",
+            '}'
+        )
+        $installed = Join-Path $modDir 'Labyrinth.psd1'
     }
 
     It 'completes a laby command line through TabExpansion2 in a fresh PowerShell' {
-        $module = Join-Path $script:Repo 'core\completion\Labyrinth.psm1'
+        $module = $installed
         $script = @"
 `$env:PATH = '$bin;' + `$env:PATH
 Import-Module '$module'
@@ -338,8 +351,46 @@ Import-Module '$module'
         @($out.Result -split '\r?\n' | Where-Object { $_ -ne '' }) | Should -Be @('lockout', 'observe', 'deceive', 'sustain')
     }
 
-    It 'offers nothing of Labyrinth''s for a laby that is not Labyrinth''s launcher' {
+    It 'never runs a labyrinth.ps1 beside a laby outside the recorded code folder' {
+        $module = $installed
+        $other = Join-Path $TestDrive ([Guid]::NewGuid().ToString('N'))
+        New-Item -ItemType Directory -Path $other | Out-Null
+        Set-Content -LiteralPath (Join-Path $other 'laby.cmd') -Value '@echo off' -Encoding Ascii
+        # A script of the runner's name beside it, which would leave a mark if run.
+        $mark = Join-Path $other 'ran.txt'
+        Set-Content -LiteralPath (Join-Path $other 'labyrinth.ps1') -Encoding Ascii -Value @(
+            "Set-Content -LiteralPath '$mark' -Value ran",
+            "'lockout'"
+        )
+        $script = @"
+`$env:PATH = '$other;' + `$env:PATH
+Import-Module '$module'
+`$line = 'laby -r '
+@((TabExpansion2 -inputScript `$line -cursorColumn `$line.Length).CompletionMatches | Where-Object { `$_.CompletionText -in 'lockout', 'observe', 'deceive', 'sustain' }).Count
+"@
+        $file = Join-Path $TestDrive 'tab3.ps1'
+        Set-Content -LiteralPath $file -Value $script -Encoding Ascii
+        $out = & $script:HostExe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $file 2>&1
+        @($out | ForEach-Object { "$_" }) | Should -Be @('0')
+        $mark | Should -Not -Exist
+    }
+
+    It 'offers nothing when no manifest beside the module records the code folder' {
         $module = Join-Path $script:Repo 'core\completion\Labyrinth.psm1'
+        $script = @"
+`$env:PATH = '$bin;' + `$env:PATH
+Import-Module '$module'
+`$line = 'laby -r '
+@((TabExpansion2 -inputScript `$line -cursorColumn `$line.Length).CompletionMatches | Where-Object { `$_.CompletionText -in 'lockout', 'observe', 'deceive', 'sustain' }).Count
+"@
+        $file = Join-Path $TestDrive 'tab4.ps1'
+        Set-Content -LiteralPath $file -Value $script -Encoding Ascii
+        $out = & $script:HostExe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $file 2>&1
+        @($out | ForEach-Object { "$_" }) | Should -Be @('0')
+    }
+
+    It 'offers nothing of Labyrinth''s for a laby that is not Labyrinth''s launcher' {
+        $module = $installed
         $other = Join-Path $TestDrive ([Guid]::NewGuid().ToString('N'))
         New-Item -ItemType Directory -Path $other | Out-Null
         Set-Content -LiteralPath (Join-Path $other 'laby.cmd') -Value '@echo off' -Encoding Ascii
