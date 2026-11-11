@@ -30,8 +30,10 @@ function Save-LabBreakGlass {
 }
 
 # Enter-LabLock [-WaitSeconds N]: take the host's run lock, so two runs never
-# change the same host at once. A lock whose holder is gone is taken over.
-# Returns $false if the lock is still held after N seconds.
+# change the same host at once. A lock whose holder is gone is taken over,
+# and so is one whose process ID now belongs to another process (the lock
+# records when its holder started). Returns $false if the lock is still held
+# after N seconds.
 function Enter-LabLock {
     param([int] $WaitSeconds = 0)
     $lock = Join-Path $env:LAB_STATE_DIR 'lock'
@@ -43,9 +45,9 @@ function Enter-LabLock {
             New-Item -ItemType Directory -Path $lock -ErrorAction Stop | Out-Null
             break
         } catch {
-            $holder = ''
-            if (Test-Path -LiteralPath $pidFile) { $holder = ([IO.File]::ReadAllText($pidFile)).Trim() }
-            if ($holder -match '^\d+$' -and -not (Get-Process -Id ([int]$holder) -ErrorAction SilentlyContinue)) {
+            $found = Get-LabLockHolder
+            $holder = $found.Id
+            if ($found.State -eq 'gone') {
                 Clear-LabLockFolder -Path $lock
                 continue
             }
@@ -58,15 +60,55 @@ function Enter-LabLock {
             $waited++
         }
     }
-    [IO.File]::WriteAllText($pidFile, "$PID`n")
+    [IO.File]::WriteAllText($pidFile, "$PID $(Get-LabProcessStart -Id $PID)`n")
     return $true
 }
 
-# Get-LabDescendantId PID: the process IDs below PID, children first.
+# Get-LabProcessStart -Id PID: when the process started, as UTC ticks, or ''
+# when it is gone or its start time cannot be read.
+function Get-LabProcessStart {
+    param([Parameter(Mandatory)] [int] $Id)
+    try {
+        return [string](Get-Process -Id $Id -ErrorAction Stop).StartTime.ToUniversalTime().Ticks
+    } catch {
+        return ''
+    }
+}
+
+# Get-LabLockHolder: who the lock's pid file, "PID START", names: Id (the
+# file's text when it holds no process ID) and State. State is 'none' with no
+# pid file or no process ID in it; 'gone' when no process has the ID, or one
+# has it but started at another time, so the ID was reused; 'live' when the
+# process that took the lock is still there; and 'unknown' when a process
+# has the ID but the lock records no start time, or the process's start
+# time cannot be read, so this cannot be told.
+function Get-LabLockHolder {
+    $pidFile = Join-Path (Join-Path $env:LAB_STATE_DIR 'lock') 'pid'
+    $found = @{ Id = ''; Start = ''; State = 'none' }
+    if (-not (Test-Path -LiteralPath $pidFile)) { return $found }
+    $text = ([IO.File]::ReadAllText($pidFile)).Trim()
+    $found.Id = $text
+    if ($text -notmatch '^(\d+)(?: (\d+))?$') { return $found }
+    $found.Id = $Matches[1]
+    $start = [string]$Matches[2]
+    $found.Start = $start
+    if (-not (Get-Process -Id ([int]$found.Id) -ErrorAction SilentlyContinue)) { $found.State = 'gone'; return $found }
+    $now = Get-LabProcessStart -Id ([int]$found.Id)
+    if ($start -eq '' -or $now -eq '') { $found.State = 'unknown' }
+    elseif ($now -cne $start) { $found.State = 'gone' }
+    else { $found.State = 'live' }
+    return $found
+}
+
+# Get-LabDescendantId -ParentId PID -Since TIME: the process IDs below PID,
+# children first. PID started at TIME, and only processes created since then
+# count: Windows keeps a parent's ID on its children after the parent ends,
+# so an older process naming PID is the child of an earlier owner of that ID.
 function Get-LabDescendantId {
-    param([int] $ParentId)
+    param([int] $ParentId, [Parameter(Mandatory)] [datetime] $Since)
     foreach ($p in @(Get-CimInstance -ClassName Win32_Process -Filter "ParentProcessId = $ParentId" -ErrorAction SilentlyContinue)) {
-        Get-LabDescendantId -ParentId ([int]$p.ProcessId)
+        if ($null -eq $p.CreationDate -or $p.CreationDate -lt $Since) { continue }
+        Get-LabDescendantId -ParentId ([int]$p.ProcessId) -Since $p.CreationDate
         [int]$p.ProcessId
     }
 }
@@ -74,22 +116,36 @@ function Get-LabDescendantId {
 # Close-LabLockHolder [-WaitSeconds N]: stop the live run that holds the lock
 # and the entry points it started, waiting up to N seconds for it to end.
 # The revert timer's rollback uses it, so it never undoes a run while that
-# run is still changing the host. Returns $false if the holder still lives.
+# run is still changing the host. Only the process that took the lock is
+# ever stopped: a process that merely has the recorded ID, started at another
+# time, is left alone, and so is one whose start cannot be compared.
+# Returns $false if the holder still lives.
 function Close-LabLockHolder {
     param([int] $WaitSeconds = 30)
-    $pidFile = Join-Path (Join-Path $env:LAB_STATE_DIR 'lock') 'pid'
-    if (-not (Test-Path -LiteralPath $pidFile)) { return $true }
-    $holder = ([IO.File]::ReadAllText($pidFile)).Trim()
-    if ($holder -notmatch '^\d+$' -or [int]$holder -eq $PID) { return $true }
-    if (-not (Get-Process -Id ([int]$holder) -ErrorAction SilentlyContinue)) { return $true }
-    [Console]::Error.WriteLine("stopping the Labyrinth run (pid $holder) that holds the lock")
-    $ids = @(Get-LabDescendantId -ParentId ([int]$holder)) + @([int]$holder)
-    foreach ($id in $ids) { Stop-Process -Id $id -Force -ErrorAction SilentlyContinue }
-    for ($n = 0; $n -lt $WaitSeconds; $n++) {
-        if (-not (Get-Process -Id ([int]$holder) -ErrorAction SilentlyContinue)) { return $true }
-        Start-Sleep -Seconds 1
+    $found = Get-LabLockHolder
+    if ($found.State -eq 'none' -or $found.State -eq 'gone') { return $true }
+    $holder = $found.Id
+    if ([int]$holder -eq $PID) { return $true }
+    if ($found.State -eq 'unknown') {
+        [Console]::Error.WriteLine("not stopping pid $holder, which the lock names: the lock does not record when its holder started, so this may be another program")
+        return $false
     }
-    return $false
+    # The holder is stopped through this object, which keeps the process open
+    # once its start time is read, so its ID cannot pass to another process
+    # before it is stopped. Checked again: it may have ended since the read above.
+    try {
+        $proc = Get-Process -Id ([int]$holder) -ErrorAction Stop
+        $started = $proc.StartTime
+    } catch {
+        return $true
+    }
+    if ([string]$started.ToUniversalTime().Ticks -cne $found.Start) { return $true }
+    [Console]::Error.WriteLine("stopping the Labyrinth run (pid $holder) that holds the lock")
+    foreach ($id in @(Get-LabDescendantId -ParentId ([int]$holder) -Since $started)) {
+        Stop-Process -Id $id -Force -ErrorAction SilentlyContinue
+    }
+    try { $proc.Kill() } catch { Write-Verbose "holder not stopped: $($_.Exception.Message)" }
+    return $proc.WaitForExit($WaitSeconds * 1000)
 }
 
 # Exit-LabLock: release the run lock if this process holds it.
@@ -97,7 +153,7 @@ function Exit-LabLock {
     $lock = Join-Path $env:LAB_STATE_DIR 'lock'
     $pidFile = Join-Path $lock 'pid'
     if (-not (Test-Path -LiteralPath $pidFile)) { return }
-    if (([IO.File]::ReadAllText($pidFile)).Trim() -ne "$PID") { return }
+    if (([IO.File]::ReadAllText($pidFile)).Trim() -notmatch "^$PID( \d+)?$") { return }
     Clear-LabLockFolder -Path $lock
 }
 

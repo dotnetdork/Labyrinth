@@ -313,7 +313,10 @@ Describe 'install.ps1 installs' -Skip:(-not $elevated) {
         Join-Path $r.Modules 'Labyrinth\Labyrinth.psm1' | Should -Exist
         (Get-FileHash -LiteralPath (Join-Path $r.Modules 'Labyrinth\Labyrinth.psm1')).Hash |
             Should -Be (Get-FileHash -LiteralPath (Join-Path $r.Rel 'core\completion\Labyrinth.psm1')).Hash
-        (Import-PowerShellDataFile -LiteralPath (Join-Path $r.Modules 'Labyrinth\Labyrinth.psd1')).RootModule | Should -Be 'Labyrinth.psm1'
+        $manifest = Import-PowerShellDataFile -LiteralPath (Join-Path $r.Modules 'Labyrinth\Labyrinth.psd1')
+        $manifest.RootModule | Should -Be 'Labyrinth.psm1'
+        # The code folder, which is the only place the completer runs the runner from.
+        $manifest.PrivateData.CodeDir | Should -Be $r.Code
     }
 
     It 'a second run leaves the tab completion alone and says unchanged' {
@@ -343,6 +346,24 @@ Describe 'install.ps1 installs' -Skip:(-not $elevated) {
         (ConvertTo-TestFlat $x.Output) | Should -Match ([regex]::Escape('Tab keys skipped: this copy has no core\completion\Labyrinth.psm1'))
         Join-Path $r.Modules 'Labyrinth\Labyrinth.psm1' | Should -Not -Exist
         Join-Path $r.Code 'labyrinth.ps1' | Should -Exist
+        # The manifest names no root module, so the help module still imports.
+        $psd1 = Join-Path $r.Modules 'Labyrinth\Labyrinth.psd1'
+        $manifest = Import-PowerShellDataFile -LiteralPath $psd1
+        $manifest.ContainsKey('RootModule') | Should -BeFalse
+        $manifest.FileList | Should -Be @('en-US\about_Labyrinth.help.txt')
+        { Test-ModuleManifest -Path $psd1 -ErrorAction Stop } | Should -Not -Throw
+        { Import-Module $psd1 -ErrorAction Stop; Remove-Module Labyrinth } | Should -Not -Throw
+    }
+
+    It 'a copy with no completion module over a full install leaves a module that imports' {
+        (Invoke-TestInstall $r @('-Yes')).Code | Should -Be 0
+        Remove-Item -LiteralPath (Join-Path $r.Rel 'core\completion') -Recurse -Force
+        Write-TestSeal $r
+        (Invoke-TestInstall $r @('-Yes')).Code | Should -Be 0
+        $psd1 = Join-Path $r.Modules 'Labyrinth\Labyrinth.psd1'
+        (Import-PowerShellDataFile -LiteralPath $psd1).ContainsKey('RootModule') | Should -BeFalse
+        { Test-ModuleManifest -Path $psd1 -ErrorAction Stop } | Should -Not -Throw
+        { Import-Module $psd1 -ErrorAction Stop; Remove-Module Labyrinth } | Should -Not -Throw
     }
 
     It '-y answers the question for the installer' {

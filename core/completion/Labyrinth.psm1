@@ -10,14 +10,33 @@
 
 Set-StrictMode -Version Latest
 
+# Get-LabCompletionCodeDir: the folder install.ps1 put Labyrinth's code in,
+# or '' when that is not known. The installer writes it in the manifest
+# beside this file (PrivateData.CodeDir), in a folder only administrators can
+# change. The manifest is read as data; nothing in it is run.
+function Get-LabCompletionCodeDir {
+    $manifest = Join-Path $PSScriptRoot 'Labyrinth.psd1'
+    if (-not (Test-Path -LiteralPath $manifest -PathType Leaf)) { return '' }
+    try { $data = Import-PowerShellDataFile -LiteralPath $manifest -ErrorAction Stop } catch { return '' }
+    if ($data -isnot [hashtable] -or -not $data.ContainsKey('PrivateData')) { return '' }
+    $extra = $data['PrivateData']
+    if ($extra -isnot [hashtable] -or -not $extra.ContainsKey('CodeDir')) { return '' }
+    return ([string] $extra['CodeDir']).TrimEnd('\')
+}
+
 # Get-LabCompletionScript NAME: the labyrinth.ps1 that the command NAME starts,
-# or '' when NAME is not Labyrinth's launcher: another program of the same
-# name is never run for a Tab. The launcher sits next to the script.
+# or '' when NAME is not Labyrinth's launcher. The launcher sits next to the
+# script, in the code folder the installer recorded. A command of the same
+# name in any other folder is never run for a Tab, whatever lies beside it.
 function Get-LabCompletionScript {
     param([string] $Name)
+    $dir = Get-LabCompletionCodeDir
+    if ($dir -eq '') { return '' }
     $cmd = Get-Command -Name $Name -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
     if ($null -eq $cmd) { return '' }
-    $runner = Join-Path (Split-Path -Parent $cmd.Source) 'labyrinth.ps1'
+    $from = (Split-Path -Parent $cmd.Source).TrimEnd('\')
+    if (-not [string]::Equals($from, $dir, [StringComparison]::OrdinalIgnoreCase)) { return '' }
+    $runner = Join-Path $dir 'labyrinth.ps1'
     if (Test-Path -LiteralPath $runner -PathType Leaf) { return $runner }
     return ''
 }

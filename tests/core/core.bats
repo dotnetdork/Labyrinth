@@ -290,7 +290,11 @@ stub() {
 
 @test "safety: the run lock" {
   lab_lock_acquire
-  [ "$(cat "$LAB_STATE_DIR/lock/pid")" = "$$" ]
+  # The pid file holds the process ID and when that process started.
+  local held started
+  read -r held started < "$LAB_STATE_DIR/lock/pid"
+  [ "$held" = "$$" ]
+  [ "$started" = "$(_lab_proc_start "$$")" ]
   run lab_lock_acquire
   [ "$status" -eq 1 ]
   lab_lock_release
