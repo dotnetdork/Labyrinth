@@ -393,6 +393,33 @@ esac'
   [ -e "$LAB_SYSTEMD_DIR/lab-revert-$LAB_RUN_ID-1.timer" ]
 }
 
+@test "timer: an earlier timer a re-arm could not remove is remembered and removed later" {
+  [ -d /run/systemd/system ] || skip 'no systemd on this machine'
+  export LAB_SYSTEMD_DIR="$BATS_TEST_TMPDIR/units"
+  mkdir -p "$LAB_SYSTEMD_DIR" "$LAB_STATE_DIR"
+  # While the file "stuck" exists, the first unit stays active after being stopped.
+  stub systemctl '[[ "$1" != is-active ]] || [[ -e "$LAB_STATE_DIR/stuck" && "$*" == *"lab-revert-$LAB_RUN_ID-1.timer" ]]'
+  lab_timer_arm 300 "$LAB_RUN_ID" /bin/true
+  : > "$LAB_STATE_DIR/stuck"
+  run lab_timer_arm 300 "$LAB_RUN_ID" /bin/true
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"the earlier timer lab-revert-$LAB_RUN_ID-1 could not be removed"* ]]
+  [ "$(cat "$LAB_STATE_DIR/runs/$LAB_RUN_ID/timer")" = "lab-revert-$LAB_RUN_ID-2" ]
+  [ "$(cat "$LAB_STATE_DIR/runs/$LAB_RUN_ID/timer-old")" = "lab-revert-$LAB_RUN_ID-1" ]
+  [ -e "$LAB_SYSTEMD_DIR/lab-revert-$LAB_RUN_ID-1.timer" ]
+  # While it is still there, the run is not cancelled: it might still be undone.
+  run lab_timer_cancel "$LAB_RUN_ID"
+  [ "$status" -eq 1 ]
+  lab_timer_armed "$LAB_RUN_ID"
+  [ -e "$LAB_SYSTEMD_DIR/lab-revert-$LAB_RUN_ID-2.timer" ]
+  # Once it can be stopped, cancelling removes both.
+  rm "$LAB_STATE_DIR/stuck"
+  lab_timer_cancel "$LAB_RUN_ID"
+  [ ! -e "$LAB_STATE_DIR/runs/$LAB_RUN_ID/timer-old" ]
+  [ ! -e "$LAB_STATE_DIR/runs/$LAB_RUN_ID/timer" ]
+  [ -z "$(ls -A "$LAB_SYSTEMD_DIR")" ]
+}
+
 @test "timer: a unit file that cannot be deleted keeps the run armed" {
   [ -d /run/systemd/system ] || skip 'no systemd on this machine'
   [[ "$(id -u)" != 0 ]] || skip 'root can delete the files'

@@ -171,10 +171,33 @@ lab_timer_arm() {
   printf '%s\n' "$n" > "$dir/timer-count"
   printf '%s\n' "$unit" > "$dir/timer"
   lab_timer_due_write "$run" "$secs"
-  # Only now is the earlier timer removed; it may already have fired.
-  if [[ -n "$old" ]]; then
-    lab_timer_remove "$old" || true
+  # Only now is the earlier timer removed; it may already have fired. One
+  # that cannot be removed would still undo the run at its own, earlier
+  # time, so its name is kept for the next arm, -k and -u to try again.
+  _lab_timer_sweep "$run" || true
+  if [[ -n "$old" ]] && ! lab_timer_remove "$old"; then
+    printf '%s\n' "$old" >> "$dir/timer-old" || true
+    printf 'revert timer: the earlier timer %s could not be removed and may still undo run %s at its earlier time\n' "$old" "$run" >&2
   fi
+}
+
+# _lab_timer_sweep RUN: remove the earlier revert timers of the run that
+# could not be removed when it was re-armed; their names are kept, one per
+# line, in $LAB_STATE_DIR/runs/<run>/timer-old. Returns 1, keeping the names
+# of those still there, if any could not be removed.
+_lab_timer_sweep() {
+  local f="$LAB_STATE_DIR/runs/$1/timer-old" unit left=''
+  [[ -f "$f" ]] || return 0
+  while IFS= read -r unit || [[ -n "$unit" ]]; do
+    [[ "$unit" =~ ^lab-revert-[A-Za-z0-9-]+$ ]] || continue
+    lab_timer_remove "$unit" || left+="$unit"$'\n'
+  done < "$f"
+  if [[ -z "$left" ]]; then
+    rm -f -- "$f"
+    return 0
+  fi
+  printf '%s' "$left" > "$f" || true
+  return 1
 }
 
 # lab_timer_remove UNIT: stop and disable a revert timer and delete its two
@@ -200,11 +223,13 @@ lab_timer_remove() {
   fi
 }
 
-# lab_timer_cancel RUN: remove the run's revert timer, if one is armed.
-# Returns 1, keeping the state files, if the timer could not be removed,
-# because the run might still be rolled back.
+# lab_timer_cancel RUN: remove the run's revert timer, if one is armed, and
+# first any earlier one a re-arm could not remove. Returns 1, keeping the
+# state files, if a timer could not be removed, because the run might still
+# be rolled back.
 lab_timer_cancel() {
   local dir="$LAB_STATE_DIR/runs/$1" unit
+  _lab_timer_sweep "$1" || return 1
   [[ -f "$dir/timer" ]] || return 0
   unit="$(cat "$dir/timer")"
   lab_timer_remove "$unit" || return 1
