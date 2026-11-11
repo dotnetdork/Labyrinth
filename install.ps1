@@ -52,24 +52,42 @@ $Me = 'install.ps1'
 $AdminSid = 'S-1-5-32-544'
 $SystemSid = 'S-1-5-18'
 $EnvKey = 'SYSTEM\CurrentControlSet\Control\Session Manager\Environment'
-# The help module has no commands: it carries the help topic only. The GUID is
-# fixed, so running the installer again writes the same manifest.
-$ModuleManifest = @"
-@{
-    ModuleVersion     = '1.0.0'
-    GUID              = '6f1c9d1e-2a4b-4c8e-9a53-0b7d5e2f4a11'
-    Author            = 'Labyrinth'
-    Description       = 'The help topic for Labyrinth (Get-Help about_Labyrinth) and tab completion for laby and labyrinth. It has no commands.'
-    PowerShellVersion = '5.1'
-    RootModule        = 'Labyrinth.psm1'
-    FunctionsToExport = @()
-    CmdletsToExport   = @()
-    VariablesToExport = @()
-    AliasesToExport   = @()
-    FileList          = @('Labyrinth.psm1', 'en-US\about_Labyrinth.help.txt')
+# Get-LabModuleManifest -CodeDir DIR [-Completer]: the text of the Labyrinth
+# module's manifest. The module has no commands: it carries the help topic
+# and, with -Completer, the tab completion. Only then does the manifest name
+# Labyrinth.psm1 as its root module, so a copy without that file still gives
+# a module that imports, and only then does it record the code folder
+# (PrivateData.CodeDir): the completer runs labyrinth.ps1 from that folder
+# and no other. The GUID is fixed, so running the installer again writes the
+# same manifest.
+function Get-LabModuleManifest {
+    param([Parameter(Mandatory)] [string] $CodeDir, [switch] $Completer)
+    $lines = @(
+        '@{',
+        "    ModuleVersion     = '1.0.0'",
+        "    GUID              = '6f1c9d1e-2a4b-4c8e-9a53-0b7d5e2f4a11'",
+        "    Author            = 'Labyrinth'",
+        "    Description       = 'The help topic for Labyrinth (Get-Help about_Labyrinth) and tab completion for laby and labyrinth. It has no commands.'",
+        "    PowerShellVersion = '5.1'"
+    )
+    if ($Completer) { $lines += "    RootModule        = 'Labyrinth.psm1'" }
+    $lines += @(
+        '    FunctionsToExport = @()',
+        '    CmdletsToExport   = @()',
+        '    VariablesToExport = @()',
+        '    AliasesToExport   = @()'
+    )
+    if ($Completer) {
+        $lines += "    FileList          = @('Labyrinth.psm1', 'en-US\about_Labyrinth.help.txt')"
+        # PowerShell also reads the curly quotes as single quotes, so they are doubled too.
+        $quoted = $CodeDir -replace "['‘-‛]", '$&$&'
+        $lines += "    PrivateData       = @{ CodeDir = '$quoted' }"
+    } else {
+        $lines += "    FileList          = @('en-US\about_Labyrinth.help.txt')"
+    }
+    $lines += '}'
+    return (($lines -join "`r`n") + "`r`n")
 }
-
-"@
 
 function Show-LabInstallHelp {
     @(
@@ -364,6 +382,12 @@ try {
             if (Test-Path -LiteralPath (Join-Path (Join-Path $Root 'etc') $base)) { $kept++ } else { $templates += $base }
         }
     }
+    # The tab completion: a module file beside the help topic. A copy with no
+    # completion file keeps the module as the help topic alone, and its
+    # manifest then names no root module.
+    $completer = Join-Path $Here 'core\completion\Labyrinth.psm1'
+    $hasCompleter = Test-Path -LiteralPath $completer -PathType Leaf
+    $ModuleManifest = Get-LabModuleManifest -CodeDir $CodeDir -Completer:$hasCompleter
     $topic = Join-Path $Here 'manual\about_Labyrinth.help.txt'
     $helpState = 'skip'
     if (Test-Path -LiteralPath $topic -PathType Leaf) {
@@ -373,11 +397,8 @@ try {
         if ((Test-LabSameFile $topic $topicFile) -and (Test-Path -LiteralPath $manifestFile -PathType Leaf) -and
             ([IO.File]::ReadAllText($manifestFile) -ceq $ModuleManifest)) { $helpState = 'same' }
     }
-    # The tab completion: a module file beside the help topic. A copy with no
-    # completion file keeps the module as the help topic alone.
-    $completer = Join-Path $Here 'core\completion\Labyrinth.psm1'
     $compState = 'skip'
-    if (Test-Path -LiteralPath $completer -PathType Leaf) {
+    if ($hasCompleter) {
         $compState = 'new'
         if ((Test-LabSameFile $completer (Join-Path $HelpModule 'Labyrinth.psm1')) -and
             (Test-Path -LiteralPath (Join-Path $HelpModule 'Labyrinth.psd1') -PathType Leaf) -and
