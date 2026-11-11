@@ -80,7 +80,7 @@ function Get-LabModuleManifest {
     if ($Completer) {
         $lines += "    FileList          = @('Labyrinth.psm1', 'en-US\about_Labyrinth.help.txt')"
         # PowerShell also reads the curly quotes as single quotes, so they are doubled too.
-        $quoted = $CodeDir -replace "['‘-‛]", '$&$&'
+        $quoted = $CodeDir -replace ("['" + [char] 0x2018 + '-' + [char] 0x201B + ']'), '$&$&'
         $lines += "    PrivateData       = @{ CodeDir = '$quoted' }"
     } else {
         $lines += "    FileList          = @('en-US\about_Labyrinth.help.txt')"
