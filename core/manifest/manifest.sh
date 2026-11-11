@@ -84,14 +84,25 @@ lab_json_get() {
   lab_json_unescape "${BASH_REMATCH[1]}"
 }
 
+# lab_copy_private PATH: make a copy Labyrinth keeps under its data root
+# changeable only by the account Labyrinth runs as (root): mode 600, unless
+# it is a symbolic link, then that account as owner. Everything under the
+# data root must be so, or Labyrinth refuses to run (lab_tree_trusted). The
+# mode goes first, so a set-user-ID file never becomes root's.
+lab_copy_private() {
+  [[ -L "$1" ]] || chmod -- 600 "$1" || return 1
+  chown -h -- "$(id -u):$(id -g)" "$1"
+}
+
 # lab_backup_file PATH: before changing PATH, copy it to the run's backup
 # folder and record it, so rollback can put it back. If PATH does not exist
 # yet, record that the module creates it. Returns 1, recording nothing, when
 # the copy cannot be made: the caller must then leave PATH alone. The copy
 # is made under a temporary name and renamed, so a backup the manifest lists
-# is always a whole one.
+# is always a whole one. The copy is private to root (lab_copy_private); the
+# file's own owner and mode go in the entry's prev field, "uid:gid mode".
 lab_backup_file() {
-  local path="$1" dir dest seq
+  local path="$1" dir dest seq meta
   [[ "$path" == /* ]] || { printf 'backup: path must be absolute: %s\n' "$path" >&2; return 1; }
   if [[ -L "$path" || ( -e "$path" && ! -f "$path" ) ]]; then
     printf 'backup: not a regular file: %s\n' "$path" >&2
@@ -105,22 +116,34 @@ lab_backup_file() {
     fi
     seq="$(lab_manifest_next_seq)" || return 1
     dest="$dir/$seq-${path##*/}"
-    if ! cp -p -- "$path" "$dest.part" || ! mv -- "$dest.part" "$dest"; then
+    if ! meta="$(stat -c '%u:%g %a' -- "$path")"; then
+      printf 'backup: cannot read the owner and mode of %s; it was not backed up\n' "$path" >&2
+      return 1
+    fi
+    if ! (umask 077 && cp --preserve=timestamps -- "$path" "$dest.part") \
+        || ! lab_copy_private "$dest.part" || ! mv -- "$dest.part" "$dest"; then
       rm -f -- "$dest.part"
       printf 'backup: could not copy %s to %s; it was not backed up\n' "$path" "$dest" >&2
       return 1
     fi
-    lab_manifest_record file "$path" "$dest" || return 1
+    lab_manifest_record file "$path" "$dest" "$meta" || return 1
   else
     lab_manifest_record file_created "$path" || return 1
   fi
 }
 
-# lab_restore_one BACKUP TARGET: put a backed-up file back, keeping the
-# target's identity (inode, SELinux label) when it still exists. Returns 1
-# on the first step that fails, saying what state the target is left in.
+# lab_restore_one BACKUP TARGET [META]: put a backed-up file back, keeping
+# the target's identity (inode, SELinux label) when it still exists. META is
+# the file's owner and mode, "uid:gid mode", as lab_backup_file recorded
+# them; without it they are taken from the backup itself, as entries written
+# before the backup became private need. Returns 1 on the first step that
+# fails, saying what state the target is left in.
 lab_restore_one() {
-  local backup="$1" target="$2"
+  local backup="$1" target="$2" meta="${3:-}" own='' mode=''
+  if [[ "$meta" =~ ^([0-9]+:[0-9]+)\ ([0-7]{1,4})$ ]]; then
+    own="${BASH_REMATCH[1]}"
+    mode="${BASH_REMATCH[2]}"
+  fi
   [[ -f "$backup" ]] || { printf 'restore: backup missing: %s\n' "$backup" >&2; return 1; }
   if [[ -L "$target" || ( -e "$target" && ! -f "$target" ) ]]; then
     printf 'restore: %s is no longer a regular file; restore it by hand from %s\n' "$target" "$backup" >&2
@@ -132,12 +155,18 @@ lab_restore_one() {
       printf 'restore: could not write %s, which may now be incomplete; restore it by hand from %s\n' "$target" "$backup" >&2
       return 1
     fi
-    if ! chmod --reference="$backup" -- "$target" || ! chown --reference="$backup" -- "$target"; then
-      printf 'restore: %s has its content back, but its mode or owner could not be set; compare it with %s\n' "$target" "$backup" >&2
+  elif ! (umask 077 && cp --preserve=timestamps -- "$backup" "$target"); then
+    printf 'restore: could not copy %s back to %s\n' "$backup" "$target" >&2
+    return 1
+  fi
+  # The owner first: changing it can clear the set-user-ID bits of the mode.
+  if [[ -n "$own" ]]; then
+    if ! chown -- "$own" "$target" || ! chmod -- "$mode" "$target"; then
+      printf 'restore: %s has its content back, but its owner (%s) or mode (%s) could not be set\n' "$target" "$own" "$mode" >&2
       return 1
     fi
-  elif ! cp -p -- "$backup" "$target"; then
-    printf 'restore: could not copy %s back to %s\n' "$backup" "$target" >&2
+  elif ! chown --reference="$backup" -- "$target" || ! chmod --reference="$backup" -- "$target"; then
+    printf 'restore: %s has its content back, but its mode or owner could not be set; compare it with %s\n' "$target" "$backup" >&2
     return 1
   fi
   if command -v restorecon > /dev/null 2>&1; then
@@ -147,9 +176,10 @@ lab_restore_one() {
 
 # lab_restore_files: undo every file entry LAB_MODULE_ID recorded in
 # LAB_RUN_ID, newest first. A file the module created is moved into the
-# backup folder, never deleted. Safe to run repeatedly.
+# backup folder, never deleted, and made private to root there; its owner
+# and mode go in the log. Safe to run repeatedly.
 lab_restore_files() {
-  local f line module action target backup seq aside rc=0
+  local f line module action target backup prev seq aside was rc=0
   f="$(lab_manifest_file)"
   [[ -f "$f" ]] || return 0
   while IFS= read -r line; do
@@ -160,14 +190,21 @@ lab_restore_files() {
     case "$action" in
       file)
         backup="$(lab_json_get "$line" backup)"
-        lab_restore_one "$backup" "$target" || rc=1
+        prev="$(lab_json_get "$line" prev)" || prev=''
+        lab_restore_one "$backup" "$target" "$prev" || rc=1
         ;;
       file_created)
         if [[ -e "$target" || -L "$target" ]]; then
           seq="$(lab_json_get "$line" seq)"
           aside="$LAB_BACKUP_DIR/$LAB_RUN_ID/$LAB_MODULE_ID/rolled-back-$seq-${target##*/}"
+          was="$(stat -c '%u:%g %a' -- "$target" 2> /dev/null)" || was='unknown'
           mkdir -p "${aside%/*}"
-          mv -- "$target" "$aside" || rc=1
+          if mv -- "$target" "$aside" && lab_copy_private "$aside"; then
+            lab_log_info rolled_back_file "moved $target, which the module created, to $aside (owner and mode were $was)" 2> /dev/null || true
+          else
+            printf 'restore: could not move %s into the backup folder as %s, private to root\n' "$target" "$aside" >&2
+            rc=1
+          fi
         fi
         ;;
     esac

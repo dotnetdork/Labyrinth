@@ -56,6 +56,25 @@ manifest_field() { lab_json_get "$(grep "\"action\":\"$1\"" "$(lab_manifest_file
   [ "$(sha256sum "$R/tmp/.x")" = "$sum" ]
 }
 
+@test "file: the quarantined copy is private to the account running Labyrinth, and the restore brings back the mode" {
+  printf 'planted\n' > "$R/tmp/open"
+  chmod 666 "$R/tmp/open"
+  lab_quarantine_file "$R/tmp/open" 'open to everyone'
+  local dest
+  dest="$(manifest_field quarantine_file backup)"
+  [ "$(stat -c '%u %a' "$dest")" = "$(id -u) 600" ]
+  [[ "$(manifest_field quarantine_file prev)" == "$(id -u):$(id -g) 666 "* ]]
+  # A newer file at the path, also open to everyone, is moved aside private too.
+  printf 'replanted\n' > "$R/tmp/open"
+  chmod 666 "$R/tmp/open"
+  lab_quarantine_restore
+  [ "$(cat "$R/tmp/open")" = planted ]
+  [ "$(stat -c %a "$R/tmp/open")" = 666 ]
+  [ "$(stat -c '%u %a' "$LAB_BACKUP_DIR/quarantine/$LAB_RUN_ID/aside-1$R/tmp/open")" = "$(id -u) 600" ]
+  # No file under the backup folder is left writable by group or others.
+  [ -z "$(find "$LAB_BACKUP_DIR" -type f -perm /022)" ]
+}
+
 @test "file: a symbolic link is moved, not followed" {
   printf 'keep\n' > "$R/etc/target"
   ln -s "$R/etc/target" "$R/etc/link"

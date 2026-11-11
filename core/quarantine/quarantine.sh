@@ -79,11 +79,18 @@ lab_quarantine_file() {
     _lab_q_err "could not move $path (immutable or read-only?); list it for a person"
     return 20
   fi
+  # The copy is private to root: Labyrinth refuses to run while anything
+  # under its data root can be changed by another account. The manifest
+  # holds the owner and mode for the restore.
+  if ! lab_copy_private "$dest"; then
+    _lab_q_err "moved $path to $dest, but could not make the copy private to root; set its owner and mode by hand"
+    return 40
+  fi
   lab_log_info quarantine_file "quarantined $path: $reason" || true
 }
 
 _lab_q_restore_file() {
-  local target="$1" backup="$2" prev="$3" seq="$4" run="$5" own mode rest aside
+  local target="$1" backup="$2" prev="$3" seq="$4" run="$5" own mode rest aside was
   if [[ ! -e "$backup" && ! -L "$backup" ]]; then
     [[ -e "$target" || -L "$target" ]] && return 0
     _lab_q_err "quarantined copy missing: $backup"
@@ -98,7 +105,12 @@ _lab_q_restore_file() {
   fi
   if [[ -e "$target" || -L "$target" ]]; then
     aside="$(_lab_q_dir "$run")/aside-$seq$target"
+    was="$(stat -c '%u:%g %a' -- "$target" 2> /dev/null)" || was='unknown'
     mkdir -p -- "$(dirname -- "$aside")" && mv -- "$target" "$aside" || return 40
+    # Private to root like every copy under the data root; its own owner
+    # and mode go in the log.
+    lab_copy_private "$aside" || return 40
+    lab_log_info quarantine_aside "moved the newer $target aside to $aside (owner and mode were $was)" 2> /dev/null || true
   fi
   mkdir -p -- "$(dirname -- "$target")" && mv -- "$backup" "$target" || return 40
   chown -h -- "$own" "$target" || return 40

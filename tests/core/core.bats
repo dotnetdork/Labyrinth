@@ -245,6 +245,47 @@ stub() {
   [ "$(cat "$f")" = orig ]
 }
 
+@test "manifest: a backup is private to the account running Labyrinth, and the restore brings back the mode" {
+  f="$BATS_TEST_TMPDIR/files/e.conf"
+  printf 'orig\n' > "$f"
+  chmod 664 "$f"
+  lab_backup_file "$f"
+  line="$(head -n 1 "$(lab_manifest_file)")"
+  copy="$(lab_json_get "$line" backup)"
+  [ "$(stat -c '%u %a' "$copy")" = "$(id -u) 600" ]
+  [ "$(lab_json_get "$line" prev)" = "$(id -u):$(id -g) 664" ]
+  printf 'changed\n' > "$f"
+  chmod 600 "$f"
+  # A file the module made, open to everyone, is moved aside private too.
+  new="$BATS_TEST_TMPDIR/files/made.conf"
+  lab_backup_file "$new"
+  printf 'made\n' > "$new"
+  chmod 666 "$new"
+  lab_restore_files
+  [ "$(cat "$f")" = orig ]
+  [ "$(stat -c %a "$f")" = 664 ]
+  [ "$(stat -c '%u %a' "$LAB_BACKUP_DIR/$LAB_RUN_ID/observe.unit/rolled-back-2-made.conf")" = "$(id -u) 600" ]
+  # No file under the backup folder is left writable by group or others.
+  [ -z "$(find "$LAB_BACKUP_DIR" -type f -perm /022)" ]
+  # A file that is gone comes back with its recorded mode.
+  rm "$f"
+  lab_restore_files
+  [ "$(cat "$f")" = orig ]
+  [ "$(stat -c %a "$f")" = 664 ]
+}
+
+@test "manifest: an entry with no recorded owner and mode takes them from the backup" {
+  f="$BATS_TEST_TMPDIR/files/old.conf"
+  b="$BATS_TEST_TMPDIR/files/old.backup"
+  printf 'orig\n' > "$b"
+  chmod 640 "$b"
+  printf 'changed\n' > "$f"
+  chmod 600 "$f"
+  lab_restore_one "$b" "$f"
+  [ "$(cat "$f")" = orig ]
+  [ "$(stat -c %a "$f")" = 640 ]
+}
+
 @test "manifest: only the module's own entries are restored" {
   f="$BATS_TEST_TMPDIR/files/b.conf"
   printf 'orig\n' > "$f"
