@@ -38,12 +38,52 @@ Describe 'quarantine' {
         Move-LabQuarantineFile -Path $f -Reason 'replaced accessibility program' | Should -Be 0
         Test-Path -LiteralPath $f | Should -BeFalse
         $e = @(Get-TestEntry 'quarantine_file')[0]
-        $e.prev | Should -Be $sum
+        # The hash, then the file's owner and access list.
+        $e.prev | Should -BeLike "$sum O:*"
         $e.note | Should -Be 'replaced accessibility program'
         $e.backup | Should -BeLike (Join-Path $env:LAB_BACKUP_DIR "quarantine\$env:LAB_RUN_ID\1\*")
         Undo-LabQuarantine | Should -Be 0
         (Get-FileHash -LiteralPath $f -Algorithm SHA256).Hash.ToLowerInvariant() | Should -Be $sum
         Undo-LabQuarantine | Should -Be 0
+    }
+
+    It 'file: the quarantined copy is private to administrators, and the restore brings back the owner and access list' {
+        $sidType = [Security.Principal.SecurityIdentifier]
+        $f = Join-Path $items 'open.ps1'
+        [IO.File]::WriteAllText($f, 'planted')
+        # Another account owns the file, and every user may change it.
+        $users = New-Object Security.Principal.SecurityIdentifier 'S-1-5-32-545'
+        $acl = [IO.File]::GetAccessControl($f)
+        $acl.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule($users, 'Modify', 'Allow')))
+        [IO.File]::SetAccessControl($f, $acl)
+        Invoke-LabFileOwner -Path $f -Sid 'S-1-5-32-545'
+        [IO.File]::GetAccessControl($f).GetOwner($sidType).Value | Should -Be 'S-1-5-32-545'
+
+        Move-LabQuarantineFile -Path $f -Reason test | Should -Be 0
+        $copy = @(Get-TestEntry 'quarantine_file')[0].backup
+        $kept = [IO.File]::GetAccessControl($copy)
+        $kept.GetOwner($sidType).Value | Should -Be 'S-1-5-32-544'
+        $kept.AreAccessRulesProtected | Should -BeTrue
+        $who = @($kept.GetAccessRules($true, $true, $sidType) | ForEach-Object { $_.IdentityReference.Value } | Sort-Object -Unique)
+        ($who -join ',') | Should -Be 'S-1-5-18,S-1-5-32-544'
+
+        # A newer file at the path, also open to every user, is moved aside private too.
+        [IO.File]::WriteAllText($f, 'replanted')
+        $acl = [IO.File]::GetAccessControl($f)
+        $acl.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule($users, 'Modify', 'Allow')))
+        [IO.File]::SetAccessControl($f, $acl)
+        Undo-LabQuarantine | Should -Be 0
+        [IO.File]::ReadAllText($f) | Should -Be 'planted'
+        $back = [IO.File]::GetAccessControl($f)
+        $back.GetOwner($sidType).Value | Should -Be 'S-1-5-32-545'
+        $modify = [int][Security.AccessControl.FileSystemRights]::Modify
+        @($back.GetAccessRules($true, $false, $sidType) | Where-Object {
+                $_.IdentityReference.Value -ceq 'S-1-5-32-545' -and $_.AccessControlType -eq 'Allow' -and
+                ([int]$_.FileSystemRights -band $modify) -eq $modify }).Count | Should -Be 1
+        $aside = @(Get-ChildItem -Recurse -File (Get-LabQuarantineDir) | Where-Object { $_.FullName -like '*aside-1*' })[0].FullName
+        $moved = [IO.File]::GetAccessControl($aside)
+        $moved.GetOwner($sidType).Value | Should -Be 'S-1-5-32-544'
+        @($moved.GetAccessRules($true, $true, $sidType) | Where-Object { $_.IdentityReference.Value -ceq 'S-1-5-32-545' }).Count | Should -Be 0
     }
 
     It 'file: refused in plan mode, for a folder, a relative path or Labyrinth''s own tree' {

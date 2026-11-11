@@ -62,6 +62,65 @@ function Protect-LabDataRoot {
     $root.SetAccessControl($acl)
 }
 
+# Invoke-LabFileOwner -Path FILE -Sid SID: make SID the owner of FILE, with
+# icacls.exe, called by its full path under System32. PowerShell alone
+# cannot give a file to an arbitrary account. The owner is read back
+# afterwards, so the result does not rest on what icacls reports. Throws if
+# the owner is not SID then.
+function Invoke-LabFileOwner {
+    param([Parameter(Mandatory)] [string] $Path, [Parameter(Mandatory)] [string] $Sid)
+    if ($Sid -cnotmatch '^S-1-[0-9-]+$') { throw "not an account SID: $Sid" }
+    $icacls = Join-Path $env:SystemRoot 'System32\icacls.exe'
+    if (-not (Test-Path -LiteralPath $icacls -PathType Leaf)) { throw "icacls.exe is missing: $icacls" }
+    $saved = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        # A numeric SID takes a leading asterisk. /L: a link itself, not its target.
+        $said = @(& $icacls $Path /setowner "*$Sid" /L /Q 2>&1 | ForEach-Object { "$_" }) -join ' '
+    } finally {
+        $ErrorActionPreference = $saved
+    }
+    $now = [IO.File]::GetAccessControl($Path, 'Owner').GetOwner([Security.Principal.SecurityIdentifier]).Value
+    if ($now -cne $Sid) { throw "the owner of $Path could not be set to $Sid (it is $now): $said" }
+}
+
+# Protect-LabCopy -Path FILE: make a copy Labyrinth keeps under its data
+# root private to Administrators and SYSTEM: owned by Administrators, with
+# an access list of its own that names only those two. A file moved there
+# keeps its own owner and access list, and Labyrinth refuses to run while
+# another account can change anything under its data root
+# (Find-LabUntrustedItem). Throws if it cannot.
+function Protect-LabCopy {
+    param([Parameter(Mandatory)] [string] $Path)
+    Invoke-LabFileOwner -Path $Path -Sid 'S-1-5-32-544'
+    $acl = New-Object Security.AccessControl.FileSecurity
+    $acl.SetAccessRuleProtection($true, $false)
+    foreach ($sid in 'S-1-5-32-544', 'S-1-5-18') {
+        $acl.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule(
+                    (New-Object Security.Principal.SecurityIdentifier $sid), 'FullControl', 'Allow')))
+    }
+    [IO.File]::SetAccessControl($Path, $acl)
+}
+
+# Get-LabFileSddl -Path FILE: the owner, group and access list of FILE as
+# one line of text (SDDL), for Restore-LabFileSddl.
+function Get-LabFileSddl {
+    param([Parameter(Mandatory)] [string] $Path)
+    return [IO.File]::GetAccessControl($Path).GetSecurityDescriptorSddlForm('Owner, Group, Access')
+}
+
+# Restore-LabFileSddl -Path FILE -Sddl TEXT: give FILE the access list and
+# then the owner that Get-LabFileSddl read. Rules the file inherited come
+# again from the folder it is in now. Throws if it cannot.
+function Restore-LabFileSddl {
+    param([Parameter(Mandatory)] [string] $Path, [Parameter(Mandatory)] [string] $Sddl)
+    $owner = (New-Object Security.AccessControl.RawSecurityDescriptor $Sddl).Owner
+    $acl = New-Object Security.AccessControl.FileSecurity
+    $acl.SetSecurityDescriptorSddlForm($Sddl, 'Access')
+    [IO.File]::SetAccessControl($Path, $acl)
+    if ($null -ne $owner) { Invoke-LabFileOwner -Path $Path -Sid $owner.Value }
+}
+
 # Get-LabConsoleSession -Account NAME: the ID of NAME's session at this
 # host's console (not a remote desktop session), $null if there is none,
 # or 'unknown' if this host cannot tell (no query user). This supports the
