@@ -67,13 +67,13 @@ lab_lock_acquire() {
 # the host started (/proc/PID/stat, field 22). Returns 1 when it is gone.
 _lab_proc_start() {
   local stat
-  local -a f
+  local -a fields
   stat="$(cat "/proc/$1/stat" 2> /dev/null)" || return 1
   # The fields after the command name, which may itself hold spaces.
   stat="${stat##*) }"
-  read -r -a f <<< "$stat"
-  [[ "${f[19]:-}" =~ ^[0-9]+$ ]] || return 1
-  printf '%s' "${f[19]}"
+  read -r -a fields <<< "$stat"
+  [[ "${fields[19]:-}" =~ ^[0-9]+$ ]] || return 1
+  printf '%s' "${fields[19]}"
 }
 
 # _lab_lock_read: read the lock's pid file, "PID START", into LAB_LOCK_PID
