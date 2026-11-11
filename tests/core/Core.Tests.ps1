@@ -286,7 +286,13 @@ Describe 'core library' {
 
     It 'safety: the run lock' {
         Enter-LabLock | Should -Be $true
-        ([IO.File]::ReadAllText((Join-Path $env:LAB_STATE_DIR 'lock\pid'))).Trim() | Should -Be "$PID"
+        # The pid file holds the process ID and when that process started.
+        $started = (Get-Process -Id $PID).StartTime.ToUniversalTime().Ticks
+        ([IO.File]::ReadAllText((Join-Path $env:LAB_STATE_DIR 'lock\pid'))).Trim() | Should -Be "$PID $started"
+        (Get-LabLockHolder).State | Should -Be 'live'
+        # A process with the holder's ID that started at another time is not the holder.
+        [IO.File]::WriteAllText((Join-Path $env:LAB_STATE_DIR 'lock\pid'), "$PID $($started + 1)`n")
+        (Get-LabLockHolder).State | Should -Be 'gone'
         # This process holds it, but a second taker never gets it.
         [IO.File]::WriteAllText((Join-Path $env:LAB_STATE_DIR 'lock\pid'), "$((Get-Process -Id $PID).Id)`n")
         Exit-LabLock
