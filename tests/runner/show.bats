@@ -59,7 +59,7 @@ narrow() {
   [ "$status" -eq 0 ]
   a="$(run_id)"
   lab --show "$a"
-  [[ "$output" == *"  Change:    file $LAB/toggle.conf"$'\n'"  Backup:    $ROOT/backup/$a/observe.toggle/"*"-toggle.conf"* ]]
+  [[ "$output" == *"  Change:    file $LAB/toggle.conf"$'\n'"  Before:    $(id -u):$(id -g) "*$'\n'"  Backup:    $ROOT/backup/$a/observe.toggle/"*"-toggle.conf"* ]]
   narrow "$output"
 }
 
