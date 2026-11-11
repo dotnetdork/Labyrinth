@@ -624,7 +624,7 @@ fp() { printf '%s' "$1" | sha256sum | cut -c1-12; }
   bash -c 'sleep 300; :' &
   local holder=$!
   mkdir -p "$ROOT/state/lock"
-  printf '%s\n' "$holder" > "$ROOT/state/lock/pid"
+  printf '%s %s\n' "$holder" "$(proc_start "$holder")" > "$ROOT/state/lock/pid"
   run bash "$LAB/labyrinth.sh" --root "$ROOT" --config "$ETC" -u "$id"
   wait "$holder" 2> /dev/null || true
   [ "$status" -eq 0 ]
@@ -632,6 +632,57 @@ fp() { printf '%s' "$1" | sha256sum | cut -c1-12; }
   [[ "$output" != *"without the run lock"* ]]
   ! kill -0 "$holder" 2> /dev/null || return 1
   grep -qx 'setting=off' "$LAB/toggle.conf"
+}
+
+@test "rollback never stops a process that only reuses the lock holder's ID" {
+  printf 'setting=off\n' > "$LAB/toggle.conf"
+  answers root ring1 no
+  apply
+  id="$(run_id)"
+  sleep 300 &
+  local other=$!
+  mkdir -p "$ROOT/state/lock"
+  # The recorded start time is not this process's: the ID was reused.
+  printf '%s %s\n' "$other" "$(($(proc_start "$other") + 1))" > "$ROOT/state/lock/pid"
+  run bash "$LAB/labyrinth.sh" --root "$ROOT" --config "$ETC" -u "$id"
+  local alive=0
+  kill -0 "$other" 2> /dev/null && alive=1
+  kill "$other" 2> /dev/null || true
+  wait "$other" 2> /dev/null || true
+  [ "$status" -eq 0 ]
+  [ "$alive" -eq 1 ]
+  [[ "$output" != *"stopping the Labyrinth run"* ]]
+  [[ "$output" != *"without the run lock"* ]]
+  grep -qx 'setting=off' "$LAB/toggle.conf"
+}
+
+@test "rollback never stops a live process when the lock records no start time" {
+  printf 'setting=off\n' > "$LAB/toggle.conf"
+  answers root ring1 no
+  apply
+  id="$(run_id)"
+  sleep 300 &
+  local other=$!
+  mkdir -p "$ROOT/state/lock"
+  printf '%s\n' "$other" > "$ROOT/state/lock/pid"
+  run bash "$LAB/labyrinth.sh" --root "$ROOT" --config "$ETC" -u "$id"
+  local alive=0
+  kill -0 "$other" 2> /dev/null && alive=1
+  kill "$other" 2> /dev/null || true
+  wait "$other" 2> /dev/null || true
+  [ "$status" -eq 0 ]
+  [ "$alive" -eq 1 ]
+  [[ "$output" == *"not stopping pid $other"* ]]
+  [[ "$output" == *"without the run lock"* ]]
+  grep -qx 'setting=off' "$LAB/toggle.conf"
+}
+
+@test "a run lock whose holder's ID was reused is taken over" {
+  mkdir -p "$ROOT/state/lock"
+  printf '%s %s\n' "$$" "$(($(proc_start "$$") + 1))" > "$ROOT/state/lock/pid"
+  apply
+  [ "$status" -eq 0 ]
+  [ ! -e "$ROOT/state/lock" ]
 }
 
 @test "a stale run lock is taken over" {

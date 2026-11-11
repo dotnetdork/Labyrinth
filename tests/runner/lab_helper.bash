@@ -41,4 +41,15 @@ answers() {
 # run_id: the run id from the last output
 run_id() { grep -o 'run [0-9]\{8\}T[0-9]\{6\}Z-[0-9a-f]\{4\}' <<< "$output" | head -n 1 | cut -d' ' -f2; }
 
+# proc_start PID: when the process started (/proc/PID/stat, field 22), as the
+# run lock records it.
+proc_start() {
+  local stat
+  stat="$(cat "/proc/$1/stat")"
+  stat="${stat##*) }"
+  # shellcheck disable=SC2086 # split into fields
+  set -- $stat
+  printf '%s' "${20}"
+}
+
 manifest() { cat "$ROOT/state/runs/$(run_id)/manifest.jsonl"; }

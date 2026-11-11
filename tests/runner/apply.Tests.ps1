@@ -607,7 +607,7 @@ Describe 'labyrinth.ps1 -r' {
         try {
             $lock = Join-Path $t.Root 'state\lock'
             New-Item -ItemType Directory -Path $lock -Force | Out-Null
-            [IO.File]::WriteAllText((Join-Path $lock 'pid'), "$($holder.Id)`n")
+            [IO.File]::WriteAllText((Join-Path $lock 'pid'), "$($holder.Id) $($holder.StartTime.ToUniversalTime().Ticks)`n")
             $r = Invoke-TestRunCommand $t 'rollback' $id
             $r.Code | Should -Be 0
             $r.Output | Should -Match "stopping the Labyrinth run \(pid $($holder.Id)\)"
@@ -617,6 +617,54 @@ Describe 'labyrinth.ps1 -r' {
         } finally {
             if (-not $holder.HasExited) { $holder.Kill() }
         }
+    }
+
+    It 'rollback never stops a process that only reuses the lock holder''s ID' {
+        [IO.File]::WriteAllText($toggle, "setting=off`n")
+        $id = Get-TestRunId (Invoke-TestApply $t @('labadmin', 'ring1', 'no')).Output
+        $other = Start-Process -FilePath 'powershell.exe' -ArgumentList '-NoProfile', '-Command', 'Start-Sleep -Seconds 300' -PassThru -WindowStyle Hidden
+        try {
+            $lock = Join-Path $t.Root 'state\lock'
+            New-Item -ItemType Directory -Path $lock -Force | Out-Null
+            # The recorded start time is not this process's: the ID was reused.
+            [IO.File]::WriteAllText((Join-Path $lock 'pid'), "$($other.Id) $($other.StartTime.ToUniversalTime().Ticks + 1)`n")
+            $r = Invoke-TestRunCommand $t 'rollback' $id
+            $r.Code | Should -Be 0
+            $r.Output | Should -Not -Match 'stopping the Labyrinth run'
+            $r.Output | Should -Not -Match 'without the run lock'
+            $other.HasExited | Should -BeFalse
+            (Get-Content -LiteralPath $toggle) | Should -Be 'setting=off'
+        } finally {
+            if (-not $other.HasExited) { $other.Kill() }
+        }
+    }
+
+    It 'rollback never stops a live process when the lock records no start time' {
+        [IO.File]::WriteAllText($toggle, "setting=off`n")
+        $id = Get-TestRunId (Invoke-TestApply $t @('labadmin', 'ring1', 'no')).Output
+        $other = Start-Process -FilePath 'powershell.exe' -ArgumentList '-NoProfile', '-Command', 'Start-Sleep -Seconds 300' -PassThru -WindowStyle Hidden
+        try {
+            $lock = Join-Path $t.Root 'state\lock'
+            New-Item -ItemType Directory -Path $lock -Force | Out-Null
+            [IO.File]::WriteAllText((Join-Path $lock 'pid'), "$($other.Id)`n")
+            $r = Invoke-TestRunCommand $t 'rollback' $id
+            $r.Code | Should -Be 0
+            $r.Output | Should -Match "not stopping pid $($other.Id)"
+            $r.Output | Should -Match 'without the run lock'
+            $other.HasExited | Should -BeFalse
+            (Get-Content -LiteralPath $toggle) | Should -Be 'setting=off'
+        } finally {
+            if (-not $other.HasExited) { $other.Kill() }
+        }
+    }
+
+    It 'a run lock whose holder''s ID was reused is taken over' {
+        $lock = Join-Path $t.Root 'state\lock'
+        New-Item -ItemType Directory -Path $lock -Force | Out-Null
+        $started = (Get-Process -Id $PID).StartTime.ToUniversalTime().Ticks
+        [IO.File]::WriteAllText((Join-Path $lock 'pid'), "$PID $($started + 1)`n")
+        (Invoke-TestApply $t $answers).Code | Should -Be 0
+        $lock | Should -Not -Exist
     }
 
     It 'a stale run lock is taken over' {
