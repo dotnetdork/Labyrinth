@@ -469,6 +469,44 @@ Describe 'core library' {
         }
     }
 
+    It 'timer: an earlier timer a re-arm could not remove is remembered and removed later' {
+        # Stand-ins, as in the re-arm test above. While the file "stuck"
+        # exists, the first task is still there after being unregistered.
+        Import-Module ScheduledTasks
+        $stuck = Join-Path $base 'stuck'
+        $run = $env:LAB_RUN_ID
+        $dir = Get-LabRunDir $run
+        New-Item -ItemType Directory -Path $dir -Force | Out-Null
+        Set-Item -Path function:Register-ScheduledTask -Value { }
+        Set-Item -Path function:Unregister-ScheduledTask -Value { }
+        Set-Item -Path function:Get-ScheduledTask -Value ([scriptblock]::Create(
+                "param(`$TaskName) if ((Test-Path -LiteralPath '$stuck') -and `$TaskName -like '*-1') { 'still here' }"))
+        foreach ($c in 'Register-ScheduledTask', 'Unregister-ScheduledTask', 'Get-ScheduledTask') {
+            [string](Get-Command $c).Module | Should -Be ''
+        }
+        try {
+            Register-LabRevertTimer -Seconds 300 -RunId $run -Execute 'cmd.exe' -Argument '/c rem'
+            [IO.File]::WriteAllText($stuck, '')
+            Register-LabRevertTimer -Seconds 300 -RunId $run -Execute 'cmd.exe' -Argument '/c rem'
+            ([IO.File]::ReadAllText((Join-Path $dir 'timer'))).Trim() | Should -Be "lab-revert-$run-2"
+            ([IO.File]::ReadAllText((Join-Path $dir 'timer-old'))).Trim() | Should -Be "lab-revert-$run-1"
+            # While it is still there, the run is not cancelled: it might still be undone.
+            $msg = ''
+            try { Unregister-LabRevertTimer -RunId $run } catch { $msg = $_.Exception.Message }
+            $msg | Should -Match 'an earlier revert timer .* could not be removed'
+            Join-Path $dir 'timer' | Should -Exist
+            # Once it can be removed, cancelling removes both.
+            Remove-Item -LiteralPath $stuck
+            Unregister-LabRevertTimer -RunId $run
+            Join-Path $dir 'timer-old' | Should -Not -Exist
+            Join-Path $dir 'timer' | Should -Not -Exist
+        } finally {
+            Remove-Item -LiteralPath $stuck -ErrorAction SilentlyContinue
+            Remove-Item -Path function:Register-ScheduledTask, function:Unregister-ScheduledTask, function:Get-ScheduledTask -ErrorAction SilentlyContinue
+            Import-Module ScheduledTasks -Force
+        }
+    }
+
     It 'warning: it is sent a minute before the undo, or at the halfway point of a timer under two minutes' {
         Get-LabWarnLead -Seconds 300 | Should -Be 60
         Get-LabWarnLead -Seconds 120 | Should -Be 60

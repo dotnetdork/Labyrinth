@@ -198,24 +198,61 @@ function Register-LabRevertTimer {
     [IO.File]::WriteAllText($countFile, "$n`n")
     [IO.File]::WriteAllText($timerFile, "$name`n")
     Save-LabRevertTimerDue -RunId $RunId -At $at
-    # Only now is the earlier timer removed; it may already have run.
-    if ($old -ne '') {
-        Unregister-ScheduledTask -TaskName $old -TaskPath '\Labyrinth\' -Confirm:$false -ErrorAction SilentlyContinue
+    # Only now is the earlier timer removed; it may already have run. One that
+    # cannot be removed would still undo the run at its own, earlier time, so
+    # its name is kept for the next arm, -k and -u to try again.
+    try { [void](Clear-LabEarlierRevertTimer -RunId $RunId) } catch { Write-Verbose "earlier timers not cleared: $($_.Exception.Message)" }
+    if ($old -ne '' -and -not (Unregister-LabRevertTask -Name $old)) {
+        try { [IO.File]::AppendAllText((Join-Path $dir 'timer-old'), "$old`n") } catch { Write-Verbose "timer-old not written: $($_.Exception.Message)" }
+        [Console]::Error.WriteLine("revert timer: the earlier timer $old could not be removed and may still undo run $RunId at its earlier time")
     }
 }
 
+# Unregister-LabRevertTask -Name TASK: unregister a revert timer's scheduled task.
+# Returns $false if the task is still there afterwards. The task may already
+# have run or been removed by hand.
+function Unregister-LabRevertTask {
+    param([Parameter(Mandatory)] [string] $Name)
+    Unregister-ScheduledTask -TaskName $Name -TaskPath '\Labyrinth\' -Confirm:$false -ErrorAction SilentlyContinue
+    return (-not (Get-ScheduledTask -TaskName $Name -TaskPath '\Labyrinth\' -ErrorAction SilentlyContinue))
+}
+
+# Clear-LabEarlierRevertTimer -RunId RUN: remove the earlier revert timers of
+# the run that could not be removed when it was re-armed; their names are
+# kept, one per line, in the run folder's timer-old file. Returns $false,
+# keeping the names of those still there, if any could not be removed.
+function Clear-LabEarlierRevertTimer {
+    param([Parameter(Mandatory)] [string] $RunId)
+    $f = Join-Path (Get-LabRunDir $RunId) 'timer-old'
+    if (-not (Test-Path -LiteralPath $f -PathType Leaf)) { return $true }
+    $left = @()
+    foreach ($name in @([IO.File]::ReadAllLines($f))) {
+        $name = $name.Trim()
+        if ($name -cnotmatch '^lab-revert-[A-Za-z0-9-]+$') { continue }
+        if (-not (Unregister-LabRevertTask -Name $name)) { $left += $name }
+    }
+    if ($left.Count -eq 0) {
+        Remove-Item -LiteralPath $f -Force
+        return $true
+    }
+    [IO.File]::WriteAllText($f, (($left -join "`n") + "`n"))
+    return $false
+}
+
 # Unregister-LabRevertTimer -RunId RUN: remove the run's revert timer, if one
-# is armed. Throws, keeping the state files, if the task is still there
-# afterwards, because the run would still be rolled back.
+# is armed, and first any earlier one a re-arm could not remove. Throws,
+# keeping the state files, if a task is still there afterwards, because the
+# run would still be rolled back.
 function Unregister-LabRevertTimer {
     param([Parameter(Mandatory)] [string] $RunId)
     $dir = Get-LabRunDir $RunId
+    if (-not (Clear-LabEarlierRevertTimer -RunId $RunId)) {
+        throw "an earlier revert timer of run $RunId could not be removed"
+    }
     $f = Join-Path $dir 'timer'
     if (-not (Test-Path -LiteralPath $f)) { return }
     $name = [IO.File]::ReadAllText($f).Trim()
-    # The task may already have run or been removed by hand.
-    Unregister-ScheduledTask -TaskName $name -TaskPath '\Labyrinth\' -Confirm:$false -ErrorAction SilentlyContinue
-    if (Get-ScheduledTask -TaskName $name -TaskPath '\Labyrinth\' -ErrorAction SilentlyContinue) {
+    if (-not (Unregister-LabRevertTask -Name $name)) {
         throw "the revert timer $name could not be removed"
     }
     Remove-Item -LiteralPath $f -Force
