@@ -563,7 +563,7 @@ The manifest is `<state>/runs/<run>/manifest.jsonl`, one JSON object per line, e
 | `module_kept` | The module verified and no scored service got worse, so it is kept: `-u ID` and the revert timer leave it alone until it is applied again; `-u ID --all` undoes it (design 00, section 4, rule 9) |
 | `rolled_back` | The module was undone |
 
-Restoring a `file` entry writes the backup over the file in place, then restores its owner and permissions (and, on Linux, its SELinux label where `restorecon` exists). A created file is never deleted: rollback moves it into the backup folder as `rolled-back-<seq>-<name>`. Restoring is safe to repeat.
+Restoring a `file` entry writes the backup over the file in place, then restores its owner and permissions (and, on Linux, its SELinux label where `restorecon` exists). A created file is never deleted: rollback moves it into the backup folder as `rolled-back-<seq>-<name>`. Restoring is safe to repeat. A backup that cannot be copied is not recorded and the backup helper fails, so the module must leave the file alone. A restore step that fails makes the module's undo an error, and the message names the backup to restore from by hand, since a write that stops part way leaves the file short.
 
 ## 8. Guard comments
 
