@@ -94,7 +94,8 @@ function Copy-LabBackup {
 
 # Restore-LabBackup: undo every file entry $env:LAB_MODULE_ID recorded in
 # $env:LAB_RUN_ID, newest first. A file the module created is moved into the
-# backup folder, never deleted. Safe to run repeatedly.
+# backup folder, never deleted, and made private to administrators there.
+# Safe to run repeatedly.
 function Restore-LabBackup {
     $entries = @(Get-LabManifestEntry)
     [array]::Reverse($entries)
@@ -108,8 +109,18 @@ function Restore-LabBackup {
             $dir = Join-Path (Join-Path $env:LAB_BACKUP_DIR $env:LAB_RUN_ID) $env:LAB_MODULE_ID
             New-Item -ItemType Directory -Path $dir -Force | Out-Null
             $aside = Join-Path $dir ('rolled-back-{0}-{1}' -f $e.seq, (Split-Path -Leaf $e.target))
-            try { Move-Item -LiteralPath $e.target -Destination $aside }
-            catch { [Console]::Error.WriteLine($_.Exception.Message); $failed++ }
+            # A moved file keeps its own owner and access list, so it is made
+            # private like every copy under the data root; they go in the log.
+            try {
+                if ((Get-Item -LiteralPath $e.target -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) {
+                    throw "restore: $($e.target) is now a link; move it away by hand"
+                }
+                $was = 'unknown'
+                try { $was = Get-LabFileSddl -Path $e.target } catch { Write-Verbose 'access list not read' }
+                Move-Item -LiteralPath $e.target -Destination $aside
+                Protect-LabCopy -Path $aside
+                try { Write-LabLog -EventName rolled_back_file -Message "moved $($e.target), which the module created, to $aside (owner and access were $was)" } catch { Write-Verbose 'log not written' }
+            } catch { [Console]::Error.WriteLine($_.Exception.Message); $failed++ }
         }
     }
     if ($failed -gt 0) { throw "restore: $failed file(s) could not be restored" }

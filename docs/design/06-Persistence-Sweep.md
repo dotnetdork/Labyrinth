@@ -102,7 +102,7 @@ Quarantine is a core helper (`core/quarantine/`), so every module that removes a
 
 | Item | Linux | Windows | Manifest action |
 |---|---|---|---|
-| File | `lab_quarantine_file PATH REASON` | `Move-LabQuarantineFile -Path P -Reason R` | `quarantine_file`: `backup` is the quarantined copy, `prev` the owner, mode and SHA-256 (on Windows, the SHA-256) |
+| File | `lab_quarantine_file PATH REASON` | `Move-LabQuarantineFile -Path P -Reason R` | `quarantine_file`: `backup` is the quarantined copy, `prev` the owner, mode and SHA-256 (on Windows, the SHA-256, then the owner and access list as SDDL) |
 | Cron line | `lab_quarantine_cron FILE LINE REASON` | | `quarantine_cron`: `prev` is the original line |
 | systemd unit | `lab_quarantine_unit UNIT REASON` | | `quarantine_unit`: `prev` is whether it was enabled and active (`transient=yes` for a transient unit, `dropins=only` when only a package unit's added drop-ins were quarantined); its file and each drop-in get their own `quarantine_file` entry |
 | Scheduled task | | `Disable-LabQuarantineTask -TaskPath P -TaskName N -Reason R` | `quarantine_task`: `backup` is the exported XML, `prev` whether it was enabled |

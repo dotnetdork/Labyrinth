@@ -56,6 +56,42 @@ manifest_field() { lab_json_get "$(grep "\"action\":\"$1\"" "$(lab_manifest_file
   [ "$(sha256sum "$R/tmp/.x")" = "$sum" ]
 }
 
+@test "file: the quarantined copy is private to the account running Labyrinth, and the restore brings back the mode" {
+  printf 'planted\n' > "$R/tmp/open"
+  chmod 666 "$R/tmp/open"
+  lab_quarantine_file "$R/tmp/open" 'open to everyone'
+  local dest
+  dest="$(manifest_field quarantine_file backup)"
+  [ "$(stat -c '%u %a' "$dest")" = "$(id -u) 600" ]
+  [[ "$(manifest_field quarantine_file prev)" == "$(id -u):$(id -g) 666 "* ]]
+  # A newer file at the path, also open to everyone, is moved aside private too.
+  printf 'replanted\n' > "$R/tmp/open"
+  chmod 666 "$R/tmp/open"
+  lab_quarantine_restore
+  [ "$(cat "$R/tmp/open")" = planted ]
+  [ "$(stat -c %a "$R/tmp/open")" = 666 ]
+  [ "$(stat -c '%u %a' "$LAB_BACKUP_DIR/quarantine/$LAB_RUN_ID/aside-1$R/tmp/open")" = "$(id -u) 600" ]
+  # No file under the backup folder is left writable by group or others.
+  [ -z "$(find "$LAB_BACKUP_DIR" -type f -perm /022)" ]
+}
+
+@test "file: a planted hard link is quarantined without touching the file behind its other name" {
+  printf 'site config\n' > "$R/etc/config"
+  chmod 664 "$R/etc/config"
+  ln "$R/etc/config" "$R/tmp/.x"
+  lab_quarantine_file "$R/tmp/.x" 'planted hard link'
+  local dest
+  dest="$(manifest_field quarantine_file backup)"
+  absent "$R/tmp/.x"
+  [ "$(stat -c '%u %a %h' "$R/etc/config")" = "$(id -u) 664 1" ]
+  [ "$(stat -c '%u %a %h' "$dest")" = "$(id -u) 600 1" ]
+  [ "$(cat "$dest")" = 'site config' ]
+  lab_quarantine_restore
+  [ "$(cat "$R/tmp/.x")" = 'site config' ]
+  [ "$(stat -c %a "$R/tmp/.x")" = 664 ]
+  [ "$(stat -c %a "$R/etc/config")" = 664 ]
+}
+
 @test "file: a symbolic link is moved, not followed" {
   printf 'keep\n' > "$R/etc/target"
   ln -s "$R/etc/target" "$R/etc/link"

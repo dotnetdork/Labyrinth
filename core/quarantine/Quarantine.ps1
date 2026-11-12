@@ -61,17 +61,24 @@ function Move-LabQuarantineFile {
         Write-LabQuarantineError "refusing a folder (list it for a person): $Path"
         return 20
     }
+    # A link is left for a person: its owner and access list cannot be read
+    # or set without reaching the file it points to.
+    if ((Get-Item -LiteralPath $Path -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) {
+        Write-LabQuarantineError "refusing a link (list it for a person): $Path"
+        return 20
+    }
     # A file that cannot be read (locked or denied) or moved is one item left
     # for a person, not an error that stops the whole sweep.
     try {
         $sum = (Get-FileHash -LiteralPath $Path -Algorithm SHA256 -ErrorAction Stop).Hash.ToLowerInvariant()
+        $sddl = Get-LabFileSddl -Path $Path
     } catch {
         Write-LabQuarantineError "could not read ${Path} (locked or denied?); list it for a person: $($_.Exception.Message)"
         return 20
     }
     try {
         $dest = Join-Path (Get-LabQuarantineDir -Seq ([string](Get-LabManifestNextSeq))) ($Path -replace ':', '')
-        Add-LabManifestEntry -Action quarantine_file -Target $Path -Backup $dest -Prev $sum -Note $Reason
+        Add-LabManifestEntry -Action quarantine_file -Target $Path -Backup $dest -Prev "$sum $sddl" -Note $Reason
         New-Item -ItemType Directory -Path (Split-Path -Parent $dest) -Force | Out-Null
     } catch {
         Write-LabQuarantineError "could not quarantine ${Path}: $($_.Exception.Message)"
@@ -82,6 +89,16 @@ function Move-LabQuarantineFile {
     } catch {
         Write-LabQuarantineError "could not move ${Path} (locked or denied?); list it for a person: $($_.Exception.Message)"
         return 20
+    }
+    # The moved file keeps its own owner and access list. The copy is made
+    # private to Administrators and SYSTEM: Labyrinth refuses to run while
+    # another account can change anything under its data root. The manifest
+    # holds the owner and access list for the restore.
+    try {
+        Protect-LabCopy -Path $dest
+    } catch {
+        Write-LabQuarantineError "moved $Path to $dest, but could not make the copy private to administrators; set its owner and access by hand: $($_.Exception.Message)"
+        return 40
     }
     try { Write-LabLog -EventName quarantine_file -Message "quarantined ${Path}: $Reason" } catch { Write-Verbose 'log not written' }
     return 0
@@ -96,17 +113,31 @@ function Restore-LabQuarantineFile {
         Write-LabQuarantineError "quarantined copy missing: $backup"
         return 40
     }
-    if ((Get-FileHash -LiteralPath $backup -Algorithm SHA256).Hash.ToLowerInvariant() -cne $Entry.prev) {
+    # prev is the hash, then the owner and access list (SDDL); an entry
+    # written before the copy became private holds the hash alone.
+    $sum, $sddl = ([string]$Entry.prev) -split ' ', 2
+    if ((Get-FileHash -LiteralPath $backup -Algorithm SHA256).Hash.ToLowerInvariant() -cne $sum) {
         Write-LabQuarantineError "the quarantined copy of $target has changed; restore it by hand from $backup"
         return 40
     }
     if (Test-Path -LiteralPath $target) {
+        if ((Get-Item -LiteralPath $target -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) {
+            Write-LabQuarantineError "a link is now at $target; remove it by hand, then restore again from $backup"
+            return 40
+        }
         $aside = Join-Path (Get-LabQuarantineDir) ('aside-{0}\{1}' -f $Entry.seq, ($target -replace ':', ''))
         New-Item -ItemType Directory -Path (Split-Path -Parent $aside) -Force | Out-Null
+        $was = 'unknown'
+        try { $was = Get-LabFileSddl -Path $target } catch { Write-Verbose 'access list not read' }
         Move-Item -LiteralPath $target -Destination $aside
+        # Private like every copy under the data root; its own owner and
+        # access list go in the log.
+        Protect-LabCopy -Path $aside
+        try { Write-LabLog -EventName quarantine_aside -Message "moved the newer $target aside to $aside (owner and access were $was)" } catch { Write-Verbose 'log not written' }
     }
     New-Item -ItemType Directory -Path (Split-Path -Parent $target) -Force | Out-Null
     Move-Item -LiteralPath $backup -Destination $target
+    if ($sddl) { Restore-LabFileSddl -Path $target -Sddl $sddl }
     return 0
 }
 
