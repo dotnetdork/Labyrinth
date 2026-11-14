@@ -120,6 +120,27 @@ manifest_field() { lab_json_get "$(grep "\"action\":\"$1\"" "$(lab_manifest_file
   absent "$(lab_manifest_file)"
 }
 
+@test "file: a set-user-ID file restored into a folder others can write changes the mode of nothing else" {
+  printf '#!/bin/sh\n' > "$R/tmp/sx"
+  chmod 4755 "$R/tmp/sx"
+  printf 'victim\n' > "$R/tmp/victim"
+  chmod 600 "$R/tmp/victim"
+  lab_quarantine_file "$R/tmp/sx" 'set-user-ID file in /tmp'
+  # As soon as the copy is back in place, another account puts a link to
+  # its own target there, keeping the restored file under another name.
+  mv() {
+    command mv "$@" || return
+    if [[ "${*: -1}" == "$R/tmp/sx" && ! -L "$R/tmp/sx" ]]; then
+      command mv -- "$R/tmp/sx" "$R/tmp/moved"
+      ln -s -- "$R/tmp/victim" "$R/tmp/sx"
+    fi
+  }
+  lab_quarantine_restore
+  [ "$(stat -c %a "$R/tmp/victim")" = 600 ]
+  [ "$(cat "$R/tmp/victim")" = victim ]
+  [ "$(stat -c %a "$R/tmp/moved")" = 4755 ]
+}
+
 @test "file: an item already gone is nothing to do" {
   lab_quarantine_file "$R/tmp/gone" test
   absent "$(lab_manifest_file)"

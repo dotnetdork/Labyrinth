@@ -55,12 +55,81 @@ function Get-LabManifestEntry {
     }
 }
 
+# The native calls behind Open-LabFileNoFollow. CreateFileW with
+# FILE_FLAG_OPEN_REPARSE_POINT opens a symbolic link or junction itself
+# rather than what it points to, and GetFileInformationByHandle then tells
+# what was opened, through the same handle, so the check and the use can
+# never be two looks at the path.
+$script:LabFileSource = @'
+using System;
+using System.IO;
+using System.Runtime.InteropServices;
+using Microsoft.Win32.SafeHandles;
+
+public static class LabFile {
+    [StructLayout(LayoutKind.Sequential)]
+    struct Info {
+        public uint Attributes;
+        public uint CreatedLow, CreatedHigh, AccessedLow, AccessedHigh, WrittenLow, WrittenHigh;
+        public uint VolumeSerial, SizeHigh, SizeLow, Links, IndexHigh, IndexLow;
+    }
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    static extern SafeFileHandle CreateFileW(string name, uint access, uint share, IntPtr security,
+        uint disposition, uint flags, IntPtr template);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    static extern bool GetFileInformationByHandle(SafeFileHandle handle, out Info info);
+
+    const uint GenericRead = 0x80000000, GenericWrite = 0x40000000, ShareRead = 0x1;
+    const uint CreateNew = 1, OpenExisting = 3, OpenReparsePoint = 0x00200000;
+    const uint AttrDirectory = 0x10, AttrReparsePoint = 0x400;
+
+    // Open PATH without following a link at its last name. An existing
+    // file opens only if it is a plain file (not a link, junction or
+    // folder); otherwise this throws InvalidDataException, having read and
+    // written nothing. With create, PATH must not exist yet, not even as a
+    // link, and is made new.
+    public static FileStream Open(string path, bool write, bool create) {
+        uint access = write ? (GenericRead | GenericWrite) : GenericRead;
+        SafeFileHandle h = CreateFileW(path, access, ShareRead, IntPtr.Zero,
+            create ? CreateNew : OpenExisting, OpenReparsePoint, IntPtr.Zero);
+        if (h.IsInvalid) {
+            throw new IOException(path + ": " + new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error()).Message);
+        }
+        Info info;
+        if (!GetFileInformationByHandle(h, out info)) {
+            int err = Marshal.GetLastWin32Error();
+            h.Dispose();
+            throw new IOException(path + ": " + new System.ComponentModel.Win32Exception(err).Message);
+        }
+        if ((info.Attributes & (AttrDirectory | AttrReparsePoint)) != 0) {
+            h.Dispose();
+            throw new InvalidDataException(path + " is not a regular file");
+        }
+        return new FileStream(h, write ? FileAccess.ReadWrite : FileAccess.Read);
+    }
+}
+'@
+
+# Open-LabFileNoFollow -Path P [-Write] [-Create]: a FileStream on P that is
+# never a link's target (LabFile.Open above). Throws
+# [IO.InvalidDataException] when P is a link, junction or folder.
+function Open-LabFileNoFollow {
+    param([Parameter(Mandatory)] [string] $Path, [switch] $Write, [switch] $Create)
+    if (-not ('LabFile' -as [type])) { Add-Type -TypeDefinition $script:LabFileSource }
+    return [LabFile]::Open($Path, [bool]$Write, [bool]$Create)
+}
+
 # Backup-LabFile PATH: before changing PATH, copy it to the run's backup
 # folder and record it, so rollback can put it back. If PATH does not exist
-# yet, record that the module creates it.
+# yet, record that the module creates it. PATH is read through one handle
+# opened without following a link (Open-LabFileNoFollow), so a link put in
+# its place after the check is never read: the backup then throws, records
+# nothing, and the module must leave PATH alone.
 function Backup-LabFile {
     param([Parameter(Mandatory)] [string] $Path)
-    if ($Path -notmatch '^([A-Za-z]:\\|\\\\)') { throw "backup: path must be absolute: $Path" }
+    if ($Path -notmatch '^([A-Za-z]:\|\\)') { throw "backup: path must be absolute: $Path" }
     if (Test-Path -LiteralPath $Path) {
         $item = Get-Item -LiteralPath $Path -Force
         if ($item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
@@ -69,7 +138,20 @@ function Backup-LabFile {
         $dir = Join-Path (Join-Path $env:LAB_BACKUP_DIR $env:LAB_RUN_ID) $env:LAB_MODULE_ID
         New-Item -ItemType Directory -Path $dir -Force | Out-Null
         $dest = Join-Path $dir ('{0}-{1}' -f (Get-LabManifestNextSeq), $item.Name)
-        Copy-Item -LiteralPath $Path -Destination $dest -Force
+        try {
+            $in = Open-LabFileNoFollow -Path $Path
+        } catch [IO.InvalidDataException] {
+            throw "backup: $Path changed while it was being read (a link or another file in its place); it was not backed up, so leave it alone"
+        }
+        try {
+            $out = [IO.File]::Open($dest, [IO.FileMode]::Create, [IO.FileAccess]::Write)
+            try { $in.CopyTo($out) } finally { $out.Dispose() }
+        } catch {
+            Remove-Item -LiteralPath $dest -Force -ErrorAction SilentlyContinue
+            throw "backup: could not copy $Path to ${dest}: $($_.Exception.Message)"
+        } finally {
+            $in.Dispose()
+        }
         Add-LabManifestEntry -Action file -Target $Path -Backup $dest
     } else {
         Add-LabManifestEntry -Action file_created -Target $Path
@@ -77,18 +159,31 @@ function Backup-LabFile {
 }
 
 # Copy-LabBackup -Backup B -Target T: put a backed-up file back. An existing
-# target is overwritten in place, so it keeps its permissions (ACL).
+# target is overwritten in place, so it keeps its permissions (ACL). The
+# target is opened without following a link (Open-LabFileNoFollow), and a
+# missing one is created new, so a link put there after the check is never
+# written through.
 function Copy-LabBackup {
     param([Parameter(Mandatory)] [string] $Backup, [Parameter(Mandatory)] [string] $Target)
     if (-not (Test-Path -LiteralPath $Backup -PathType Leaf)) { throw "restore: backup missing: $Backup" }
-    if (Test-Path -LiteralPath $Target) {
+    $exists = Test-Path -LiteralPath $Target
+    if ($exists) {
         $item = Get-Item -LiteralPath $Target -Force
         if ($item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
             throw "restore: $Target is no longer a regular file; restore it by hand from $Backup"
         }
-        [IO.File]::WriteAllBytes($Target, [IO.File]::ReadAllBytes($Backup))
-    } else {
-        Copy-Item -LiteralPath $Backup -Destination $Target
+    }
+    try {
+        $out = Open-LabFileNoFollow -Path $Target -Write -Create:(-not $exists)
+    } catch [IO.InvalidDataException] {
+        throw "restore: $Target is no longer a regular file; restore it by hand from $Backup"
+    }
+    try {
+        $bytes = [IO.File]::ReadAllBytes($Backup)
+        $out.SetLength(0)
+        $out.Write($bytes, 0, $bytes.Length)
+    } finally {
+        $out.Dispose()
     }
 }
 

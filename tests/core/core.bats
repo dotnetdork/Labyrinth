@@ -286,6 +286,64 @@ stub() {
   [ "$(stat -c %a "$f")" = 640 ]
 }
 
+# swap_after_check PATH VICTIM: make the next look at PATH without following
+# a link (stat -c '%d:%i %F', as the backup and the restore do first) put a
+# link to VICTIM at PATH as soon as it has answered, as an account that can
+# write PATH's folder could.
+swap_after_check() {
+  SWAP="$1" VICTIM="$2"
+  stat() {
+    command stat "$@" || return
+    if [[ -n "${SWAP:-}" && "$2" == '%d:%i %F' && "$4" == "$SWAP" ]]; then
+      rm -f -- "$SWAP"
+      ln -s -- "$VICTIM" "$SWAP"
+      SWAP=''
+    fi
+  }
+}
+
+@test "manifest: a file that becomes a link after the check is not backed up" {
+  f="$BATS_TEST_TMPDIR/files/h.conf"
+  secret="$BATS_TEST_TMPDIR/secret"
+  printf 'mine\n' > "$f"
+  printf 'secret\n' > "$secret"
+  swap_after_check "$f" "$secret"
+  run lab_backup_file "$f"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"$f changed while it was being read"*"so leave it alone"* ]]
+  [ ! -s "$(lab_manifest_file)" ]
+  [ -z "$(grep -rl secret "$LAB_BACKUP_DIR" 2> /dev/null)" ]
+}
+
+@test "manifest: a restore whose target becomes a link after the check leaves the link's target untouched" {
+  f="$BATS_TEST_TMPDIR/files/i.conf"
+  victim="$BATS_TEST_TMPDIR/victim"
+  printf 'orig\n' > "$f"
+  chmod 640 "$f"
+  lab_backup_file "$f"
+  printf 'changed\n' > "$f"
+  printf 'victim\n' > "$victim"
+  chmod 600 "$victim"
+  before="$(stat -c '%u:%g %a %Y' "$victim")"
+  swap_after_check "$f" "$victim"
+  run lab_restore_files
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"$f is no longer a regular file"* ]]
+  [ "$(cat "$victim")" = victim ]
+  [ "$(stat -c '%u:%g %a %Y' "$victim")" = "$before" ]
+}
+
+@test "manifest: a restore of a file that is gone creates it new, with its recorded owner and mode" {
+  f="$BATS_TEST_TMPDIR/files/j.conf"
+  printf 'orig\n' > "$f"
+  chmod 640 "$f"
+  lab_backup_file "$f"
+  rm "$f"
+  lab_restore_files
+  [ "$(cat "$f")" = orig ]
+  [ "$(stat -c '%u:%g %a' "$f")" = "$(id -u):$(id -g) 640" ]
+}
+
 @test "manifest: only the module's own entries are restored" {
   f="$BATS_TEST_TMPDIR/files/b.conf"
   printf 'orig\n' > "$f"
