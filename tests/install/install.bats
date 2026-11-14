@@ -12,6 +12,7 @@
 load ../runner/lab_helper
 
 setup() {
+  ROOT_MADE=()
   :
 }
 
@@ -526,6 +527,13 @@ something else
   [ -n "$output" ]
 }
 
+# Files made by root would stop bats from removing its test directory, so
+# the real-system tests list them in ROOT_MADE for teardown. (A RETURN trap
+# would fire as soon as the first helper function returned.)
+teardown() {
+  if (( ${#ROOT_MADE[@]} > 0 )); then sudo -n rm -rf -- "${ROOT_MADE[@]}"; fi
+}
+
 # real_release DIR: as root, a copy of the release, without the test doubles,
 # in DIR. Only root can change what is in it.
 real_release() {
@@ -548,10 +556,9 @@ real_install() {
 @test "realsystem: as root, a release folder that another account can change is refused before anything is loaded from it" {
   [ "${LAB_REALSYSTEM:-}" = 1 ] || skip 'real-system tests run only on CI runners or lab VMs'
   B="$(sudo -n mktemp -d /var/tmp/lab-inst.XXXXXX)"
-  # Files made by root would stop bats from removing its test directory.
-  trap 'sudo -n rm -rf -- "$B" "$REL"' RETURN
   # The files are root's, but the test folder above them is not.
   REL="$(cd "$BATS_TEST_TMPDIR" && pwd -P)/rel"
+  ROOT_MADE=("$B" "$REL")
   real_release "$REL"
   real_install "$REL" "$B"
   [ "$status" -eq 20 ]
@@ -564,7 +571,7 @@ real_install() {
 @test "realsystem: as root, a release folder only root can change installs as before" {
   [ "${LAB_REALSYSTEM:-}" = 1 ] || skip 'real-system tests run only on CI runners or lab VMs'
   B="$(sudo -n mktemp -d /var/tmp/lab-inst.XXXXXX)"
-  trap 'sudo -n rm -rf -- "$B"' RETURN
+  ROOT_MADE=("$B")
   real_release "$B/rel"
   real_install "$B/rel" "$B"
   [ "$status" -eq 0 ] || { printf '%s\n' "$output"; return 1; }
