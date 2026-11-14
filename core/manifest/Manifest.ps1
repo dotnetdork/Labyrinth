@@ -129,7 +129,7 @@ function Open-LabFileNoFollow {
 # nothing, and the module must leave PATH alone.
 function Backup-LabFile {
     param([Parameter(Mandatory)] [string] $Path)
-    if ($Path -notmatch '^([A-Za-z]:\|\\)') { throw "backup: path must be absolute: $Path" }
+    if ($Path -notmatch '^([A-Za-z]:\\|\\\\)') { throw "backup: path must be absolute: $Path" }
     if (Test-Path -LiteralPath $Path) {
         $item = Get-Item -LiteralPath $Path -Force
         if ($item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
