@@ -120,6 +120,37 @@ manifest_field() { lab_json_get "$(grep "\"action\":\"$1\"" "$(lab_manifest_file
   absent "$(lab_manifest_file)"
 }
 
+@test "file: a path through a linked folder into Labyrinth's own tree is refused" {
+  printf 'protected\n' > "$LAB_CONFIG_DIR/hosts"
+  mkdir -p "$R/home/x"
+  ln -s "$LAB_CONFIG_DIR" "$R/home/x/link"
+  run lab_quarantine_file "$R/home/x/link/hosts" test
+  [ "$status" -eq 20 ]
+  [[ "$output" == *"refusing a path through $R/home/x/link, a link another account could change"* ]]
+  [ "$(cat "$LAB_CONFIG_DIR/hosts")" = protected ]
+  absent "$(lab_manifest_file)"
+}
+
+@test "file: through a link only root can change, the path is judged by where it really is" {
+  # As if root owned the links and their folder, as on a real host.
+  lab_dir_trusted() { return 0; }
+  stat() { if [[ "$1 $2" == '-c %u' ]]; then echo 0; else command stat "$@"; fi; }
+  printf 'protected\n' > "$LAB_CONFIG_DIR/hosts"
+  printf 'planted\n' > "$R/tmp/b"
+  mkdir -p "$R/home/x"
+  ln -s "$LAB_CONFIG_DIR" "$R/home/x/conf"
+  ln -s ../../tmp "$R/home/x/tmp"
+  run lab_quarantine_file "$R/home/x/conf/hosts" test
+  [ "$status" -eq 20 ]
+  [[ "$output" == *"refusing a path inside Labyrinth's own tree: $R/home/x/conf/hosts"* ]]
+  [ "$(cat "$LAB_CONFIG_DIR/hosts")" = protected ]
+  absent "$(lab_manifest_file)"
+  # A link that leads outside the tree is followed, and the file moved.
+  lab_quarantine_file "$R/home/x/tmp/b" test
+  absent "$R/tmp/b"
+  [ "$(entries quarantine_file)" -eq 1 ]
+}
+
 @test "file: an item already gone is nothing to do" {
   lab_quarantine_file "$R/tmp/gone" test
   absent "$(lab_manifest_file)"

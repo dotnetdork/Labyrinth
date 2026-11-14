@@ -130,6 +130,51 @@ Describe 'quarantine' {
         Test-Path -LiteralPath (Get-LabManifestPath) | Should -BeFalse
     }
 
+    It 'file: a path through a junction into Labyrinth''s own tree is refused' {
+        New-Item -ItemType Directory -Path $env:LAB_CONFIG_DIR -Force | Out-Null
+        $hosts = Join-Path $env:LAB_CONFIG_DIR 'hosts'
+        [IO.File]::WriteAllText($hosts, 'protected')
+        $link = Join-Path $items 'link'
+        New-Item -ItemType Junction -Path $link -Target $env:LAB_CONFIG_DIR | Out-Null
+        Move-LabQuarantineFile -Path (Join-Path $link 'hosts') -Reason test | Should -Be 20
+        [IO.File]::ReadAllText($hosts) | Should -Be 'protected'
+        Test-Path -LiteralPath (Get-LabManifestPath) | Should -BeFalse
+    }
+
+    It 'file: through a junction only administrators can change, the path is judged by where it really is' {
+        Mock Test-LabItemAcl { $true }
+        New-Item -ItemType Directory -Path $env:LAB_CONFIG_DIR -Force | Out-Null
+        $hosts = Join-Path $env:LAB_CONFIG_DIR 'hosts'
+        [IO.File]::WriteAllText($hosts, 'protected')
+        New-Item -ItemType Junction -Path (Join-Path $items 'conf') -Target $env:LAB_CONFIG_DIR | Out-Null
+        Move-LabQuarantineFile -Path (Join-Path $items 'conf\hosts') -Reason test | Should -Be 20
+        [IO.File]::ReadAllText($hosts) | Should -Be 'protected'
+        Test-Path -LiteralPath (Get-LabManifestPath) | Should -BeFalse
+        # A junction that leads outside the tree is followed, and the file moved.
+        $elsewhere = Join-Path $root 'elsewhere'
+        New-Item -ItemType Directory -Path $elsewhere -Force | Out-Null
+        $f = Join-Path $elsewhere 'b.ps1'
+        [IO.File]::WriteAllText($f, 'planted')
+        New-Item -ItemType Junction -Path (Join-Path $items 'out') -Target $elsewhere | Out-Null
+        Move-LabQuarantineFile -Path (Join-Path $items 'out\b.ps1') -Reason test | Should -Be 0
+        Test-Path -LiteralPath $f | Should -BeFalse
+        @(Get-TestEntry 'quarantine_file').Count | Should -Be 1
+    }
+
+    It 'file: a short (8.3) name into Labyrinth''s own tree is refused' {
+        New-Item -ItemType Directory -Path $env:LAB_STATE_DIR -Force | Out-Null
+        $own = Join-Path $env:LAB_STATE_DIR 's.ps1'
+        [IO.File]::WriteAllText($own, 'x')
+        $short = (New-Object -ComObject Scripting.FileSystemObject).GetFolder($env:LAB_STATE_DIR).ShortPath
+        if ($short -ieq $env:LAB_STATE_DIR) {
+            Set-ItResult -Skipped -Because 'this volume makes no short names'
+            return
+        }
+        Move-LabQuarantineFile -Path (Join-Path $short 's.ps1') -Reason test | Should -Be 20
+        Test-Path -LiteralPath $own | Should -BeTrue
+        Test-Path -LiteralPath (Get-LabManifestPath) | Should -BeFalse
+    }
+
     It 'file: restore moves a newer file aside and refuses a changed copy' {
         $f = Join-Path $items 'x.ps1'
         [IO.File]::WriteAllText($f, 'planted')
