@@ -159,9 +159,19 @@ _lab_q_restore_file() {
     lab_copy_private "$aside" || return 40
     lab_log_info quarantine_aside "moved the newer $target aside to $aside (owner and mode were $was)" 2> /dev/null || true
   fi
-  mkdir -p -- "$(dirname -- "$target")" && mv -- "$backup" "$target" || return 40
-  chown -h -- "$own" "$target" || return 40
-  [[ "$mode" == link ]] || chmod -- "$mode" "$target" || return 40
+  # The owner and mode go on the copy while it is still in the private
+  # quarantine folder; then it is renamed into place, and nothing touches
+  # the target's path after that, so a link put there cannot redirect them.
+  # mv -T replaces whatever is at the target (a link too) instead of
+  # following it. A copy that cannot be put back is made private again.
+  if ! chown -h -- "$own" "$backup" || { [[ "$mode" != link ]] && ! chmod -- "$mode" "$backup"; }; then
+    lab_copy_private "$backup" || true
+    return 40
+  fi
+  if ! mkdir -p -- "$(dirname -- "$target")" || ! mv -T -- "$backup" "$target"; then
+    lab_copy_private "$backup" || true
+    return 40
+  fi
   if lab_have restorecon; then
     restorecon -- "$target" 2> /dev/null || true
   fi

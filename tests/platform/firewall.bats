@@ -23,7 +23,7 @@ setup() {
   # command on the test machine is never found.
   local t sh p
   sh="$(command -v bash)"
-  for t in bash cat chmod chown cp date dirname env find grep head hostname id ls mkdir mv rm sed tac tr uname wc; do
+  for t in bash cat chmod chown cp date dirname env find grep head hostname id ls mkdir mv rm sed stat tac touch tr uname wc; do
     p="$(command -v "$t")" || continue
     printf '#!%s\nexec %s "$@"\n' "$sh" "$p" > "$BATS_TEST_TMPDIR/bin/$t"
     chmod +x "$BATS_TEST_TMPDIR/bin/$t"

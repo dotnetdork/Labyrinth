@@ -247,6 +247,47 @@ Describe 'core library' {
         (Get-Content -LiteralPath $f) | Should -Be 'one'
     }
 
+    It 'manifest: a backup is not read through a link put in place after the check' {
+        $f = Join-Path $files 'h.conf'
+        $secret = Join-Path $files 'secret.txt'
+        [IO.File]::WriteAllText($secret, 'secret')
+        New-Item -ItemType SymbolicLink -Path $f -Target $secret | Out-Null
+        # The check saw a plain file; by the time it is opened, it is a link.
+        Mock Get-Item { [pscustomobject]@{ PSIsContainer = $false; Attributes = [IO.FileAttributes]::Normal; Name = 'h.conf' } } `
+            -ParameterFilter { $LiteralPath -eq $f }
+        { Backup-LabFile $f } | Should -Throw '*changed while it was being read*leave it alone*'
+        @(Get-LabManifestEntry).Count | Should -Be 0
+        @(Get-ChildItem -LiteralPath $env:LAB_BACKUP_DIR -Recurse -File -ErrorAction SilentlyContinue).Count | Should -Be 0
+    }
+
+    It 'manifest: a restore never writes through a link put at the target after the check' {
+        $f = Join-Path $files 'i.conf'
+        [IO.File]::WriteAllText($f, "orig`n")
+        Backup-LabFile $f
+        $victim = Join-Path $files 'victim.txt'
+        [IO.File]::WriteAllText($victim, 'victim')
+        Remove-Item -LiteralPath $f
+        New-Item -ItemType SymbolicLink -Path $f -Target $victim | Out-Null
+        Mock Get-Item { [pscustomobject]@{ PSIsContainer = $false; Attributes = [IO.FileAttributes]::Normal; Name = 'i.conf' } } `
+            -ParameterFilter { $LiteralPath -eq $f }
+        { Restore-LabBackup } | Should -Throw
+        [IO.File]::ReadAllText($victim) | Should -Be 'victim'
+    }
+
+    It 'manifest: a restore of a file that is gone creates it, and one that is there keeps its access list' {
+        $f = Join-Path $files 'j.conf'
+        [IO.File]::WriteAllText($f, "orig`n")
+        Backup-LabFile $f
+        $sddl = (Get-Acl -LiteralPath $f).Sddl
+        [IO.File]::WriteAllText($f, "changed and longer`n")
+        Restore-LabBackup
+        [IO.File]::ReadAllText($f) | Should -Be "orig`n"
+        (Get-Acl -LiteralPath $f).Sddl | Should -Be $sddl
+        Remove-Item -LiteralPath $f
+        Restore-LabBackup
+        [IO.File]::ReadAllText($f) | Should -Be "orig`n"
+    }
+
     It "manifest: only the module's own entries are restored" {
         $f = Join-Path $files 'b.conf'
         [IO.File]::WriteAllText($f, "orig`n")
