@@ -1866,10 +1866,26 @@ plan_all() {
 # configuration and its data root, because they run as root, later too, by
 # the revert timer (design 21, section 5).
 gate_trusted() {
-  local bad
   if (( LAB_RELEASE == 1 )); then
     PENDING_WARNINGS+=("no release.sha256, so Labyrinth's files were not checked")
   fi
+  gate_owned
+}
+
+# gate_root_owned: as root, the same check as gate_trusted, without its
+# warning. Preview, --probe, the status and --new-seed read the
+# configuration, and preview runs every module's check and plan script, so
+# as root they must not run from folders another account can change. Not as
+# root they run as before.
+gate_root_owned() {
+  lab_is_admin || return 0
+  gate_owned
+}
+
+# gate_owned: refuse with 20 when an account other than root can change the
+# code, the configuration or the data root.
+gate_owned() {
+  local bad
   bad="$(lab_tree_trusted "$LAB_ROOT" "$LAB_CONFIG_DIR" "$DATA_ROOT")" && return 0
   die "$bad can be changed by an account other than root, so Labyrinth will not run as root from it" 20 \
     "Keep Labyrinth's folders owned by root and not writable by others ('chown -R root:' and 'chmod -R go-w'), in folders only root can change."
@@ -2645,6 +2661,7 @@ resolve_profile() {
 cmd_plan() {
   local phase="$1" worst=0
   export LAB_DRY_RUN=1
+  gate_root_owned
   resolve_profile
   read_profile "$OPT_PROFILE"
   check_selection "$phase"
@@ -3772,6 +3789,7 @@ cmd_rollback() {
 cmd_probe() {
   local out rc=0
   export LAB_DRY_RUN=1
+  gate_root_owned
   lab_event_load 2>/dev/null || die "event.conf is malformed: $(load_reason lab_event_load)" 40 "$FIX_LINE"
   # Loaded first and quietly, so a bad list is reported once, below.
   lab_services_load 2>/dev/null || rc=$?
@@ -3824,7 +3842,8 @@ data_opts() {
 # cmd_status: what typing the name alone shows (docs/Conventions.md section
 # 3.1): the host, its group and profile, the latest run of each phase, any
 # armed revert timer, and the one command to run next. It only reads, and
-# always exits 0, even on a host with no configuration yet.
+# exits 0, even on a host with no configuration yet, unless as root it
+# runs from folders another account can change (20).
 cmd_status() {
   local host rc=0 why='' p id list opts when text next=''
   local -a page=() runs=() armed=()
@@ -3836,6 +3855,7 @@ cmd_status() {
     printf "'%s -h' lists every action.\n" "$SELF"
     exit 0
   fi
+  gate_owned
   opts="$(data_opts)"
   host="$(lab_host)"
   printf 'labyrinth %s: status of host %s\n' "$LAB_VERSION" "$host"
@@ -3937,6 +3957,7 @@ new_seed_undo() {
 cmd_new_seed() {
   local old='' seed='' answer='' file host rc=0
   lab_is_admin || die '--new-seed needs root' 20 "$FIX_ADMIN"
+  gate_owned
   lab_tty_ok || die '--new-seed needs a terminal to show the seed on' 20 \
     'Run it from a terminal, such as the console or an SSH session.'
   [[ -d "$LAB_CONFIG_DIR" ]] || die "the configuration folder does not exist: $LAB_CONFIG_DIR" 40 \
