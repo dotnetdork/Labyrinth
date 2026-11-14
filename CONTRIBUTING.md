@@ -8,7 +8,7 @@ Thanks for helping. Labyrinth is public, and every line of it is shared with eve
 - **Fix or improve the documentation:** open an issue, or a small pull request on a `docs/<name>` branch.
 - **Build a Roadmap item:** pick an open issue in the current milestone ([`docs/Roadmap.md`](docs/Roadmap.md)) and follow the workflow below. `good first issue` marks a small, self-contained place to start.
 - **Propose something beyond the Roadmap:** open an issue from the Feature template.
-- **Report a weakness in Labyrinth itself:** never in a public issue. Use [private reporting](SECURITY.md).
+- **Report a weakness in Labyrinth itself:** one a person could use today against a host running Labyrinth goes through [private reporting](SECURITY.md), never a public issue. A hardening gap, or a flaw in code nothing reaches yet, is a public `type: security` issue ([SECURITY.md](SECURITY.md), "Private or public").
 
 ## The public boundary
 
@@ -48,7 +48,7 @@ A bug or a cleanup can leave out the parts that do not apply. The title is a sho
 
 | Label group | Use |
 |---|---|
-| `type:` | One per issue: `build` (a planned Roadmap item), `feature` (a new capability beyond the Roadmap), `bug`, `tech-debt`, `docs`, or `security` (only for a hardening gap that is public knowledge; a weakness in Labyrinth itself goes through [private reporting](SECURITY.md)) |
+| `type:` | One per issue: `build` (a planned Roadmap item), `feature` (a new capability beyond the Roadmap), `bug`, `tech-debt`, `docs`, or `security` (a hardening gap, a flaw in code nothing reaches yet, or a gap that is public knowledge; a weakness someone could use today goes through [private reporting](SECURITY.md)) |
 | `phase:` | The run phase it belongs to: `lockout`, `harden`, `observe`, `deceive`, `sustain` |
 | `area:` | The part of the code it touches, such as `firewall`, `accounts` or `command-line` |
 | `platform:` | `linux`, `windows`, both, or `appliance` |
