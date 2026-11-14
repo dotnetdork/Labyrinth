@@ -5,7 +5,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        A weakness someone could exploit goes through [private reporting](https://github.com/dotnetdork/Labyrinth/security/advisories/new) instead (SECURITY.md).
+        A weakness a person could use today against a host running Labyrinth goes through [private reporting](https://github.com/dotnetdork/Labyrinth/security/advisories/new) instead. A hardening gap, or a flaw in code nothing reaches yet, is fine here (SECURITY.md, "Private or public").
         This repository is public: no event values, real hostnames, addresses or credentials. Use placeholders.
   - type: textarea
     id: read
