@@ -200,7 +200,7 @@ A value option that the action does not use, such as `--profile` with `--probe`,
 4. The first phase, in order, that has not run, or whose latest run was undone: preview it (`laby PHASE`).
 5. Otherwise: `laby --probe`.
 
-Commands on the `Next:` line carry the line's `--root` and `--config`, so they can be pasted. The status only reads: no lock, no log, no run ID, nothing created. Like `--history`, it needs root or Administrator; without, it prints the main help's usage lines and how to run it as root (or from an elevated session). It always exits `0`, even on a host with no configuration. The queue count joins it when the queue is built (section 3.3).
+Commands on the `Next:` line carry the line's `--root` and `--config`, so they can be pasted. The status only reads: no lock, no log, no run ID, nothing created. Like `--history`, it needs root or Administrator; without, it prints the main help's usage lines and how to run it as root (or from an elevated session). It always exits `0`, even on a host with no configuration, except that as root or Administrator it refuses with `20` when another account can change Labyrinth's folders (Trusted code, below). The queue count joins it when the queue is built (section 3.3).
 
 #### The manual
 
@@ -303,7 +303,7 @@ Cancelling a timer checks that it is really gone. If it is still armed, or on Li
 
 #### Trusted code
 
-**Who can change the code.** `-r`, `-k` and `-u` first check that only root (Linux) or administrators (Windows) can change the program folder, the configuration folder, the data root, anything in them and every folder above them (`lab_tree_trusted`, `Find-LabUntrustedItem`; design 21, section 5). If another account could, the command refuses with `20` and changes nothing, because the revert timer would later run that code as root or SYSTEM. The check only reads. On Linux the timer's command line uses real paths, with links resolved.
+**Who can change the code.** `-r`, `-k` and `-u` first check that only root (Linux) or administrators (Windows) can change the program folder, the configuration folder, the data root, anything in them and every folder above them (`lab_tree_trusted`, `Find-LabUntrustedItem`; design 21, section 5). If another account could, the command refuses with `20` and changes nothing, because the revert timer would later run that code as root or SYSTEM. Run as root or Administrator, the preview, `--probe`, the status and `--new-seed` make the same check (without the warning about a missing `release.sha256`) before they read the configuration or run a module script, because the preview runs every module's `check` and `plan` script; run without root, they skip it. The check only reads. On Linux the timer's command line uses real paths, with links resolved.
 
 **What the code is.** Before it loads the rest of the core, each runner checks every file of its folder against `release.sha256` (`lab_release_check`, `Test-LabRelease`; design 21, section 5.1), for every command. A file that is changed, missing or not in the list refuses the command with `20`, the revert timer's `-u` included, which also sends a notice. With no list, `-r`, `-k` and `-u` warn, and the release hash reads `not checked`.
 

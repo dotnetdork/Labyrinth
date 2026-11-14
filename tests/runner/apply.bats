@@ -75,6 +75,40 @@ setup() {
   [ -f "$ROOT/state/runs/$id/timer" ]
 }
 
+# ran_marker: make the toggle module's check and plan scripts leave a
+# marker, so a test can tell whether any module script ran.
+ran_marker() {
+  local f
+  for f in check plan; do
+    printf '%s\n' '#!/usr/bin/env bash' 'touch "$LAB_ROOT/SCRIPT_RAN"' 'exit 0' \
+      > "$LAB/phases/observe/modules/toggle/$f.sh"
+  done
+}
+
+@test "as root, preview, --probe, the status and --new-seed refuse code another account can change" {
+  ran_marker
+  touch "$LAB/UNTRUSTED"
+  plan
+  [ "$status" -eq 20 ]
+  [[ "$output" == *"$LAB can be changed by an account other than root"* ]]
+  [ ! -e "$LAB/SCRIPT_RAN" ]
+  for cmd in --probe --new-seed ''; do
+    run bash "$LAB/labyrinth.sh" --root "$ROOT" --config "$ETC" ${cmd:+"$cmd"}
+    [ "$status" -eq 20 ] || { echo "${cmd:-status}: $status"; return 1; }
+    [[ "$output" == *"$LAB can be changed by an account other than root"* ]] \
+      || { echo "${cmd:-status}: $output"; return 1; }
+  done
+  [ ! -e "$ETC/seed.conf" ]
+}
+
+@test "not as root, a preview from code another account can change runs as before" {
+  ran_marker
+  touch "$LAB/UNTRUSTED" "$LAB/NOT_ADMIN"
+  plan
+  [ "$status" -eq 0 ]
+  [ -e "$LAB/SCRIPT_RAN" ]
+}
+
 @test "an entry point gets no standard input, so it cannot take the operator's answers" {
   printf '%s\n' '#!/usr/bin/env bash' \
     'if IFS= read -r l; then printf "%s\n" "$l" > "$LAB_ROOT/STDIN_SEEN"; fi' \

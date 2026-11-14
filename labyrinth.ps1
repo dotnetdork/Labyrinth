@@ -2056,6 +2056,21 @@ function Assert-LabTrustedTree {
     if ($script:Release.Status -eq 'missing') {
         $script:PendingWarnings += "no release.sha256, so Labyrinth's files were not checked"
     }
+    Assert-LabOwnedTree
+}
+
+# As an administrator, the same check as Assert-LabTrustedTree, without its
+# warning. Preview, -Probe, the status and -NewSeed read the configuration,
+# and preview runs every module's check and plan script, so as an
+# administrator they must not run from folders another account can change.
+# Not as an administrator they run as before.
+function Assert-LabAdminOwnedTree {
+    if (Test-LabAdmin) { Assert-LabOwnedTree }
+}
+
+# Refuse with 20 when an account that is not an administrator can change
+# the code, the configuration or the data root.
+function Assert-LabOwnedTree {
     $bad = Find-LabUntrustedItem -Path @($env:LAB_ROOT, $env:LAB_CONFIG_DIR, $script:DataRoot)
     if ($null -ne $bad) {
         Exit-Lab "$bad can be changed by an account that is not an administrator, so Labyrinth will not run as SYSTEM from it" 20 `
@@ -2844,6 +2859,7 @@ function Assert-LabServiceList {
 function Invoke-LabPlanCommand {
     param([string] $Phase)
     $script:DryRun = '1'; $env:LAB_DRY_RUN = '1'
+    Assert-LabAdminOwnedTree
     $entry = Find-LabThisHost
     if ($script:ProfileName -eq '') {
         if ($null -eq $entry) { Exit-Lab "no profile: give -Profile, or list this host ($(Get-LabHostName)) in $(Join-Path $env:LAB_CONFIG_DIR 'hosts')" }
@@ -3989,6 +4005,7 @@ function Invoke-LabRollbackCommand {
 
 function Invoke-LabProbeCommand {
     $script:DryRun = '1'; $env:LAB_DRY_RUN = '1'
+    Assert-LabAdminOwnedTree
     Read-LabSetting
     $out = $null
     Assert-LabServiceList
@@ -4045,8 +4062,9 @@ function Get-LabDataOption {
 # Invoke-LabStatusCommand: what typing the name alone shows
 # (docs/Conventions.md section 3.1): the host, its group and profile, the
 # latest run of each phase, any armed revert timer, and the one command to
-# run next. It only reads, and always exits 0, even on a host with no
-# configuration yet.
+# run next. It only reads, and exits 0, even on a host with no
+# configuration yet, unless as an administrator it runs from folders
+# another account can change (20).
 function Invoke-LabStatusCommand {
     if (-not (Test-LabAdmin)) {
         Show-LabHelp '' 4
@@ -4056,6 +4074,7 @@ function Invoke-LabStatusCommand {
         [Console]::Out.WriteLine("'$Self -h' lists every action.")
         exit 0
     }
+    Assert-LabOwnedTree
     $opts = Get-LabDataOption
     $hostName = Get-LabHostName
     $hostsFile = Join-Path $env:LAB_CONFIG_DIR 'hosts'
@@ -4177,6 +4196,7 @@ function Show-LabManual {
 # the log.
 function Invoke-LabNewSeedCommand {
     if (-not (Test-LabAdmin)) { Exit-Lab '-NewSeed needs an elevated Administrator session' 20 $FixAdmin }
+    Assert-LabOwnedTree
     if (-not (Test-LabTerminal)) {
         Exit-Lab '-NewSeed needs a terminal to show the seed on' 20 'Run it from a terminal, such as the console or a remote session.'
     }

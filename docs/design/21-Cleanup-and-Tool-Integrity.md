@@ -90,7 +90,7 @@ flowchart TD
 - A tampered module file makes the pre-run check fail and the run refuse to start.
 - A changed core file makes every command refuse with `20` before any of the core runs, the revert timer's `-u` included, which also sends a notice. A file added under `core` or `phases`, and a listed file that is missing, are refused the same way.
 - With no `release.sha256`, `-r`, `-k` and `-u` warn and go on, and the hash lines say `not checked`. With one that matches, `-V` and the run recap print its SHA-256.
-- Code, configuration or a data root that an account other than root (Linux) or an administrator (Windows) can change makes `-r`, `-k` and `-u` refuse with 20, and nothing changes.
+- Code, configuration or a data root that an account other than root (Linux) or an administrator (Windows) can change makes `-r`, `-k` and `-u` refuse with 20, and nothing changes. Run as root or an administrator, the preview, `--probe`, the status and `--new-seed` refuse with 20 too, before they read the configuration or run a module script.
 - A wrong signature is rejected.
 - A manifest whose SHA-256 differs from the offline record's value is rejected on a host with no `ssh-keygen -Y`.
 - Cleanup deletes a honey-account the manifest lists and leaves every account that existed before the run.
