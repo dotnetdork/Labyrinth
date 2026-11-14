@@ -10,6 +10,7 @@ if (-not $env:LAB_ROOT) { throw 'LAB_ROOT is not set' }
 . (Join-Path $env:LAB_ROOT 'core\config\Config.ps1')
 . (Join-Path $env:LAB_ROOT 'core\log\Log.ps1')
 . (Join-Path $env:LAB_ROOT 'core\manifest\Manifest.ps1')
+. (Join-Path $env:LAB_ROOT 'core\safety\Trust.ps1')
 . (Join-Path $env:LAB_ROOT 'core\safety\Safety.ps1')
 . (Join-Path $env:LAB_ROOT 'core\safety\System.ps1')
 . (Join-Path $env:LAB_ROOT 'core\approval\Approval.ps1')

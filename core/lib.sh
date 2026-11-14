@@ -16,6 +16,8 @@ if [[ -z "${LAB_CORE_LOADED:-}" ]]; then
   source "$LAB_ROOT/core/manifest/manifest.sh"
   # shellcheck source=core/safety/safety.sh
   source "$LAB_ROOT/core/safety/safety.sh"
+  # shellcheck source=core/safety/trust.sh
+  source "$LAB_ROOT/core/safety/trust.sh"
   # shellcheck source=core/safety/system.sh
   source "$LAB_ROOT/core/safety/system.sh"
   # shellcheck source=core/approval/approval.sh

@@ -514,7 +514,7 @@ something else
 @test "the real folder check: a folder owned by root and closed to others passes, one that is not fails" {
   REPO="$BATS_TEST_DIRNAME/../.."
   # shellcheck source=/dev/null
-  source "$REPO/core/safety/system.sh"
+  source "$REPO/core/safety/trust.sh"
   # /usr/bin is root's and closed to others on any Linux host; the folder it
   # would be made in is checked from its nearest existing folder.
   lab_path_trusted /usr/bin
@@ -524,6 +524,53 @@ something else
   run lab_path_trusted "$T/mine"
   [ "$status" -eq 1 ]
   [ -n "$output" ]
+}
+
+# real_release DIR: as root, a copy of the release, without the test doubles,
+# in DIR. Only root can change what is in it.
+real_release() {
+  sudo -n env REPO="$BATS_TEST_DIRNAME/../.." D="$1" bash -c '
+    set -Eeuo pipefail
+    umask 022
+    mkdir -p "$D"
+    cp "$REPO/labyrinth.sh" "$REPO/install.sh" "$D/"
+    cp -R "$REPO/core" "$REPO/config" "$D/"
+    chown -R root:root "$D"
+    chmod -R go-w "$D"'
+}
+
+# real_install REL BASE: run REL's installer as root, pointed at throwaway
+# folders under BASE.
+real_install() {
+  run sudo -n bash "$1/install.sh" -y --root "$2/opt" --link-dir "$2/bin" --man-dir "$2/man" --comp-dir "$2/comp"
+}
+
+@test "realsystem: as root, a release folder that another account can change is refused before anything is loaded from it" {
+  [ "${LAB_REALSYSTEM:-}" = 1 ] || skip 'real-system tests run only on CI runners or lab VMs'
+  B="$(sudo -n mktemp -d /var/tmp/lab-inst.XXXXXX)"
+  # Files made by root would stop bats from removing its test directory.
+  trap 'sudo -n rm -rf -- "$B" "$REL"' RETURN
+  # The files are root's, but the test folder above them is not.
+  REL="$(cd "$BATS_TEST_TMPDIR" && pwd -P)/rel"
+  real_release "$REL"
+  real_install "$REL" "$B"
+  [ "$status" -eq 20 ]
+  [[ "$output" == *"can be changed by an account other than root, so nothing was installed"* ]]
+  [[ "$output" == *'manual section 2'* ]]
+  [[ "$output" != *'CHANGES TO THIS HOST'* ]]
+  [ -z "$(sudo -n find "$B" -mindepth 1 -print -quit)" ]
+}
+
+@test "realsystem: as root, a release folder only root can change installs as before" {
+  [ "${LAB_REALSYSTEM:-}" = 1 ] || skip 'real-system tests run only on CI runners or lab VMs'
+  B="$(sudo -n mktemp -d /var/tmp/lab-inst.XXXXXX)"
+  trap 'sudo -n rm -rf -- "$B"' RETURN
+  real_release "$B/rel"
+  real_install "$B/rel" "$B"
+  [ "$status" -eq 0 ] || { printf '%s\n' "$output"; return 1; }
+  [[ "$output" == *'CHANGES TO THIS HOST'* ]]
+  sudo -n test -f "$B/opt/bin/labyrinth.sh"
+  [ "$(sudo -n readlink -f "$B/bin/labyrinth")" = "$B/opt/bin/labyrinth.sh" ]
 }
 
 @test "an existing data root with something in it that others can change is refused" {
