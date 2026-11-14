@@ -33,19 +33,92 @@ function Test-LabQuarantineChange {
     return $true
 }
 
-# Test-LabQuarantinePath PATH: absolute, without '..', outside Labyrinth's tree.
+# Resolve-LabQuarantineDir -Path DIR [-Check]: where the folder DIR really
+# is, one folder at a time: each junction or symbolic link replaced by its
+# target, and each short (8.3) name by its long name. A part that does not
+# exist is kept as given, with the rest. With -Check it throws, naming the
+# link, when a link on the way sits in a folder another account could
+# change (Test-LabItemAcl): that account could aim it elsewhere after this
+# check. It also throws after 40 links, or on a link it cannot follow.
+function Resolve-LabQuarantineDir {
+    param([Parameter(Mandatory)] [string] $Path, [switch] $Check)
+    $admins = $null
+    # Delete a child, delete, change access, take ownership, generic all:
+    # what replacing a link in the folder takes.
+    $replace = 0x40 -bor 0x10000 -bor 0x40000 -bor 0x80000 -bor 0x10000000
+    $full = [IO.Path]::GetFullPath($Path)
+    $cur = [IO.Path]::GetPathRoot($full)
+    $rest = New-Object Collections.Generic.List[string]
+    $rest.AddRange([string[]]($full.Substring($cur.Length) -split '\\'))
+    $hops = 0
+    while ($rest.Count -gt 0) {
+        $part = $rest[0]
+        $rest.RemoveAt(0)
+        if ($part -eq '' -or $part -eq '.') { continue }
+        if ($part -eq '..') {
+            $up = Split-Path -Parent $cur
+            if ($up) { $cur = $up }
+            continue
+        }
+        # Matches a short name too, and gives back the long one.
+        $found = @()
+        if (Test-Path -LiteralPath $cur -PathType Container) {
+            $found = @([IO.Directory]::GetFileSystemEntries($cur, $part))
+        }
+        if ($found.Count -ne 1) {
+            return (@($cur.TrimEnd('\'), $part) + $rest) -join '\'
+        }
+        $next = $found[0]
+        $item = Get-Item -LiteralPath $next -Force
+        if (-not ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+            $cur = $next
+            continue
+        }
+        $hops++
+        $target = "$(@($item.Target)[0])"
+        if ($hops -gt 40 -or $target -eq '') { throw $next }
+        if ($Check) {
+            if ($null -eq $admins) { $admins = @(Get-LabAdminSid) }
+            if (-not (Test-LabItemAcl -Path $cur -Trusted $admins -Mask $replace)) { throw $next }
+        }
+        if (-not [IO.Path]::IsPathRooted($target)) { $target = Join-Path $cur $target }
+        $target = [IO.Path]::GetFullPath($target)
+        $cur = [IO.Path]::GetPathRoot($target)
+        $rest.InsertRange(0, [string[]]($target.Substring($cur.Length) -split '\\'))
+    }
+    return $cur
+}
+
+# Test-LabQuarantinePath PATH: absolute, without '..', outside Labyrinth's
+# tree, judged by where its folder really is: PATH's folder is followed
+# through its junctions, links and short names (Resolve-LabQuarantineDir),
+# and its last name is kept as given, since a link there is refused on its
+# own. A folder reached through a link another account could change is
+# refused too, for a person to check.
 function Test-LabQuarantinePath {
     param([Parameter(Mandatory)] [string] $Path)
     if ($Path -notmatch '^[A-Za-z]:\\' -or $Path -match '(^|\\)\.\.(\\|$)') {
         Write-LabQuarantineError "path must be absolute, without '..': $Path"
         return $false
     }
+    try {
+        $real = Resolve-LabQuarantineDir -Path (Split-Path -Parent $Path) -Check
+    } catch {
+        Write-LabQuarantineError "refusing a path through $($_.Exception.Message), a link another account could change (list it for a person): $Path"
+        return $false
+    }
+    $real = '{0}\{1}' -f $real.TrimEnd('\'), (Split-Path -Leaf $Path)
     foreach ($d in @($env:LAB_ROOT, $env:LAB_STATE_DIR, $env:LAB_BACKUP_DIR, $env:LAB_LOG_DIR, $env:LAB_CONFIG_DIR)) {
         if (-not $d) { continue }
-        $root = $d.TrimEnd('\')
-        if ($Path -ieq $root -or $Path.StartsWith("$root\", [StringComparison]::OrdinalIgnoreCase)) {
-            Write-LabQuarantineError "refusing a path inside Labyrinth's own tree: $Path"
-            return $false
+        $roots = @($d.TrimEnd('\'))
+        try { $roots += (Resolve-LabQuarantineDir -Path $d).TrimEnd('\') } catch { Write-Verbose "not resolved: $d" }
+        foreach ($root in $roots) {
+            foreach ($p in $Path, $real) {
+                if ($p -ieq $root -or $p.StartsWith("$root\", [StringComparison]::OrdinalIgnoreCase)) {
+                    Write-LabQuarantineError "refusing a path inside Labyrinth's own tree: $Path"
+                    return $false
+                }
+            }
         }
     }
     return $true
