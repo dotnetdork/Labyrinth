@@ -73,11 +73,12 @@ Print its SHA-256 and compare it with the notes, character by character:
 sha256sum labyrinth-$tag.tar.gz
 ```
 
-If it differs, stop and do not unpack the archive: fetch it again, or use the team's own copy. If it matches, unpack the archive as root, so that the files belong to root, and check the list of files inside it:
+If it differs, stop and do not unpack the archive: fetch it again, or use the team's own copy. If it matches, unpack the archive as root into a folder only root can change, so that the files belong to root, and check the list of files inside it. The installer refuses a release folder that another account could change, such as one in a home folder or under `/tmp`:
 
 ```
-sudo tar --no-same-owner -xzf labyrinth-$tag.tar.gz
-cd labyrinth-$tag
+sudo mkdir -p /opt/labyrinth-release
+sudo tar --no-same-owner -xzf labyrinth-$tag.tar.gz -C /opt/labyrinth-release
+cd /opt/labyrinth-release/labyrinth-$tag
 sha256sum -c --quiet release.sha256
 ```
 
@@ -100,7 +101,7 @@ Print its SHA-256 and compare it with the notes, character by character. `Get-Fi
 Get-FileHash "labyrinth-$tag.zip"
 ```
 
-If it differs, stop and do not unpack the archive: fetch it again, or use the team's own copy. If it matches, unpack the archive in your elevated window, so that the files belong to the Administrators, and check the list of files inside it. The last command prints nothing when every file matches the list:
+If it differs, stop and do not unpack the archive: fetch it again, or use the team's own copy. If it matches, unpack the archive in your elevated window, in a folder only administrators can change (your own profile folder, when your account is an administrator), so that the files belong to the Administrators, and check the list of files inside it. The installer refuses a release folder that another account could change. The last command prints nothing when every file matches the list:
 
 ```
 Expand-Archive "labyrinth-$tag.zip" -DestinationPath .
@@ -132,7 +133,7 @@ It checks the release against `release.sha256` and refuses if a file differs. It
 - installs the Tab key for bash, a file named `laby` and a file named `labyrinth` in `/usr/share/bash-completion/completions` (when the host has bash-completion; otherwise it skips it with one line). It never replaces another program's file, and it leaves out the `laby` file when `laby` is left out. A new shell picks it up;
 - copies the configuration templates into `/opt/labyrinth/etc` without the `.example` ending, never replacing a file that is already there.
 
-It first checks that only root can change the program's folder, the commands' folder, the manual's folder, every folder above them, and an existing data root and everything in it, and refuses if not. It warns if root's `PATH` has a folder that others can write to. It ends by telling you what to fill in (the templates hold placeholder names) and the next command, `sudo laby`.
+It first checks that only root can change the release folder it runs from and everything in it, the program's folder, the commands' folder, the manual's folder, every folder above them, and an existing data root and everything in it, and refuses if not. It warns if root's `PATH` has a folder that others can write to. It ends by telling you what to fill in (the templates hold placeholder names) and the next command, `sudo laby`.
 
 The installer is safe to run again, for example to install a new release: it replaces the program completely and never touches the configuration, the run records, the backups or the logs. It refuses while any revert timer is armed, because the timer would run the code being replaced; it names the run and when its timer fires. Keep the run (`sudo laby -k ID`) or undo it (`sudo laby -u ID`) first.
 <!-- end -->
@@ -150,7 +151,7 @@ It checks the release against `release.sha256` and refuses if a file differs. It
 - installs the Tab key for `laby` and `labyrinth` in the same `Labyrinth` module as the help topic. To turn it on, add the line `Import-Module Labyrinth` to your PowerShell profile (`notepad $PROFILE`) and open a new window. The installer does not edit your profile. Tab works for the commands in the installed code folder only, so after moving that folder, run the installer again;
 - copies the configuration templates into `C:\ProgramData\Labyrinth\etc` without the `.example` ending, never replacing a file that is already there.
 
-It first checks that only Administrators, SYSTEM and TrustedInstaller can change the program's folder and every folder above it, and refuses if not. If the data root is already there but still open to other accounts, it makes it private, then checks it the same way; if something in it belongs to an account that is not an administrator, it installs nothing, so a person can check that file first. It ends by telling you what to fill in (the templates hold placeholder names) and the next command, `laby`.
+It first checks that only Administrators, SYSTEM and TrustedInstaller can change the release folder it runs from and everything in it, the program's folder, and every folder above them, and refuses if not. If the data root is already there but still open to other accounts, it makes it private, then checks it the same way; if something in it belongs to an account that is not an administrator, it installs nothing, so a person can check that file first. It ends by telling you what to fill in (the templates hold placeholder names) and the next command, `laby`.
 
 The installer is safe to run again, for example to install a new release: it replaces the program completely and never touches the configuration, the run records, the backups or the logs. It refuses while any revert timer is armed, because the timer would run the code being replaced; it names the run and when its timer fires. Keep the run (`laby -k ID`) or undo it (`laby -u ID`) first.
 <!-- end -->
@@ -850,7 +851,7 @@ Everything Labyrinth keeps is under one folder, the **data root**: `@ROOT@` unle
 | `<root>/logs` | Logs, one folder per kind. |
 | `<root>/backup` | Copies of every file taken before it was changed. |
 
-Only root can read `etc`, `state` and `backup`. Only root may be able to change any of it, or `-r`, `-k` and `-u` refuse (section 11).
+Only root can read `etc`, `state` and `backup`. Only root may be able to change any of it, or `-r`, `-k` and `-u` refuse, and so do a preview, `--probe`, the status and `--new-seed` run as root (section 11).
 <!-- end -->
 <!-- windows -->
 | Folder | Holds |
@@ -861,7 +862,7 @@ Only root can read `etc`, `state` and `backup`. Only root may be able to change 
 | `<root>\logs` | Logs, one folder per kind. |
 | `<root>\backup` | Copies of every file taken before it was changed. |
 
-Only Administrators, SYSTEM and the account that runs Labyrinth can use the data root. If a file under it belongs to another account, Labyrinth refuses to run until a person checks the file and removes it. If an account that is not an administrator could change the program, the configuration or the data root, `-r`, `-k` and `-u` refuse too (section 11).
+Only Administrators, SYSTEM and the account that runs Labyrinth can use the data root. If a file under it belongs to another account, Labyrinth refuses to run until a person checks the file and removes it. If an account that is not an administrator could change the program, the configuration or the data root, `-r`, `-k` and `-u` refuse too, and so do a preview, `-Probe`, the status and `-NewSeed` run as an administrator (section 11).
 <!-- end -->
 
 The revert timer's length is `REVERT_MINUTES` in `event.conf` (5 minutes in the example file).
@@ -911,10 +912,10 @@ The run that is `armed` is the one to undo; its ID is also on the second line of
 <!-- end -->
 
 <!-- linux -->
-**"... can be changed by an account other than root".** Labyrinth runs its program, its configuration and its run records as root, and the revert timer runs them again later. So `-r`, `-k` and `-u` refuse if any other account could change them: the program folder, the configuration folder, the data root, anything in them, or any folder above them. The line names the first one found. Install Labyrinth with the installer (section 2), which refuses a folder that others can change; or keep it in `/opt/labyrinth`, owned by root and not writable by group or others: `sudo chown -R root: /opt/labyrinth` and `sudo chmod -R go-w /opt/labyrinth`. A copy unpacked in a home folder or under `/tmp` is refused.
+**"... can be changed by an account other than root".** Labyrinth runs its program, its configuration and its run records as root, and the revert timer runs them again later. So `-r`, `-k` and `-u` refuse if any other account could change them: the program folder, the configuration folder, the data root, anything in them, or any folder above them. Run as root, a preview, `--probe`, the status and `--new-seed` refuse too, because a preview runs every module's scripts. The line names the first one found. Install Labyrinth with the installer (section 2), which refuses a folder that others can change; or keep it in `/opt/labyrinth`, owned by root and not writable by group or others: `sudo chown -R root: /opt/labyrinth` and `sudo chmod -R go-w /opt/labyrinth`. A copy unpacked in a home folder or under `/tmp` is refused.
 <!-- end -->
 <!-- windows -->
-**"... can be changed by an account that is not an administrator".** Labyrinth runs its program, its configuration and its run records as an administrator, and the revert timer runs them again later as SYSTEM. So `-r`, `-k` and `-u` refuse if any other account could change them: the program folder, the configuration folder, the data root, anything in them, or any folder above them. The line names the first one found. Install Labyrinth with the installer (section 2): it puts the program in `C:\Program Files\Labyrinth` and makes the data root, `C:\ProgramData\Labyrinth`, private to administrators. A copy unpacked in a user's own folder, or one that gives Users or Authenticated Users the right to change it, is refused.
+**"... can be changed by an account that is not an administrator".** Labyrinth runs its program, its configuration and its run records as an administrator, and the revert timer runs them again later as SYSTEM. So `-r`, `-k` and `-u` refuse if any other account could change them: the program folder, the configuration folder, the data root, anything in them, or any folder above them. Run as an administrator, a preview, `-Probe`, the status and `-NewSeed` refuse too, because a preview runs every module's scripts. The line names the first one found. Install Labyrinth with the installer (section 2): it puts the program in `C:\Program Files\Labyrinth` and makes the data root, `C:\ProgramData\Labyrinth`, private to administrators. A copy unpacked in a user's own folder, or one that gives Users or Authenticated Users the right to change it, is refused.
 <!-- end -->
 
 **"... differs from the release", "is not in the release" or "is missing".** Before it runs anything, Labyrinth checks each of its own files against `release.sha256`, and one was changed, added or removed. Every action refuses, help and the revert timer's undo too, which also shows a notice on every terminal: the changes of an armed run stay in place until this is mended. Until you know otherwise, treat it as a sign of an intruder. Note the line, copy Labyrinth here again from the team's copy, and check the copy with the host's own tools, which do not depend on Labyrinth's code. In Labyrinth's folder:

@@ -26,19 +26,66 @@ _lab_q_changing() {
   fi
 }
 
-# _lab_q_path_ok PATH: absolute, no '..', and outside Labyrinth's own tree.
+# _lab_q_real DIR: where the folder DIR really is, with each symbolic link
+# on the way replaced by its target, one folder at a time; a part that does
+# not exist is kept as given. Fails, printing the link, when a link on the
+# way is not owned by root or sits in a folder another account can change
+# (lab_dir_trusted): that account could aim it elsewhere after this check.
+# It also fails after 40 links, as the kernel does.
+_lab_q_real() {
+  local rest="${1#/}" cur='' part t hops=0
+  while [[ -n "$rest" ]]; do
+    part="${rest%%/*}"
+    if [[ "$rest" == */* ]]; then rest="${rest#*/}"; else rest=''; fi
+    case "$part" in
+      '' | .) continue ;;
+      ..) cur="${cur%/*}"; continue ;;
+    esac
+    if [[ ! -L "$cur/$part" ]]; then cur="$cur/$part"; continue; fi
+    hops=$((hops + 1))
+    if (( hops > 40 )) || [[ "$(stat -c %u -- "$cur/$part" 2> /dev/null)" != 0 ]] \
+      || ! lab_dir_trusted "${cur:-/}"; then
+      printf '%s\n' "$cur/$part"
+      return 1
+    fi
+    t="$(readlink -- "$cur/$part")" || { printf '%s\n' "$cur/$part"; return 1; }
+    if [[ "$t" == /* ]]; then cur=''; fi
+    rest="${t#/}${rest:+/$rest}"
+  done
+  printf '%s\n' "${cur:-/}"
+}
+
+# _lab_q_path_ok PATH: absolute, no '..', and outside Labyrinth's own tree,
+# judged by where its folder really is: PATH's folder is followed through
+# its links (_lab_q_real), and its last name is kept as given, since a link
+# there is moved, not followed. A folder reached through a link that another
+# account could change is refused too, for a person to check.
 _lab_q_path_ok() {
-  local p="$1" d
+  local p="$1" d real
   if [[ "$p" != /* || "$p" == */../* || "$p" == */.. ]]; then
     _lab_q_err "path must be absolute, without '..': $p"
     return 20
   fi
+  if ! real="$(_lab_q_real "${p%/*}")"; then
+    _lab_q_err "refusing a path through $real, a link another account could change (list it for a person): $p"
+    return 20
+  fi
+  real="${real%/}/${p##*/}"
   for d in "${LAB_ROOT:-}" "${LAB_STATE_DIR:-}" "${LAB_BACKUP_DIR:-}" "${LAB_LOG_DIR:-}" "${LAB_CONFIG_DIR:-}"; do
-    if [[ -n "$d" && ( "$p" == "$d" || "$p" == "$d"/* ) ]]; then
+    [[ -n "$d" ]] || continue
+    if [[ "$p" == "$d" || "$p" == "$d"/* ]] || _lab_q_inside "$real" "$d"; then
       _lab_q_err "refusing a path inside Labyrinth's own tree: $p"
       return 20
     fi
   done
+}
+
+# _lab_q_inside REAL DIR: is REAL (a real path) DIR or inside it, with DIR's
+# own links resolved?
+_lab_q_inside() {
+  local d
+  d="$(readlink -m -- "$2")" || return 1
+  [[ "$1" == "$d" || "$1" == "$d"/* ]]
 }
 
 _lab_q_sha() {

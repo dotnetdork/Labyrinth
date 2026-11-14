@@ -70,6 +70,36 @@ Describe 'labyrinth.ps1 -r' {
         Join-Path $t.Root "state\runs\$id\timer" | Should -Exist
     }
 
+    It 'as an administrator, preview, -Probe, the status and -NewSeed refuse code another account can change' {
+        $ran = Join-Path $lab 'SCRIPT_RAN'
+        foreach ($f in 'check', 'plan') {
+            [IO.File]::WriteAllText((Join-Path $lab "phases\observe\modules\toggle\$f.ps1"),
+                "[IO.File]::WriteAllText('$ran', 'x')`nexit 0`n")
+        }
+        New-Item -ItemType File -Path (Join-Path $lab 'UNTRUSTED') | Out-Null
+        $r = Invoke-TestPlan $t
+        $r.Code | Should -Be 20
+        $r.Output | Should -Match ([regex]::Escape("$lab can be changed by an account that is not an administrator"))
+        $ran | Should -Not -Exist
+        foreach ($cmd in @('-Probe'), @('-NewSeed'), @()) {
+            $r = Invoke-TestLab $t (@($cmd) + @('-Root', $t.Root, '-Config', $t.Etc))
+            $r.Code | Should -Be 20 -Because "$cmd"
+            $r.Output | Should -Match ([regex]::Escape("$lab can be changed by an account that is not an administrator")) -Because "$cmd"
+        }
+        Join-Path $t.Etc 'seed.conf' | Should -Not -Exist
+    }
+
+    It 'not as an administrator, a preview from code another account can change runs as before' {
+        $ran = Join-Path $lab 'SCRIPT_RAN'
+        foreach ($f in 'check', 'plan') {
+            [IO.File]::WriteAllText((Join-Path $lab "phases\observe\modules\toggle\$f.ps1"),
+                "[IO.File]::WriteAllText('$ran', 'x')`nexit 0`n")
+        }
+        New-Item -ItemType File -Path (Join-Path $lab 'UNTRUSTED'), (Join-Path $lab 'NOT_ADMIN') | Out-Null
+        (Invoke-TestPlan $t).Code | Should -Be 0
+        $ran | Should -Exist
+    }
+
     It 'an entry point gets no standard input, so it cannot take the operator''s answers' {
         $seen = Join-Path $lab 'STDIN_SEEN'
         [IO.File]::WriteAllText((Join-Path $lab 'phases\observe\modules\toggle\plan.ps1'),

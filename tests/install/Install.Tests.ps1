@@ -205,6 +205,21 @@ Describe 'install.ps1 refuses, or asks, before it changes anything' {
         Get-TestSnapshot $r.Sys | Should -Be $before
     }
 
+    It 'a release folder that another account can change is refused before anything else is loaded from it' {
+        # Authenticated Users may change one file of the release.
+        $f = Join-Path $r.Rel 'core\Lab.ps1'
+        $acl = Get-Acl -LiteralPath $f
+        $acl.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule(
+            (New-Object Security.Principal.SecurityIdentifier 'S-1-5-11'), 'Modify', 'Allow')))
+        Set-Acl -LiteralPath $f -AclObject $acl
+        $x = Invoke-TestInstall $r @('-Yes')
+        $x.Code | Should -Be 20
+        $x.Output | Should -Match 'core\\Lab\.ps1 can be changed by an account other than an administrator, so nothing was installed'
+        $x.Output | Should -Match 'manual section 2'
+        $x.Output | Should -Not -Match 'CHANGES TO THIS HOST'
+        Get-TestSnapshot $r.Sys | Should -Be $before
+    }
+
     It 'without an Administrator it refuses' {
         New-Item -ItemType File -Path (Join-Path $r.Rel 'NOT_ADMIN') | Out-Null
         $x = Invoke-TestInstall $r @('-Yes')

@@ -134,11 +134,23 @@ done
   || refuse "$HERE is not a Labyrinth release folder" 'Run install.sh from the folder you unpacked.'
 # shellcheck source=core/safety/release.sh
 source "$HERE/core/safety/release.sh"
+# shellcheck source=core/safety/trust.sh
+source "$HERE/core/safety/trust.sh"
 RELEASE=0                  # 0 checked, 1 no release list, 2 a file differs
 lab_release_check "$HERE" || RELEASE=$?
 if (( RELEASE == 2 )); then
   refuse "$LAB_RELEASE_PROBLEM, so this is not the release" \
     "Copy Labyrinth here again from the team's copy, as manual section 11 says."
+fi
+# Root loads the rest of the code from this folder next, so only root may
+# be able to change it, anything in it, or any folder above it: otherwise
+# a file could change after the check above and before it runs. Run as
+# another account, the installer refuses below anyway.
+if [[ "$(id -u)" == 0 ]]; then
+  if bad="$(lab_tree_trusted "$HERE")"; then :; else
+    refuse "$bad can be changed by an account other than root, so nothing was installed" \
+      'Unpack it in a folder only root can change (manual section 2).'
+  fi
 fi
 REL_HASH="$LAB_RELEASE_HASH"
 # shellcheck source=core/banner/banner.sh

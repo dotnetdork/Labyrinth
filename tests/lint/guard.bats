@@ -36,6 +36,26 @@ setup() {
   [[ "$output" == *"dirty.ps1:5: [reboot]"* ]]
 }
 
+@test "allow text inside a string, with code after it, hides nothing" {
+  run bash "$GUARD" "$FIX/string-allow.sh"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"string-allow.sh:2: [network]"* ]]
+  [[ "$output" == *"string-allow.sh:3: [network]"* ]]
+}
+
+@test "the default scan covers the installers and tools/" {
+  LAB_GUARD_ROOT="$FIX/tree" run bash "$GUARD"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"tree/install.sh:3: [network]"* ]]
+  # tools/ is scanned too: it is clean, so it adds a file and no finding.
+  rm -rf "$BATS_TEST_TMPDIR/tree"
+  cp -R "$FIX/tree" "$BATS_TEST_TMPDIR/tree"
+  rm "$BATS_TEST_TMPDIR/tree/install.sh"
+  LAB_GUARD_ROOT="$BATS_TEST_TMPDIR/tree" run bash "$GUARD"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"1 file(s) clean"* ]]
+}
+
 @test "an allow comment without a reason is itself a finding" {
   run bash "$GUARD" "$FIX/malformed.sh"
   [ "$status" -eq 1 ]
