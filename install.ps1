@@ -257,10 +257,20 @@ try {
         Exit-LabInstall 20 "$Here is not a Labyrinth release folder" 'Run install.ps1 from the folder you unpacked.'
     }
     . (Join-Path $Here 'core\safety\Release.ps1')
+    . (Join-Path $Here 'core\safety\Trust.ps1')
     $release = Test-LabRelease -Root $Here
     if ($release.Status -eq 'problem') {
         Exit-LabInstall 20 "$($release.Problem), so this is not the release" `
             "Copy Labyrinth here again from the team's copy, as manual section 11 says."
+    }
+    # The rest of the code is loaded from this folder next, so only
+    # Administrators, SYSTEM and TrustedInstaller may be able to change it,
+    # anything in it, or any folder above it: otherwise a file could change
+    # after the check above and before it runs.
+    $untrusted = Find-LabUntrustedItem -Path @($Here)
+    if ($untrusted) {
+        Exit-LabInstall 20 "$untrusted can be changed by an account other than an administrator, so nothing was installed" `
+            'Unpack it in a folder only administrators can change (manual section 2).'
     }
     $env:LAB_ROOT = $Here
     . (Join-Path $Here 'core\Lab.ps1')

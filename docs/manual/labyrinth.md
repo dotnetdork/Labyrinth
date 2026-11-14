@@ -73,11 +73,12 @@ Print its SHA-256 and compare it with the notes, character by character:
 sha256sum labyrinth-$tag.tar.gz
 ```
 
-If it differs, stop and do not unpack the archive: fetch it again, or use the team's own copy. If it matches, unpack the archive as root, so that the files belong to root, and check the list of files inside it:
+If it differs, stop and do not unpack the archive: fetch it again, or use the team's own copy. If it matches, unpack the archive as root into a folder only root can change, so that the files belong to root, and check the list of files inside it. The installer refuses a release folder that another account could change, such as one in a home folder or under `/tmp`:
 
 ```
-sudo tar --no-same-owner -xzf labyrinth-$tag.tar.gz
-cd labyrinth-$tag
+sudo mkdir -p /opt/labyrinth-release
+sudo tar --no-same-owner -xzf labyrinth-$tag.tar.gz -C /opt/labyrinth-release
+cd /opt/labyrinth-release/labyrinth-$tag
 sha256sum -c --quiet release.sha256
 ```
 
@@ -100,7 +101,7 @@ Print its SHA-256 and compare it with the notes, character by character. `Get-Fi
 Get-FileHash "labyrinth-$tag.zip"
 ```
 
-If it differs, stop and do not unpack the archive: fetch it again, or use the team's own copy. If it matches, unpack the archive in your elevated window, so that the files belong to the Administrators, and check the list of files inside it. The last command prints nothing when every file matches the list:
+If it differs, stop and do not unpack the archive: fetch it again, or use the team's own copy. If it matches, unpack the archive in your elevated window, in a folder only administrators can change (your own profile folder, when your account is an administrator), so that the files belong to the Administrators, and check the list of files inside it. The installer refuses a release folder that another account could change. The last command prints nothing when every file matches the list:
 
 ```
 Expand-Archive "labyrinth-$tag.zip" -DestinationPath .
@@ -132,7 +133,7 @@ It checks the release against `release.sha256` and refuses if a file differs. It
 - installs the Tab key for bash, a file named `laby` and a file named `labyrinth` in `/usr/share/bash-completion/completions` (when the host has bash-completion; otherwise it skips it with one line). It never replaces another program's file, and it leaves out the `laby` file when `laby` is left out. A new shell picks it up;
 - copies the configuration templates into `/opt/labyrinth/etc` without the `.example` ending, never replacing a file that is already there.
 
-It first checks that only root can change the program's folder, the commands' folder, the manual's folder, every folder above them, and an existing data root and everything in it, and refuses if not. It warns if root's `PATH` has a folder that others can write to. It ends by telling you what to fill in (the templates hold placeholder names) and the next command, `sudo laby`.
+It first checks that only root can change the release folder it runs from and everything in it, the program's folder, the commands' folder, the manual's folder, every folder above them, and an existing data root and everything in it, and refuses if not. It warns if root's `PATH` has a folder that others can write to. It ends by telling you what to fill in (the templates hold placeholder names) and the next command, `sudo laby`.
 
 The installer is safe to run again, for example to install a new release: it replaces the program completely and never touches the configuration, the run records, the backups or the logs. It refuses while any revert timer is armed, because the timer would run the code being replaced; it names the run and when its timer fires. Keep the run (`sudo laby -k ID`) or undo it (`sudo laby -u ID`) first.
 <!-- end -->
@@ -150,7 +151,7 @@ It checks the release against `release.sha256` and refuses if a file differs. It
 - installs the Tab key for `laby` and `labyrinth` in the same `Labyrinth` module as the help topic. To turn it on, add the line `Import-Module Labyrinth` to your PowerShell profile (`notepad $PROFILE`) and open a new window. The installer does not edit your profile. Tab works for the commands in the installed code folder only, so after moving that folder, run the installer again;
 - copies the configuration templates into `C:\ProgramData\Labyrinth\etc` without the `.example` ending, never replacing a file that is already there.
 
-It first checks that only Administrators, SYSTEM and TrustedInstaller can change the program's folder and every folder above it, and refuses if not. If the data root is already there but still open to other accounts, it makes it private, then checks it the same way; if something in it belongs to an account that is not an administrator, it installs nothing, so a person can check that file first. It ends by telling you what to fill in (the templates hold placeholder names) and the next command, `laby`.
+It first checks that only Administrators, SYSTEM and TrustedInstaller can change the release folder it runs from and everything in it, the program's folder, and every folder above them, and refuses if not. If the data root is already there but still open to other accounts, it makes it private, then checks it the same way; if something in it belongs to an account that is not an administrator, it installs nothing, so a person can check that file first. It ends by telling you what to fill in (the templates hold placeholder names) and the next command, `laby`.
 
 The installer is safe to run again, for example to install a new release: it replaces the program completely and never touches the configuration, the run records, the backups or the logs. It refuses while any revert timer is armed, because the timer would run the code being replaced; it names the run and when its timer fires. Keep the run (`laby -k ID`) or undo it (`laby -u ID`) first.
 <!-- end -->

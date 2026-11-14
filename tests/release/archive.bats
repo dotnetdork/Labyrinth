@@ -127,10 +127,10 @@ setup() {
   for n in "$fetch" "$hash" "$unpack" "$check" "$install"; do [ -n "$n" ] || { echo "a step is missing"; echo "$cmds"; return 1; }; done
   { [ "$fetch" -lt "$hash" ] && [ "$hash" -lt "$unpack" ] && [ "$unpack" -lt "$check" ] && [ "$check" -lt "$install" ]; } \
     || { echo "the steps are out of order"; return 1; }
-  # Nothing but curl, sha256sum, tar, cd and the installer; never a pipe.
+  # Nothing but curl, sha256sum, mkdir, tar, cd and the installer; never a pipe.
   while IFS= read -r c; do
     case "$c" in
-      tag=* | url=* | curl\ * | sha256sum\ * | sudo\ tar\ * | cd\ * | 'sudo ./install.sh') ;;
+      tag=* | url=* | curl\ * | sha256sum\ * | sudo\ mkdir\ -p\ * | sudo\ tar\ * | cd\ * | 'sudo ./install.sh') ;;
       *) echo "unexpected command: $c"; return 1 ;;
     esac
     case "$c" in *'|'*) echo "a pipe: $c"; return 1 ;; esac
