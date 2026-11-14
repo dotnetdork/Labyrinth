@@ -567,13 +567,13 @@ Restoring a `file` entry writes the backup over the file in place, then restores
 
 ## 8. Guard comments
 
-`tests/lint/guard.sh` scans code for network calls and blanket actions. Where a match is legitimate, for example a probe connecting to the team's own scored service, mark the line:
+`tests/lint/guard.sh` scans code for network calls and blanket actions: with no arguments, the runners, the installers (`install.sh`, `install.ps1`), `core/`, `phases/`, `platform/`, `report/` and `tools/`. Where a match is legitimate, for example a probe connecting to the team's own scored service, mark the line:
 
 ```bash
 curl -fsS --max-time 5 "$url"   # lab-guard: allow network -- probe of a scored service inside the event network
 ```
 
-The comment must name the rule and give a reason after `--`. Reviewers check every allow comment.
+The comment must name the rule and give a reason after `--`, and it must end the line: only the code before it is checked. The same text anywhere else, such as inside a string with more code after it, hides nothing, and the whole line is checked. The reason holds no quotes. Reviewers check every allow comment.
 
 The `delete` rule has exactly one legitimate use: the account module deleting an account a person approved (design 04, section 6.4). That line carries an allow comment naming the approval. No other module deletes an account, and no module deletes a file outside Labyrinth's own temporary and state paths; anything else is removed by quarantine (design 06, section 5).
 
